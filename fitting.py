@@ -191,7 +191,7 @@ def fit_time_series(times_dict, t_start, t_end, config):
     for name, i in param_indices.items():
         ordered_params[i] = name
 
-    m = Minuit(_nll_minuit_wrapper, name=ordered_params, *initial_guesses)
+    m = Minuit(_nll_minuit_wrapper, *initial_guesses, name=ordered_params)
     m.errordef = Minuit.LIKELIHOOD
 
     # 4) Apply the limits
