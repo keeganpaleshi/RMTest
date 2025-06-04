@@ -422,6 +422,7 @@ def main():
         # Store inputs for plotting later
         time_plot_data[iso] = {
             "events_times": iso_events["timestamp"].values,
+            "events_energy": iso_events["energy_MeV"].values,
             "fit_dict": decay_out,
         }
 
@@ -504,7 +505,7 @@ def main():
         try:
             _ = plot_time_series(
                 all_timestamps=pdata["events_times"],
-                all_energies=events["energy_MeV"].values,
+                all_energies=pdata["events_energy"],
                 fit_results=pdata["fit_dict"],
                 t_start=t0_global,
                 t_end=events["timestamp"].max(),
