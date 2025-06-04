@@ -140,20 +140,24 @@ def main():
     # ────────────────────────────────────────────────────────────
     adc_vals = events["adc"].values
 
-    if cfg.get("calibration", {}).get("method", "two-point") == "auto":
-        # Auto‐cal using Freedman‐Diaconis histogram + peak detection
-        cal_params = derive_calibration_constants_auto(
-            adc_vals,
-            noise_cutoff = cfg["calibration"].get("noise_cutoff", 300),
-            hist_bins    = cfg["calibration"].get("hist_bins", 2000),
-            peak_search_radius = cfg["calibration"].get("peak_search_radius", 200)
-        )
-    else:
-        # Two‐point calibration as given in config
-        cal_params = derive_calibration_constants(
-            adc_vals,
-            config = cfg
-        )
+    try:
+        if cfg.get("calibration", {}).get("method", "two-point") == "auto":
+            # Auto‐cal using Freedman‐Diaconis histogram + peak detection
+            cal_params = derive_calibration_constants_auto(
+                adc_vals,
+                noise_cutoff = cfg["calibration"].get("noise_cutoff", 300),
+                hist_bins    = cfg["calibration"].get("hist_bins", 2000),
+                peak_search_radius = cfg["calibration"].get("peak_search_radius", 200)
+            )
+        else:
+            # Two‐point calibration as given in config
+            cal_params = derive_calibration_constants(
+                adc_vals,
+                config = cfg
+            )
+    except RuntimeError as e:
+        print(f"WARNING: calibration failed – {e}. Using defaults.")
+        cal_params = {"a": (0.005, 0.001), "c": (0.02, 0.005), "sigma_E": (0.3, 0.1)}
 
     # Save “a, c, sigma_E” so we can reconstruct energies
     a,  a_sig  = cal_params["a"]
