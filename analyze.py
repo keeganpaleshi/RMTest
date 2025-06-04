@@ -104,10 +104,8 @@ def main():
         print(f"ERROR: Could not load config '{args.config}': {e}")
         sys.exit(1)
 
-    # Create timestamped output directory
-    now_str = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    out_dir = os.path.join(args.output_dir, now_str)
-    os.makedirs(out_dir, exist_ok=True)
+    # We'll create the final results directory at the end via ``write_summary``
+    # and use the returned path for any file output (plots, copied config, etc.)
 
     # ────────────────────────────────────────────────────────────
     # 2. Load event data
@@ -279,17 +277,7 @@ def main():
             print(f"WARNING: Spectral fit failed → {e}")
             spectrum_results = {}
 
-        # Plot and save spectrum + best‐fit overlay
-        try:
-            _ = plot_spectrum(
-                energies=events["energy_MeV"].values,
-                fit_vals=spec_fit_out if spectrum_results else None,
-                out_png=os.path.join(out_dir, "spectrum.png"),
-                bins=bins,
-                bin_edges=bin_edges
-            )
-        except Exception as e:
-            print(f"WARNING: Could not create spectrum plot: {e}")
+        # Plot will be generated later once the final output directory exists
 
     # ────────────────────────────────────────────────────────────
     # 6. Time‐series decay fits for Po‐218 and Po‐214
@@ -361,18 +349,7 @@ def main():
             print(f"WARNING: Decay‐curve fit for {iso} failed → {e}")
             time_fit_results[iso] = {}
 
-        # Plot time‐series histogram + fit
-        try:
-            _ = plot_time_series(
-                events_times=iso_events["timestamp"].values,
-                fit_dict=decay_out if "decay_out" in locals() else None,
-                t0=t0_global,
-                out_png=os.path.join(out_dir, f"time_series_{iso}.png"),
-                bin_width = cfg["time_fit"].get("bin_width", 3600),
-                confidence = cfg["time_fit"].get("confidence", 0.95)
-            )
-        except Exception as e:
-            print(f"WARNING: Could not create time‐series plot for {iso} → {e}")
+        # Plot will be generated later once the output directory exists
 
     # ────────────────────────────────────────────────────────────
     # 7. Systematics scan (optional)
@@ -428,6 +405,42 @@ def main():
 
     out_dir = write_summary(args.output_dir, summary)
     copy_config(out_dir, args.config)
+
+    # Generate final plots inside the created results directory
+    if cfg.get("spectral_fit", {}).get("enable", False):
+        try:
+            _ = plot_spectrum(
+                energies=events["energy_MeV"].values,
+                fit_vals=spectrum_results if spectrum_results else None,
+                out_png=os.path.join(out_dir, "spectrum.png"),
+                bins=bins,
+                bin_edges=bin_edges,
+            )
+        except Exception as e:
+            print(f"WARNING: Could not create spectrum plot: {e}")
+
+    for iso in ("Po218", "Po214"):
+        win_key = f"window_{iso}"
+        if win_key not in cfg["time_fit"]:
+            continue
+
+        lo, hi = cfg["time_fit"][win_key]
+        iso_mask = (
+            (events["energy_MeV"] >= lo) &
+            (events["energy_MeV"] <= hi)
+        )
+        iso_events = events[iso_mask]
+        try:
+            _ = plot_time_series(
+                events_times=iso_events["timestamp"].values,
+                fit_dict=time_fit_results.get(iso),
+                t0=t0_global,
+                out_png=os.path.join(out_dir, f"time_series_{iso}.png"),
+                bin_width=cfg["time_fit"].get("bin_width", 3600),
+                confidence=cfg["time_fit"].get("confidence", 0.95),
+            )
+        except Exception as e:
+            print(f"WARNING: Could not create time-series plot for {iso} → {e}")
 
     print(f"Analysis complete. Results written to → {out_dir}")
 
