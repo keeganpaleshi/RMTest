@@ -11,9 +11,11 @@
         "adc_bin_width": 1,
         "fd_hist_bins": null,
         "spectral_peak_tolerance_mev": 0.3,
-        "use_emg_Po210": false,
-        "use_emg_Po218": true,
-        "use_emg_Po214": true,
+        "use_emg": {
+            "Po210": false,
+            "Po218": true,
+            "Po214": true
+        },
         "float_sigma_E": true,
         "sigma_E_prior_source": 0.15,
         "peak_search_prominence": 50,
@@ -33,8 +35,8 @@
         "confidence_level": 0.95
     },
     "systematics": {
-        "enable_systematics_scan": false,
-        "systematics_shifts": {
+        "enable": false,
+        "sigma_shifts": {
             "calibration_a_shift_pct": 0.05,
             "calibration_c_shift_abs": 0.05,
             "efficiency_Po214_shift_pct": 0.10,
