@@ -50,6 +50,8 @@ import argparse
 import os
 import sys
 import json
+import logging
+import random
 from datetime import datetime
 
 import numpy as np
@@ -103,6 +105,23 @@ def main():
     except Exception as e:
         print(f"ERROR: Could not load config '{args.config}': {e}")
         sys.exit(1)
+
+    # Configure logging as early as possible
+    log_level = cfg.get("pipeline", {}).get("log_level", "INFO")
+    numeric_level = getattr(logging, log_level.upper(), logging.INFO)
+    logging.basicConfig(
+        level=numeric_level,
+        format="%(levelname)s:%(name)s:%(message)s",
+    )
+
+    seed = cfg.get("pipeline", {}).get("random_seed")
+    if seed is not None:
+        try:
+            seed_int = int(seed)
+            np.random.seed(seed_int)
+            random.seed(seed_int)
+        except Exception:
+            logging.warning(f"Invalid random_seed '{seed}' ignored")
 
     # Timestamp for this analysis run
     now_str = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")

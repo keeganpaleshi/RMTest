@@ -1,9 +1,7 @@
 {
     "pipeline": {
         "log_level": "INFO",
-        "random_seed": null,
-        "output_subfolder": true,
-        "enable_peak_tracking": true
+        "random_seed": null
     },
     "calibration": {
         "method": "auto",
