@@ -42,6 +42,14 @@ def load_config(config_path):
     return cfg
 
 
+def load_data(csv_path):
+    """Load simple CSV with 'timestamp' and 'adc' columns."""
+    df = pd.read_csv(csv_path)
+    ts = df["timestamp"].to_numpy()
+    adc = df["adc"].to_numpy()
+    return ts, adc
+
+
 def load_events(csv_path):
     """
     Read event CSV into a DataFrame with columns:
@@ -124,8 +132,9 @@ def copy_config(output_dir, config_path):
         d for d in os.listdir(output_dir) if os.path.isdir(os.path.join(output_dir, d))
     ]
     if not subfolders:
-        raise RuntimeError(f"No subfolders found in {
-                           output_dir} to copy config into.")
+        raise RuntimeError(
+            f"No subfolders found in {output_dir} to copy config into."
+        )
     # Pick the folder with the lexicographically largest name (most recent timestamp)
     timestamped = sorted(subfolders)[-1]
     dest_folder = os.path.join(output_dir, timestamped)

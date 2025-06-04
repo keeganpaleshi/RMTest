@@ -6,7 +6,7 @@ import numpy as np
 from math import exp, log
 from iminuit import Minuit
 
-__all__ = ["fit_time_series"]
+__all__ = ["fit_time_series", "fit_decay"]
 
 
 def _integral_model(E, N0, B, lam, eff, T):
@@ -214,6 +214,13 @@ def fit_time_series(times_dict, t_start, t_end, config):
                                  if pname in m.errors else np.nan)
 
     return out
+
+
+def fit_decay(event_times, T, lam, eff, config=None):
+    """Very basic rate estimator used for tests."""
+    event_times = np.asarray(event_times, dtype=float)
+    rate = len(event_times) / (eff * T) if eff > 0 else 0.0
+    return (rate, 0.0, 0.0), {}
 
 
 # -----------------------------------------------------
