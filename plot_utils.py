@@ -45,7 +45,12 @@ def plot_time_series(
     times_rel = all_timestamps - t_start
 
     # 1) Choose binning:
-    bin_mode = config.get("time_bin_mode", "fixed")  # "fixed" or "FD"
+    # Newer config files may store plot options under keys prefixed with
+    # "plot_".  Fall back to the old names for backwards compatibility.
+    bin_mode = config.get(
+        "plot_time_binning_mode",
+        config.get("time_bin_mode", "fixed"),
+    ).lower()
     if bin_mode == "FD":
         # Freedman Diaconis rule on the entire time range:
         data = times_rel[(times_rel >= 0) & (times_rel <= (t_end - t_start))]
@@ -62,7 +67,12 @@ def plot_time_series(
                     1, int(np.ceil((data.max() - data.min()) / bin_width)))
     else:
         # fixed width in seconds (e.g. 3600 s):
-        dt = float(config.get("time_bin_s", 3600.0))
+        dt = float(
+            config.get(
+                "plot_time_bin_width_s",
+                config.get("time_bin_s", 3600.0),
+            )
+        )
         n_bins = int(np.ceil((t_end - t_start) / dt))
         if n_bins < 1:
             n_bins = 1
@@ -127,7 +137,18 @@ def plot_time_series(
     plt.legend(fontsize="small")
     plt.tight_layout()
     os.makedirs(os.path.dirname(out_png), exist_ok=True)
-    plt.savefig(out_png, dpi=300)
+
+    # Determine which formats to save. If not specified, fall back to the
+    # extension of the provided output path.
+    fmt_default = os.path.splitext(out_png)[1].lstrip(".") or "png"
+    save_fmts = config.get("plot_save_formats", [fmt_default])
+    if isinstance(save_fmts, str):
+        save_fmts = [save_fmts]
+
+    base = os.path.splitext(out_png)[0]
+    for fmt in save_fmts:
+        out_file = base + f".{fmt}"
+        plt.savefig(out_file, dpi=300)
     plt.close()
 
     # (Optionally) also write a small JSON of the binned values:
@@ -150,8 +171,20 @@ def plot_time_series(
             json.dump(ts_summary, jf, indent=2)
 
 
-def plot_spectrum(energies, fit_vals=None, out_png="spectrum.png", bins=400, bin_edges=None):
+def plot_spectrum(
+    energies,
+    fit_vals=None,
+    out_png="spectrum.png",
+    bins=400,
+    bin_edges=None,
+    config=None,
+):
     """Plot energy spectrum and optional fit overlay."""
+    if bin_edges is None and config is not None and "plot_spectrum_binsize_adc" in config:
+        step = float(config["plot_spectrum_binsize_adc"])
+        e_min, e_max = energies.min(), energies.max()
+        bin_edges = np.arange(e_min, e_max + step, step)
+
     if bin_edges is not None:
         hist, edges = np.histogram(energies, bins=bin_edges)
     else:
@@ -182,7 +215,19 @@ def plot_spectrum(energies, fit_vals=None, out_png="spectrum.png", bins=400, bin
         plt.legend(fontsize="small")
     plt.tight_layout()
     os.makedirs(os.path.dirname(out_png), exist_ok=True)
-    plt.savefig(out_png, dpi=300)
+
+    fmt_default = os.path.splitext(out_png)[1].lstrip(".") or "png"
+    save_fmts = []
+    if config is not None:
+        save_fmts = config.get("plot_save_formats", [])
+    if not save_fmts:
+        save_fmts = [fmt_default]
+    if isinstance(save_fmts, str):
+        save_fmts = [save_fmts]
+
+    base = os.path.splitext(out_png)[0]
+    for fmt in save_fmts:
+        plt.savefig(base + f".{fmt}", dpi=300)
     plt.close()
 
 
