@@ -6,7 +6,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-__all__ = ["plot_time_series"]
+__all__ = ["plot_time_series", "plot_spectrum"]
 
 
 def plot_time_series(
@@ -139,6 +139,43 @@ def plot_time_series(
         }
         with open(out_png.replace(".png", "_ts.json"), "w") as jf:
             json.dump(ts_summary, jf, indent=2)
+
+
+def plot_spectrum(energies, fit_vals=None, out_png="spectrum.png", bins=100, bin_edges=None):
+    """Plot an energy spectrum and optionally overlay a fitted model."""
+    plt.figure(figsize=(8, 6))
+
+    if bin_edges is not None:
+        counts, edges, _ = plt.hist(
+            energies,
+            bins=bin_edges,
+            histtype="step",
+            color="black",
+        )
+    else:
+        counts, edges, _ = plt.hist(
+            energies,
+            bins=bins,
+            histtype="step",
+            color="black",
+        )
+
+    if fit_vals is not None:
+        xs = fit_vals.get("xs") if isinstance(fit_vals, dict) else None
+        ys = fit_vals.get("model") if isinstance(fit_vals, dict) else None
+        if xs is not None and ys is not None:
+            plt.plot(xs, ys, color="red", lw=1.5, label="Fit")
+            plt.legend()
+
+    plt.xlabel("Energy (MeV)")
+    plt.ylabel("Counts")
+    plt.tight_layout()
+
+    if out_png:
+        os.makedirs(os.path.dirname(out_png), exist_ok=True)
+        plt.savefig(out_png, dpi=300)
+    plt.close()
+    return out_png
 
 
 # -----------------------------------------------------
