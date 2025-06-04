@@ -319,6 +319,8 @@ def main():
 
         # Relative times for fitting: subtract t0_global
         times_rel = (iso_events["timestamp"].values - t0_global).astype(float)
+        # Duration of data for this isotope
+        t_end_iso_rel = iso_events["timestamp"].max() - t0_global
 
         # Build priors for time fit
         priors_time = {}
@@ -364,7 +366,7 @@ def main():
                 times=times_rel,
                 priors=priors_time,
                 t0=0.0,
-                t_end=(events["timestamp"].max() - t0_global),
+                t_end=t_end_iso_rel,
                 flags=flags_time
             )
             time_fit_results[iso] = decay_out
@@ -395,17 +397,19 @@ def main():
                 win_range = cfg.get("time_fit", {}).get(f"window_{iso}")
                 if win_range is None:
                     raise ValueError(f"Missing window for {iso} during systematics scan")
+                filtered_df = events[
+                    (events["energy_MeV"] >= win_range[0]) &
+                    (events["energy_MeV"] <= win_range[1])
+                ]
                 filtered_times = (
-                    events[
-                        (events["energy_MeV"] >= win_range[0]) &
-                        (events["energy_MeV"] <= win_range[1])
-                    ]["timestamp"].values - t0_global
+                    filtered_df["timestamp"].values - t0_global
                 )
+                filtered_end = filtered_df["timestamp"].max() - t0_global
                 out = fit_decay(
                     times=filtered_times,
                     priors=priors_mod,
                     t0=0.0,
-                    t_end=(events["timestamp"].max() - t0_global)
+                    t_end=filtered_end
                 )
                 return out.get("eff", np.nan)
 
