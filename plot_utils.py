@@ -6,7 +6,69 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-__all__ = ["plot_time_series"]
+__all__ = ["plot_spectrum", "plot_time_series"]
+
+
+def plot_spectrum(energies, fit_vals=None, out_png="spectrum.png", bins=100, bin_edges=None):
+    """Plot energy spectrum and optional fit overlay.
+
+    Parameters
+    ----------
+    energies : array-like
+        1D array of energies (MeV).
+    fit_vals : dict or None
+        Dictionary of fit parameters from ``fit_spectrum``.  The function
+        only uses a subset of expected keys (``mu_*``, ``S_*``, ``sigma_E``,
+        ``b0`` and ``b1``) if present.  The overlay is skipped when no fit
+        values are provided.
+    out_png : str
+        Output file for the PNG image.
+    bins : int
+        Number of histogram bins if ``bin_edges`` is not given.
+    bin_edges : array-like or None
+        Optional array of bin edges to use for the histogram.
+    """
+
+    edges = bin_edges if bin_edges is not None else bins
+    counts, edges = np.histogram(energies, bins=edges)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    widths = np.diff(edges)
+
+    plt.figure(figsize=(8, 5))
+    plt.bar(centers, counts, width=widths, color="tab:gray", alpha=0.6, label="Data")
+
+    if isinstance(fit_vals, dict) and fit_vals:
+        sigma = fit_vals.get("sigma_E", None)
+        model_x = np.linspace(edges[0], edges[-1], 1000)
+        model_y = np.zeros_like(model_x)
+
+        if sigma and sigma > 0:
+            for iso in ("Po210", "Po218", "Po214"):
+                mu_k = f"mu_{iso}"
+                amp_k = f"S_{iso}"
+                if mu_k in fit_vals and amp_k in fit_vals:
+                    mu = fit_vals[mu_k]
+                    amp = fit_vals[amp_k]
+                    gauss = (
+                        amp
+                        * np.exp(-(model_x - mu) ** 2 / (2 * sigma ** 2))
+                        / (sigma * np.sqrt(2 * np.pi))
+                    )
+                    model_y += gauss
+
+        b0 = fit_vals.get("b0", 0.0)
+        b1 = fit_vals.get("b1", 0.0)
+        model_y += b0 + b1 * model_x
+
+        plt.plot(model_x, model_y * np.mean(widths), color="tab:red", lw=2, label="Fit")
+
+    plt.xlabel("Energy (MeV)")
+    plt.ylabel("Counts per bin")
+    plt.tight_layout()
+    os.makedirs(os.path.dirname(out_png), exist_ok=True)
+    plt.savefig(out_png, dpi=300)
+    plt.close()
+    return centers, counts
 
 
 def plot_time_series(
