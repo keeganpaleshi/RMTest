@@ -89,8 +89,9 @@ def calibrate_run(adc_values, config):
     chosen_idx = {}
     for iso in candidates:
         if not candidates[iso]:
-            raise RuntimeError(f"No candidate peak found for {
-                               iso} around ADC={nominal_adc[iso]}.")
+            raise RuntimeError(
+                f"No candidate peak found for {iso} around ADC={nominal_adc[iso]}."
+            )
         # pick the one with max(hist) among candidates
         best = max(candidates[iso], key=lambda i: hist[i])
         chosen_idx[iso] = best
@@ -108,8 +109,9 @@ def calibrate_run(adc_values, config):
         x_slice = centers[mask]
         y_slice = hist[mask].astype(float)
         if len(x_slice) < 5:
-            raise RuntimeError(f"Not enough points to fit peak for {
-                               iso} (only {len(x_slice)} bins).")
+            raise RuntimeError(
+                f"Not enough points to fit peak for {iso} (only {len(x_slice)} bins)."
+            )
 
         # Initial guesses:
         amp0 = float(np.max(y_slice))

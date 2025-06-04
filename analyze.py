@@ -351,6 +351,7 @@ def main():
         flags_time = cfg["time_fit"].get("flags", {})
 
         # Run decay fit
+        decay_out = None  # fresh variable each iteration
         try:
             decay_out = fit_decay(
                 times=times_rel,
@@ -368,7 +369,7 @@ def main():
         try:
             _ = plot_time_series(
                 events_times=iso_events["timestamp"].values,
-                fit_dict=decay_out if "decay_out" in locals() else None,
+                fit_dict=decay_out,
                 t0=t0_global,
                 out_png=os.path.join(out_dir, f"time_series_{iso}.png"),
                 bin_width = cfg["time_fit"].get("bin_width", 3600),
