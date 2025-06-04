@@ -39,6 +39,8 @@ The analysis writes results to `<output_dir>/<timestamp>/` including:
 ## Running Tests
 
 Install the required Python packages and run the test suite with `pytest`.
+The tests rely on `numpy`, `pandas`, `scipy`, `matplotlib`, `iminuit`, and
+`pytest` which are all listed in `requirements.txt`.
 
 ```bash
 pip install -r requirements.txt
