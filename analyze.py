@@ -297,18 +297,24 @@ def main():
     if cfg.get("time_fit", {}).get("do_time_fit", False):
         for iso in ("Po218", "Po214"):
             win_key = f"window_{iso}"
-            if win_key not in cfg["time_fit"]:
+
+            # Missing energy window for this isotope -> skip gracefully
+            win_range = cfg.get("time_fit", {}).get(win_key)
+            if win_range is None:
+                print(
+                    f"INFO: Config key '{win_key}' not found. Skipping time fit for {iso}."
+                )
                 continue
 
-        lo, hi = cfg["time_fit"][win_key]
-        iso_mask = (
-            (events["energy_MeV"] >= lo) &
-            (events["energy_MeV"] <= hi)
-        )
-        iso_events = events[iso_mask].copy()
-        if iso_events.empty:
-            print(f"WARNING: No events found for {iso} in [{lo}, {hi}] MeV.")
-            continue
+            lo, hi = win_range
+            iso_mask = (
+                (events["energy_MeV"] >= lo) &
+                (events["energy_MeV"] <= hi)
+            )
+            iso_events = events[iso_mask].copy()
+            if iso_events.empty:
+                print(f"WARNING: No events found for {iso} in [{lo}, {hi}] MeV.")
+                continue
 
         # Relative times for fitting: subtract t0_global
         times_rel = (iso_events["timestamp"].values - t0_global).astype(float)
@@ -385,10 +391,13 @@ def main():
 
             # Build a wrapper to re‐run fit_decay with modified priors
             def fit_wrapper(priors_mod):
+                win_range = cfg.get("time_fit", {}).get(f"window_{iso}")
+                if win_range is None:
+                    raise ValueError(f"Missing window for {iso} during systematics scan")
                 filtered_times = (
                     events[
-                        (events["energy_MeV"] >= cfg["time_fit"][f"window_{iso}"][0]) &
-                        (events["energy_MeV"] <= cfg["time_fit"][f"window_{iso}"][1])
+                        (events["energy_MeV"] >= win_range[0]) &
+                        (events["energy_MeV"] <= win_range[1])
                     ]["timestamp"].values - t0_global
                 )
                 out = fit_decay(
