@@ -181,3 +181,61 @@ def calibrate_run(adc_values, config):
         "peaks": peak_fits
     }
     return calib_dict
+
+
+def derive_calibration_constants(adc_values, config):
+    """Wrapper returning calibration constants in legacy format."""
+    res = calibrate_run(adc_values, config)
+    out = {
+        "a": (float(res["slope"]), 0.0),
+        "c": (float(res["intercept"]), 0.0),
+        "sigma_E": (float(res["sigma_E"]), 0.0),
+        "peaks": res.get("peaks", {}),
+    }
+    return out
+
+
+def derive_calibration_constants_auto(adc_values, noise_cutoff=300, hist_bins=2000, peak_search_radius=200):
+    """Simple auto-calibration using default configuration.
+
+    Parameters
+    ----------
+    adc_values : array-like
+        Raw ADC values.
+    noise_cutoff : int
+        Minimum ADC to consider when building histogram.
+    hist_bins : int
+        Number of histogram bins.
+    peak_search_radius : int
+        Window around nominal peaks used for matching.
+    """
+    if len(adc_values) == 0:
+        raise RuntimeError("No ADC values provided")
+
+    adc_arr = np.asarray(adc_values, dtype=float)
+    mask = adc_arr >= noise_cutoff
+    adc_arr = adc_arr[mask]
+
+    config = {
+        "calibration": {
+            "peak_prominence": 10,
+            "peak_width": 3,
+            "nominal_adc": {"Po210": 5200, "Po218": 6000, "Po214": 7600},
+            "peak_search_radius_adc": peak_search_radius,
+            "fit_window_adc": 50,
+            "use_emg": False,
+            "init_sigma_adc": 10.0,
+            "init_tau_adc": 0.0,
+        }
+    }
+
+    return derive_calibration_constants(adc_arr, config)
+
+
+__all__ = [
+    "two_point_calibration",
+    "apply_calibration",
+    "calibrate_run",
+    "derive_calibration_constants",
+    "derive_calibration_constants_auto",
+]

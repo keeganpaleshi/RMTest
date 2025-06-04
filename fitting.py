@@ -5,8 +5,9 @@
 import numpy as np
 from math import exp, log
 from iminuit import Minuit
+from scipy.optimize import curve_fit
 
-__all__ = ["fit_time_series", "fit_decay"]
+__all__ = ["fit_time_series", "fit_decay", "fit_spectrum"]
 
 
 def fit_decay(event_times, total_time, lambda_decay, efficiency, _cfg=None):
@@ -16,6 +17,90 @@ def fit_decay(event_times, total_time, lambda_decay, efficiency, _cfg=None):
     rate = count / (total_time * efficiency) if total_time > 0 and efficiency > 0 else 0.0
     # Return tuple mimicking (E, N0, B)
     return (rate, 0.0, 0.0), {}
+
+
+def fit_spectrum(energies, priors, flags=None):
+    """Fit three Gaussian peaks with a linear background to the spectrum.
+
+    Parameters
+    ----------
+    energies : array-like
+        Energy values (MeV).
+    priors : dict
+        Parameter priors of the form {name: (mu, sigma)}.
+    flags : dict, optional
+        Flags such as ``{"fix_sigma_E": True}`` to fix parameters.
+
+    Returns
+    -------
+    dict
+        Best fit values and uncertainties.
+    """
+
+    if flags is None:
+        flags = {}
+
+    e = np.asarray(energies, dtype=float)
+    if e.size == 0:
+        raise RuntimeError("No energies provided to fit_spectrum")
+
+    # Histogram for chi2 fit using Freedman-Diaconis rule
+    hist, edges = np.histogram(e, bins="fd")
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    width = edges[1] - edges[0]
+
+    # Helper to fetch prior values
+    def p(name, default):
+        return priors.get(name, (default, 1.0))
+
+    param_order = [
+        "sigma_E",
+        "mu_Po210",
+        "S_Po210",
+        "mu_Po218",
+        "S_Po218",
+        "mu_Po214",
+        "S_Po214",
+        "b0",
+        "b1",
+    ]
+
+    p0 = []
+    bounds_lo, bounds_hi = [], []
+    for name in param_order:
+        mean, sig = p(name, 1.0)
+        p0.append(mean)
+        if flags.get(f"fix_{name}", False) or sig == 0:
+            bounds_lo.append(mean)
+            bounds_hi.append(mean)
+        else:
+            delta = 5 * sig if np.isfinite(sig) else np.inf
+            bounds_lo.append(mean - delta)
+            bounds_hi.append(mean + delta)
+
+    def model(x, sigma_E, mu210, S210, mu218, S218, mu214, S214, b0, b1):
+        y = b0 + b1 * x
+        y += S210 / (sigma_E * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu210) / sigma_E) ** 2)
+        y += S218 / (sigma_E * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu218) / sigma_E) ** 2)
+        y += S214 / (sigma_E * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu214) / sigma_E) ** 2)
+        return y * width
+
+    popt, pcov = curve_fit(
+        model,
+        centers,
+        hist,
+        p0=p0,
+        bounds=(bounds_lo, bounds_hi),
+        maxfev=10000,
+    )
+
+    perr = np.sqrt(np.diag(pcov))
+    out = {}
+    for i, name in enumerate(param_order):
+        out[name] = float(popt[i])
+        out["d" + name] = float(perr[i])
+
+    return out
 
 
 def _integral_model(E, N0, B, lam, eff, T):

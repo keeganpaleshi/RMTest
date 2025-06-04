@@ -6,7 +6,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-__all__ = ["plot_time_series"]
+__all__ = ["plot_time_series", "plot_spectrum"]
 
 
 def plot_time_series(
@@ -139,6 +139,42 @@ def plot_time_series(
         }
         with open(out_png.replace(".png", "_ts.json"), "w") as jf:
             json.dump(ts_summary, jf, indent=2)
+
+
+def plot_spectrum(energies, fit_vals=None, out_png="spectrum.png", bins=400, bin_edges=None):
+    """Plot energy spectrum and optional fit overlay."""
+    if bin_edges is not None:
+        hist, edges = np.histogram(energies, bins=bin_edges)
+    else:
+        hist, edges = np.histogram(energies, bins=bins)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    width = edges[1] - edges[0]
+
+    plt.figure(figsize=(8, 6))
+    plt.bar(centers, hist, width=width, color="gray", alpha=0.7, label="Data")
+
+    if fit_vals:
+        x = np.linspace(edges[0], edges[-1], 1000)
+        sigma_E = fit_vals.get("sigma_E", 1.0)
+        y = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * x
+        for pk in ("Po210", "Po218", "Po214"):
+            mu_key = f"mu_{pk}"
+            amp_key = f"S_{pk}"
+            if mu_key in fit_vals and amp_key in fit_vals:
+                mu = fit_vals[mu_key]
+                amp = fit_vals[amp_key]
+                y += amp / (sigma_E * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu) / sigma_E) ** 2)
+        plt.plot(x, y * width, color="red", lw=2, label="Fit")
+
+    plt.xlabel("Energy (MeV)")
+    plt.ylabel("Counts per bin")
+    plt.title("Energy Spectrum")
+    if fit_vals:
+        plt.legend(fontsize="small")
+    plt.tight_layout()
+    os.makedirs(os.path.dirname(out_png), exist_ok=True)
+    plt.savefig(out_png, dpi=300)
+    plt.close()
 
 
 # -----------------------------------------------------
