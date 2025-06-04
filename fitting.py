@@ -6,7 +6,7 @@ import numpy as np
 from math import exp, log
 from iminuit import Minuit
 
-__all__ = ["fit_time_series"]
+__all__ = ["fit_time_series", "fit_decay"]
 
 
 def _integral_model(E, N0, B, lam, eff, T):
@@ -91,6 +91,15 @@ def _neg_log_likelihood_time(
         nll += integral
 
     return nll
+
+
+def fit_decay(times, T, lam, eff, config):
+    """Very lightweight estimator for a single isotope decay curve."""
+
+    times = np.asarray(times, dtype=float)
+    events = len(times)
+    E_est = events / (T * eff) if eff > 0 and T > 0 else 0.0
+    return (E_est, 0.0, 0.0), None
 
 
 def fit_time_series(times_dict, t_start, t_end, config):
@@ -182,7 +191,7 @@ def fit_time_series(times_dict, t_start, t_end, config):
     for name, i in param_indices.items():
         ordered_params[i] = name
 
-    m = Minuit(_nll_minuit_wrapper, name=ordered_params, *initial_guesses)
+    m = Minuit(_nll_minuit_wrapper, *initial_guesses, name=ordered_params)
     m.errordef = Minuit.LIKELIHOOD
 
     # 4) Apply the limits

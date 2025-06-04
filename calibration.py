@@ -36,16 +36,31 @@ def gaussian(x, mu, sigma):
 
 
 def two_point_calibration(adc_centroids, energies):
-    """
-    Given two reference points (adc_centroids = [adc1, adc2], energies = [E1, E2]),
-    solve for slope a and intercept c:  E = a * ADC + c.
-    Returns (a, c).
-    """
-    x1, x2 = adc_centroids
-    E1, E2 = energies
+    """Derive linear calibration parameters from Po210 and Po214 peaks."""
+    if isinstance(adc_centroids, dict):
+        x1 = adc_centroids["Po210"]
+        x2 = adc_centroids["Po214"]
+    else:
+        x1, x2 = adc_centroids
+    if isinstance(energies, dict):
+        E1 = energies["Po210"]
+        E2 = energies["Po214"]
+    else:
+        E1, E2 = energies
     a = (E2 - E1) / (x2 - x1)
     c = E1 - a * x1
     return float(a), float(c)
+
+
+def apply_calibration(adc_values, slope, intercept):
+    """Convert ADC values to energy using linear calibration."""
+    adc_arr = np.asarray(adc_values, dtype=float)
+    return slope * adc_arr + intercept
+
+
+def find_adc_peaks(hist, prominence=1.0, width=1):
+    """Wrapper around scipy.signal.find_peaks for convenience."""
+    return find_peaks(hist, prominence=prominence, width=width)
 
 
 def calibrate_run(adc_values, config):
@@ -89,8 +104,9 @@ def calibrate_run(adc_values, config):
     chosen_idx = {}
     for iso in candidates:
         if not candidates[iso]:
-            raise RuntimeError(f"No candidate peak found for {
-                               iso} around ADC={nominal_adc[iso]}.")
+            raise RuntimeError(
+                f"No candidate peak found for {iso} around ADC={nominal_adc[iso]}."
+            )
         # pick the one with max(hist) among candidates
         best = max(candidates[iso], key=lambda i: hist[i])
         chosen_idx[iso] = best
@@ -108,8 +124,9 @@ def calibrate_run(adc_values, config):
         x_slice = centers[mask]
         y_slice = hist[mask].astype(float)
         if len(x_slice) < 5:
-            raise RuntimeError(f"Not enough points to fit peak for {
-                               iso} (only {len(x_slice)} bins).")
+            raise RuntimeError(
+                f"Not enough points to fit peak for {iso} (only {len(x_slice)} bins)."
+            )
 
         # Initial guesses:
         amp0 = float(np.max(y_slice))
