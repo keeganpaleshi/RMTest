@@ -65,13 +65,16 @@ def find_adc_peaks(adc_values, expected, window=50):
             if len(idx_candidates) == 0:
                 results[name] = float(guess)
                 continue
-            # Among candidates that are peaks, choose the highest histogram count
-            best_idx = idx_candidates[0]
-            best_count = -1
-            for idx in idx_candidates:
-                if idx in peak_indices and hist[idx] > best_count:
-                    best_count = hist[idx]
-                    best_idx = idx
+
+            candidate_peak_indices = [idx for idx in idx_candidates if idx in peak_indices]
+
+            if not candidate_peak_indices:
+                # Default to candidate bin with the highest histogram count
+                best_idx = idx_candidates[np.argmax(hist[idx_candidates])]
+            else:
+                # Choose among detected peaks with the highest count
+                best_idx = candidate_peak_indices[np.argmax(hist[candidate_peak_indices])]
+
             results[name] = float(centers[best_idx])
         else:
             # No histogram bin in range -> just return the guess
