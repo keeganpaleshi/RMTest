@@ -437,7 +437,7 @@ def main():
         "baseline": baseline_info
     }
 
-    out_dir = write_summary(args.output_dir, summary)
+    out_dir = write_summary(args.output_dir, summary, now_str)
     copy_config(out_dir, args.config)
 
     # Generate plots now that the output directory exists

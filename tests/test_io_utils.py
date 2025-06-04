@@ -72,7 +72,8 @@ def test_load_events(tmp_path):
 def test_write_summary_and_copy_config(tmp_path):
     summary = {"a": 1, "b": 2}
     outdir = tmp_path / "out"
-    results = write_summary(str(outdir), summary)
+    ts = "19700101T000000Z"
+    results = write_summary(str(outdir), summary, ts)
     assert (Path(results) / "summary.json").exists()
     # Create dummy config and copy
     cfg = {"test": 1}
