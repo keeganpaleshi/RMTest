@@ -113,25 +113,18 @@ def write_summary(output_dir, summary_dict):
     return results_folder
 
 
-def copy_config(output_dir, config_path):
+def copy_config(results_dir, config_path):
     """
-    Copy the used config JSON into the same timestamped results folder.
-    Must be called *after* write_summary(), so that the timestamped folder exists.
+    Copy the used config JSON into the provided results directory.
+    Expects ``results_dir`` to be the folder returned by :func:`write_summary`.
     Returns destination path.
     """
-    # Identify the single subfolder in output_dir (should be timestamped)   assume only one new one
-    subfolders = [
-        d for d in os.listdir(output_dir) if os.path.isdir(os.path.join(output_dir, d))
-    ]
-    if not subfolders:
+    if not os.path.isdir(results_dir):
         raise RuntimeError(
-            f"No subfolders found in {output_dir} to copy config into."
+            f"Results directory '{results_dir}' does not exist."
         )
-    # Pick the folder with the lexicographically largest name (most recent timestamp)
-    timestamped = sorted(subfolders)[-1]
-    dest_folder = os.path.join(output_dir, timestamped)
 
-    dest_path = os.path.join(dest_folder, "config_used.json")
+    dest_path = os.path.join(results_dir, "config_used.json")
     shutil.copyfile(config_path, dest_path)
-    logger.info(f"Copied config {config_path}   {dest_path}")
+    logger.info(f"Copied config {config_path} -> {dest_path}")
     return dest_path
