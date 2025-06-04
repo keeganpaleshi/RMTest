@@ -24,7 +24,7 @@ def to_native(obj):
         return obj
 
 
-def find_adc_peaks(adc_values, expected, window=50):
+def find_adc_peaks(adc_values, expected, window=50, prominence=0.0, width=None):
     """Locate peak centroids in an ADC array.
 
     Parameters
@@ -35,6 +35,10 @@ def find_adc_peaks(adc_values, expected, window=50):
         Mapping of peak name -> expected ADC centroid.
     window : int, optional
         Search window around each expected centroid (± window).
+    prominence : float, optional
+        Minimum prominence passed to :func:`scipy.signal.find_peaks`.
+    width : float or None, optional
+        Minimum peak width passed to :func:`scipy.signal.find_peaks`.
 
     Returns
     -------
@@ -52,8 +56,8 @@ def find_adc_peaks(adc_values, expected, window=50):
     hist, _ = np.histogram(adc_arr, bins=edges)
     centers = 0.5 * (edges[:-1] + edges[1:])
 
-    # Global peak search
-    peak_indices, _ = find_peaks(hist)
+    # Global peak search with optional thresholds
+    peak_indices, _ = find_peaks(hist, prominence=prominence, width=width)
 
     results = {}
     for name, guess in expected.items():
