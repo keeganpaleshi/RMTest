@@ -35,3 +35,13 @@ The analysis writes results to `<output_dir>/<timestamp>/` including:
 - `spectrum.png` – spectrum plot with fitted peaks.
 - `time_series_Po214.png` and `time_series_Po218.png` – decay time-series plots.
 - Optional `*_ts.json` files containing binned time series when enabled.
+
+## Running Tests
+
+Install the required Python packages and run the test suite with `pytest`.
+
+```bash
+pip install -r requirements.txt
+pytest -v
+```
+
