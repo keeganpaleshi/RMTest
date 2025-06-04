@@ -69,7 +69,9 @@ def fit_spectrum(energies, priors, flags=None):
     priors : dict
         Parameter priors of the form {name: (mu, sigma)}.
     flags : dict, optional
-        Flags such as ``{"fix_sigma_E": True}`` to fix parameters.
+        Flags such as ``{"fix_sigma_E": True}`` to fix parameters. Fixed
+        parameters are implemented by constraining the optimizer to a tiny
+        interval (``±1e-12``) around the provided mean value.
 
     Returns
     -------
@@ -107,12 +109,14 @@ def fit_spectrum(energies, priors, flags=None):
 
     p0 = []
     bounds_lo, bounds_hi = [], []
+    eps = 1e-12
     for name in param_order:
         mean, sig = p(name, 1.0)
         p0.append(mean)
         if flags.get(f"fix_{name}", False) or sig == 0:
-            bounds_lo.append(mean)
-            bounds_hi.append(mean)
+            # curve_fit requires lower < upper; use a tiny width around fixed values
+            bounds_lo.append(mean - eps)
+            bounds_hi.append(mean + eps)
         else:
             delta = 5 * sig if np.isfinite(sig) else np.inf
             bounds_lo.append(mean - delta)
