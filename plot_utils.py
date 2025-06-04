@@ -6,6 +6,10 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
+# Half-life constants used for the time-series overlay [seconds]
+PO214_HALF_LIFE_S = 1.64e-4  # 164 µs
+PO218_HALF_LIFE_S = 183.0    # ~3.05 minutes
+
 __all__ = ["plot_time_series", "plot_spectrum"]
 
 
@@ -21,8 +25,19 @@ def plot_time_series(
     out_png:        output path for the PNG file
     """
 
-    isotopes_cfg = config["isotopes"]
-    iso_list = list(isotopes_cfg.keys())
+    iso_params = {
+        "Po214": {
+            "window": config.get("window_Po214"),
+            "eff": float(config.get("eff_Po214", [1.0])[0]),
+            "half_life": PO214_HALF_LIFE_S,
+        },
+        "Po218": {
+            "window": config.get("window_Po218"),
+            "eff": float(config.get("eff_Po218", [1.0])[0]),
+            "half_life": PO218_HALF_LIFE_S,
+        },
+    }
+    iso_list = [iso for iso, p in iso_params.items() if p["window"] is not None]
     # Time since t_start:
     times_rel = all_timestamps - t_start
 
@@ -60,7 +75,7 @@ def plot_time_series(
     legend_entries = []
 
     for iso in iso_list:
-        emin, emax = isotopes_cfg[iso]["energy_window"]
+        emin, emax = iso_params[iso]["window"]
         mask_iso = (
             (all_energies >= emin)
             & (all_energies <= emax)
@@ -81,8 +96,8 @@ def plot_time_series(
         )
 
         # Overlay the continuous model curve (scaled to counts/bin):
-        lam = np.log(2.0) / isotopes_cfg[iso]["half_life_s"]
-        eff = isotopes_cfg[iso].get("efficiency", 1.0)
+        lam = np.log(2.0) / iso_params[iso]["half_life"]
+        eff = iso_params[iso]["eff"]
 
         E_iso = fit_results.get(f"E_{iso}", 0.0)
         B_iso = fit_results.get(f"B_{iso}", 0.0)
@@ -116,27 +131,18 @@ def plot_time_series(
     if config.get("dump_time_series_json", False):
         import json
 
-        ts_summary = {
-            "centers_s": centers.tolist(),
-            "counts_Po214": np.histogram(
+        ts_summary = {"centers_s": centers.tolist()}
+        for iso in iso_list:
+            emin, emax = iso_params[iso]["window"]
+            ts_summary[f"counts_{iso}"] = np.histogram(
                 times_rel[
-                    (all_energies >= isotopes_cfg["Po214"]["energy_window"][0])
-                    & (all_energies <= isotopes_cfg["Po214"]["energy_window"][1])
+                    (all_energies >= emin)
+                    & (all_energies <= emax)
                     & (all_timestamps >= t_start)
                     & (all_timestamps <= t_end)
                 ],
                 bins=edges,
-            )[0].tolist(),
-            "counts_Po218": np.histogram(
-                times_rel[
-                    (all_energies >= isotopes_cfg["Po218"]["energy_window"][0])
-                    & (all_energies <= isotopes_cfg["Po218"]["energy_window"][1])
-                    & (all_timestamps >= t_start)
-                    & (all_timestamps <= t_end)
-                ],
-                bins=edges,
-            )[0].tolist(),
-        }
+            )[0].tolist()
         with open(out_png.replace(".png", "_ts.json"), "w") as jf:
             json.dump(ts_summary, jf, indent=2)
 
