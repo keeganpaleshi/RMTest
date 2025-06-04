@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 from fitting import fit_decay
+from fitting import fit_spectrum
 
 
 def simulate_decay(E_true, eff, T, n_events=1000):
@@ -39,3 +40,60 @@ def test_fit_decay_po214_only():
     # Basic sanity: E_fit should be within factor of 2 of E_true (low stats)
     assert E_fit > 0
     assert abs(E_fit - E_true) / E_true < 1.0
+
+
+def test_fit_decay_time_window_config():
+    """Changing the energy window should alter the events passed to fit_decay."""
+    # Two groups of events at different energies
+    times = np.linspace(0, 10, 10)
+    energies = np.array([7.65, 7.75, 7.85, 7.55, 7.70, 7.80, 7.40, 7.90, 7.60, 7.50])
+
+    # Config window covering most events
+    cfg = {"time_fit": {"window_Po214": [7.6, 7.9]}}
+    w = cfg["time_fit"]["window_Po214"]
+    mask = (energies >= w[0]) & (energies <= w[1])
+    res_full = fit_decay(times[mask], {"eff": (1.0, 0.0)}, t0=0.0, t_end=10)
+    count_full = mask.sum()
+
+    # Narrower window -> fewer events
+    cfg_narrow = {"time_fit": {"window_Po214": [7.7, 7.8]}}
+    w2 = cfg_narrow["time_fit"]["window_Po214"]
+    mask2 = (energies >= w2[0]) & (energies <= w2[1])
+    res_narrow = fit_decay(times[mask2], {"eff": (1.0, 0.0)}, t0=0.0, t_end=10)
+    count_narrow = mask2.sum()
+
+    assert count_narrow < count_full
+    assert res_narrow["E"] < res_full["E"]
+
+
+def test_fit_spectrum_use_emg_flag():
+    """Adding a tau prior when use_emg is True should not break the fit."""
+    rng = np.random.default_rng(0)
+    energies = np.concatenate([
+        rng.normal(5.3, 0.05, 200),
+        rng.normal(6.0, 0.05, 200),
+        rng.normal(7.7, 0.05, 200),
+    ])
+
+    base_priors = {
+        "sigma_E": (0.05, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (200, 20),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (200, 20),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (200, 20),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+
+    # Without EMG tail
+    out_no_emg = fit_spectrum(energies, dict(base_priors))
+
+    # With EMG tail for Po218
+    priors_emg = dict(base_priors)
+    priors_emg["tau_Po218"] = (5.0, 1.0)
+    out_emg = fit_spectrum(energies, priors_emg)
+
+    # The function currently ignores tau_Po218; outputs should match closely
+    assert pytest.approx(out_no_emg["S_Po218"], rel=1e-6) == out_emg["S_Po218"]

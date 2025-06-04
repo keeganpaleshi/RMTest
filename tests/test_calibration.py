@@ -25,3 +25,42 @@ def test_apply_calibration():
     adc_vals = np.array([0, 100, 200])
     energies = apply_calibration(adc_vals, slope, intercept)
     assert np.allclose(energies, np.array([0.02, 0.52, 1.02]))
+
+
+def test_derive_calibration_constants_peak_search_radius():
+    """derive_calibration_constants should honor peak_search_radius."""
+    rng = np.random.default_rng(0)
+    # Generate peaks slightly offset from the nominal ADC guesses
+    adc = np.concatenate(
+        [
+            rng.normal(803, 2, 500),
+            rng.normal(1004, 2, 500),
+            rng.normal(1197, 2, 500),
+        ]
+    )
+
+    base_cfg = {
+        "calibration": {
+            "peak_prominence": 5,
+            "peak_width": 1,
+            "nominal_adc": {"Po210": 800, "Po218": 1000, "Po214": 1200},
+            "fit_window_adc": 20,
+            "use_emg": False,
+            "init_sigma_adc": 4.0,
+            "init_tau_adc": 0.0,
+        }
+    }
+
+    cfg_ok = {"calibration": dict(base_cfg["calibration"])}
+    cfg_ok["calibration"]["peak_search_radius"] = 5
+
+    from calibration import derive_calibration_constants
+
+    out = derive_calibration_constants(adc, cfg_ok)
+    assert set(out["peaks"].keys()) == {"Po210", "Po218", "Po214"}
+
+    cfg_bad = {"calibration": dict(base_cfg["calibration"])}
+    cfg_bad["calibration"]["peak_search_radius"] = 1
+
+    with pytest.raises(RuntimeError):
+        derive_calibration_constants(adc, cfg_bad)
