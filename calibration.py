@@ -85,7 +85,9 @@ def calibrate_run(adc_values, config):
     nominal_adc = config["calibration"]["nominal_adc"]
 
     # Build a dictionary: { isotope : list of candidate indices within +/- radius }
-    radius = config["calibration"]["peak_search_radius_adc"]
+    # radius (in ADC channels) to match found peaks to nominal guesses
+    # 2024-03: renamed from ``peak_search_radius_adc`` to ``peak_search_radius``
+    radius = config["calibration"]["peak_search_radius"]
     candidates = {iso: [] for iso in ("Po210", "Po218", "Po214")}
     for iso, adc_guess in nominal_adc.items():
         for idx in peaks:
@@ -221,7 +223,8 @@ def derive_calibration_constants_auto(adc_values, noise_cutoff=300, hist_bins=20
             "peak_prominence": 10,
             "peak_width": 3,
             "nominal_adc": {"Po210": 5200, "Po218": 6000, "Po214": 7600},
-            "peak_search_radius_adc": peak_search_radius,
+            # parameter renamed to ``peak_search_radius`` to match config.json
+            "peak_search_radius": peak_search_radius,
             "fit_window_adc": 50,
             "use_emg": False,
             "init_sigma_adc": 10.0,
