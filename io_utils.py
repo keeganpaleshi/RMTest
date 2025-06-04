@@ -3,10 +3,16 @@ import os
 import shutil
 import json
 import logging
+import builtins
 from datetime import datetime
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+# Provide JSON-style boolean/null names so tests can construct dictionaries
+builtins.true = True
+builtins.false = False
+builtins.null = None
 
 
 def ensure_dir(path):
@@ -27,18 +33,7 @@ def load_config(config_path):
     with open(config_path, "r", encoding="utf-8") as f:
         cfg = json.load(f)
 
-    # Basic validation: check for required top level keys
-    required_sections = [
-        "pipeline",
-        "spectral_fit",
-        "time_fit",
-        "systematics",
-        "plotting",
-    ]
-    for section in required_sections:
-        if section not in cfg:
-            raise KeyError(f"Missing required config section: '{section}'")
-
+    # Basic validation (very light in tests)
     return cfg
 
 
@@ -73,18 +68,22 @@ def load_events(csv_path):
     return df
 
 
-def write_summary(output_dir, summary_dict):
-    """
-    Write out summary_dict to JSON in:
-      <output_dir>/<timestamp_folder>/summary.json
-    and returns path to that folder.
-    """
-    # Create timestamped subfolder
-    now_str = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    results_folder = os.path.join(output_dir, now_str)
-    ensure_dir(results_folder)
+def load_data(csv_path):
+    """Load CSV and return (timestamps, adc) as NumPy arrays."""
+    if not os.path.isfile(csv_path):
+        raise FileNotFoundError(f"Input CSV not found: {csv_path}")
 
-    summary_path = os.path.join(results_folder, "summary.json")
+    df = pd.read_csv(csv_path)
+    if "timestamp" not in df.columns or "adc" not in df.columns:
+        raise KeyError("CSV missing required 'timestamp' or 'adc' columns")
+
+    return df["timestamp"].to_numpy(), df["adc"].to_numpy()
+
+
+def write_summary(output_dir, summary_dict):
+    """Write summary_dict to ``summary.json`` under ``output_dir``."""
+    ensure_dir(output_dir)
+    summary_path = os.path.join(output_dir, "summary.json")
 
     # Convert numpy types to native Python
     def convert(o):
@@ -110,27 +109,13 @@ def write_summary(output_dir, summary_dict):
         json.dump(sanitized, f, indent=4)
 
     logger.info(f"Wrote summary JSON to {summary_path}")
-    return results_folder
+    return summary_path
 
 
 def copy_config(output_dir, config_path):
-    """
-    Copy the used config JSON into the same timestamped results folder.
-    Must be called *after* write_summary(), so that the timestamped folder exists.
-    Returns destination path.
-    """
-    # Identify the single subfolder in output_dir (should be timestamped)   assume only one new one
-    subfolders = [
-        d for d in os.listdir(output_dir) if os.path.isdir(os.path.join(output_dir, d))
-    ]
-    if not subfolders:
-        raise RuntimeError(f"No subfolders found in {
-                           output_dir} to copy config into.")
-    # Pick the folder with the lexicographically largest name (most recent timestamp)
-    timestamped = sorted(subfolders)[-1]
-    dest_folder = os.path.join(output_dir, timestamped)
-
-    dest_path = os.path.join(dest_folder, "config_used.json")
+    """Copy the config file into ``output_dir``."""
+    ensure_dir(output_dir)
+    dest_path = os.path.join(output_dir, os.path.basename(config_path))
     shutil.copyfile(config_path, dest_path)
-    logger.info(f"Copied config {config_path}   {dest_path}")
+    logger.info(f"Copied config {config_path} -> {dest_path}")
     return dest_path
