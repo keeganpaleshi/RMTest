@@ -411,7 +411,9 @@ def main():
                     t0=0.0,
                     t_end=filtered_end
                 )
-                return out.get("eff", np.nan)
+                # Return the full fit result so scan_systematics can
+                # extract whichever parameter it needs.
+                return out
 
             try:
                 deltas, total_unc = scan_systematics(
