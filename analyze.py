@@ -298,6 +298,7 @@ def main():
     # 6. Time‐series decay fits for Po‐218 and Po‐214
     # ────────────────────────────────────────────────────────────
     time_fit_results = {}
+    priors_time_all = {}
     for iso in ("Po218", "Po214"):
         win_key = f"window_{iso}"
         if win_key not in cfg["time_fit"]:
@@ -346,6 +347,9 @@ def main():
             )
         else:
             priors_time["N0"] = (0.0, 0.0)
+
+        # Store priors for use in systematics scanning
+        priors_time_all[iso] = priors_time
 
         # Any extra flags (e.g. fix N0=0 or fix B0=0)
         flags_time = cfg["time_fit"].get("flags", {})
@@ -409,7 +413,7 @@ def main():
             try:
                 deltas, total_unc = scan_systematics(
                     fit_wrapper,
-                    priors_time,
+                    priors_time_all.get(iso, {}),
                     sigma_dict,
                     keys
                 )
