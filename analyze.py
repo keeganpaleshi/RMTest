@@ -441,12 +441,13 @@ def main():
     for iso, pdata in time_plot_data.items():
         try:
             _ = plot_time_series(
-                events_times=pdata["events_times"],
-                fit_dict=pdata["fit_dict"],
-                t0=t0_global,
+                all_timestamps=pdata["events_times"],
+                all_energies=events["energy_MeV"].values,
+                fit_results=pdata["fit_dict"],
+                t_start=t0_global,
+                t_end=events["timestamp"].max(),
+                config=cfg["time_fit"],
                 out_png=os.path.join(out_dir, f"time_series_{iso}.png"),
-                bin_width=cfg["time_fit"].get("bin_width", 3600),
-                confidence=cfg["time_fit"].get("confidence", 0.95),
             )
         except Exception as e:
             print(f"WARNING: Could not create time-series plot for {iso} → {e}")
