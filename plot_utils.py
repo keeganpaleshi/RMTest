@@ -19,11 +19,14 @@ def plot_time_series(
     """
     all_timestamps: 1D np.ndarray of absolute UNIX times (s)
     all_energies:   1D np.ndarray of energies (MeV)
-    fit_results:    dict from fit_time_series(...)
+    fit_results:    dict from fit_time_series(...) or fit_decay(...)
     t_start, t_end: floats (absolute UNIX times) for the fit window
     config:         JSON dict
     out_png:        output path for the PNG file
     """
+
+    if fit_results is None:
+        fit_results = {}
 
     iso_params = {
         "Po214": {
@@ -99,9 +102,9 @@ def plot_time_series(
         lam = np.log(2.0) / iso_params[iso]["half_life"]
         eff = iso_params[iso]["eff"]
 
-        E_iso = fit_results.get(f"E_{iso}", 0.0)
-        B_iso = fit_results.get(f"B_{iso}", 0.0)
-        N0_iso = fit_results.get(f"N0_{iso}", 0.0)
+        E_iso = fit_results.get(f"E_{iso}", fit_results.get("E", 0.0))
+        B_iso = fit_results.get(f"B_{iso}", fit_results.get("B", 0.0))
+        N0_iso = fit_results.get(f"N0_{iso}", fit_results.get("N0", 0.0))
 
         # r_iso(t_rel) = eff * [E*(1 - exp(-lam*t_rel)) + lam*N0*exp(-lam*t_rel)] + B
         r_rel = (
