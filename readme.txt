@@ -18,7 +18,20 @@ This repository provides a complete pipeline to analyze electrostatic radon moni
 
 ```bash
 pip install -r requirements.txt
+```
 
 ## Usage
 
+```bash
 python analyze.py --config config.json --input merged_data.csv [--output_dir results]
+```
+
+## Output
+
+The analysis writes results to `<output_dir>/<timestamp>/` including:
+
+- `summary.json` – calibration and fit summary.
+- `config_used.json` – copy of the configuration used.
+- `spectrum.png` – spectrum plot with fitted peaks.
+- `time_series_Po214.png` and `time_series_Po218.png` – decay time-series plots.
+- Optional `*_ts.json` files containing binned time series when enabled.
