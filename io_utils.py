@@ -6,6 +6,8 @@ import logging
 from datetime import datetime
 import pandas as pd
 
+from utils import to_native
+
 logger = logging.getLogger(__name__)
 
 
@@ -86,25 +88,8 @@ def write_summary(output_dir, summary_dict):
 
     summary_path = os.path.join(results_folder, "summary.json")
 
-    # Convert numpy types to native Python
-    def convert(o):
-        if isinstance(o, (int, float, str, bool, list, dict)) or o is None:
-            return o
-        try:
-            return o.item()
-        except Exception:
-            return str(o)
-
-    # Recursively convert all items
-    def sanitize(obj):
-        if isinstance(obj, dict):
-            return {k: sanitize(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [sanitize(v) for v in obj]
-        else:
-            return convert(obj)
-
-    sanitized = sanitize(summary_dict)
+    # Convert numpy types to native Python using shared helper
+    sanitized = to_native(summary_dict)
 
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(sanitized, f, indent=4)
