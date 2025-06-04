@@ -194,7 +194,7 @@ def main():
     # ────────────────────────────────────────────────────────────
     spectrum_results = {}
     spec_plot_data = None
-    if cfg.get("spectral_fit", {}).get("enable", False):
+    if cfg.get("spectral_fit", {}).get("do_spectral_fit", False):
         # Decide binning: “adc” or “fd”
         bin_cfg = cfg["spectral_fit"].get("binning", {})
         if bin_cfg.get("method", "adc").lower() == "fd":
@@ -294,10 +294,11 @@ def main():
     time_fit_results = {}
     priors_time_all = {}
     time_plot_data = {}
-    for iso in ("Po218", "Po214"):
-        win_key = f"window_{iso}"
-        if win_key not in cfg["time_fit"]:
-            continue
+    if cfg.get("time_fit", {}).get("do_time_fit", False):
+        for iso in ("Po218", "Po214"):
+            win_key = f"window_{iso}"
+            if win_key not in cfg["time_fit"]:
+                continue
 
         lo, hi = cfg["time_fit"][win_key]
         iso_mask = (
