@@ -1,6 +1,82 @@
 import numpy as np
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
+from utils import find_adc_peaks
+
+__all__ = [
+    "two_point_calibration",
+    "apply_calibration",
+    "find_adc_peaks",
+    "derive_calibration_constants",
+    "derive_calibration_constants_auto",
+]
+
+
+def apply_calibration(adc_values, slope, intercept):
+    """Convert ADC values to energy using linear calibration."""
+    adc_arr = np.asarray(adc_values, dtype=float)
+    return adc_arr * float(slope) + float(intercept)
+
+
+def derive_calibration_constants(adc_values, config):
+    """Simple two-point calibration using values from config."""
+    cal_cfg = config.get("calibration", {})
+    adc210 = cal_cfg.get("adc_Po210")
+    adc214 = cal_cfg.get("adc_Po214")
+    if adc210 is None or adc214 is None:
+        raise KeyError("Configuration missing adc_Po210 or adc_Po214")
+
+    a, c = two_point_calibration(
+        [adc210, adc214],
+        [KNOWN_ENERGIES["Po210"], KNOWN_ENERGIES["Po214"]],
+    )
+
+    sigma_E_guess = float(cal_cfg.get("sigma_E", 0.1))
+    return {
+        "a": (a, 0.0),
+        "c": (c, 0.0),
+        "sigma_E": (sigma_E_guess, 0.0),
+    }
+
+
+def derive_calibration_constants_auto(
+    adc_values,
+    noise_cutoff=300,
+    hist_bins=2000,
+    peak_search_radius=200,
+):
+    """Automatically estimate calibration constants from the ADC spectrum."""
+
+    adc_arr = np.asarray(adc_values, dtype=float)
+    if adc_arr.size == 0:
+        raise ValueError("No ADC values provided")
+
+    hist, edges = np.histogram(adc_arr, bins=hist_bins)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+
+    peaks, properties = find_peaks(hist, height=noise_cutoff)
+    if len(peaks) < 2:
+        # fall back on simple percentile guesses
+        adc210 = np.percentile(adc_arr, 20)
+        adc214 = np.percentile(adc_arr, 80)
+    else:
+        heights = properties.get("peak_heights", hist[peaks])
+        sort_idx = np.argsort(heights)[::-1]
+        top = peaks[sort_idx[:2]]
+        adc210, adc214 = centers[np.sort(top)]
+
+    a, c = two_point_calibration(
+        [adc210, adc214],
+        [KNOWN_ENERGIES["Po210"], KNOWN_ENERGIES["Po214"]],
+    )
+
+    sigma_E = abs(a) * np.std(adc_arr)
+
+    return {
+        "a": (a, 0.0),
+        "c": (c, 0.0),
+        "sigma_E": (sigma_E, 0.0),
+    }
 
 # Known α energies (MeV) from config or central constants:
 KNOWN_ENERGIES = {
@@ -36,13 +112,36 @@ def gaussian(x, mu, sigma):
 
 
 def two_point_calibration(adc_centroids, energies):
+    """Compute linear calibration parameters from two points.
+
+    Parameters
+    ----------
+    adc_centroids : dict or sequence
+        Either a dictionary mapping isotope names to ADC centroids or a sequence
+        ``[adc1, adc2]``.
+    energies : dict or sequence
+        Either a dictionary mapping isotope names to known energies or a
+        sequence ``[E1, E2]``.
+
+    Returns
+    -------
+    tuple
+        ``(slope, intercept)`` such that ``E = slope * ADC + intercept``.
     """
-    Given two reference points (adc_centroids = [adc1, adc2], energies = [E1, E2]),
-    solve for slope a and intercept c:  E = a * ADC + c.
-    Returns (a, c).
-    """
-    x1, x2 = adc_centroids
-    E1, E2 = energies
+
+    # Support dictionary inputs
+    if isinstance(adc_centroids, dict):
+        x1 = adc_centroids.get("Po210")
+        x2 = adc_centroids.get("Po214")
+    else:
+        x1, x2 = adc_centroids
+
+    if isinstance(energies, dict):
+        E1 = energies.get("Po210")
+        E2 = energies.get("Po214")
+    else:
+        E1, E2 = energies
+
     a = (E2 - E1) / (x2 - x1)
     c = E1 - a * x1
     return float(a), float(c)
@@ -89,8 +188,8 @@ def calibrate_run(adc_values, config):
     chosen_idx = {}
     for iso in candidates:
         if not candidates[iso]:
-            raise RuntimeError(f"No candidate peak found for {
-                               iso} around ADC={nominal_adc[iso]}.")
+            raise RuntimeError(
+                f"No candidate peak found for {iso} around ADC={nominal_adc[iso]}.")
         # pick the one with max(hist) among candidates
         best = max(candidates[iso], key=lambda i: hist[i])
         chosen_idx[iso] = best
@@ -108,8 +207,8 @@ def calibrate_run(adc_values, config):
         x_slice = centers[mask]
         y_slice = hist[mask].astype(float)
         if len(x_slice) < 5:
-            raise RuntimeError(f"Not enough points to fit peak for {
-                               iso} (only {len(x_slice)} bins).")
+            raise RuntimeError(
+                f"Not enough points to fit peak for {iso} (only {len(x_slice)} bins).")
 
         # Initial guesses:
         amp0 = float(np.max(y_slice))

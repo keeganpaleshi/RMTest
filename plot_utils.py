@@ -6,7 +6,45 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-__all__ = ["plot_time_series"]
+__all__ = ["plot_time_series", "plot_spectrum"]
+
+
+def plot_spectrum(energies, fit_vals=None, out_png="spectrum.png", bins=100, bin_edges=None):
+    """Plot energy spectrum and optional fit overlay."""
+    arr = np.asarray(energies, dtype=float)
+    if bin_edges is not None:
+        hist, edges = np.histogram(arr, bins=bin_edges)
+    else:
+        hist, edges = np.histogram(arr, bins=bins)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    width = np.diff(edges)
+
+    plt.figure(figsize=(8, 5))
+    plt.bar(centers, hist, width=width, color="tab:blue", alpha=0.6, label="Data")
+
+    if fit_vals:
+        # Basic Gaussian mixture overlay using provided means/sigmas/amplitudes
+        y_model = np.zeros_like(centers, dtype=float)
+        sigma_E = fit_vals.get("sigma_E", (0.1,))[0] if isinstance(fit_vals.get("sigma_E"), (list, tuple)) else fit_vals.get("sigma_E", 0.1)
+        for key, amp in fit_vals.items():
+            if key.startswith("S_"):
+                name = key[2:]
+                mu = fit_vals.get(f"mu_{name}")
+                if mu is None:
+                    continue
+                y_model += amp * np.exp(-0.5 * ((centers - mu) / sigma_E) ** 2)
+        y_model *= width
+        plt.plot(centers, y_model, color="red", lw=2, label="Fit")
+
+    plt.xlabel("Energy (MeV)")
+    plt.ylabel("Counts")
+    plt.legend()
+    plt.tight_layout()
+    os.makedirs(os.path.dirname(out_png), exist_ok=True)
+    plt.savefig(out_png, dpi=300)
+    plt.close()
+
+    return centers, hist
 
 
 def plot_time_series(
