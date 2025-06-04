@@ -37,17 +37,22 @@
     "time_fit": {
         "do_time_fit": true,
         "time_fit_bin_width_s": "auto",
-        "fix_background_b": false,
-        "background_value": 0.0,
-        "fix_N0_Po218": false,
-        "N0_Po218_value": 0.0,
-        "fit_Po218_simul": true,
         "window_Po214": [7.4, 7.9],
         "window_Po218": [5.8, 6.3],
         "eff_Po214": [0.40, 0.0],
         "eff_Po218": [0.20, 0.0],
+        "hl_Po214": [0.000164, 1e-05],
+        "hl_Po218": [183.0, 1.0],
+        "bkg_Po214": [0.0, 0.0],
+        "bkg_Po218": [0.0, 0.0],
+        "sig_N0_Po214": 1.0,
+        "sig_N0_Po218": 1.0,
         "settling_time_s": 10800,
-        "confidence_level": 0.95
+        "confidence_level": 0.95,
+        "flags": {
+            "fix_background_b": false,
+            "fix_N0_Po218": false
+        }
     },
     "systematics": {
         "enable": false,
