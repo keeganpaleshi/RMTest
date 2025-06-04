@@ -109,8 +109,7 @@ def main():
     out_dir = os.path.join(args.output_dir, now_str)
     os.makedirs(out_dir, exist_ok=True)
 
-    #  Write a copy of the config used (for provenance)
-    copy_config(out_dir, args.config)
+
 
     # ────────────────────────────────────────────────────────────
     # 2. Load event data
@@ -298,6 +297,7 @@ def main():
     # 6. Time‐series decay fits for Po‐218 and Po‐214
     # ────────────────────────────────────────────────────────────
     time_fit_results = {}
+    priors_time_all = {}
     for iso in ("Po218", "Po214"):
         win_key = f"window_{iso}"
         if win_key not in cfg["time_fit"]:
@@ -347,10 +347,14 @@ def main():
         else:
             priors_time["N0"] = (0.0, 0.0)
 
+        # Store priors for use in systematics scanning
+        priors_time_all[iso] = priors_time
+
         # Any extra flags (e.g. fix N0=0 or fix B0=0)
         flags_time = cfg["time_fit"].get("flags", {})
 
         # Run decay fit
+        decay_out = None  # fresh variable each iteration
         try:
             decay_out = fit_decay(
                 times=times_rel,
@@ -368,7 +372,7 @@ def main():
         try:
             _ = plot_time_series(
                 events_times=iso_events["timestamp"].values,
-                fit_dict=decay_out if "decay_out" in locals() else None,
+                fit_dict=decay_out,
                 t0=t0_global,
                 out_png=os.path.join(out_dir, f"time_series_{iso}.png"),
                 bin_width = cfg["time_fit"].get("bin_width", 3600),
@@ -408,7 +412,7 @@ def main():
             try:
                 deltas, total_unc = scan_systematics(
                     fit_wrapper,
-                    priors_time,
+                    priors_time_all.get(iso, {}),
                     sigma_dict,
                     keys
                 )
@@ -429,7 +433,8 @@ def main():
         "baseline": baseline_info
     }
 
-    write_summary(out_dir, summary)
+    out_dir = write_summary(args.output_dir, summary)
+    copy_config(args.output_dir, args.config)
 
     print(f"Analysis complete. Results written to → {out_dir}")
 
