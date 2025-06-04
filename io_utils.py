@@ -115,23 +115,35 @@ def write_summary(output_dir, summary_dict):
 
 def copy_config(output_dir, config_path):
     """
-    Copy the used config JSON into the same timestamped results folder.
-    Must be called *after* write_summary(), so that the timestamped folder exists.
-    Returns destination path.
+    Copy the used config JSON into the timestamped results folder.
+
+    ``output_dir`` can either be the parent directory passed to
+    :func:`write_summary` or the timestamped directory returned by it.
+    In both cases the configuration file will be copied alongside the
+    generated ``summary.json``.
+
+    Returns the destination path.
     """
-    # Identify the single subfolder in output_dir (should be timestamped)   assume only one new one
-    subfolders = [
-        d for d in os.listdir(output_dir) if os.path.isdir(os.path.join(output_dir, d))
-    ]
-    if not subfolders:
-        raise RuntimeError(
-            f"No subfolders found in {output_dir} to copy config into."
-        )
-    # Pick the folder with the lexicographically largest name (most recent timestamp)
-    timestamped = sorted(subfolders)[-1]
-    dest_folder = os.path.join(output_dir, timestamped)
+
+    # If ``summary.json`` exists directly under ``output_dir`` we assume the
+    # caller provided the timestamped folder path.
+    if os.path.isfile(os.path.join(output_dir, "summary.json")):
+        dest_folder = output_dir
+    else:
+        subfolders = [
+            d
+            for d in os.listdir(output_dir)
+            if os.path.isdir(os.path.join(output_dir, d))
+        ]
+        if not subfolders:
+            raise RuntimeError(
+                f"No subfolders found in {output_dir} to copy config into."
+            )
+        # Pick the most recent (lexicographically largest) folder
+        timestamped = sorted(subfolders)[-1]
+        dest_folder = os.path.join(output_dir, timestamped)
 
     dest_path = os.path.join(dest_folder, "config_used.json")
     shutil.copyfile(config_path, dest_path)
-    logger.info(f"Copied config {config_path}   {dest_path}")
+    logger.info(f"Copied config {config_path} -> {dest_path}")
     return dest_path
