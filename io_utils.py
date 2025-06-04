@@ -119,13 +119,14 @@ def copy_config(output_dir, config_path):
     Must be called *after* write_summary(), so that the timestamped folder exists.
     Returns destination path.
     """
-    # Identify the single subfolder in output_dir (should be timestamped)   assume only one new one
+    # Identify the single subfolder in output_dir (should be timestamped) assume only one new one
     subfolders = [
         d for d in os.listdir(output_dir) if os.path.isdir(os.path.join(output_dir, d))
     ]
     if not subfolders:
-        raise RuntimeError(f"No subfolders found in {
-                           output_dir} to copy config into.")
+        raise RuntimeError(
+            f"No subfolders found in {output_dir} to copy config into."
+        )
     # Pick the folder with the lexicographically largest name (most recent timestamp)
     timestamped = sorted(subfolders)[-1]
     dest_folder = os.path.join(output_dir, timestamped)
