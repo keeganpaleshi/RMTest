@@ -111,8 +111,9 @@ def fit_spectrum(energies, priors, flags=None):
         mean, sig = p(name, 1.0)
         p0.append(mean)
         if flags.get(f"fix_{name}", False) or sig == 0:
-            bounds_lo.append(mean)
-            bounds_hi.append(mean)
+            eps = 1e-8
+            bounds_lo.append(mean - eps)
+            bounds_hi.append(mean + eps)
         else:
             delta = 5 * sig if np.isfinite(sig) else np.inf
             bounds_lo.append(mean - delta)

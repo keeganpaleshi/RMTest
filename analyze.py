@@ -52,7 +52,7 @@ import sys
 import json
 import logging
 import random
-from datetime import datetime
+from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
@@ -124,7 +124,7 @@ def main():
             logging.warning(f"Invalid random_seed '{seed}' ignored")
 
     # Timestamp for this analysis run
-    now_str = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    now_str = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
 
@@ -293,7 +293,8 @@ def main():
             mu_amp = max(raw_count, 1.0)
             sigma_amp = max(
                 np.sqrt(mu_amp),
-                cfg["spectral_fit"].get("amp_prior_scale", 1.0) * mu_amp
+                cfg["spectral_fit"].get("amp_prior_scale", 1.0) * mu_amp,
+                1.0,
             )
             priors_spec[f"S_{peak}"] = (mu_amp, sigma_amp)
 
@@ -500,11 +501,13 @@ def main():
         except Exception as e:
             print(f"WARNING: Could not create spectrum plot: {e}")
 
+    all_ts = events["timestamp"].values
+    all_en = events["energy_MeV"].values
     for iso, pdata in time_plot_data.items():
         try:
             _ = plot_time_series(
-                all_timestamps=pdata["events_times"],
-                all_energies=events["energy_MeV"].values,
+                all_timestamps=all_ts,
+                all_energies=all_en,
                 fit_results=pdata["fit_dict"],
                 t_start=t0_global,
                 t_end=events["timestamp"].max(),
