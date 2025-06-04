@@ -109,8 +109,7 @@ def main():
     out_dir = os.path.join(args.output_dir, now_str)
     os.makedirs(out_dir, exist_ok=True)
 
-    #  Write a copy of the config used (for provenance)
-    copy_config(out_dir, args.config)
+
 
     # ────────────────────────────────────────────────────────────
     # 2. Load event data
@@ -434,7 +433,8 @@ def main():
         "baseline": baseline_info
     }
 
-    write_summary(out_dir, summary)
+    out_dir = write_summary(args.output_dir, summary)
+    copy_config(args.output_dir, args.config)
 
     print(f"Analysis complete. Results written to → {out_dir}")
 
