@@ -52,7 +52,7 @@ import sys
 import json
 import logging
 import random
-from datetime import datetime
+from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
@@ -124,7 +124,7 @@ def main():
             logging.warning(f"Invalid random_seed '{seed}' ignored")
 
     # Timestamp for this analysis run
-    now_str = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    now_str = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
 
