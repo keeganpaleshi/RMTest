@@ -269,6 +269,7 @@ def main():
         priors_spec["b1"] = tuple(cfg["spectral_fit"].get("b1_prior", (0.0, 1.0)))
 
         # Launch the spectral fit
+        spec_fit_out = None
         try:
             spec_fit_out = fit_spectrum(
                 energies=events["energy_MeV"].values,
