@@ -1,0 +1,175 @@
+import numpy as np
+from scipy.signal import find_peaks
+from scipy.optimize import curve_fit
+
+# Known α energies (MeV) from config or central constants:
+KNOWN_ENERGIES = {
+    "Po210": 5.304,   # MeV
+    "Po218": 6.002,   # MeV
+    "Po214": 7.687    # MeV  (use the SNOLAB‐observed centroids if desired)
+}
+
+
+def emg_left(x, mu, sigma, tau):
+    """
+    Exponentially-modified Gaussian (left-skewed) PDF for alpha peaks:
+      - mu, sigma in ADC channels (we fit in ADC space).
+      - tau in ADC-channel units (controls the low‐energy tail).
+      If tau <= 0, fallback to a pure Gaussian.
+    """
+    if tau <= 0:
+        return np.exp(-0.5 * ((x - mu) / sigma) ** 2) / (sigma * np.sqrt(2 * np.pi))
+    # reflect x → (mu - x) to get a low-E tail:
+    lam = 1.0 / tau
+    z = (mu - x) / (sigma * np.sqrt(2))
+    # use scipy’s erfc for the convolution; but for simplicity, we can approximate:
+    # EMG(x) = (lam/2) * exp( (lam/2)*(2*mu + lam*sigma^2 - 2*x) ) * erfc((mu + lam*sigma^2 - x)/(sqrt(2)*sigma))
+    from scipy.special import erfc
+    exponent = (lam / 2) * (2 * mu + lam * sigma**2 - 2 * x)
+    arg = (mu + lam * sigma**2 - x) / (sigma * np.sqrt(2))
+    return (lam / 2.0) * np.exp(exponent) * erfc(arg)
+
+
+def gaussian(x, mu, sigma):
+    """Standard Gaussian PDF (unit area)."""
+    return np.exp(-0.5 * ((x - mu) / sigma) ** 2) / (sigma * np.sqrt(2 * np.pi))
+
+
+def two_point_calibration(adc_centroids, energies):
+    """
+    Given two reference points (adc_centroids = [adc1, adc2], energies = [E1, E2]),
+    solve for slope a and intercept c:  E = a * ADC + c.
+    Returns (a, c).
+    """
+    x1, x2 = adc_centroids
+    E1, E2 = energies
+    a = (E2 - E1) / (x2 - x1)
+    c = E1 - a * x1
+    return float(a), float(c)
+
+
+def calibrate_run(adc_values, config):
+    """
+    Main entry to derive calibration constants for a single run:
+      - Build histogram of ADC (1 channel/bin by default, or FD if config['calibration']['use_fd']==True).
+      - Identify approximate peak locations (Po-210, Po-218, Po-214).
+      - Fit each peak with (EMG or Gaussian) depending on config flags.
+      - Compute two-point linear calibration (using Po-210 & Po-214).
+      - Return a dict with {a, c, sigma_E, peak_centroids_ADC, peak_sigmas_ADC, tau_ADC (if any)}.
+    """
+    # 1) Build histogram (ADC channels are integers). Always 1 channel/bin:
+    min_adc = int(np.min(adc_values))
+    max_adc = int(np.max(adc_values))
+    # e.g. edges [min, min+1, ..., max+1]
+    bins = np.arange(min_adc, max_adc + 2)
+    hist, edges = np.histogram(adc_values, bins=bins)
+    centers = 0.5 * (edges[:-1] + edges[1:])  # effectively integer centers
+
+    # 2) Peak‐finding with SciPy:
+    #    We look for up to 5 peaks (Po-210, Po-218, Po-214, maybe background bumps).
+    #    Use config thresholds for prominence & width.
+    prom = config["calibration"]["peak_prominence"]
+    wid = config["calibration"]["peak_width"]
+    peaks, props = find_peaks(hist, prominence=prom, width=wid)
+
+    # 3) From the found peaks, pick the three that best match expected energies:
+    #    Convert expected energy→ADC guess via last calibration or central ADC→MeV mapping if available.
+    #    For the first run, use rough nominal ADC guesses from config:
+    # e.g. {"Po210": 800, "Po218": 900, "Po214": 1200}
+    nominal_adc = config["calibration"]["nominal_adc"]
+
+    # Build a dictionary: { isotope : list of candidate indices within +/- radius }
+    radius = config["calibration"]["peak_search_radius_adc"]
+    candidates = {iso: [] for iso in ("Po210", "Po218", "Po214")}
+    for iso, adc_guess in nominal_adc.items():
+        for idx in peaks:
+            if abs(centers[idx] - adc_guess) <= radius:
+                candidates[iso].append(idx)
+    # If multiple candidates per isotope, pick the one with highest histogram count:
+    chosen_idx = {}
+    for iso in candidates:
+        if not candidates[iso]:
+            raise RuntimeError(f"No candidate peak found for {
+                               iso} around ADC={nominal_adc[iso]}.")
+        # pick the one with max(hist) among candidates
+        best = max(candidates[iso], key=lambda i: hist[i])
+        chosen_idx[iso] = best
+
+    # 4) For each chosen peak, perform a local fit with EMG or Gaussian:
+    peak_fits = {}
+    window = config["calibration"]["fit_window_adc"]  # e.g. ±50 ADC channels
+    use_emg = config["calibration"]["use_emg"]        # True/False
+    for iso, idx_center in chosen_idx.items():
+        x0 = centers[idx_center]
+        lo = x0 - window
+        hi = x0 + window
+        # Extract local slice:
+        mask = (centers >= lo) & (centers <= hi)
+        x_slice = centers[mask]
+        y_slice = hist[mask].astype(float)
+        if len(x_slice) < 5:
+            raise RuntimeError(f"Not enough points to fit peak for {
+                               iso} (only {len(x_slice)} bins).")
+
+        # Initial guesses:
+        amp0 = float(np.max(y_slice))
+        mu0 = float(x0)
+        # e.g. ~10 ADC channels
+        sigma0 = config["calibration"]["init_sigma_adc"]
+        tau0 = config["calibration"]["init_tau_adc"] if use_emg else 0.0
+
+        if use_emg and iso in ("Po210", "Po218"):
+            # Fit EMG: parameters [amp, mu, sigma, tau]
+            def model_emg(x, A, mu, sigma, tau):
+                return A * emg_left(x, mu, sigma, tau)
+            p0 = [amp0, mu0, sigma0, tau0]
+            bounds = (
+                [0, mu0 - window, 1e-3, 0],         # lower bounds
+                [np.inf, mu0 + window, 50.0, 200.0]  # upper bounds (tunable)
+            )
+            popt, pcov = curve_fit(
+                model_emg, x_slice, y_slice, p0=p0, bounds=bounds)
+            A_fit, mu_fit, sigma_fit, tau_fit = popt
+            peak_fits[iso] = {
+                "centroid_adc": float(mu_fit),
+                "sigma_adc": float(sigma_fit),
+                "tau_adc": float(tau_fit),
+                "amplitude": float(A_fit),
+                "covariance": pcov.tolist()
+            }
+        else:
+            # Fit pure Gaussian: [A, mu, sigma]
+            def model_gauss(x, A, mu, sigma):
+                return A * gaussian(x, mu, sigma)
+            p0 = [amp0, mu0, sigma0]
+            bounds = ([0, mu0 - window, 1e-3], [np.inf, mu0 + window, 50.0])
+            popt, pcov = curve_fit(model_gauss, x_slice,
+                                   y_slice, p0=p0, bounds=bounds)
+            A_fit, mu_fit, sigma_fit = popt
+            peak_fits[iso] = {
+                "centroid_adc": float(mu_fit),
+                "sigma_adc": float(sigma_fit),
+                "tau_adc": 0.0,
+                "amplitude": float(A_fit),
+                "covariance": pcov.tolist()
+            }
+
+    # 5) Two-point linear calibration using Po-210 & Po-214:
+    adc210 = peak_fits["Po210"]["centroid_adc"]
+    adc214 = peak_fits["Po214"]["centroid_adc"]
+    E210 = KNOWN_ENERGIES["Po210"]
+    E214 = KNOWN_ENERGIES["Po214"]
+    a, c = two_point_calibration([adc210, adc214], [E210, E214])
+
+    # 6) Convert σADC → σE (MeV) by σE = a * σADC.  For simplicity, we ignore error propagation of slope/intercept here.
+    # use Po-214 width as representative
+    sigma_E = abs(a) * (peak_fits["Po214"]["sigma_adc"])
+
+    # 7) Build result dict:
+    calib_dict = {
+        "slope": a,
+        "intercept": c,
+        "sigma_E": float(sigma_E),
+        "peaks": peak_fits
+    }
+    return calib_dict

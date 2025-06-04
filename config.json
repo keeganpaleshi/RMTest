@@ -1,0 +1,51 @@
+{
+    "pipeline": {
+        "log_level": "INFO",
+        "random_seed": null,
+        "output_subfolder": true,
+        "enable_peak_tracking": true
+    },
+    "spectral_fit": {
+        "do_spectral_fit": true,
+        "spectral_binning_mode": "adc",
+        "adc_bin_width": 1,
+        "fd_hist_bins": null,
+        "spectral_peak_tolerance_mev": 0.3,
+        "use_emg_Po210": false,
+        "use_emg_Po218": true,
+        "use_emg_Po214": true,
+        "float_sigma_E": true,
+        "sigma_E_prior_source": 0.15,
+        "peak_search_prominence": 50,
+        "peak_search_width_adc": 5
+    },
+    "time_fit": {
+        "do_time_fit": true,
+        "time_fit_bin_width_s": "auto",
+        "fix_background_b": false,
+        "background_value": 0.0,
+        "fix_N0_Po218": false,
+        "N0_Po218_value": 0.0,
+        "fit_Po218_simul": true,
+        "efficiency_Po214": 0.40,
+        "efficiency_Po218": 0.20,
+        "settling_time_s": 10800,
+        "confidence_level": 0.95
+    },
+    "systematics": {
+        "enable_systematics_scan": false,
+        "systematics_shifts": {
+            "calibration_a_shift_pct": 0.05,
+            "calibration_c_shift_abs": 0.05,
+            "efficiency_Po214_shift_pct": 0.10,
+            "efficiency_Po218_shift_pct": 0.10
+        }
+    },
+    "plotting": {
+        "plot_spectrum_binsize_adc": 1,
+        "plot_time_binning_mode": "auto",
+        "plot_time_bin_width_s": 3600,
+        "plot_save_formats": ["png", "pdf"],
+        "plot_show_residuals": true
+    }
+}
