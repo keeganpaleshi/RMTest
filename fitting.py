@@ -10,13 +10,53 @@ from scipy.optimize import curve_fit
 __all__ = ["fit_time_series", "fit_decay", "fit_spectrum"]
 
 
-def fit_decay(event_times, total_time, lambda_decay, efficiency, _cfg=None):
-    """Simple rate estimator used for unit tests."""
-    event_times = np.asarray(event_times)
-    count = len(event_times)
-    rate = count / (total_time * efficiency) if total_time > 0 and efficiency > 0 else 0.0
-    # Return tuple mimicking (E, N0, B)
-    return (rate, 0.0, 0.0), {}
+def fit_decay(times, priors, t0=0.0, t_end=None, flags=None):
+    """Simple rate estimator used for unit tests.
+
+    Parameters
+    ----------
+    times : array-like
+        Event times (relative to ``t0``) in seconds.
+    priors : dict
+        Dictionary that may contain an ``"eff"`` entry specifying the detection
+        efficiency.
+    t0 : float, optional
+        Start time of the interval.  Only used to compute the total exposure
+        ``t_end - t0``.
+    t_end : float, optional
+        End time of the interval.  If ``None`` the maximum time in ``times`` is
+        used.
+    flags : dict, optional
+        Additional flags (ignored by this simple implementation).
+
+    Returns
+    -------
+    dict
+        Dictionary with at least the keys ``"E"``, ``"N0"``, ``"B"`` and
+        ``"eff"`` representing a naive rate estimate and placeholder values for
+        initial population and background.
+    """
+
+    if flags is None:
+        flags = {}
+
+    t = np.asarray(times, dtype=float)
+    if t_end is None:
+        T = float(t.max() if t.size > 0 else 0.0) - float(t0)
+    else:
+        T = float(t_end) - float(t0)
+
+    eff = float(priors.get("eff", (1.0, 0.0))[0])
+
+    count = len(t)
+    rate = count / (T * eff) if (T > 0 and eff > 0) else 0.0
+
+    return {
+        "E": rate,
+        "N0": 0.0,
+        "B": 0.0,
+        "eff": eff,
+    }
 
 
 def fit_spectrum(energies, priors, flags=None):

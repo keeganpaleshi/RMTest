@@ -25,25 +25,17 @@ def test_fit_decay_po214_only():
     event_times = simulate_decay(E_true, eff, T)
 
     # Add some Po-218 artificially? Skip for Po-214-only test
-    # Fit
-    class DummyConfig:
-        def __init__(self):
-            self.fit_options = {
-                "fit_po218_po214": False,
-                "fix_B": False,
-                "fix_N0": False,
-                "baseline_range": None,
-            }
-            self.efficiency = {"eff_po214": eff, "eff_po218": 1.0}
-
-    params_fit, _ = fit_decay(
-        event_times,
-        T,
-        lambda_decay,
-        eff,
-        {"fit_options": DummyConfig().fit_options, "efficiency": {"eff_po214": eff}},
+    res = fit_decay(
+        times=event_times,
+        priors={
+            "eff": (eff, 0.0),
+            "tau": (1.0 / lambda_decay, 0.0),
+        },
+        t0=0.0,
+        t_end=T,
+        flags={},
     )
-    E_fit, N0_fit, B_fit = params_fit
+    E_fit = res["E"]
     # Basic sanity: E_fit should be within factor of 2 of E_true (low stats)
     assert E_fit > 0
     assert abs(E_fit - E_true) / E_true < 1.0
