@@ -124,8 +124,9 @@ def copy_config(output_dir, config_path):
         d for d in os.listdir(output_dir) if os.path.isdir(os.path.join(output_dir, d))
     ]
     if not subfolders:
-        raise RuntimeError(f"No subfolders found in {
-                           output_dir} to copy config into.")
+        raise RuntimeError(
+            f"No subfolders found in {output_dir} to copy config into."
+        )
     # Pick the folder with the lexicographically largest name (most recent timestamp)
     timestamped = sorted(subfolders)[-1]
     dest_folder = os.path.join(output_dir, timestamped)
