@@ -218,9 +218,16 @@ def main():
     spectrum_results = {}
     spec_plot_data = None
     if cfg.get("spectral_fit", {}).get("do_spectral_fit", False):
-        # Decide binning: “adc” or “fd”
-        bin_cfg = cfg["spectral_fit"].get("binning", {})
-        if bin_cfg.get("method", "adc").lower() == "fd":
+        # Decide binning: new 'binning' dict or legacy keys
+        bin_cfg = cfg["spectral_fit"].get("binning")
+        if bin_cfg is not None:
+            method = bin_cfg.get("method", "adc").lower()
+            default_bins = bin_cfg.get("default_bins", 400)
+        else:
+            method = str(cfg["spectral_fit"].get("spectral_binning_mode", "adc")).lower()
+            default_bins = cfg["spectral_fit"].get("fd_hist_bins", 400)
+
+        if method == "fd":
             E_all = events["energy_MeV"].values
             # Freedman‐Diaconis on energy array
             q25, q75 = np.percentile(E_all, [25, 75])
@@ -231,16 +238,21 @@ def main():
                 emin, emax = E_all.min(), E_all.max()
                 nbins = max(1, int(np.ceil((emax - emin) / fd_width)))
             else:
-                nbins = bin_cfg.get("default_bins", 400)
+                nbins = default_bins
 
             bins = nbins
             bin_edges = None
         else:
             # “1 ADC channel per bin”
+            width = 1
+            if bin_cfg is not None:
+                width = bin_cfg.get("adc_bin_width", 1)
+            else:
+                width = cfg["spectral_fit"].get("adc_bin_width", 1)
             adc_min = events["adc"].min()
             adc_max = events["adc"].max()
-            bins = int(adc_max - adc_min + 1)
-            bin_edges = np.arange(adc_min, adc_max + 2)
+            bins = int(np.ceil((adc_max - adc_min + 1) / width))
+            bin_edges = np.arange(adc_min, adc_min + bins * width + 1, width)
 
         # Find approximate ADC centroids for Po‐210, Po‐218, Po‐214
         expected_peaks = cfg["spectral_fit"].get(
@@ -251,7 +263,9 @@ def main():
         adc_peaks = find_adc_peaks(
             events["adc"].values,
             expected=expected_peaks,
-            window=cfg["spectral_fit"].get("peak_window_adc", 50)
+            window=cfg["spectral_fit"].get("peak_search_width_adc", 50),
+            prominence=cfg["spectral_fit"].get("peak_search_prominence", 0),
+            width=cfg["spectral_fit"].get("peak_search_width_adc", None),
         )
 
         # Build priors for the unbinned spectrum fit:
@@ -259,7 +273,7 @@ def main():
         # σ_E prior
         priors_spec["sigma_E"] = (
             sigE_mean,
-            sigE_sigma
+            cfg["spectral_fit"].get("sigma_E_prior_source", sigE_sigma),
         )
 
         for peak, centroid_adc in adc_peaks.items():
@@ -268,10 +282,13 @@ def main():
                 mu,
                 cfg["spectral_fit"].get("mu_sigma", 0.05)
             )
-            # Observed raw‐counts in ±0.3 MeV window as seed
+            # Observed raw-counts around the expected energy window
+            peak_tol = cfg["spectral_fit"].get("spectral_peak_tolerance_mev", 0.3)
             raw_count = float(
-                ((events["energy_MeV"] >= mu - 0.3) &
-                 (events["energy_MeV"] <= mu + 0.3)).sum()
+                (
+                    (events["energy_MeV"] >= mu - peak_tol)
+                    & (events["energy_MeV"] <= mu + peak_tol)
+                ).sum()
             )
             mu_amp = max(raw_count, 1.0)
             sigma_amp = max(
@@ -291,13 +308,18 @@ def main():
         priors_spec["b0"] = tuple(cfg["spectral_fit"].get("b0_prior", (0.0, 1.0)))
         priors_spec["b1"] = tuple(cfg["spectral_fit"].get("b1_prior", (0.0, 1.0)))
 
+        # Flags controlling the spectral fit
+        spec_flags = cfg["spectral_fit"].get("flags", {}).copy()
+        if not cfg["spectral_fit"].get("float_sigma_E", True):
+            spec_flags["fix_sigma_E"] = True
+
         # Launch the spectral fit
         spec_fit_out = None
         try:
             spec_fit_out = fit_spectrum(
                 energies=events["energy_MeV"].values,
                 priors=priors_spec,
-                flags=cfg["spectral_fit"].get("flags", {})
+                flags=spec_flags,
             )
             spectrum_results = spec_fit_out
         except Exception as e:
