@@ -75,15 +75,25 @@ def load_events(csv_path):
     return df
 
 
-def write_summary(output_dir, summary_dict):
+def write_summary(output_dir, summary_dict, timestamp=None):
     """
-    Write out summary_dict to JSON in:
-      <output_dir>/<timestamp_folder>/summary.json
-    and returns path to that folder.
+    Write out ``summary_dict`` to ``summary.json`` under a timestamped
+    directory and return the path to that directory.
+
+    Parameters
+    ----------
+    output_dir : str
+        Parent directory under which the results folder will be created.
+    summary_dict : dict
+        Data to serialise into ``summary.json``.
+    timestamp : str, optional
+        Timestamp string to use for the results folder.  If ``None`` a new
+        UTC timestamp will be generated.
     """
     # Create timestamped subfolder
-    now_str = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    results_folder = os.path.join(output_dir, now_str)
+    if timestamp is None:
+        timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    results_folder = os.path.join(output_dir, timestamp)
     ensure_dir(results_folder)
 
     summary_path = os.path.join(results_folder, "summary.json")
