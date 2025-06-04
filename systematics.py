@@ -42,5 +42,6 @@ def scan_systematics(
 
         deltas[key] = max(abs(v_plus - v0), abs(v_minus - v0))
 
-    total_unc = math.sqrt(sum(d * v for d, v in deltas.items()))
+    # Combine all systematic shifts in quadrature using only the values
+    total_unc = math.sqrt(sum(v ** 2 for v in deltas.values()))
     return deltas, total_unc
