@@ -75,6 +75,59 @@ def load_events(csv_path):
     return df
 
 
+def apply_burst_filter(df, cfg):
+    """Remove events occurring during high-rate bursts.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Event data containing a ``timestamp`` column in seconds.
+    cfg : dict
+        Configuration dictionary.  Expected keys under ``burst_filter`` are
+        ``burst_window_size_s``, ``rolling_median_window`` and
+        ``burst_multiplier``.
+
+    Returns
+    -------
+    DataFrame
+        Filtered events with bursts removed.
+    int
+        Number of events removed.
+    """
+
+    bcfg = cfg.get("burst_filter", {})
+    win = bcfg.get("burst_window_size_s")
+    roll = bcfg.get("rolling_median_window")
+    mult = bcfg.get("burst_multiplier")
+
+    if win is None or roll is None or mult is None:
+        return df.copy(), 0
+
+    if len(df) == 0:
+        return df.copy(), 0
+
+    # Bin indices relative to first timestamp
+    t0 = df["timestamp"].min()
+    bins = ((df["timestamp"] - t0) // float(win)).astype(int)
+
+    counts = bins.value_counts().sort_index()
+    full_index = range(counts.index.min(), counts.index.max() + 1)
+    counts_full = counts.reindex(full_index, fill_value=0)
+
+    med = (
+        counts_full
+        .rolling(int(roll), center=True, min_periods=1)
+        .median()
+    )
+
+    threshold = mult * med
+    burst_bins = counts_full[counts_full > threshold].index
+    mask = ~bins.isin(burst_bins)
+
+    removed = int((~mask).sum())
+    return df[mask].reset_index(drop=True), removed
+
+
 def write_summary(output_dir, summary_dict, timestamp=None):
     """
     Write out ``summary_dict`` to ``summary.json`` under a timestamped

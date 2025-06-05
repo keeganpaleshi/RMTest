@@ -9,7 +9,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 import pandas as pd
 import pytest
-from io_utils import load_config, load_events, write_summary, copy_config
+from io_utils import (
+    load_config,
+    load_events,
+    write_summary,
+    copy_config,
+    apply_burst_filter,
+)
 
 
 def test_load_config(tmp_path):
@@ -97,3 +103,38 @@ def test_write_summary_with_nullable_integers(tmp_path):
     assert loaded["present"] == 1
     assert loaded["missing"] is None
     assert loaded["list"] == [1, None]
+
+
+def test_apply_burst_filter_no_removal():
+    df = pd.DataFrame(
+        {
+            "fUniqueID": range(100),
+            "fBits": [0] * 100,
+            "timestamp": np.arange(100),
+            "adc": [1000] * 100,
+            "fchannel": [1] * 100,
+        }
+    )
+    cfg = {"burst_filter": {"burst_window_size_s": 10, "rolling_median_window": 3, "burst_multiplier": 3}}
+    filtered, removed = apply_burst_filter(df, cfg)
+    assert len(filtered) == 100
+    assert removed == 0
+
+
+def test_apply_burst_filter_with_burst():
+    base_times = np.arange(100)
+    burst_times = np.full(50, 30)
+    times = np.concatenate([base_times, burst_times])
+    df = pd.DataFrame(
+        {
+            "fUniqueID": range(len(times)),
+            "fBits": [0] * len(times),
+            "timestamp": times,
+            "adc": [1000] * len(times),
+            "fchannel": [1] * len(times),
+        }
+    )
+    cfg = {"burst_filter": {"burst_window_size_s": 10, "rolling_median_window": 3, "burst_multiplier": 3}}
+    filtered, removed = apply_burst_filter(df, cfg)
+    assert removed == 60
+    assert len(filtered) == len(times) - 60

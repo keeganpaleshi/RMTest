@@ -6,6 +6,11 @@
     "analysis": {
         "analysis_start_time": null
     },
+    "burst_filter": {
+        "burst_window_size_s": 60,
+        "rolling_median_window": 5,
+        "burst_multiplier": 5
+    },
     "calibration": {
         "method": "auto",
         "noise_cutoff": 300,
