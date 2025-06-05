@@ -551,10 +551,13 @@ def main():
 
     for iso, pdata in time_plot_data.items():
         try:
-            plot_cfg = dict(cfg.get("time_fit", {}))
+            plot_cfg = {"time_fit": dict(cfg.get("time_fit", {}))}
             plot_cfg.update(cfg.get("plotting", {}))
             other = "Po214" if iso == "Po218" else "Po218"
             if not overlay:
+
+                plot_cfg["time_fit"][f"window_{other}"] = None
+
                 plot_cfg[f"window_{other}"] = None
                 ts_times = pdata["events_times"]
                 ts_energy = pdata["events_energy"]
@@ -565,6 +568,7 @@ def main():
                 fit_dict = {}
                 fit_dict.update(time_plot_data.get("Po214", {}).get("fit_dict", {}))
                 fit_dict.update(time_plot_data.get("Po218", {}).get("fit_dict", {}))
+
             _ = plot_time_series(
                 all_timestamps=ts_times,
                 all_energies=ts_energy,
