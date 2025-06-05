@@ -181,3 +181,33 @@ def test_fit_spectrum_custom_bounds():
     bounds = {"mu_Po218": (5.9, 6.1)}
     out = fit_spectrum(energies, priors, bounds=bounds)
     assert 5.9 <= out["mu_Po218"] <= 6.1
+
+
+def test_fit_spectrum_bounds_clip():
+    """Starting value outside the bound should be clipped before fitting."""
+    rng = np.random.default_rng(4)
+    energies = np.concatenate([
+        rng.normal(5.3, 0.05, 120),
+        rng.normal(6.0, 0.05, 120),
+        rng.normal(7.7, 0.05, 120),
+    ])
+
+    priors = {
+        "sigma_E": (0.05, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (120, 12),
+        "mu_Po218": (5.5, 0.1),  # outside the provided bound
+        "S_Po218": (120, 12),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (120, 12),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+
+    bounds = {"mu_Po218": (5.9, 6.1)}
+    lo, hi = bounds["mu_Po218"]
+    mu_clipped = np.clip(priors["mu_Po218"][0], lo, hi)
+    priors["mu_Po218"] = (mu_clipped, priors["mu_Po218"][1])
+
+    out = fit_spectrum(energies, priors, bounds=bounds)
+    assert lo <= out["mu_Po218"] <= hi
