@@ -20,7 +20,17 @@
         "do_spectral_fit": true,
         "spectral_binning_mode": "adc",
         "adc_bin_width": 1,
-        "fd_hist_bins": null,
+        "fd_hist_bins": 400,
+        "mu_sigma": 0.05,
+        "amp_prior_scale": 1.0,
+        "b0_prior": [0.0, 1.0],
+        "b1_prior": [0.0, 1.0],
+        "tau_Po210_prior_mean": 0.0,
+        "tau_Po210_prior_sigma": 0.0,
+        "tau_Po218_prior_mean": 0.0,
+        "tau_Po218_prior_sigma": 0.0,
+        "tau_Po214_prior_mean": 0.0,
+        "tau_Po214_prior_sigma": 0.0,
         "spectral_peak_tolerance_mev": 0.3,
         "use_emg": {
             "Po210": false,
@@ -58,7 +68,8 @@
             "calibration_c_shift_abs": 0.05,
             "efficiency_Po214_shift_pct": 0.10,
             "efficiency_Po218_shift_pct": 0.10
-        }
+        },
+        "scan_keys": []
     },
     "plotting": {
         "plot_spectrum_binsize_adc": 1,
@@ -66,5 +77,9 @@
         "plot_time_bin_width_s": 3600,
         "time_bins_fallback": 1,
         "plot_save_formats": ["png", "pdf"]
+        "time_bins_fallback": 1,
+        "plot_save_formats": ["png", "pdf"],
+        "dump_time_series_json": false,
+        "plot_time_style": "steps"
     }
 }
