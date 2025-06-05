@@ -84,6 +84,9 @@ parameters are scanned.
 plot.  Use `"steps"` (default) for a stepped histogram or `"lines"` to
 connect bin centers with straight lines.
 
+`sig_N0_Po214` and `sig_N0_Po218` set the uncertainty on the prior for the
+initial activity `N0` when no baseline range is provided.
+
 `settling_time_s` was removed from the `time_fit` section and is no
 longer needed.
 
