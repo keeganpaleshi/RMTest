@@ -47,9 +47,12 @@ def plot_time_series(
             return cfg[key]
         return default
 
-    # Determine half-lives with precedence: explicit argument -> config -> default
+    # Determine half-lives with precedence: explicit arg -> config["time_fit"] -> default
     def _hl_from_config(cfg, key, default):
-        val = _cfg_get(cfg, key)
+        if isinstance(cfg, dict) and "time_fit" in cfg and key in cfg["time_fit"]:
+            val = cfg["time_fit"][key]
+        else:
+            val = None
         if val is None:
             return default
         if isinstance(val, (list, tuple)):
