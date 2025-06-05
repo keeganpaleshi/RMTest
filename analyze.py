@@ -165,7 +165,8 @@ def main():
                 adc_vals,
                 noise_cutoff = cfg["calibration"].get("noise_cutoff", 300),
                 hist_bins    = cfg["calibration"].get("hist_bins", 2000),
-                peak_search_radius = cfg["calibration"].get("peak_search_radius", 200)
+                peak_search_radius = cfg["calibration"].get("peak_search_radius", 200),
+                nominal_adc = cfg["calibration"].get("nominal_adc")
             )
         else:
             # Two‐point calibration as given in config
