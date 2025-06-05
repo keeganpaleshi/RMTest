@@ -88,3 +88,12 @@ pip install -r requirements.txt
 pytest -v
 ```
 
+## Local Test Setup
+
+To run the tests locally, install the dependencies and execute `pytest`:
+
+```bash
+pip install -r requirements.txt
+pytest -v
+```
+
