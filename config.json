@@ -40,8 +40,13 @@
         "float_sigma_E": true,
         "sigma_E_prior_source": 0.15,
         "peak_search_prominence": 50,
-        "peak_search_width_adc": 5
-        ,"use_plot_bins_for_fit": false
+        "peak_search_width_adc": 5,
+        "use_plot_bins_for_fit": false,
+        "mu_bounds": {
+            "Po210": null,
+            "Po218": null,
+            "Po214": null
+        }
     },
     "time_fit": {
         "do_time_fit": true,

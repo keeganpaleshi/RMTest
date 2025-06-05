@@ -155,3 +155,29 @@ def test_fit_spectrum_custom_bins_and_edges():
     edges = np.linspace(5.0, 8.0, 25)
     out_edges = fit_spectrum(energies, priors, bin_edges=edges)
     assert "sigma_E" in out_edges
+
+
+def test_fit_spectrum_custom_bounds():
+    """User-provided parameter bounds should constrain the fit."""
+    rng = np.random.default_rng(3)
+    energies = np.concatenate([
+        rng.normal(5.3, 0.05, 150),
+        rng.normal(6.0, 0.05, 150),
+        rng.normal(7.7, 0.05, 150),
+    ])
+
+    priors = {
+        "sigma_E": (0.05, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (150, 15),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (150, 15),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (150, 15),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+
+    bounds = {"mu_Po218": (5.9, 6.1)}
+    out = fit_spectrum(energies, priors, bounds=bounds)
+    assert 5.9 <= out["mu_Po218"] <= 6.1
