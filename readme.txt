@@ -11,7 +11,8 @@ This repository provides a complete pipeline to analyze electrostatic radon moni
 - `fitting.py`: Unbinned likelihood fit for Po-214 (and optional Po-218).
 - `systematics.py`: Scan for systematic uncertainties (optional).
 - `plot_utils.py`: Plotting routines for spectrum and time-series.
-- `utils.py`: Miscellaneous utilities (time conversion, JSON validation).
+- `utils.py`: Miscellaneous utilities (time conversion, JSON validation,
+  count-rate conversions).
 - `tests/`: `pytest` unit tests for calibration, fitting, and I/O.
 
 ## Installation
@@ -132,6 +133,21 @@ Example snippet:
     "sig_N0_Po214": 1.0,
     "sig_N0_Po218": 1.0
 }
+```
+
+## Utility Conversions
+
+`utils.py` provides simple helpers to convert count rates:
+
+- `cps_to_cpd(rate_cps)` converts counts/s to counts/day.
+- `cps_to_bq(rate_cps, volume_liters=None)` returns the activity in Bq, or
+  Bq/m^3 when a detector volume is supplied.
+
+You can invoke these from the command line:
+
+```bash
+python utils.py 0.5 --to cpd
+python utils.py 0.5 --to bq --volume_liters 10
 ```
 
 
