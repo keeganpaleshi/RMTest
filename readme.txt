@@ -93,9 +93,10 @@ in the same plot instead of appearing separately.
 model overlay instead of built‑in defaults.
 
 `sig_N0_Po214` and `sig_N0_Po218` set the uncertainty on the prior for the
-initial activity `N0` when no baseline range is provided.  Instead of fixing
-`N0` strictly to zero, the time-series fit now uses a Gaussian prior centered at
-zero with this width.
+initial activity `N0` when no baseline range is provided.  Without a baseline,
+the fit applies a Gaussian prior `(0, sig_N0_{iso})` so `N0` may vary rather
+than being fixed to zero.  The default width is `1.0` if not specified in the
+configuration.
 
 
 `settling_time_s` was removed from the `time_fit` section and is no
