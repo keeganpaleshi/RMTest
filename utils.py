@@ -5,6 +5,11 @@ from scipy.signal import find_peaks
 
 __all__ = ["to_native", "find_adc_peaks", "cps_to_cpd", "cps_to_bq"]
 
+try:
+    import pandas as pd
+except Exception:  # pragma: no cover - pandas is optional for utils
+    pd = None
+
 
 def to_native(obj):
     """
@@ -15,7 +20,15 @@ def to_native(obj):
         return {to_native(k): to_native(v) for k, v in obj.items()}
     elif isinstance(obj, list):
         return [to_native(x) for x in obj]
-    elif isinstance(obj, np.generic):
+    if pd is not None:
+        # Handle pandas scalar types
+        if obj is pd.NA:
+            return None
+        elif isinstance(obj, (pd.Timestamp, pd.Timedelta)):
+            return obj.isoformat()
+        elif isinstance(obj, (pd.Series, pd.Index)):
+            return [to_native(x) for x in obj.tolist()]
+    if isinstance(obj, np.generic):
         return obj.item()
     elif isinstance(obj, np.ndarray):
         # Convert array into list of native types
