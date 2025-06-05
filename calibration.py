@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
+from scipy.stats import exponnorm
 
 # Known α energies (MeV) from config or central constants:
 # Default alpha energies (MeV) used for calibration when not specified
@@ -13,27 +14,14 @@ DEFAULT_KNOWN_ENERGIES = {
 
 
 def emg_left(x, mu, sigma, tau):
-    """
-    Exponentially-modified Gaussian (left-skewed) PDF for alpha peaks:
-      - mu, sigma in ADC channels (we fit in ADC space).
-      - tau in ADC-channel units (controls the low‐energy tail).
-      If tau <= 0, fallback to a pure Gaussian.
-    """
+    """Exponentially modified Gaussian (left-skewed) PDF."""
+
     if tau <= 0:
-        return np.exp(-0.5 * ((x - mu) / sigma) ** 2) / (sigma * np.sqrt(2 * np.pi))
-    # Prevent overflow for extremely small tau values by applying a minimum
-    # positive bound.  Values near zero effectively revert to a Gaussian.
-    tau = max(tau, 1e-6)
-    # reflect x -> (mu - x) to get a low-E tail:
-    lam = 1.0 / tau
-    # use scipy’s erfc for the convolution; but for simplicity, we can approximate:
-    # EMG(x) = (lam/2) * exp( (lam/2)*(2*mu + lam*sigma^2 - 2*x) ) * erfc((mu + lam*sigma^2 - x)/(sqrt(2)*sigma))
-    from scipy.special import erfc
-    exponent = (lam / 2) * (2 * mu + lam * sigma**2 - 2 * x)
-    # Prevent numerical overflow in the exponential term
-    exponent = np.clip(exponent, -700, 700)
-    arg = (mu + lam * sigma**2 - x) / (sigma * np.sqrt(2))
-    return (lam / 2.0) * np.exp(exponent) * erfc(arg)
+        return gaussian(x, mu, sigma)
+
+    # SciPy's `exponnorm` uses shape parameter K = tau / sigma
+    K = tau / sigma
+    return exponnorm.pdf(x, K, loc=mu, scale=sigma)
 
 
 def gaussian(x, mu, sigma):
