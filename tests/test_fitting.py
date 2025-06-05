@@ -95,8 +95,10 @@ def test_fit_spectrum_use_emg_flag():
     priors_emg["tau_Po218"] = (5.0, 1.0)
     out_emg = fit_spectrum(energies, priors_emg)
 
-    # The function currently ignores tau_Po218; outputs should match closely
-    assert pytest.approx(out_no_emg["S_Po218"], rel=1e-6) == out_emg["S_Po218"]
+    # The EMG fit should return a tau parameter and modify the peak shape
+    assert "tau_Po218" in out_emg
+    assert out_emg["tau_Po218"] != 0
+    assert abs(out_emg["S_Po218"] - out_no_emg["S_Po218"]) > 1e-3
 
 
 def test_fit_spectrum_fixed_parameter_bounds():

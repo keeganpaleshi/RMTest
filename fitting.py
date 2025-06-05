@@ -5,6 +5,7 @@
 import numpy as np
 from iminuit import Minuit
 from scipy.optimize import curve_fit
+from calibration import emg_left, gaussian
 
 __all__ = ["fit_time_series", "fit_decay", "fit_spectrum"]
 
@@ -107,17 +108,19 @@ def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None):
     def p(name, default):
         return priors.get(name, (default, 1.0))
 
-    param_order = [
-        "sigma_E",
-        "mu_Po210",
-        "S_Po210",
-        "mu_Po218",
-        "S_Po218",
-        "mu_Po214",
-        "S_Po214",
-        "b0",
-        "b1",
-    ]
+    # Determine which peaks should include an EMG tail based on provided priors
+    use_emg = {
+        "Po210": "tau_Po210" in priors,
+        "Po218": "tau_Po218" in priors,
+        "Po214": "tau_Po214" in priors,
+    }
+
+    param_order = ["sigma_E"]
+    for iso in ("Po210", "Po218", "Po214"):
+        param_order.extend([f"mu_{iso}", f"S_{iso}"])
+        if use_emg[iso]:
+            param_order.append(f"tau_{iso}")
+    param_order.extend(["b0", "b1"])
 
     p0 = []
     bounds_lo, bounds_hi = [], []
@@ -134,11 +137,27 @@ def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None):
             bounds_lo.append(mean - delta)
             bounds_hi.append(mean + delta)
 
-    def model(x, sigma_E, mu210, S210, mu218, S218, mu214, S214, b0, b1):
-        y = b0 + b1 * x
-        y += S210 / (sigma_E * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu210) / sigma_E) ** 2)
-        y += S218 / (sigma_E * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu218) / sigma_E) ** 2)
-        y += S214 / (sigma_E * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu214) / sigma_E) ** 2)
+    iso_list = ["Po210", "Po218", "Po214"]
+
+    def model(x, *params):
+        idx = 0
+        sigma_E = params[idx]
+        idx += 1
+        y = np.zeros_like(x)
+        for iso in iso_list:
+            mu = params[idx]
+            idx += 1
+            S = params[idx]
+            idx += 1
+            if use_emg[iso]:
+                tau = params[idx]
+                idx += 1
+                y += S * emg_left(x, mu, sigma_E, tau)
+            else:
+                y += S * gaussian(x, mu, sigma_E)
+        b0 = params[idx]
+        b1 = params[idx + 1]
+        y = y + b0 + b1 * x
         return y * width
 
     popt, pcov = curve_fit(
