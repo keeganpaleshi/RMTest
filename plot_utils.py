@@ -100,13 +100,24 @@ def plot_time_series(
 
         # Histogram of observed counts:
         counts_iso, _ = np.histogram(t_iso_rel, bins=edges)
-        plt.step(
-            centers,
-            counts_iso,
-            where="mid",
-            color=colors[iso],
-            label=f"Data {iso}",
-        )
+        style = str(config.get("plot_time_style", "steps")).lower()
+        if style == "lines":
+            plt.plot(
+                centers,
+                counts_iso,
+                marker="o",
+                linestyle="-",
+                color=colors[iso],
+                label=f"Data {iso}",
+            )
+        else:
+            plt.step(
+                centers,
+                counts_iso,
+                where="mid",
+                color=colors[iso],
+                label=f"Data {iso}",
+            )
 
         # Overlay the continuous model curve (scaled to counts/bin):
         lam = np.log(2.0) / iso_params[iso]["half_life"]
