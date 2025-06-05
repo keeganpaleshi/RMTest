@@ -209,7 +209,13 @@ def derive_calibration_constants(adc_values, config):
     return out
 
 
-def derive_calibration_constants_auto(adc_values, noise_cutoff=300, hist_bins=2000, peak_search_radius=200):
+def derive_calibration_constants_auto(
+    adc_values,
+    noise_cutoff=300,
+    hist_bins=2000,
+    peak_search_radius=200,
+    nominal_adc=None,
+):
     """Simple auto-calibration using default configuration.
 
     Parameters
@@ -222,6 +228,11 @@ def derive_calibration_constants_auto(adc_values, noise_cutoff=300, hist_bins=20
         Number of histogram bins.
     peak_search_radius : int
         Window around nominal peaks used for matching.
+    nominal_adc : dict
+        Expected ADC centroids for each isotope.  Keys should be
+        ``"Po210"``, ``"Po218"`` and ``"Po214"``.  If ``None`` a
+        reasonable default of ``{"Po210": 1250, "Po218": 1400, "Po214": 1800}``
+        is used.
     """
     if len(adc_values) == 0:
         raise RuntimeError("No ADC values provided")
@@ -230,11 +241,14 @@ def derive_calibration_constants_auto(adc_values, noise_cutoff=300, hist_bins=20
     mask = adc_arr >= noise_cutoff
     adc_arr = adc_arr[mask]
 
+    if nominal_adc is None:
+        nominal_adc = {"Po210": 1250, "Po218": 1400, "Po214": 1800}
+
     config = {
         "calibration": {
             "peak_prominence": 10,
             "peak_width": 3,
-            "nominal_adc": {"Po210": 5200, "Po218": 6000, "Po214": 7600},
+            "nominal_adc": nominal_adc,
             # parameter renamed to ``peak_search_radius`` to match config.json
             "peak_search_radius": peak_search_radius,
             "fit_window_adc": 50,
