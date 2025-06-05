@@ -14,6 +14,7 @@ def basic_config():
         "time_bin_mode": "fixed",
         "time_bin_s": 1.0,
         "dump_time_series_json": False,
+        "plot_time_style": "hist",
     }
 
 
@@ -46,4 +47,14 @@ def test_plot_time_series_none_fit_results(tmp_path):
         basic_config(),
         str(out_png),
     )
+    assert out_png.exists()
+
+
+def test_plot_time_series_lines_style(tmp_path):
+    cfg = basic_config()
+    cfg["plot_time_style"] = "lines"
+    times = np.array([1000.0, 1001.0])
+    energies = np.array([7.6, 7.7])
+    out_png = tmp_path / "ts_lines.png"
+    plot_time_series(times, energies, None, 999.0, 1002.0, cfg, str(out_png))
     assert out_png.exists()

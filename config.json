@@ -66,6 +66,7 @@
         "plot_time_binning_mode": "auto",
         "plot_time_bin_width_s": 3600,
         "plot_save_formats": ["png", "pdf"],
-        "plot_show_residuals": true
+        "plot_show_residuals": true,
+        "plot_time_style": "hist"
     }
 }

@@ -82,6 +82,9 @@ def plot_time_series(
     centers = 0.5 * (edges[:-1] + edges[1:])
     bin_widths = np.diff(edges)
 
+    # Select drawing style for the data histogram
+    time_style = str(config.get("plot_time_style", "hist")).lower()
+
     # 2) Plot each isotope s histogram + overlay the model:
     plt.figure(figsize=(8, 6))
     colors = {"Po214": "tab:red", "Po218": "tab:blue"}
@@ -99,13 +102,21 @@ def plot_time_series(
 
         # Histogram of observed counts:
         counts_iso, _ = np.histogram(t_iso_rel, bins=edges)
-        plt.step(
-            centers,
-            counts_iso,
-            where="mid",
-            color=colors[iso],
-            label=f"Data {iso}",
-        )
+        if time_style == "lines":
+            plt.plot(
+                centers,
+                counts_iso,
+                color=colors[iso],
+                label=f"Data {iso}",
+            )
+        else:
+            plt.step(
+                centers,
+                counts_iso,
+                where="mid",
+                color=colors[iso],
+                label=f"Data {iso}",
+            )
 
         # Overlay the continuous model curve (scaled to counts/bin):
         lam = np.log(2.0) / iso_params[iso]["half_life"]
