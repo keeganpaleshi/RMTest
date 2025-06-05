@@ -86,7 +86,8 @@ parameters are scanned.
 
 `plot_time_style` chooses how the histogram is drawn in the time-series
 plot.  Use `"steps"` (default) for a stepped histogram or `"lines"` to
-connect bin centers with straight lines.
+connect bin centers with straight lines.  The line style is useful when
+overlaying multiple isotopes so one does not obscure the other.
 
 `overlay_isotopes` under `plotting` keeps both isotope windows intact
 when invoking `plot_time_series`.  When set to `true` the analysis does
