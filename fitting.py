@@ -108,6 +108,18 @@ def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None, bounds
     centers = 0.5 * (edges[:-1] + edges[1:])
     width = edges[1] - edges[0]
 
+    # Guard against NaNs/Infs arising from unstable histogramming or EMG evals
+    if not np.isfinite(hist).all():
+        raise RuntimeError(
+            "fit_spectrum: histogram contains non-finite values; "
+            "check input energies and binning parameters"
+        )
+    if not np.isfinite(centers).all():
+        raise RuntimeError(
+            "fit_spectrum: histogram centers contain non-finite values; "
+            "check input energies and binning parameters"
+        )
+
     # Helper to fetch prior values
     def p(name, default):
         return priors.get(name, (default, 1.0))
