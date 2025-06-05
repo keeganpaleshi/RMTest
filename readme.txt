@@ -41,6 +41,18 @@ The `time_fit` routine currently fits only Po‑214 and Po‑218.  Supporting
 Po‑210 would require adding its half‑life and detection efficiency to the
 configuration along with a plotting color in the code.
 
+The time‐series model multiplies the decay rate by the detection efficiency
+internally.  Therefore the fitted `E_Po214` and `E_Po218` values correspond to
+the physical decay rates in Bq (decays/s) before any detector volume correction.
+Do **not** divide these results by the efficiency again.  To obtain the
+concentration simply convert the fitted rate to Bq/m³ using `utils.cps_to_bq`.
+For example:
+
+```python
+from utils import cps_to_bq
+activity_bq_m3 = cps_to_bq(fit_result["E_Po214"], volume_liters=10.0)
+```
+
 ## Configuration
 
 `nominal_adc` under the `calibration` section sets the expected raw ADC
