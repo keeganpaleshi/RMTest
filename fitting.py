@@ -325,6 +325,9 @@ def fit_time_series(times_dict, t_start, t_end, config):
     initial_guesses = []
     limits = {}
 
+    background_guess = float(config.get("background_guess", 0.0))
+    n0_guess_frac = float(config.get("n0_guess_fraction", 0.1))
+
     idx = 0
     for iso in iso_list:
         #    E_iso
@@ -342,15 +345,15 @@ def fit_time_series(times_dict, t_start, t_end, config):
         #    B_iso (if not fixed)
         if not fix_b_map[iso]:
             param_indices[f"B_{iso}"] = idx
-            initial_guesses.append(float(config.get("background_guess", 0.0)))
+            initial_guesses.append(background_guess)
             limits[f"B_{iso}"] = (0.0, None)
             idx += 1
 
         #    N0_iso (if not fixed)
         if not fix_n0_map[iso]:
             param_indices[f"N0_{iso}"] = idx
-            # N0 guess = 10% of total events (very rough) or zero
-            guess_N0 = Ntot * 0.1 if Ntot > 0 else 0.0
+            # N0 guess = fraction of total events (very rough) or zero
+            guess_N0 = Ntot * n0_guess_frac if Ntot > 0 else 0.0
             initial_guesses.append(guess_N0)
             limits[f"N0_{iso}"] = (0.0, None)
             idx += 1
