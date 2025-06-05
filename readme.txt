@@ -91,8 +91,26 @@ in the same plot instead of appearing separately.
 `sig_N0_Po214` and `sig_N0_Po218` set the uncertainty on the prior for the
 initial activity `N0` when no baseline range is provided.
 
+
 `settling_time_s` was removed from the `time_fit` section and is no
 longer needed.
+
+### Fitting Long Time Scales
+
+When the data covers months or more, the short half-lives of Po‑218 and
+Po‑214 no longer matter.  In that regime you may set `hl_Po214` and
+`hl_Po218` to the radon half-life (≈3.8 days) so they track the slowly
+varying radon concentration.  The configuration values are in seconds, so
+3.8 days corresponds to roughly `3.8 * 86400 ≈ 3.3e5` seconds.
+
+Example snippet:
+
+```json
+"time_fit": {
+    "hl_Po214": [328320, 0.0],
+    "hl_Po218": [328320, 0.0]
+}
+```
 
 
 ## Running Tests
