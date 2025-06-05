@@ -413,10 +413,9 @@ def main():
                 cfg["time_fit"].get(f"sig_N0_{iso}", np.sqrt(n0_count) if n0_count > 0 else 1.0)
             )
         else:
-            sigma = cfg["time_fit"].get(f"sig_N0_{iso}", 1.0)
             priors_time["N0"] = (
                 0.0,
-                sigma,
+                cfg["time_fit"].get(f"sig_N0_{iso}", 1.0),
             )
 
         # Store priors for use in systematics scanning
