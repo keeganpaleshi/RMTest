@@ -57,38 +57,41 @@ import numpy as np
 import pandas as pd
 
 # ‣ Import our supporting modules (all must live in the same folder).
-from io_utils     import load_config, copy_config, load_events, write_summary
-from calibration  import derive_calibration_constants, derive_calibration_constants_auto
-from fitting      import fit_spectrum, fit_time_series
-from plot_utils   import plot_spectrum, plot_time_series
-from systematics  import scan_systematics
-from utils        import find_adc_peaks
+from io_utils import load_config, copy_config, load_events, write_summary
+from calibration import derive_calibration_constants, derive_calibration_constants_auto
+from fitting import fit_spectrum, fit_time_series
+from plot_utils import plot_spectrum, plot_time_series
+from systematics import scan_systematics
+from utils import find_adc_peaks
 
 
 def parse_args():
-    p = argparse.ArgumentParser(
-        description="Full Radon Monitor Analysis Pipeline"
+    p = argparse.ArgumentParser(description="Full Radon Monitor Analysis Pipeline")
+    p.add_argument(
+        "--config", "-c", required=True, help="Path to JSON configuration file"
     )
     p.add_argument(
-        "--config", "-c", required=True,
-        help="Path to JSON configuration file"
+        "--input",
+        "-i",
+        required=True,
+        help="CSV of merged event data (must contain at least: timestamp, adc)",
     )
     p.add_argument(
-        "--input", "-i", required=True,
-        help="CSV of merged event data (must contain at least: timestamp, adc)"
+        "--output_dir",
+        "-o",
+        required=True,
+        help="Directory under which to create a timestamped analysis folder",
     )
     p.add_argument(
-        "--output_dir", "-o", required=True,
-        help="Directory under which to create a timestamped analysis folder"
-    )
-    p.add_argument(
-        "--baseline_range", nargs=2, metavar=("TSTART", "TEND"),
+        "--baseline_range",
+        nargs=2,
+        metavar=("TSTART", "TEND"),
         help=(
             "Optional baseline-run interval. "
             "Provide two values (either ISO strings or epoch floats). "
             "If set, those events are extracted (same energy cuts) and "
             "listed in `baseline` of the summary."
-        )
+        ),
     )
     return p.parse_args()
 
@@ -125,8 +128,6 @@ def main():
     # Timestamp for this analysis run
     now_str = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
-
-
     # ────────────────────────────────────────────────────────────
     # 2. Load event data
     # ────────────────────────────────────────────────────────────
@@ -143,10 +144,7 @@ def main():
     # Ensure “timestamp” column is float‐seconds since epoch
     # If user provided ISO‐strings, convert to epoch:
     if events["timestamp"].dtype == object:
-        events["timestamp"] = (
-            pd.to_datetime(events["timestamp"])
-              .astype(np.int64) / 1e9
-        )
+        events["timestamp"] = pd.to_datetime(events["timestamp"]).astype(np.int64) / 1e9
 
     events["timestamp"] = events["timestamp"].astype(float)
 
@@ -163,24 +161,21 @@ def main():
             # Auto‐cal using Freedman‐Diaconis histogram + peak detection
             cal_params = derive_calibration_constants_auto(
                 adc_vals,
-                noise_cutoff = cfg["calibration"].get("noise_cutoff", 300),
-                hist_bins    = cfg["calibration"].get("hist_bins", 2000),
-                peak_search_radius = cfg["calibration"].get("peak_search_radius", 200),
-                nominal_adc = cfg["calibration"].get("nominal_adc")
+                noise_cutoff=cfg["calibration"].get("noise_cutoff", 300),
+                hist_bins=cfg["calibration"].get("hist_bins", 2000),
+                peak_search_radius=cfg["calibration"].get("peak_search_radius", 200),
+                nominal_adc=cfg["calibration"].get("nominal_adc"),
             )
         else:
             # Two‐point calibration as given in config
-            cal_params = derive_calibration_constants(
-                adc_vals,
-                config = cfg
-            )
+            cal_params = derive_calibration_constants(adc_vals, config=cfg)
     except RuntimeError as e:
         print(f"WARNING: calibration failed – {e}. Using defaults.")
         cal_params = {"a": (0.005, 0.001), "c": (0.02, 0.005), "sigma_E": (0.3, 0.1)}
 
     # Save “a, c, sigma_E” so we can reconstruct energies
-    a,  a_sig  = cal_params["a"]
-    c,  c_sig  = cal_params["c"]
+    a, a_sig = cal_params["a"]
+    c, c_sig = cal_params["c"]
     sigE_mean, sigE_sigma = cal_params["sigma_E"]
 
     # Apply linear calibration -> new column “energy_MeV”
@@ -191,6 +186,7 @@ def main():
     # ────────────────────────────────────────────────────────────
     baseline_info = {}
     if args.baseline_range:
+
         def to_epoch(x):
             try:
                 return float(x)
@@ -198,16 +194,15 @@ def main():
                 return pd.to_datetime(x).astype(np.int64) / 1e9
 
         t_start_base = to_epoch(args.baseline_range[0])
-        t_end_base   = to_epoch(args.baseline_range[1])
-        mask_base = (
-            (events["timestamp"] >= t_start_base) &
-            (events["timestamp"] <  t_end_base  )
+        t_end_base = to_epoch(args.baseline_range[1])
+        mask_base = (events["timestamp"] >= t_start_base) & (
+            events["timestamp"] < t_end_base
         )
         base_events = events[mask_base].copy()
         baseline_info = {
             "start": t_start_base,
-            "end":   t_end_base,
-            "n_events": len(base_events)
+            "end": t_end_base,
+            "n_events": len(base_events),
         }
     else:
         base_events = pd.DataFrame()
@@ -224,7 +219,9 @@ def main():
             method = bin_cfg.get("method", "adc").lower()
             default_bins = bin_cfg.get("default_bins")
         else:
-            method = str(cfg["spectral_fit"].get("spectral_binning_mode", "adc")).lower()
+            method = str(
+                cfg["spectral_fit"].get("spectral_binning_mode", "adc")
+            ).lower()
             default_bins = cfg["spectral_fit"].get("fd_hist_bins")
 
         if method == "fd":
@@ -234,7 +231,7 @@ def main():
             iqr = q75 - q25
             n = E_all.size
             if (iqr > 0) and (n > 0):
-                fd_width = 2 * iqr / (n ** (1/3))
+                fd_width = 2 * iqr / (n ** (1 / 3))
                 emin, emax = E_all.min(), E_all.max()
                 nbins = max(1, int(np.ceil((emax - emin) / fd_width)))
             else:
@@ -259,8 +256,7 @@ def main():
 
         # Find approximate ADC centroids for Po‐210, Po‐218, Po‐214
         expected_peaks = cfg["spectral_fit"].get(
-            "expected_peaks",
-            {"Po210": 5300, "Po218": 6000, "Po214": 7690}
+            "expected_peaks", {"Po210": 5300, "Po218": 6000, "Po214": 7690}
         )
         # `find_adc_peaks` will return a dict: e.g. { "Po210": adc_centroid, … }
         adc_peaks = find_adc_peaks(
@@ -289,10 +285,7 @@ def main():
                     raise ValueError(f"mu_bounds for {peak} require lower < upper")
                 if not (lo <= mu <= hi):
                     mu = np.clip(mu, lo, hi)
-            priors_spec[f"mu_{peak}"] = (
-                mu,
-                cfg["spectral_fit"].get("mu_sigma")
-            )
+            priors_spec[f"mu_{peak}"] = (mu, cfg["spectral_fit"].get("mu_sigma"))
             # Observed raw-counts around the expected energy window
             peak_tol = cfg["spectral_fit"].get("spectral_peak_tolerance_mev", 0.3)
             raw_count = float(
@@ -303,8 +296,7 @@ def main():
             )
             mu_amp = max(raw_count, 1.0)
             sigma_amp = max(
-                np.sqrt(mu_amp),
-                cfg["spectral_fit"].get("amp_prior_scale") * mu_amp
+                np.sqrt(mu_amp), cfg["spectral_fit"].get("amp_prior_scale") * mu_amp
             )
             priors_spec[f"S_{peak}"] = (mu_amp, sigma_amp)
 
@@ -312,7 +304,7 @@ def main():
             if cfg["spectral_fit"].get("use_emg", {}).get(peak, False):
                 priors_spec[f"tau_{peak}"] = (
                     cfg["spectral_fit"].get(f"tau_{peak}_prior_mean"),
-                    cfg["spectral_fit"].get(f"tau_{peak}_prior_sigma")
+                    cfg["spectral_fit"].get(f"tau_{peak}_prior_sigma"),
                 )
 
         # Continuum priors
@@ -375,10 +367,7 @@ def main():
                 continue
 
             lo, hi = win_range
-            iso_mask = (
-                (events["energy_MeV"] >= lo) &
-                (events["energy_MeV"] <= hi)
-            )
+            iso_mask = (events["energy_MeV"] >= lo) & (events["energy_MeV"] <= hi)
             iso_events = events[iso_mask].copy()
             if iso_events.empty:
                 print(f"WARNING: No events found for {iso} in [{lo}, {hi}] MeV.")
@@ -405,12 +394,16 @@ def main():
         if args.baseline_range:
             # Count baseline events in this energy window
             n0_count = float(
-                ((base_events["energy_MeV"] >= lo) &
-                 (base_events["energy_MeV"] <= hi)).sum()
+                (
+                    (base_events["energy_MeV"] >= lo)
+                    & (base_events["energy_MeV"] <= hi)
+                ).sum()
             )
             priors_time["N0"] = (
                 n0_count,
-                cfg["time_fit"].get(f"sig_N0_{iso}", np.sqrt(n0_count) if n0_count > 0 else 1.0)
+                cfg["time_fit"].get(
+                    f"sig_N0_{iso}", np.sqrt(n0_count) if n0_count > 0 else 1.0
+                ),
             )
         else:
             sigma = cfg["time_fit"].get(f"sig_N0_{iso}", 1.0)
@@ -434,9 +427,7 @@ def main():
             "fit_background": not cfg["time_fit"]["flags"].get(
                 "fix_background_b", False
             ),
-            "fit_initial": not cfg["time_fit"]["flags"].get(
-                f"fix_N0_{iso}", False
-            ),
+            "fit_initial": not cfg["time_fit"]["flags"].get(f"fix_N0_{iso}", False),
         }
 
         # Run time-series fit
@@ -457,7 +448,6 @@ def main():
         time_plot_data[iso] = {
             "events_times": iso_events["timestamp"].values,
             "events_energy": iso_events["energy_MeV"].values,
-            "fit_dict": decay_out,
         }
 
     # ────────────────────────────────────────────────────────────
@@ -466,7 +456,7 @@ def main():
     systematics_results = {}
     if cfg.get("systematics", {}).get("enable", False):
         sigma_dict = cfg["systematics"].get("sigma_shifts", {})
-        keys       = cfg["systematics"].get("scan_keys", [])
+        keys = cfg["systematics"].get("scan_keys", [])
 
         for iso, fit_out in time_fit_results.items():
             if not fit_out:
@@ -476,10 +466,12 @@ def main():
             def fit_wrapper(priors_mod):
                 win_range = cfg.get("time_fit", {}).get(f"window_{iso}")
                 if win_range is None:
-                    raise ValueError(f"Missing window for {iso} during systematics scan")
+                    raise ValueError(
+                        f"Missing window for {iso} during systematics scan"
+                    )
                 filtered_df = events[
-                    (events["energy_MeV"] >= win_range[0]) &
-                    (events["energy_MeV"] <= win_range[1])
+                    (events["energy_MeV"] >= win_range[0])
+                    & (events["energy_MeV"] <= win_range[1])
                 ]
                 times_dict = {iso: filtered_df["timestamp"].values}
                 cfg_fit = {
@@ -508,10 +500,7 @@ def main():
 
             try:
                 deltas, total_unc = scan_systematics(
-                    fit_wrapper,
-                    priors_time_all.get(iso, {}),
-                    sigma_dict,
-                    keys
+                    fit_wrapper, priors_time_all.get(iso, {}), sigma_dict, keys
                 )
                 systematics_results[iso] = {"deltas": deltas, "total_unc": total_unc}
             except Exception as e:
@@ -527,7 +516,7 @@ def main():
         "spectral_fit": spectrum_results,
         "time_fit": time_fit_results,
         "systematics": systematics_results,
-        "baseline": baseline_info
+        "baseline": baseline_info,
     }
 
     out_dir = write_summary(args.output_dir, summary, now_str)
@@ -558,13 +547,13 @@ def main():
                 plot_cfg[f"window_{other}"] = None
                 ts_times = pdata["events_times"]
                 ts_energy = pdata["events_energy"]
-                fit_dict = pdata["fit_dict"]
+                fit_dict = time_fit_results.get(iso, {})
             else:
                 ts_times = events["timestamp"].values
                 ts_energy = events["energy_MeV"].values
                 fit_dict = {}
-                fit_dict.update(time_plot_data.get("Po214", {}).get("fit_dict", {}))
-                fit_dict.update(time_plot_data.get("Po218", {}).get("fit_dict", {}))
+                fit_dict.update(time_fit_results.get("Po214", {}))
+                fit_dict.update(time_fit_results.get("Po218", {}))
             _ = plot_time_series(
                 all_timestamps=ts_times,
                 all_energies=ts_energy,
