@@ -148,8 +148,18 @@ def main():
 
     events["timestamp"] = events["timestamp"].astype(float)
 
-    # Global t₀ reference = earliest event
-    t0_global = events["timestamp"].min()
+    # Global t₀ reference
+    t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
+    if t0_cfg is not None:
+        try:
+            t0_global = pd.to_datetime(t0_cfg, utc=True).timestamp()
+        except Exception:
+            logging.warning(
+                f"Invalid analysis_start_time '{t0_cfg}' - using first event"
+            )
+            t0_global = events["timestamp"].min()
+    else:
+        t0_global = events["timestamp"].min()
 
     # ────────────────────────────────────────────────────────────
     # 3. Energy calibration
