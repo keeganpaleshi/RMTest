@@ -125,6 +125,7 @@ Install the required Python packages and run the test suite with `pytest`.
 The tests rely on `numpy`, `pandas`, `scipy`, `matplotlib`, `iminuit`, and
 `pytest` which are all listed in `requirements.txt`.
 
+Make sure the packages listed in `requirements.txt` are installed before executing `pytest`.
 ```bash
 pip install -r requirements.txt
 pytest -v
