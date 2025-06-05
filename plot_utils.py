@@ -27,7 +27,7 @@ def plot_time_series(
     """
     all_timestamps: 1D np.ndarray of absolute UNIX times (s)
     all_energies:   1D np.ndarray of energies (MeV)
-    fit_results:    dict from fit_time_series(...) or fit_decay(...)
+    fit_results:    dict from fit_time_series(...)
     t_start, t_end: floats (absolute UNIX times) for the fit window
     config:         JSON dict or nested configuration
     out_png:        output path for the PNG file

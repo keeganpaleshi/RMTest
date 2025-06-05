@@ -84,9 +84,10 @@ parameters are scanned.
 plot.  Use `"steps"` (default) for a stepped histogram or `"lines"` to
 connect bin centers with straight lines.
 
-`overlay_isotopes` under `plotting` keeps both energy windows when
-calling `plot_time_series`.  When `true`, Po‑214 and Po‑218 are overlaid
-in the same plot instead of appearing separately.
+`overlay_isotopes` under `plotting` keeps both isotope windows intact
+when invoking `plot_time_series`.  When set to `true` the analysis does
+not clear the other window, allowing Po‑214 and Po‑218 to be plotted
+together on a single overlay.
 
 `plot_time_series` reads `hl_Po214` and `hl_Po218` from the `time_fit`
 section.  These half-life values override the built‑in defaults and
@@ -115,7 +116,9 @@ Example snippet:
 ```json
 "time_fit": {
     "hl_Po214": [328320, 0.0],
-    "hl_Po218": [328320, 0.0]
+    "hl_Po218": [328320, 0.0],
+    "sig_N0_Po214": 1.0,
+    "sig_N0_Po218": 1.0
 }
 ```
 
@@ -125,6 +128,8 @@ Example snippet:
 Install the required Python packages and run the test suite with `pytest`.
 The tests rely on `numpy`, `pandas`, `scipy`, `matplotlib`, `iminuit`, and
 `pytest` which are all listed in `requirements.txt`.
+
+Note that you must run `pip install -r requirements.txt` before executing `pytest`.
 
 Make sure the packages listed in `requirements.txt` are installed before executing `pytest`.
 ```bash
