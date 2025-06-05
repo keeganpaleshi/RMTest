@@ -88,9 +88,9 @@ connect bin centers with straight lines.
 calling `plot_time_series`.  When `true`, Po‑214 and Po‑218 are overlaid
 in the same plot instead of appearing separately.
 
-`plot_time_series` also reads `hl_Po214` and `hl_Po218` from the
-`time_fit` section when present.  These half-life values are used for the
-model overlay instead of built‑in defaults.
+`plot_time_series` reads `hl_Po214` and `hl_Po218` from the `time_fit`
+section.  These half-life values override the built‑in defaults and
+values at the top level are ignored.
 
 `sig_N0_Po214` and `sig_N0_Po218` set the uncertainty on the prior for the
 initial activity `N0` when no baseline range is provided.  Without a baseline,

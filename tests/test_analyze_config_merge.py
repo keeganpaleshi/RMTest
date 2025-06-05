@@ -72,5 +72,5 @@ def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
     analyze.main()
 
     assert received["config"]["plot_time_binning_mode"] == "fd"
-    assert received["config"]["window_Po214"] == [7.5, 8.0]
+    assert received["config"]["time_fit"]["window_Po214"] == [7.5, 8.0]
     assert received["config"]["overlay_isotopes"] is True

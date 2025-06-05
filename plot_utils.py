@@ -32,9 +32,9 @@ def plot_time_series(
     config:         JSON dict or nested configuration
     out_png:        output path for the PNG file
     hl_Po214, hl_Po218: optional half-life values in seconds. If not
-        provided, these are looked up in ``config`` (first at the top
-        level and then under ``time_fit``) and finally fall back to the
-        built-in defaults.
+        provided, these are read from ``config['time_fit']`` when that
+        section is present and otherwise fall back to the built-in
+        defaults.
     """
 
     if fit_results is None:
@@ -49,11 +49,16 @@ def plot_time_series(
 
     # Determine half-lives with precedence: explicit argument -> config -> default
     def _hl_from_config(cfg, key, default):
-        val = _cfg_get(cfg, key)
+        if not isinstance(cfg, dict):
+            return default
+        tf_cfg = cfg.get("time_fit")
+        if not isinstance(tf_cfg, dict):
+            return default
+        val = tf_cfg.get(key)
         if val is None:
             return default
         if isinstance(val, (list, tuple)):
-            return float(val[0])
+            val = val[0]
         return float(val)
 
     hl_p214 = hl_Po214 if hl_Po214 is not None else _hl_from_config(
