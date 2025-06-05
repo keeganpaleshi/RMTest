@@ -14,7 +14,7 @@ def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
         "calibration": {},
         "spectral_fit": {
             "do_spectral_fit": False,
-            "expected_peaks": {"Po210": 5300, "Po218": 6000, "Po214": 7690},
+            "expected_peaks": {"Po210": 1250, "Po218": 1400, "Po214": 1800},
         },
         "time_fit": {
             "do_time_fit": True,
