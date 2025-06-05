@@ -41,10 +41,10 @@ def plot_time_series(
         fit_results = {}
 
     def _cfg_get(cfg, key, default=None):
-        if isinstance(cfg, dict) and key in cfg:
-            return cfg[key]
         if isinstance(cfg, dict) and "time_fit" in cfg and key in cfg["time_fit"]:
             return cfg["time_fit"][key]
+        if isinstance(cfg, dict) and key in cfg:
+            return cfg[key]
         return default
 
     # Determine half-lives with precedence: explicit argument -> config -> default
