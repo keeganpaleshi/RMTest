@@ -36,6 +36,10 @@ The analysis writes results to `<output_dir>/<timestamp>/` including:
 - `time_series_Po214.png` and `time_series_Po218.png` – decay time-series plots.
 - Optional `*_ts.json` files containing binned time series when enabled.
 
+The `time_fit` routine currently fits only Po‑214 and Po‑218.  Supporting
+Po‑210 would require adding its half‑life and detection efficiency to the
+configuration along with a plotting color in the code.
+
 ## Configuration
 
 `nominal_adc` under the `calibration` section sets the expected raw ADC
