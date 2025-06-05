@@ -36,6 +36,14 @@ The analysis writes results to `<output_dir>/<timestamp>/` including:
 - `time_series_Po214.png` and `time_series_Po218.png` – decay time-series plots.
 - Optional `*_ts.json` files containing binned time series when enabled.
 
+## Configuration
+
+See `config.json` for the default settings.  Plotting options are grouped under
+the `"plotting"` key.  A new `"plot_time_style"` option controls how the
+time-series plots are drawn.  Use `"lines"` to draw simple line graphs so that
+Po‑214 and Po‑218 do not obscure each other.  The default `"hist"` style shows
+the data as step histograms.
+
 ## Running Tests
 
 Install the required Python packages and run the test suite with `pytest`.

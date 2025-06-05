@@ -16,13 +16,23 @@ __all__ = ["plot_time_series", "plot_spectrum"]
 def plot_time_series(
     all_timestamps, all_energies, fit_results, t_start, t_end, config, out_png
 ):
-    """
-    all_timestamps: 1D np.ndarray of absolute UNIX times (s)
-    all_energies:   1D np.ndarray of energies (MeV)
-    fit_results:    dict from fit_time_series(...) or fit_decay(...)
-    t_start, t_end: floats (absolute UNIX times) for the fit window
-    config:         JSON dict
-    out_png:        output path for the PNG file
+    """Plot Po-214/Po-218 activity versus time.
+
+    Parameters
+    ----------
+    all_timestamps : np.ndarray
+        Absolute UNIX times in seconds.
+    all_energies : np.ndarray
+        Measured energies in MeV.
+    fit_results : dict or None
+        Result dictionary from :func:`fit_time_series` or similar.
+    t_start, t_end : float
+        Start and end of the fit window in absolute UNIX time.
+    config : dict
+        Configuration dictionary.  The ``plot_time_style`` option may be
+        set to ``"lines"`` to draw simple lines instead of histograms.
+    out_png : str
+        Output path for the PNG file.
     """
 
     if fit_results is None:
@@ -47,11 +57,13 @@ def plot_time_series(
     # 1) Choose binning:
     # Newer config files may store plot options under keys prefixed with
     # "plot_".  Fall back to the old names for backwards compatibility.
-    bin_mode = config.get(
-        "plot_time_binning_mode",
-        config.get("time_bin_mode", "fixed"),
+    bin_mode = str(
+        config.get(
+            "plot_time_binning_mode",
+            config.get("time_bin_mode", "fixed"),
+        )
     ).lower()
-    if bin_mode == "FD":
+    if bin_mode in ("fd", "auto"):
         # Freedman Diaconis rule on the entire time range:
         data = times_rel[(times_rel >= 0) & (times_rel <= (t_end - t_start))]
         if len(data) < 2:
@@ -82,10 +94,12 @@ def plot_time_series(
     centers = 0.5 * (edges[:-1] + edges[1:])
     bin_widths = np.diff(edges)
 
+    # Select drawing style for the data histogram
+    time_style = str(config.get("plot_time_style", "hist")).lower()
+
     # 2) Plot each isotope s histogram + overlay the model:
     plt.figure(figsize=(8, 6))
     colors = {"Po214": "tab:red", "Po218": "tab:blue"}
-    legend_entries = []
 
     for iso in iso_list:
         emin, emax = iso_params[iso]["window"]
@@ -99,13 +113,21 @@ def plot_time_series(
 
         # Histogram of observed counts:
         counts_iso, _ = np.histogram(t_iso_rel, bins=edges)
-        plt.step(
-            centers,
-            counts_iso,
-            where="mid",
-            color=colors[iso],
-            label=f"Data {iso}",
-        )
+        if time_style == "lines":
+            plt.plot(
+                centers,
+                counts_iso,
+                color=colors[iso],
+                label=f"Data {iso}",
+            )
+        else:
+            plt.step(
+                centers,
+                counts_iso,
+                where="mid",
+                color=colors[iso],
+                label=f"Data {iso}",
+            )
 
         # Overlay the continuous model curve (scaled to counts/bin):
         lam = np.log(2.0) / iso_params[iso]["half_life"]
