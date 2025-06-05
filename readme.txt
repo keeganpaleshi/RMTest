@@ -36,6 +36,12 @@ The analysis writes results to `<output_dir>/<timestamp>/` including:
 - `time_series_Po214.png` and `time_series_Po218.png` – decay time-series plots.
 - Optional `*_ts.json` files containing binned time series when enabled.
 
+## Configuration
+
+`time_bins_fallback` under the `plotting` section sets the number of
+histogram bins to use when the automatic Freedman&ndash;Diaconis rule
+fails, typically due to zero IQR.  The default is `1`.
+
 ## Running Tests
 
 Install the required Python packages and run the test suite with `pytest`.
