@@ -228,11 +228,13 @@ def derive_calibration_constants_auto(
         Number of histogram bins.
     peak_search_radius : int
         Window around nominal peaks used for matching.
-    nominal_adc : dict
+    nominal_adc : dict or None
+        Optional mapping of isotope -> ADC guess.
         Expected ADC centroids for each isotope.  Keys should be
         ``"Po210"``, ``"Po218"`` and ``"Po214"``.  If ``None`` a
         reasonable default of ``{"Po210": 1250, "Po218": 1400, "Po214": 1800}``
         is used.
+
     """
     if len(adc_values) == 0:
         raise RuntimeError("No ADC values provided")
@@ -257,6 +259,9 @@ def derive_calibration_constants_auto(
             "init_tau_adc": 1.0,
         }
     }
+
+    if nominal_adc is not None:
+        config["calibration"]["nominal_adc"] = dict(nominal_adc)
 
     # Run calibration with custom histogram binning and convert to legacy format
     res = calibrate_run(adc_arr, config, hist_bins=hist_bins)
