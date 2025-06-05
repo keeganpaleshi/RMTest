@@ -42,6 +42,7 @@
         "peak_search_prominence": 50,
         "peak_search_width_adc": 5,
         "use_plot_bins_for_fit": false,
+        "expected_peaks": {"Po210": 5300, "Po218": 6000, "Po214": 7690},
         "mu_bounds": {
             "Po210": null,
             "Po218": null,
