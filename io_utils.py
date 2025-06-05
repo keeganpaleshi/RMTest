@@ -29,17 +29,21 @@ def load_config(config_path):
     with open(config_path, "r", encoding="utf-8") as f:
         cfg = json.load(f)
 
-    # Basic validation: check for required top level keys
-    required_sections = [
-        "pipeline",
-        "spectral_fit",
-        "time_fit",
-        "systematics",
-        "plotting",
-    ]
-    for section in required_sections:
+    # Basic validation: check for required keys within each section
+    required_structure = {
+        "pipeline": ["log_level"],
+        "spectral_fit": ["expected_peaks"],
+        "time_fit": ["do_time_fit"],
+        "systematics": ["enable"],
+        "plotting": ["plot_save_formats"],
+    }
+
+    for section, keys in required_structure.items():
         if section not in cfg:
             raise KeyError(f"Missing required config section: '{section}'")
+        for key in keys:
+            if key not in cfg.get(section, {}):
+                raise KeyError(f"Missing key '{section}.{key}' in config")
 
     return cfg
 

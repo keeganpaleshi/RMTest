@@ -10,7 +10,7 @@ import analyze
 
 def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
     cfg = {
-        "pipeline": {},
+        "pipeline": {"log_level": "INFO"},
         "calibration": {},
         "spectral_fit": {
             "do_spectral_fit": False,
@@ -81,7 +81,7 @@ def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
 
 def test_analysis_start_time_applied(tmp_path, monkeypatch):
     cfg = {
-        "pipeline": {},
+        "pipeline": {"log_level": "INFO"},
         "analysis": {"analysis_start_time": "1970-01-01T00:00:10Z"},
         "calibration": {},
         "spectral_fit": {
