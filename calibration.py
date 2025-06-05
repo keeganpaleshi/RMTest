@@ -3,7 +3,9 @@ from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 
 # Known α energies (MeV) from config or central constants:
-KNOWN_ENERGIES = {
+# Default alpha energies (MeV) used for calibration when not specified
+# in the configuration file.  Values are Po-210, Po-218 and Po-214
+DEFAULT_KNOWN_ENERGIES = {
     "Po210": 5.304,   # MeV
     "Po218": 6.002,   # MeV
     "Po214": 7.687    # MeV  (use the SNOLAB‐observed centroids if desired)
@@ -181,8 +183,15 @@ def calibrate_run(adc_values, config, hist_bins=None):
     # 5) Two-point linear calibration using Po-210 & Po-214:
     adc210 = peak_fits["Po210"]["centroid_adc"]
     adc214 = peak_fits["Po214"]["centroid_adc"]
-    E210 = KNOWN_ENERGIES["Po210"]
-    E214 = KNOWN_ENERGIES["Po214"]
+
+    cfg_energies = config.get("calibration", {}).get("known_energies")
+    energies = DEFAULT_KNOWN_ENERGIES if cfg_energies is None else {
+        **DEFAULT_KNOWN_ENERGIES,
+        **cfg_energies,
+    }
+
+    E210 = energies["Po210"]
+    E214 = energies["Po214"]
     a, c = two_point_calibration([adc210, adc214], [E210, E214])
 
     # 6) Convert σADC -> σE (MeV) by σE = a * σADC.  For simplicity, we ignore error propagation of slope/intercept here.

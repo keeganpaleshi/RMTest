@@ -64,3 +64,37 @@ def test_derive_calibration_constants_peak_search_radius():
 
     with pytest.raises(RuntimeError):
         derive_calibration_constants(adc, cfg_bad)
+
+
+def test_calibration_uses_known_energies_from_config():
+    """Custom energies in config should override defaults."""
+    rng = np.random.default_rng(1)
+    adc = np.concatenate([
+        rng.normal(1000, 2, 300),
+        rng.normal(1500, 2, 300),
+        rng.normal(2000, 2, 300),
+    ])
+
+    cfg = {
+        "calibration": {
+            "peak_prominence": 5,
+            "peak_width": 1,
+            "nominal_adc": {"Po210": 1000, "Po218": 1500, "Po214": 2000},
+            "fit_window_adc": 20,
+            "use_emg": False,
+            "init_sigma_adc": 2.0,
+            "init_tau_adc": 0.0,
+            "peak_search_radius": 5,
+            "known_energies": {"Po210": 5.1, "Po214": 8.2},
+        }
+    }
+
+    from calibration import derive_calibration_constants
+
+    out = derive_calibration_constants(adc, cfg)
+
+    a, _ = out["a"]
+    c, _ = out["c"]
+
+    assert pytest.approx(a * 1000 + c, rel=1e-3) == 5.1
+    assert pytest.approx(a * 2000 + c, rel=1e-3) == 8.2
