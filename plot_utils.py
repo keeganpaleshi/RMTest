@@ -203,8 +203,7 @@ def plot_spectrum(
     energies : array-like
         Energy values in MeV.
     fit_vals : dict, optional
-        Dictionary of fit parameters to overlay. If provided and
-        ``config.get("plot_show_residuals")`` is ``True`` then a
+        Dictionary of fit parameters to overlay. If provided, a
         residual panel is also produced.
     out_png : str, optional
         Output path (extension used if ``plot_save_formats`` not set).
@@ -215,7 +214,7 @@ def plot_spectrum(
     config : dict, optional
         Plotting configuration dictionary.
     """
-    show_res = bool(config and config.get("plot_show_residuals", False) and fit_vals)
+    show_res = bool(fit_vals)
     if bin_edges is None and config is not None and "plot_spectrum_binsize_adc" in config:
         step = float(config["plot_spectrum_binsize_adc"])
         e_min, e_max = energies.min(), energies.max()
