@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from calibration import two_point_calibration, apply_calibration
+from calibration import two_point_calibration, apply_calibration, emg_left, gaussian
 
 
 def test_two_point_calibration():
@@ -25,6 +25,18 @@ def test_apply_calibration():
     adc_vals = np.array([0, 100, 200])
     energies = apply_calibration(adc_vals, slope, intercept)
     assert np.allclose(energies, np.array([0.02, 0.52, 1.02]))
+
+
+def test_emg_left_finite_near_zero_tau():
+    """emg_left should remain finite as tau approaches zero."""
+    x = np.linspace(-2.0, 2.0, 5)
+    mu, sigma = 0.0, 1.0
+
+    pdf_gauss = gaussian(x, mu, sigma)
+    pdf_small_tau = emg_left(x, mu, sigma, 1e-4)
+
+    assert np.all(np.isfinite(pdf_small_tau))
+    assert np.allclose(pdf_small_tau, pdf_gauss, rtol=2e-4)
 
 
 def test_derive_calibration_constants_peak_search_radius():
