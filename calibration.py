@@ -182,11 +182,25 @@ def calibrate_run(adc_values, config, hist_bins=None):
     E214 = energies["Po214"]
     a, c = two_point_calibration([adc210, adc214], [E210, E214])
 
-    # 6) Convert σADC -> σE (MeV) by σE = a * σADC.  For simplicity, we ignore error propagation of slope/intercept here.
+    # 6) Convert fitted centroids to energy for sanity checks
+    for iso, info in peak_fits.items():
+        info["centroid_mev"] = float(apply_calibration(info["centroid_adc"], a, c))
+
+    # Sanity check that fitted energies match expectations within tolerance
+    tol = float(config.get("calibration", {}).get("sanity_tolerance_mev", 0.5))
+    for iso in ("Po210", "Po218", "Po214"):
+        diff = abs(peak_fits[iso]["centroid_mev"] - energies[iso])
+        if diff > tol:
+            raise RuntimeError(
+                f"{iso} peak at {peak_fits[iso]['centroid_mev']:.3f} MeV "
+                f"outside ±{tol} MeV of expected {energies[iso]}"
+            )
+
+    # 7) Convert σADC -> σE (MeV) by σE = a * σADC.  For simplicity, we ignore error propagation of slope/intercept here.
     # use Po-214 width as representative
     sigma_E = abs(a) * (peak_fits["Po214"]["sigma_adc"])
 
-    # 7) Build result dict:
+    # 8) Build result dict:
     calib_dict = {
         "slope": a,
         "intercept": c,
@@ -256,6 +270,7 @@ def derive_calibration_constants_auto(
             "use_emg": False,
             "init_sigma_adc": 10.0,
             "init_tau_adc": 1.0,
+            "sanity_tolerance_mev": 0.5,
         }
     }
 

@@ -60,6 +60,7 @@ def test_derive_calibration_constants_peak_search_radius():
             "use_emg": False,
             "init_sigma_adc": 4.0,
             "init_tau_adc": 0.0,
+            "sanity_tolerance_mev": 1.0,
         }
     }
 
@@ -98,6 +99,7 @@ def test_calibration_uses_known_energies_from_config():
             "init_tau_adc": 0.0,
             "peak_search_radius": 5,
             "known_energies": {"Po210": 5.1, "Po214": 8.2},
+            "sanity_tolerance_mev": 1.0,
         }
     }
 
@@ -110,3 +112,34 @@ def test_calibration_uses_known_energies_from_config():
 
     assert pytest.approx(a * 1000 + c, rel=1e-3) == 5.1
     assert pytest.approx(a * 2000 + c, rel=1e-3) == 8.2
+
+
+def test_calibration_sanity_check_triggers_error():
+    """Misidentified peaks should cause calibrate_run to raise."""
+    rng = np.random.default_rng(2)
+    # True peaks: 800 (Po210), 1000 (Po218), 1200 (Po214)
+    adc = np.concatenate([
+        rng.normal(800, 2, 300),
+        rng.normal(1000, 2, 300),
+        rng.normal(1200, 2, 300),
+    ])
+
+    cfg = {
+        "calibration": {
+            "peak_prominence": 5,
+            "peak_width": 1,
+            # Swap Po210 and Po218 guesses to misidentify peaks
+            "nominal_adc": {"Po210": 1000, "Po218": 800, "Po214": 1200},
+            "fit_window_adc": 20,
+            "use_emg": False,
+            "init_sigma_adc": 4.0,
+            "init_tau_adc": 0.0,
+            "peak_search_radius": 5,
+            "sanity_tolerance_mev": 0.5,
+        }
+    }
+
+    from calibration import derive_calibration_constants
+
+    with pytest.raises(RuntimeError):
+        derive_calibration_constants(adc, cfg)

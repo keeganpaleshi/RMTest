@@ -60,6 +60,11 @@ centroids for Po‑210, Po‑218 and Po‑214 when using automatic calibration.
 If omitted, defaults of `{"Po210": 1250, "Po218": 1400, "Po214": 1800}`
 are used.
 
+`sanity_tolerance_mev` in the same section specifies how close the fitted
+peak energies must be to their known values.  The default of `0.5` MeV
+causes calibration to fail when any Po‑210, Po‑218 or Po‑214 centroid
+deviates by more than this amount.
+
 `analysis_start_time` in the optional `analysis` section sets the global
 time origin for decay fitting and time-series plots.  Provide an
 ISO‑8601 string such as `"2020-01-01T00:00:00Z"`.  When omitted the first

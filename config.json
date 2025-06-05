@@ -18,6 +18,7 @@
         "use_emg": false,
         "init_sigma_adc": 10.0,
         "init_tau_adc": 1.0,
+        "sanity_tolerance_mev": 0.5,
         "known_energies": {"Po210": 5.304, "Po218": 6.002, "Po214": 7.687}
     },
     "spectral_fit": {
