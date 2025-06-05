@@ -32,12 +32,12 @@ def plot_time_series(
         "Po214": {
             "window": config.get("window_Po214"),
             "eff": float(config.get("eff_Po214", [1.0])[0]),
-            "half_life": PO214_HALF_LIFE_S,
+            "half_life": float(config.get("hl_Po214", [PO214_HALF_LIFE_S])[0]),
         },
         "Po218": {
             "window": config.get("window_Po218"),
             "eff": float(config.get("eff_Po218", [1.0])[0]),
-            "half_life": PO218_HALF_LIFE_S,
+            "half_life": float(config.get("hl_Po218", [PO218_HALF_LIFE_S])[0]),
         },
     }
     iso_list = [iso for iso, p in iso_params.items() if p["window"] is not None]
