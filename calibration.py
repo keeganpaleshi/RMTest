@@ -24,7 +24,6 @@ def emg_left(x, mu, sigma, tau):
     tau = max(tau, 1e-6)
     # reflect x → (mu - x) to get a low-E tail:
     lam = 1.0 / tau
-    z = (mu - x) / (sigma * np.sqrt(2))
     # use scipy’s erfc for the convolution; but for simplicity, we can approximate:
     # EMG(x) = (lam/2) * exp( (lam/2)*(2*mu + lam*sigma^2 - 2*x) ) * erfc((mu + lam*sigma^2 - x)/(sqrt(2)*sigma))
     from scipy.special import erfc
