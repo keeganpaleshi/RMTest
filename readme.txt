@@ -98,6 +98,11 @@ Specify `hl_Po214` and `hl_Po218` there to override the defaults of
 `1.64e-4` s (Po‑214) and `183` s (Po‑218) used when the keys are absent.
 These custom half-lives control the decay model drawn over the
 time-series histogram.
+The same values are used in the `time_fit` routine itself, so changing
+`hl_Po214` or `hl_Po218` affects both the unbinned fit and the overlay in
+`plot_time_series`. For monitoring that spans multiple days you may set
+them to the radon half-life (~3.8 days) to match the slowly varying
+radon activity.
 
 `sig_N0_Po214` and `sig_N0_Po218` set the uncertainty on the prior for the
 initial activity `N0` when no baseline range is provided.  Without a baseline,
