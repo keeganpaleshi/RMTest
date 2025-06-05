@@ -45,10 +45,12 @@ def test_load_config(tmp_path):
                 "eff_po218": 0.1,
             },
         },
-        "pipeline": {},
-        "spectral_fit": {},
-        "time_fit": {},
-        "plotting": {},
+        "pipeline": {"log_level": "INFO"},
+        "spectral_fit": {
+            "expected_peaks": {"Po210": 1250, "Po218": 1400, "Po214": 1800}
+        },
+        "time_fit": {"do_time_fit": True},
+        "plotting": {"plot_save_formats": ["png"]},
     }
     p = tmp_path / "cfg.json"
     with open(p, "w") as f:
@@ -56,6 +58,35 @@ def test_load_config(tmp_path):
     loaded = load_config(str(p))
     assert loaded["adc"]["min_channel"] == 0
     assert loaded["efficiency"]["eff_po214"] == 0.4
+
+
+def test_load_config_missing_key(tmp_path):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "spectral_fit": {},
+        "time_fit": {"do_time_fit": True},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    p = tmp_path / "cfg.json"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+    with pytest.raises(KeyError):
+        load_config(str(p))
+
+
+def test_load_config_missing_section(tmp_path):
+    cfg = {
+        "spectral_fit": {"expected_peaks": {"Po210": 1}},
+        "time_fit": {"do_time_fit": True},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    p = tmp_path / "cfg.json"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+    with pytest.raises(KeyError):
+        load_config(str(p))
 
 
 def test_load_events(tmp_path):
