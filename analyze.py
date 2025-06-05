@@ -221,10 +221,10 @@ def main():
         bin_cfg = cfg["spectral_fit"].get("binning")
         if bin_cfg is not None:
             method = bin_cfg.get("method", "adc").lower()
-            default_bins = bin_cfg.get("default_bins", 400)
+            default_bins = bin_cfg.get("default_bins")
         else:
             method = str(cfg["spectral_fit"].get("spectral_binning_mode", "adc")).lower()
-            default_bins = cfg["spectral_fit"].get("fd_hist_bins", 400)
+            default_bins = cfg["spectral_fit"].get("fd_hist_bins")
 
         if method == "fd":
             E_all = events["energy_MeV"].values
@@ -282,7 +282,7 @@ def main():
             mu = centroid_adc * a + c  # convert to MeV
             priors_spec[f"mu_{peak}"] = (
                 mu,
-                cfg["spectral_fit"].get("mu_sigma", 0.05)
+                cfg["spectral_fit"].get("mu_sigma")
             )
             # Observed raw-counts around the expected energy window
             peak_tol = cfg["spectral_fit"].get("spectral_peak_tolerance_mev", 0.3)
@@ -295,20 +295,20 @@ def main():
             mu_amp = max(raw_count, 1.0)
             sigma_amp = max(
                 np.sqrt(mu_amp),
-                cfg["spectral_fit"].get("amp_prior_scale", 1.0) * mu_amp
+                cfg["spectral_fit"].get("amp_prior_scale") * mu_amp
             )
             priors_spec[f"S_{peak}"] = (mu_amp, sigma_amp)
 
             # If EMG tails are requested for this peak:
             if cfg["spectral_fit"].get("use_emg", {}).get(peak, False):
                 priors_spec[f"tau_{peak}"] = (
-                    cfg["spectral_fit"].get(f"tau_{peak}_prior_mean", 0.0),
-                    cfg["spectral_fit"].get(f"tau_{peak}_prior_sigma", 0.0)
+                    cfg["spectral_fit"].get(f"tau_{peak}_prior_mean"),
+                    cfg["spectral_fit"].get(f"tau_{peak}_prior_sigma")
                 )
 
         # Continuum priors
-        priors_spec["b0"] = tuple(cfg["spectral_fit"].get("b0_prior", (0.0, 1.0)))
-        priors_spec["b1"] = tuple(cfg["spectral_fit"].get("b1_prior", (0.0, 1.0)))
+        priors_spec["b0"] = tuple(cfg["spectral_fit"].get("b0_prior"))
+        priors_spec["b1"] = tuple(cfg["spectral_fit"].get("b1_prior"))
 
         # Flags controlling the spectral fit
         spec_flags = cfg["spectral_fit"].get("flags", {}).copy()
