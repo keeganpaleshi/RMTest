@@ -63,6 +63,7 @@
         "plot_spectrum_binsize_adc": 1,
         "plot_time_binning_mode": "auto",
         "plot_time_bin_width_s": 3600,
+        "time_bins_fallback": 1,  // fallback number of time bins
         "plot_save_formats": ["png", "pdf"],
         "plot_show_residuals": true
     }
