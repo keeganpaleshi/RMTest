@@ -50,6 +50,7 @@ def test_plot_time_series_none_fit_results(tmp_path):
     assert out_png.exists()
 
 
+
 def test_plot_time_series_lines_style(tmp_path):
     cfg = basic_config()
     cfg["plot_time_style"] = "lines"
@@ -58,6 +59,7 @@ def test_plot_time_series_lines_style(tmp_path):
     out_png = tmp_path / "ts_lines.png"
     plot_time_series(times, energies, None, 999.0, 1002.0, cfg, str(out_png))
     assert out_png.exists()
+
 
 
 def test_plot_time_series_auto_fd(tmp_path):
@@ -89,4 +91,3 @@ def test_plot_time_series_auto_fd(tmp_path):
         expected = max(1, int(np.ceil((arr.max() - arr.min()) / bw)))
 
     assert len(centers) == expected
-
