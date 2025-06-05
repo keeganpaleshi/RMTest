@@ -3,6 +3,9 @@
         "log_level": "INFO",
         "random_seed": null
     },
+    "analysis": {
+        "analysis_start_time": null
+    },
     "calibration": {
         "method": "auto",
         "noise_cutoff": 300,

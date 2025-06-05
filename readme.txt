@@ -48,6 +48,11 @@ centroids for Po‑210, Po‑218 and Po‑214 when using automatic calibration.
 If omitted, defaults of `{"Po210": 1250, "Po218": 1400, "Po214": 1800}`
 are used.
 
+`analysis_start_time` in the optional `analysis` section sets the global
+time origin for decay fitting and time-series plots.  Provide an
+ISO‑8601 string such as `"2020-01-01T00:00:00Z"`.  When omitted the first
+event timestamp is used.
+
 `time_bins_fallback` under the `plotting` section sets the number of
 histogram bins to use when the automatic Freedman&ndash;Diaconis rule
 fails, typically due to zero IQR.  The default is `1`.
