@@ -70,6 +70,14 @@ time origin for decay fitting and time-series plots.  Provide an
 ISO‑8601 string such as `"2020-01-01T00:00:00Z"`.  When omitted the first
 event timestamp is used.
 
+`burst_filter` controls removal of short high-rate clusters.  The
+command-line option `--burst-mode` chooses the strategy:
+`none` disables the filter, `micro` applies a short sliding-window veto
+defined by `micro_window_size_s` and `micro_count_threshold`, `rate`
+uses the rolling-median threshold (`burst_window_size_s`,
+`rolling_median_window`, `burst_multiplier`) and `both` applies the
+micro filter followed by the rate veto.  The default mode is `rate`.
+
 `time_bins_fallback` under the `plotting` section sets the number of
 histogram bins to use when the automatic Freedman&ndash;Diaconis rule
 fails, typically due to zero IQR.  The default is `1`.

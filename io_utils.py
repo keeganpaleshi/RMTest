@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 import pandas as pd
 
+import numpy as np
 from utils import to_native
 
 logger = logging.getLogger(__name__)
@@ -75,8 +76,15 @@ def load_events(csv_path):
     return df
 
 
-def apply_burst_filter(df, cfg):
+def apply_burst_filter(df, cfg, mode="rate"):
     """Remove events occurring during high-rate bursts.
+
+    ``mode`` selects the filtering strategy:
+
+    ``'none'`` – return the input unchanged;
+    ``'micro'`` – short sliding-window burst veto;
+    ``'rate'`` – rolling-median rate-based veto (legacy behaviour);
+    ``'both'`` – apply the micro window first then the rate veto.
 
     Parameters
     ----------
@@ -96,36 +104,58 @@ def apply_burst_filter(df, cfg):
     """
 
     bcfg = cfg.get("burst_filter", {})
-    win = bcfg.get("burst_window_size_s")
-    roll = bcfg.get("rolling_median_window")
-    mult = bcfg.get("burst_multiplier")
 
-    if win is None or roll is None or mult is None:
+    if mode == "none" or len(df) == 0:
         return df.copy(), 0
 
-    if len(df) == 0:
-        return df.copy(), 0
+    removed_total = 0
+    out_df = df.copy()
 
-    # Bin indices relative to first timestamp
-    t0 = df["timestamp"].min()
-    bins = ((df["timestamp"] - t0) // float(win)).astype(int)
+    # ───── micro-burst veto ─────
+    if mode in ("micro", "both"):
+        micro_win = bcfg.get("micro_window_size_s")
+        micro_thr = bcfg.get("micro_count_threshold")
 
-    counts = bins.value_counts().sort_index()
-    full_index = range(counts.index.min(), counts.index.max() + 1)
-    counts_full = counts.reindex(full_index, fill_value=0)
+        if micro_win is not None and micro_thr is not None:
+            times = out_df["timestamp"].values
+            to_remove = np.zeros(len(times), dtype=bool)
+            for i in range(len(times)):
+                if to_remove[i]:
+                    continue
+                j = np.searchsorted(times, times[i] + float(micro_win), side="right")
+                if j - i >= int(micro_thr):
+                    to_remove[i:j] = True
+            removed_total += int(to_remove.sum())
+            out_df = out_df[~to_remove].reset_index(drop=True)
 
-    med = (
-        counts_full
-        .rolling(int(roll), center=True, min_periods=1)
-        .median()
-    )
+    # ───── rate-based veto ─────
+    if mode in ("rate", "both"):
+        win = bcfg.get("burst_window_size_s")
+        roll = bcfg.get("rolling_median_window")
+        mult = bcfg.get("burst_multiplier")
 
-    threshold = mult * med
-    burst_bins = counts_full[counts_full > threshold].index
-    mask = ~bins.isin(burst_bins)
+        if win is not None and roll is not None and mult is not None and len(out_df) > 0:
+            t0 = out_df["timestamp"].min()
+            bins = ((out_df["timestamp"] - t0) // float(win)).astype(int)
 
-    removed = int((~mask).sum())
-    return df[mask].reset_index(drop=True), removed
+            counts = bins.value_counts().sort_index()
+            full_index = range(counts.index.min(), counts.index.max() + 1)
+            counts_full = counts.reindex(full_index, fill_value=0)
+
+            med = (
+                counts_full
+                .rolling(int(roll), center=True, min_periods=1)
+                .median()
+            )
+
+            threshold = mult * med
+            burst_bins = counts_full[counts_full > threshold].index
+            mask = ~bins.isin(burst_bins)
+
+            removed_total += int((~mask).sum())
+            out_df = out_df[mask].reset_index(drop=True)
+
+    return out_df, removed_total
 
 
 def write_summary(output_dir, summary_dict, timestamp=None):

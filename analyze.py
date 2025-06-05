@@ -99,6 +99,12 @@ def parse_args():
             "listed in `baseline` of the summary."
         ),
     )
+    p.add_argument(
+        "--burst-mode",
+        default="rate",
+        choices=["none", "micro", "rate", "both"],
+        help="Burst filtering mode to pass to apply_burst_filter",
+    )
     return p.parse_args()
 
 
@@ -155,7 +161,7 @@ def main():
     events["timestamp"] = events["timestamp"].astype(float)
 
     # Optional burst filter to remove high-rate clusters
-    events, n_removed_burst = apply_burst_filter(events, cfg)
+    events, n_removed_burst = apply_burst_filter(events, cfg, mode=args.burst_mode)
 
     # Global t₀ reference
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
