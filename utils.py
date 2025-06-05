@@ -3,7 +3,7 @@
 import numpy as np
 from scipy.signal import find_peaks
 
-__all__ = ["to_native", "find_adc_peaks"]
+__all__ = ["to_native", "find_adc_peaks", "cps_to_cpd", "cps_to_bq"]
 
 
 def to_native(obj):
@@ -85,3 +85,39 @@ def find_adc_peaks(adc_values, expected, window=50, prominence=0.0, width=None):
             results[name] = float(guess)
 
     return results
+
+
+def cps_to_cpd(rate_cps):
+    """Convert counts/s to counts/day."""
+    return rate_cps * 86400.0
+
+
+def cps_to_bq(rate_cps, volume_liters=None):
+    """Convert counts/s to activity in Bq.
+
+    If ``volume_liters`` is provided, the result is returned as Bq/m^3
+    assuming ``volume_liters`` describes the detector volume.
+    """
+
+    if volume_liters is None:
+        return float(rate_cps)
+
+    volume_m3 = volume_liters / 1000.0
+    if volume_m3 <= 0:
+        raise ValueError("volume_liters must be positive")
+    return float(rate_cps) / volume_m3
+
+
+if __name__ == "__main__":
+    import argparse
+
+    p = argparse.ArgumentParser(description="Utility conversions")
+    p.add_argument("rate_cps", type=float, help="Count rate in cps")
+    p.add_argument("--to", choices=["cpd", "bq"], required=True)
+    p.add_argument("--volume_liters", type=float, help="Detector volume in liters")
+    args = p.parse_args()
+
+    if args.to == "cpd":
+        print(cps_to_cpd(args.rate_cps))
+    else:
+        print(cps_to_bq(args.rate_cps, args.volume_liters))
