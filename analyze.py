@@ -469,7 +469,7 @@ def main():
             if not fit_out:
                 continue
 
-            # Build a wrapper to re‐run fit_decay with modified priors
+            # Build a wrapper to re‐run fit_time_series with modified priors
             def fit_wrapper(priors_mod):
                 win_range = cfg.get("time_fit", {}).get(f"window_{iso}")
                 if win_range is None:
@@ -478,15 +478,26 @@ def main():
                     (events["energy_MeV"] >= win_range[0]) &
                     (events["energy_MeV"] <= win_range[1])
                 ]
-                filtered_times = (
-                    filtered_df["timestamp"].values - t0_global
-                )
-                filtered_end = filtered_df["timestamp"].max() - t0_global
-                out = fit_decay(
-                    times=filtered_times,
-                    priors=priors_mod,
-                    t0=0.0,
-                    t_end=filtered_end
+                times_dict = {iso: filtered_df["timestamp"].values}
+                cfg_fit = {
+                    "isotopes": {
+                        iso: {
+                            "half_life_s": cfg["time_fit"][f"hl_{iso}"][0],
+                            "efficiency": priors_mod["eff"][0],
+                        }
+                    },
+                    "fit_background": not cfg["time_fit"]["flags"].get(
+                        "fix_background_b", False
+                    ),
+                    "fit_initial": not cfg["time_fit"]["flags"].get(
+                        f"fix_N0_{iso}", False
+                    ),
+                }
+                out = fit_time_series(
+                    times_dict,
+                    t0_global,
+                    filtered_df["timestamp"].max(),
+                    cfg_fit,
                 )
                 # Return the full fit result so scan_systematics can
                 # extract whichever parameter it needs.
