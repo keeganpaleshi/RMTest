@@ -76,8 +76,6 @@
         "plot_time_binning_mode": "auto",
         "plot_time_bin_width_s": 3600,
         "time_bins_fallback": 1,
-        "plot_save_formats": ["png", "pdf"]
-        "time_bins_fallback": 1,
         "plot_save_formats": ["png", "pdf"],
         "dump_time_series_json": false,
         "plot_time_style": "steps"
