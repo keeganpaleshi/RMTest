@@ -93,7 +93,7 @@ def test_plot_time_series_custom_half_life(tmp_path, monkeypatch):
     times = np.array([1000.1, 1000.2, 1001.1, 1001.8])
     energies = np.array([7.6, 7.7, 7.8, 7.7])
     cfg = basic_config()
-    cfg["hl_Po214"] = [2.0]
+    cfg["time_fit"] = {"hl_Po214": [2.0]}
 
     captured = {}
 
