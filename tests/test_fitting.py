@@ -122,3 +122,34 @@ def test_fit_spectrum_fixed_parameter_bounds():
 
     out = fit_spectrum(energies, priors, flags={"fix_mu_Po210": True})
     assert "mu_Po210" in out
+
+
+def test_fit_spectrum_custom_bins_and_edges():
+    """Providing custom binning should not break the fit."""
+    rng = np.random.default_rng(2)
+    energies = np.concatenate([
+        rng.normal(5.3, 0.05, 150),
+        rng.normal(6.0, 0.05, 150),
+        rng.normal(7.7, 0.05, 150),
+    ])
+
+    priors = {
+        "sigma_E": (0.05, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (150, 15),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (150, 15),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (150, 15),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+
+    # Using integer number of bins
+    out_bins = fit_spectrum(energies, priors, bins=30)
+    assert "sigma_E" in out_bins
+
+    # Using explicit bin edges
+    edges = np.linspace(5.0, 8.0, 25)
+    out_edges = fit_spectrum(energies, priors, bin_edges=edges)
+    assert "sigma_E" in out_edges

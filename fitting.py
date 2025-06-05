@@ -58,7 +58,7 @@ def fit_decay(times, priors, t0=0.0, t_end=None, flags=None):
     }
 
 
-def fit_spectrum(energies, priors, flags=None):
+def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None):
     """Fit three Gaussian peaks with a linear background to the spectrum.
 
     Parameters
@@ -71,6 +71,13 @@ def fit_spectrum(energies, priors, flags=None):
         Flags such as ``{"fix_sigma_E": True}`` to fix parameters. Fixed
         parameters are implemented by constraining the optimizer to a tiny
         interval (``±1e-12``) around the provided mean value.
+    bins : int or sequence, optional
+        Number of bins or bin edges to use when histogramming the input
+        energies.  Ignored if ``bin_edges`` is provided.  If both ``bins``
+        and ``bin_edges`` are ``None``, the Freedman--Diaconis rule is used.
+    bin_edges : array-like, optional
+        Explicit bin edges for histogramming the energies.  Takes precedence
+        over ``bins`` when given.
 
     Returns
     -------
@@ -85,8 +92,14 @@ def fit_spectrum(energies, priors, flags=None):
     if e.size == 0:
         raise RuntimeError("No energies provided to fit_spectrum")
 
-    # Histogram for chi2 fit using Freedman-Diaconis rule
-    hist, edges = np.histogram(e, bins="fd")
+    # Histogram according to provided binning parameters
+    if bin_edges is not None:
+        hist, edges = np.histogram(e, bins=np.asarray(bin_edges))
+    elif bins is not None:
+        hist, edges = np.histogram(e, bins=bins)
+    else:
+        # Default: Freedman-Diaconis rule
+        hist, edges = np.histogram(e, bins="fd")
     centers = 0.5 * (edges[:-1] + edges[1:])
     width = edges[1] - edges[0]
 

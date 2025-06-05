@@ -315,11 +315,14 @@ def main():
         # Launch the spectral fit
         spec_fit_out = None
         try:
-            spec_fit_out = fit_spectrum(
-                energies=events["energy_MeV"].values,
-                priors=priors_spec,
-                flags=spec_flags,
-            )
+            fit_kwargs = {
+                "energies": events["energy_MeV"].values,
+                "priors": priors_spec,
+                "flags": spec_flags,
+            }
+            if cfg["spectral_fit"].get("use_plot_bins_for_fit", False):
+                fit_kwargs.update({"bins": bins, "bin_edges": bin_edges})
+            spec_fit_out = fit_spectrum(**fit_kwargs)
             spectrum_results = spec_fit_out
         except Exception as e:
             print(f"WARNING: Spectral fit failed → {e}")
