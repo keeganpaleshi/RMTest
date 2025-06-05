@@ -32,9 +32,8 @@ def plot_time_series(
     config:         JSON dict or nested configuration
     out_png:        output path for the PNG file
     hl_Po214, hl_Po218: optional half-life values in seconds. If not
-        provided, these are looked up in ``config`` (first at the top
-        level and then under ``time_fit``) and finally fall back to the
-        built-in defaults.
+        provided, these are looked up in ``config`` and default to
+        ``PO214_HALF_LIFE_S`` and ``PO218_HALF_LIFE_S`` respectively.
     """
 
     if fit_results is None:
@@ -47,35 +46,27 @@ def plot_time_series(
             return cfg[key]
         return default
 
-    # Determine half-lives with precedence: explicit arg -> config["time_fit"] -> default
-    def _hl_from_config(cfg, key, default):
-        if isinstance(cfg, dict) and "time_fit" in cfg and key in cfg["time_fit"]:
-            val = cfg["time_fit"][key]
-        else:
-            val = None
-        if val is None:
-            return default
-        if isinstance(val, (list, tuple)):
-            return float(val[0])
-        return float(val)
-
-    hl_p214 = hl_Po214 if hl_Po214 is not None else _hl_from_config(
-        config, "hl_Po214", PO214_HALF_LIFE_S
+    po214_hl = (
+        float(hl_Po214)
+        if hl_Po214 is not None
+        else float(config.get("hl_Po214", [PO214_HALF_LIFE_S])[0])
     )
-    hl_p218 = hl_Po218 if hl_Po218 is not None else _hl_from_config(
-        config, "hl_Po218", PO218_HALF_LIFE_S
+    po218_hl = (
+        float(hl_Po218)
+        if hl_Po218 is not None
+        else float(config.get("hl_Po218", [PO218_HALF_LIFE_S])[0])
     )
 
     iso_params = {
         "Po214": {
             "window": _cfg_get(config, "window_Po214"),
             "eff": float(_cfg_get(config, "eff_Po214", [1.0])[0]),
-            "half_life": hl_p214,
+            "half_life": po214_hl,
         },
         "Po218": {
             "window": _cfg_get(config, "window_Po218"),
             "eff": float(_cfg_get(config, "eff_Po218", [1.0])[0]),
-            "half_life": hl_p218,
+            "half_life": po218_hl,
         },
     }
     iso_list = [iso for iso, p in iso_params.items() if p["window"] is not None]
