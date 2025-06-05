@@ -55,7 +55,6 @@
         "bkg_Po218": [0.0, 0.0],
         "sig_N0_Po214": 1.0,
         "sig_N0_Po218": 1.0,
-        "settling_time_s": 10800,
         "flags": {
             "fix_background_b": false,
             "fix_N0_Po218": false

@@ -76,6 +76,9 @@ parameters are scanned.
 plot.  Use `"steps"` (default) for a stepped histogram or `"lines"` to
 connect bin centers with straight lines.
 
+`settling_time_s` was removed from the `time_fit` section and is no
+longer needed.
+
 
 ## Running Tests
 
