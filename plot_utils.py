@@ -16,13 +16,23 @@ __all__ = ["plot_time_series", "plot_spectrum"]
 def plot_time_series(
     all_timestamps, all_energies, fit_results, t_start, t_end, config, out_png
 ):
-    """
-    all_timestamps: 1D np.ndarray of absolute UNIX times (s)
-    all_energies:   1D np.ndarray of energies (MeV)
-    fit_results:    dict from fit_time_series(...) or fit_decay(...)
-    t_start, t_end: floats (absolute UNIX times) for the fit window
-    config:         JSON dict
-    out_png:        output path for the PNG file
+    """Plot Po-214/Po-218 activity versus time.
+
+    Parameters
+    ----------
+    all_timestamps : np.ndarray
+        Absolute UNIX times in seconds.
+    all_energies : np.ndarray
+        Measured energies in MeV.
+    fit_results : dict or None
+        Result dictionary from :func:`fit_time_series` or similar.
+    t_start, t_end : float
+        Start and end of the fit window in absolute UNIX time.
+    config : dict
+        Configuration dictionary.  The ``plot_time_style`` option may be
+        set to ``"lines"`` to draw simple lines instead of histograms.
+    out_png : str
+        Output path for the PNG file.
     """
 
     if fit_results is None:
