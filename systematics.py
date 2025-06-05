@@ -1,12 +1,12 @@
 import math
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, Tuple, List
 
 
 def scan_systematics(
     fit_func: Callable,
     priors: Dict[str, Tuple[float, float]],
     sigma_dict: Dict[str, float],
-    keys: [str],
+    keys: List[str],
 ) -> Tuple[Dict[str, float], float]:
     """Scan parameter level systematics as per the imported implementation."""
     central = fit_func(priors)
