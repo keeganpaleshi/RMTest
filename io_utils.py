@@ -69,6 +69,16 @@ def load_events(csv_path):
     if missing:
         raise KeyError(f"Input CSV is missing required columns: {missing}")
 
+    # Drop rows with non-finite timestamp or adc values
+    start_len = len(df)
+    mask = np.isfinite(df["timestamp"]) & np.isfinite(df["adc"])
+    df = df[mask]
+
+    # Remove exact duplicate rows
+    df = df.drop_duplicates()
+
+    discarded = start_len - len(df)
+
     # Convert types
     df["timestamp"] = df["timestamp"].astype(int)
     df["adc"] = df["adc"].astype(int)
@@ -76,7 +86,9 @@ def load_events(csv_path):
     # Sort by timestamp
     df = df.sort_values("timestamp").reset_index(drop=True)
 
-    logger.info(f"Loaded {len(df)} events from {csv_path}.")
+    logger.info(
+        f"Loaded {len(df)} events from {csv_path} ({discarded} discarded)."
+    )
     return df
 
 

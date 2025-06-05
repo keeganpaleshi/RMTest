@@ -3,6 +3,7 @@ import json
 import tempfile
 from pathlib import Path
 import sys
+import logging
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -89,7 +90,7 @@ def test_load_config_missing_section(tmp_path):
         load_config(str(p))
 
 
-def test_load_events(tmp_path):
+def test_load_events(tmp_path, caplog):
     df = pd.DataFrame(
         {
             "fUniqueID": [1, 2, 3],
@@ -101,9 +102,30 @@ def test_load_events(tmp_path):
     )
     p = tmp_path / "data.csv"
     df.to_csv(p, index=False)
-    loaded = load_events(str(p))
+    with caplog.at_level(logging.INFO):
+        loaded = load_events(str(p))
     assert np.array_equal(loaded["timestamp"].values, np.array([1000, 1005, 1010]))
     assert np.array_equal(loaded["adc"].values, np.array([1200, 1300, 1250]))
+    assert "0 discarded" in caplog.text
+
+
+def test_load_events_drop_bad_rows(tmp_path, caplog):
+    df = pd.DataFrame(
+        {
+            "fUniqueID": [1, 2, 2, 3, 4, 5],
+            "fBits": [0, 0, 0, 0, 0, 0],
+            "timestamp": [1000, 1005, 1005, 1010, np.nan, 1020],
+            "adc": [1200, 1300, 1300, np.inf, 1350, 1250],
+            "fchannel": [1, 1, 1, 1, 1, 1],
+        }
+    )
+    p = tmp_path / "data_bad.csv"
+    df.to_csv(p, index=False)
+    with caplog.at_level(logging.INFO):
+        loaded = load_events(str(p))
+    # Expect rows with NaN/inf removed and duplicate dropped
+    assert np.array_equal(loaded["timestamp"].values, np.array([1000, 1005, 1020]))
+    assert "3 discarded" in caplog.text
 
 
 def test_write_summary_and_copy_config(tmp_path):
