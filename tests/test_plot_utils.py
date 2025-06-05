@@ -121,3 +121,36 @@ def test_plot_time_series_custom_half_life(tmp_path, monkeypatch):
     expected = 0.1 * (1.0 - np.exp(-lam * centers))
     assert "y" in captured
     assert np.allclose(captured["y"], expected, rtol=1e-4)
+
+
+def test_plot_time_series_nested_config(tmp_path, monkeypatch):
+    times = np.array([1000.1, 1000.2])
+    energies = np.array([7.6, 7.7])
+    cfg = {"time_fit": basic_config(), "plotting": {}}
+    cfg["time_fit"]["hl_Po214"] = [2.0]
+
+    captured = {}
+
+    def fake_plot(x, y, *args, **kwargs):
+        if kwargs.get("label") == "Model Po214":
+            captured["y"] = np.array(y)
+        return type("obj", (), {})()
+
+    monkeypatch.setattr("plot_utils.plt.plot", fake_plot)
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    plot_time_series(
+        times,
+        energies,
+        {"E": 0.1, "B": 0.0, "N0": 0.0},
+        1000.0,
+        1001.0,
+        cfg,
+        str(tmp_path / "ts_nested.png"),
+    )
+
+    lam = np.log(2.0) / 2.0
+    centers = np.array([0.5])
+    expected = 0.1 * (1.0 - np.exp(-lam * centers))
+    assert np.allclose(captured.get("y"), expected, rtol=1e-4)
+

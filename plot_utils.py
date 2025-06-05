@@ -14,30 +14,65 @@ __all__ = ["plot_time_series", "plot_spectrum"]
 
 
 def plot_time_series(
-    all_timestamps, all_energies, fit_results, t_start, t_end, config, out_png
+    all_timestamps,
+    all_energies,
+    fit_results,
+    t_start,
+    t_end,
+    config,
+    out_png,
+    hl_Po214=None,
+    hl_Po218=None,
 ):
     """
     all_timestamps: 1D np.ndarray of absolute UNIX times (s)
     all_energies:   1D np.ndarray of energies (MeV)
     fit_results:    dict from fit_time_series(...) or fit_decay(...)
     t_start, t_end: floats (absolute UNIX times) for the fit window
-    config:         JSON dict
+    config:         JSON dict or nested configuration
     out_png:        output path for the PNG file
+    hl_Po214, hl_Po218: optional half-life values in seconds. If not
+        provided, these are looked up in ``config`` (first at the top
+        level and then under ``time_fit``) and finally fall back to the
+        built-in defaults.
     """
 
     if fit_results is None:
         fit_results = {}
 
+    def _cfg_get(cfg, key, default=None):
+        if isinstance(cfg, dict) and key in cfg:
+            return cfg[key]
+        if isinstance(cfg, dict) and "time_fit" in cfg and key in cfg["time_fit"]:
+            return cfg["time_fit"][key]
+        return default
+
+    # Determine half-lives with precedence: explicit argument -> config -> default
+    def _hl_from_config(cfg, key, default):
+        val = _cfg_get(cfg, key)
+        if val is None:
+            return default
+        if isinstance(val, (list, tuple)):
+            return float(val[0])
+        return float(val)
+
+    hl_p214 = hl_Po214 if hl_Po214 is not None else _hl_from_config(
+        config, "hl_Po214", PO214_HALF_LIFE_S
+    )
+    hl_p218 = hl_Po218 if hl_Po218 is not None else _hl_from_config(
+        config, "hl_Po218", PO218_HALF_LIFE_S
+    )
+
     iso_params = {
         "Po214": {
-            "window": config.get("window_Po214"),
-            "eff": float(config.get("eff_Po214", [1.0])[0]),
-            "half_life": float(config.get("hl_Po214", [PO214_HALF_LIFE_S])[0]),
+            "window": _cfg_get(config, "window_Po214"),
+            "eff": float(_cfg_get(config, "eff_Po214", [1.0])[0]),
+            "half_life": hl_p214,
         },
         "Po218": {
-            "window": config.get("window_Po218"),
-            "eff": float(config.get("eff_Po218", [1.0])[0]),
-            "half_life": float(config.get("hl_Po218", [PO218_HALF_LIFE_S])[0]),
+            "window": _cfg_get(config, "window_Po218"),
+            "eff": float(_cfg_get(config, "eff_Po218", [1.0])[0]),
+            "half_life": hl_p218,
         },
     }
     iso_list = [iso for iso, p in iso_params.items() if p["window"] is not None]
