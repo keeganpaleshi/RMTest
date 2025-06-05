@@ -281,6 +281,14 @@ def main():
 
         for peak, centroid_adc in adc_peaks.items():
             mu = centroid_adc * a + c  # convert to MeV
+            bounds_cfg = cfg["spectral_fit"].get("mu_bounds", {})
+            bounds = bounds_cfg.get(peak)
+            if bounds is not None:
+                lo, hi = bounds
+                if not lo < hi:
+                    raise ValueError(f"mu_bounds for {peak} require lower < upper")
+                if not (lo <= mu <= hi):
+                    mu = np.clip(mu, lo, hi)
             priors_spec[f"mu_{peak}"] = (
                 mu,
                 cfg["spectral_fit"].get("mu_sigma")

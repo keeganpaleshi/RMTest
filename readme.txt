@@ -70,7 +70,8 @@ fit.  Important keys include:
   `use_emg` enables that tail.
 - `mu_bounds` – optional lower/upper limits for each peak centroid.
   Set for example `{"Po218": [5.9, 6.2]}` to keep the Po‑218 fit from
-  drifting into the Po‑210 region.
+  drifting into the Po‑210 region.  Centroid guesses found during peak
+  search are clamped to this range before the fit starts.
 
 `dump_time_series_json` under `plotting` saves a `*_ts.json` file
 containing the binned time-series data when set to `true`.
