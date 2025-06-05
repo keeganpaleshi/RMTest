@@ -57,7 +57,13 @@ import numpy as np
 import pandas as pd
 
 # ‣ Import our supporting modules (all must live in the same folder).
-from io_utils import load_config, copy_config, load_events, write_summary
+from io_utils import (
+    load_config,
+    copy_config,
+    load_events,
+    write_summary,
+    apply_burst_filter,
+)
 from calibration import derive_calibration_constants, derive_calibration_constants_auto
 from fitting import fit_spectrum, fit_time_series
 from plot_utils import plot_spectrum, plot_time_series
@@ -147,6 +153,9 @@ def main():
         events["timestamp"] = pd.to_datetime(events["timestamp"]).astype(np.int64) / 1e9
 
     events["timestamp"] = events["timestamp"].astype(float)
+
+    # Optional burst filter to remove high-rate clusters
+    events, n_removed_burst = apply_burst_filter(events, cfg)
 
     # Global t₀ reference
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
@@ -533,6 +542,7 @@ def main():
         "time_fit": time_fit_results,
         "systematics": systematics_results,
         "baseline": baseline_info,
+        "burst_filter": {"removed_events": int(n_removed_burst)},
     }
 
     out_dir = write_summary(args.output_dir, summary, now_str)
