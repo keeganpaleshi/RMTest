@@ -3,7 +3,6 @@
 # -----------------------------------------------------
 
 import numpy as np
-from math import exp, log
 from iminuit import Minuit
 from scipy.optimize import curve_fit
 
