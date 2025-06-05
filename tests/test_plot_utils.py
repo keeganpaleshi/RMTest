@@ -87,3 +87,37 @@ def test_plot_spectrum_save_formats(tmp_path):
     plot_spectrum(energies, config=cfg, out_png=str(out_png))
     assert out_png.exists()
     assert out_png.with_suffix('.pdf').exists()
+
+
+def test_plot_time_series_custom_half_life(tmp_path, monkeypatch):
+    times = np.array([1000.1, 1000.2, 1001.1, 1001.8])
+    energies = np.array([7.6, 7.7, 7.8, 7.7])
+    cfg = basic_config()
+    cfg["hl_Po214"] = [2.0]
+
+    captured = {}
+
+    def fake_plot(x, y, *args, **kwargs):
+        label = kwargs.get("label")
+        if label == "Model Po214":
+            captured["y"] = np.array(y)
+        return type("obj", (), {})()
+
+    monkeypatch.setattr("plot_utils.plt.plot", fake_plot)
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    plot_time_series(
+        times,
+        energies,
+        {"E": 0.1, "B": 0.0, "N0": 0.0},
+        1000.0,
+        1002.0,
+        cfg,
+        str(tmp_path / "ts_custom.png"),
+    )
+
+    lam = np.log(2.0) / 2.0
+    centers = np.array([0.5, 1.5])
+    expected = 0.1 * (1.0 - np.exp(-lam * centers))
+    assert "y" in captured
+    assert np.allclose(captured["y"], expected, rtol=1e-4)
