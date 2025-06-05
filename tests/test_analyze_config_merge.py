@@ -18,6 +18,9 @@ def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
             "do_time_fit": True,
             "window_Po214": [7.5, 8.0],
             "window_Po218": None,
+            "hl_Po214": [1.0, 0.0],
+            "eff_Po214": [1.0, 0.0],
+            "flags": {},
         },
         "systematics": {"enable": False},
         "plotting": {
@@ -44,7 +47,7 @@ def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
     # Patch heavy functions with no-op versions
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)})
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)})
-    monkeypatch.setattr(analyze, "fit_decay", lambda *a, **k: {})
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: {})
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
 
     received = {}
