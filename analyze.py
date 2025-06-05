@@ -512,6 +512,8 @@ def main():
         try:
             plot_cfg = dict(cfg.get("time_fit", {}))
             plot_cfg.update(cfg.get("plotting", {}))
+            other = "Po214" if iso == "Po218" else "Po218"
+            plot_cfg[f"window_{other}"] = None
             _ = plot_time_series(
                 all_timestamps=pdata["events_times"],
                 all_energies=pdata["events_energy"],
