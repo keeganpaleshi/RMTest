@@ -59,7 +59,7 @@ def fit_decay(times, priors, t0=0.0, t_end=None, flags=None):
     }
 
 
-def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None):
+def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None, bounds=None):
     """Fit three Gaussian peaks with a linear background to the spectrum.
 
     Parameters
@@ -79,6 +79,10 @@ def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None):
     bin_edges : array-like, optional
         Explicit bin edges for histogramming the energies.  Takes precedence
         over ``bins`` when given.
+    bounds : dict, optional
+        Mapping of parameter name to ``(lower, upper)`` tuples overriding the
+        default ±5σ range derived from the priors.  ``None`` values disable a
+        limit on that side.
 
     Returns
     -------
@@ -130,12 +134,20 @@ def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None):
         p0.append(mean)
         if flags.get(f"fix_{name}", False) or sig == 0:
             # curve_fit requires lower < upper; use a tiny width around fixed values
-            bounds_lo.append(mean - eps)
-            bounds_hi.append(mean + eps)
+            lo = mean - eps
+            hi = mean + eps
         else:
             delta = 5 * sig if np.isfinite(sig) else np.inf
-            bounds_lo.append(mean - delta)
-            bounds_hi.append(mean + delta)
+            lo = mean - delta
+            hi = mean + delta
+        if bounds and name in bounds:
+            user_lo, user_hi = bounds[name]
+            if user_lo is not None:
+                lo = max(lo, user_lo)
+            if user_hi is not None:
+                hi = min(hi, user_hi)
+        bounds_lo.append(lo)
+        bounds_hi.append(hi)
 
     iso_list = ["Po210", "Po218", "Po214"]
 
