@@ -34,7 +34,6 @@
     },
     "time_fit": {
         "do_time_fit": true,
-        "time_fit_bin_width_s": "auto",
         "window_Po214": [7.4, 7.9],
         "window_Po218": [5.8, 6.3],
         "eff_Po214": [0.40, 0.0],
@@ -46,7 +45,6 @@
         "sig_N0_Po214": 1.0,
         "sig_N0_Po218": 1.0,
         "settling_time_s": 10800,
-        "confidence_level": 0.95,
         "flags": {
             "fix_background_b": false,
             "fix_N0_Po218": false
