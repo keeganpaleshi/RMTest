@@ -84,6 +84,10 @@ parameters are scanned.
 plot.  Use `"steps"` (default) for a stepped histogram or `"lines"` to
 connect bin centers with straight lines.
 
+`overlay_isotopes` under `plotting` keeps both energy windows when
+calling `plot_time_series`.  When `true`, Po‑214 and Po‑218 are overlaid
+in the same plot instead of appearing separately.
+
 `sig_N0_Po214` and `sig_N0_Po218` set the uncertainty on the prior for the
 initial activity `N0` when no baseline range is provided.
 
