@@ -85,7 +85,6 @@ def plot_time_series(
     # 2) Plot each isotope s histogram + overlay the model:
     plt.figure(figsize=(8, 6))
     colors = {"Po214": "tab:red", "Po218": "tab:blue"}
-    legend_entries = []
 
     for iso in iso_list:
         emin, emax = iso_params[iso]["window"]
