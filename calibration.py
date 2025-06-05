@@ -22,12 +22,14 @@ def emg_left(x, mu, sigma, tau):
     # Prevent overflow for extremely small tau values by applying a minimum
     # positive bound.  Values near zero effectively revert to a Gaussian.
     tau = max(tau, 1e-6)
-    # reflect x → (mu - x) to get a low-E tail:
+    # reflect x -> (mu - x) to get a low-E tail:
     lam = 1.0 / tau
     # use scipy’s erfc for the convolution; but for simplicity, we can approximate:
     # EMG(x) = (lam/2) * exp( (lam/2)*(2*mu + lam*sigma^2 - 2*x) ) * erfc((mu + lam*sigma^2 - x)/(sqrt(2)*sigma))
     from scipy.special import erfc
     exponent = (lam / 2) * (2 * mu + lam * sigma**2 - 2 * x)
+    # Prevent numerical overflow in the exponential term
+    exponent = np.clip(exponent, -700, 700)
     arg = (mu + lam * sigma**2 - x) / (sigma * np.sqrt(2))
     return (lam / 2.0) * np.exp(exponent) * erfc(arg)
 
@@ -89,7 +91,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
     peaks, props = find_peaks(hist, prominence=prom, width=wid)
 
     # 3) From the found peaks, pick the three that best match expected energies:
-    #    Convert expected energy→ADC guess via last calibration or central ADC→MeV mapping if available.
+    #    Convert expected energy->ADC guess via last calibration or central ADC->MeV mapping if available.
     #    For the first run, use rough nominal ADC guesses from config:
     # e.g. {"Po210": 800, "Po218": 900, "Po214": 1200}
     nominal_adc = config["calibration"]["nominal_adc"]
@@ -183,7 +185,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
     E214 = KNOWN_ENERGIES["Po214"]
     a, c = two_point_calibration([adc210, adc214], [E210, E214])
 
-    # 6) Convert σADC → σE (MeV) by σE = a * σADC.  For simplicity, we ignore error propagation of slope/intercept here.
+    # 6) Convert σADC -> σE (MeV) by σE = a * σADC.  For simplicity, we ignore error propagation of slope/intercept here.
     # use Po-214 width as representative
     sigma_E = abs(a) * (peak_fits["Po214"]["sigma_adc"])
 
