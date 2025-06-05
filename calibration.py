@@ -19,6 +19,9 @@ def emg_left(x, mu, sigma, tau):
     """
     if tau <= 0:
         return np.exp(-0.5 * ((x - mu) / sigma) ** 2) / (sigma * np.sqrt(2 * np.pi))
+    # Prevent overflow for extremely small tau values by applying a minimum
+    # positive bound.  Values near zero effectively revert to a Gaussian.
+    tau = max(tau, 1e-6)
     # reflect x → (mu - x) to get a low-E tail:
     lam = 1.0 / tau
     z = (mu - x) / (sigma * np.sqrt(2))
@@ -126,7 +129,9 @@ def calibrate_run(adc_values, config):
         mu0 = float(x0)
         # e.g. ~10 ADC channels
         sigma0 = config["calibration"]["init_sigma_adc"]
-        tau0 = config["calibration"]["init_tau_adc"] if use_emg else 0.0
+        tau_cfg = config["calibration"].get("init_tau_adc", 0.0)
+        # Avoid zero or negative starting tau which can cause numerical issues
+        tau0 = max(tau_cfg, 1e-6) if use_emg else 0.0
 
         if use_emg and iso in ("Po210", "Po218"):
             # Fit EMG: parameters [amp, mu, sigma, tau]
@@ -228,7 +233,7 @@ def derive_calibration_constants_auto(adc_values, noise_cutoff=300, hist_bins=20
             "fit_window_adc": 50,
             "use_emg": False,
             "init_sigma_adc": 10.0,
-            "init_tau_adc": 0.0,
+            "init_tau_adc": 1.0,
         }
     }
 

@@ -14,7 +14,7 @@
         "fit_window_adc": 50,
         "use_emg": false,
         "init_sigma_adc": 10.0,
-        "init_tau_adc": 0.0
+        "init_tau_adc": 1.0
     },
     "spectral_fit": {
         "do_spectral_fit": true,

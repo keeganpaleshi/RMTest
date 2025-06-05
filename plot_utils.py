@@ -99,12 +99,11 @@ def plot_time_series(
 
         # Histogram of observed counts:
         counts_iso, _ = np.histogram(t_iso_rel, bins=edges)
-        plt.bar(
+        plt.step(
             centers,
             counts_iso,
-            width=bin_widths,
+            where="mid",
             color=colors[iso],
-            alpha=0.5,
             label=f"Data {iso}",
         )
 
@@ -128,8 +127,14 @@ def plot_time_series(
 
         # Convert  rate (counts/s)     expected counts per bin = r_rel * bin_width
         model_counts = r_rel * bin_widths
-        plt.plot(centers, model_counts,
-                 color=colors[iso], lw=2, label=f"Model {iso}")
+        plt.plot(
+            centers,
+            model_counts,
+            color=colors[iso],
+            lw=2,
+            ls="--",
+            label=f"Model {iso}",
+        )
 
     plt.xlabel("Time since t_start (s)")
     plt.ylabel("Counts per bin")
