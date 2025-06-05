@@ -533,12 +533,15 @@ def main():
         except Exception as e:
             print(f"WARNING: Could not create spectrum plot: {e}")
 
+    overlay = cfg.get("plotting", {}).get("overlay_isotopes", False)
+
     for iso, pdata in time_plot_data.items():
         try:
             plot_cfg = dict(cfg.get("time_fit", {}))
             plot_cfg.update(cfg.get("plotting", {}))
             other = "Po214" if iso == "Po218" else "Po218"
-            plot_cfg[f"window_{other}"] = None
+            if not overlay:
+                plot_cfg[f"window_{other}"] = None
             _ = plot_time_series(
                 all_timestamps=pdata["events_times"],
                 all_energies=pdata["events_energy"],

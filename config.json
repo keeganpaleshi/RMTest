@@ -82,6 +82,7 @@
         "time_bins_fallback": 1,
         "plot_save_formats": ["png", "pdf"],
         "dump_time_series_json": false,
-        "plot_time_style": "steps"
+        "plot_time_style": "steps",
+        "overlay_isotopes": false
     }
 }

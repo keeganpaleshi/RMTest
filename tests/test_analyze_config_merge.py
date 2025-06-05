@@ -26,6 +26,7 @@ def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
         "plotting": {
             "plot_time_binning_mode": "fd",
             "plot_save_formats": ["png"],
+            "overlay_isotopes": True,
         },
     }
     cfg_path = tmp_path / "cfg.json"
@@ -73,3 +74,4 @@ def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
 
     assert received["config"]["plot_time_binning_mode"] == "fd"
     assert received["config"]["window_Po214"] == [7.5, 8.0]
+    assert received["config"]["overlay_isotopes"] is True
