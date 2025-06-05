@@ -169,3 +169,50 @@ def test_apply_burst_filter_with_burst():
     filtered, removed = apply_burst_filter(df, cfg)
     assert removed == 60
     assert len(filtered) == len(times) - 60
+
+
+def test_apply_burst_filter_mode_none():
+    df = pd.DataFrame(
+        {
+            "fUniqueID": range(10),
+            "fBits": [0] * 10,
+            "timestamp": [0] * 10,
+            "adc": [1000] * 10,
+            "fchannel": [1] * 10,
+        }
+    )
+    cfg = {
+        "burst_filter": {
+            "burst_window_size_s": 1,
+            "rolling_median_window": 1,
+            "burst_multiplier": 2,
+            "micro_window_size_s": 0.1,
+            "micro_count_threshold": 2,
+        }
+    }
+    filtered, removed = apply_burst_filter(df, cfg, mode="none")
+    assert len(filtered) == len(df)
+    assert removed == 0
+
+
+def test_apply_burst_filter_micro_burst():
+    times = np.concatenate([np.arange(10), np.full(4, 20)])
+    df = pd.DataFrame(
+        {
+            "fUniqueID": range(len(times)),
+            "fBits": [0] * len(times),
+            "timestamp": times,
+            "adc": [1000] * len(times),
+            "fchannel": [1] * len(times),
+        }
+    )
+    cfg = {
+        "burst_filter": {
+            "micro_window_size_s": 1,
+            "micro_count_threshold": 3,
+        }
+    }
+    filtered, removed = apply_burst_filter(df, cfg, mode="micro")
+    assert removed == 4
+    assert len(filtered) == len(times) - 4
+

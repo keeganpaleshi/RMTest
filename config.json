@@ -9,7 +9,9 @@
     "burst_filter": {
         "burst_window_size_s": 60,
         "rolling_median_window": 5,
-        "burst_multiplier": 5
+        "burst_multiplier": 5,
+        "micro_window_size_s": 1,
+        "micro_count_threshold": 3
     },
     "calibration": {
         "method": "auto",
