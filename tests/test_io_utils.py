@@ -82,3 +82,18 @@ def test_write_summary_and_copy_config(tmp_path):
         json.dump(cfg, f)
     dest = copy_config(str(outdir), str(cp))
     assert Path(dest).exists()
+
+
+def test_write_summary_with_nullable_integers(tmp_path):
+    series = pd.Series([1, pd.NA], dtype="Int64")
+    summary = {"present": series.iloc[0], "missing": series.iloc[1], "list": series.tolist()}
+    outdir = tmp_path / "out2"
+    ts = "19700101T000001Z"
+    results = write_summary(str(outdir), summary, ts)
+    summary_path = Path(results) / "summary.json"
+    assert summary_path.exists()
+    with open(summary_path, "r", encoding="utf-8") as f:
+        loaded = json.load(f)
+    assert loaded["present"] == 1
+    assert loaded["missing"] is None
+    assert loaded["list"] == [1, None]
