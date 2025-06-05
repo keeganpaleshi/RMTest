@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from plot_utils import plot_time_series
+from plot_utils import plot_time_series, plot_spectrum
 
 
 def basic_config():
@@ -78,3 +78,12 @@ def test_plot_time_series_auto_fd(tmp_path):
         expected = max(1, int(np.ceil((arr.max() - arr.min()) / bw)))
 
     assert len(centers) == expected
+
+
+def test_plot_spectrum_save_formats(tmp_path):
+    energies = np.linspace(0, 10, 50)
+    cfg = {"plot_save_formats": ["png", "pdf"], "plot_spectrum_binsize_adc": 1}
+    out_png = tmp_path / "spec.png"
+    plot_spectrum(energies, config=cfg, out_png=str(out_png))
+    assert out_png.exists()
+    assert out_png.with_suffix('.pdf').exists()

@@ -502,6 +502,7 @@ def main():
                 out_png=os.path.join(out_dir, "spectrum.png"),
                 bins=spec_plot_data["bins"],
                 bin_edges=spec_plot_data["bin_edges"],
+                config=cfg.get("plotting", {}),
             )
         except Exception as e:
             print(f"WARNING: Could not create spectrum plot: {e}")
