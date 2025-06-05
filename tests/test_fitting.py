@@ -1,12 +1,11 @@
-import numpy as np
-import pytest
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
-from fitting import fit_decay
-from fitting import fit_spectrum
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from fitting import fit_time_series, fit_spectrum
 
 
 def simulate_decay(E_true, eff, T, n_events=1000):
@@ -16,54 +15,74 @@ def simulate_decay(E_true, eff, T, n_events=1000):
     return np.sort(np.random.uniform(0, T, n))
 
 
-def test_fit_decay_po214_only():
+def test_fit_time_series_po214_only():
     # Simulate simple scenario
     T = 3600  # 1 hour
     t_half = 164e-6
-    lambda_decay = np.log(2) / t_half
     E_true = 0.5  # decays/s
     eff = 0.4
     event_times = simulate_decay(E_true, eff, T)
 
-    # Add some Po-218 artificially? Skip for Po-214-only test
-    res = fit_decay(
-        times=event_times,
-        priors={
-            "eff": (eff, 0.0),
-            "tau": (1.0 / lambda_decay, 0.0),
-        },
-        t0=0.0,
-        t_end=T,
-        flags={},
-    )
-    E_fit = res["E"]
+    times_dict = {"Po214": event_times}
+    cfg = {
+        "isotopes": {"Po214": {"half_life_s": t_half, "efficiency": eff}},
+        "fit_background": True,
+        "fit_initial": True,
+    }
+
+    res = fit_time_series(times_dict, 0.0, T, cfg)
+    E_fit = res["E_Po214"]
     # Basic sanity: E_fit should be within factor of 2 of E_true (low stats)
     assert E_fit > 0
     assert abs(E_fit - E_true) / E_true < 1.0
 
 
-def test_fit_decay_time_window_config():
-    """Changing the energy window should alter the events passed to fit_decay."""
+def test_fit_time_series_time_window_config():
+    """Changing the energy window should alter the events passed to fit_time_series."""
     # Two groups of events at different energies
     times = np.linspace(0, 10, 10)
     energies = np.array([7.65, 7.75, 7.85, 7.55, 7.70, 7.80, 7.40, 7.90, 7.60, 7.50])
 
     # Config window covering most events
-    cfg = {"time_fit": {"window_Po214": [7.6, 7.9]}}
+    cfg = {
+        "time_fit": {
+            "window_Po214": [7.6, 7.9],
+            "hl_Po214": [1.0],
+            "eff_Po214": [1.0],
+        }
+    }
     w = cfg["time_fit"]["window_Po214"]
     mask = (energies >= w[0]) & (energies <= w[1])
-    res_full = fit_decay(times[mask], {"eff": (1.0, 0.0)}, t0=0.0, t_end=10)
+    times_dict = {"Po214": times[mask]}
+    cfg_full = {
+        "isotopes": {"Po214": {"half_life_s": cfg["time_fit"]["hl_Po214"][0], "efficiency": 1.0}},
+        "fit_background": True,
+        "fit_initial": True,
+    }
+    res_full = fit_time_series(times_dict, 0.0, 10, cfg_full)
     count_full = mask.sum()
 
     # Narrower window -> fewer events
-    cfg_narrow = {"time_fit": {"window_Po214": [7.7, 7.8]}}
+    cfg_narrow = {
+        "time_fit": {
+            "window_Po214": [7.7, 7.8],
+            "hl_Po214": [1.0],
+            "eff_Po214": [1.0],
+        }
+    }
     w2 = cfg_narrow["time_fit"]["window_Po214"]
     mask2 = (energies >= w2[0]) & (energies <= w2[1])
-    res_narrow = fit_decay(times[mask2], {"eff": (1.0, 0.0)}, t0=0.0, t_end=10)
+    times_dict2 = {"Po214": times[mask2]}
+    cfg_n = {
+        "isotopes": {"Po214": {"half_life_s": cfg_narrow["time_fit"]["hl_Po214"][0], "efficiency": 1.0}},
+        "fit_background": True,
+        "fit_initial": True,
+    }
+    res_narrow = fit_time_series(times_dict2, 0.0, 10, cfg_n)
     count_narrow = mask2.sum()
 
     assert count_narrow < count_full
-    assert res_narrow["E"] < res_full["E"]
+    assert res_narrow["E_Po214"] < res_full["E_Po214"]
 
 
 def test_fit_spectrum_use_emg_flag():
