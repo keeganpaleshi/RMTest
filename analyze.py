@@ -59,7 +59,7 @@ import pandas as pd
 # ‣ Import our supporting modules (all must live in the same folder).
 from io_utils     import load_config, copy_config, load_events, write_summary
 from calibration  import derive_calibration_constants, derive_calibration_constants_auto
-from fitting      import fit_spectrum, fit_decay
+from fitting      import fit_spectrum, fit_time_series, fit_decay
 from plot_utils   import plot_spectrum, plot_time_series
 from systematics  import scan_systematics
 from utils        import find_adc_peaks
@@ -384,11 +384,6 @@ def main():
                 print(f"WARNING: No events found for {iso} in [{lo}, {hi}] MeV.")
                 continue
 
-        # Relative times for fitting: subtract t0_global
-        times_rel = (iso_events["timestamp"].values - t0_global).astype(float)
-        # Duration of data for this isotope
-        t_end_iso_rel = iso_events["timestamp"].max() - t0_global
-
         # Build priors for time fit
         priors_time = {}
 
@@ -424,18 +419,31 @@ def main():
         # Store priors for use in systematics scanning
         priors_time_all[iso] = priors_time
 
-        # Any extra flags (e.g. fix N0=0 or fix B0=0)
-        flags_time = cfg["time_fit"].get("flags", {})
+        # Build configuration for fit_time_series
+        times_dict = {iso: iso_events["timestamp"].values}
+        fit_cfg = {
+            "isotopes": {
+                iso: {
+                    "half_life_s": cfg["time_fit"][f"hl_{iso}"][0],
+                    "efficiency": cfg["time_fit"][f"eff_{iso}"][0],
+                }
+            },
+            "fit_background": not cfg["time_fit"]["flags"].get(
+                "fix_background_b", False
+            ),
+            "fit_initial": not cfg["time_fit"]["flags"].get(
+                f"fix_N0_{iso}", False
+            ),
+        }
 
-        # Run decay fit
+        # Run time-series fit
         decay_out = None  # fresh variable each iteration
         try:
-            decay_out = fit_decay(
-                times=times_rel,
-                priors=priors_time,
-                t0=0.0,
-                t_end=t_end_iso_rel,
-                flags=flags_time
+            decay_out = fit_time_series(
+                times_dict,
+                t0_global,
+                iso_events["timestamp"].max(),
+                fit_cfg,
             )
             time_fit_results[iso] = decay_out
         except Exception as e:
