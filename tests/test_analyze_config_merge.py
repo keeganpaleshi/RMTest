@@ -12,7 +12,10 @@ def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {},
         "calibration": {},
-        "spectral_fit": {"do_spectral_fit": False},
+        "spectral_fit": {
+            "do_spectral_fit": False,
+            "expected_peaks": {"Po210": 5300, "Po218": 6000, "Po214": 7690},
+        },
         "time_fit": {
             "do_time_fit": True,
             "window_Po214": [7.5, 8.0],

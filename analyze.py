@@ -258,10 +258,7 @@ def main():
             bin_edges = bin_edges_adc * a + c
 
         # Find approximate ADC centroids for Po‐210, Po‐218, Po‐214
-        expected_peaks = cfg["spectral_fit"].get(
-            "expected_peaks",
-            {"Po210": 5300, "Po218": 6000, "Po214": 7690}
-        )
+        expected_peaks = cfg["spectral_fit"]["expected_peaks"]
         # `find_adc_peaks` will return a dict: e.g. { "Po210": adc_centroid, … }
         adc_peaks = find_adc_peaks(
             events["adc"].values,
