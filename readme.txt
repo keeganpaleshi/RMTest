@@ -38,6 +38,11 @@ The analysis writes results to `<output_dir>/<timestamp>/` including:
 
 ## Configuration
 
+`nominal_adc` under the `calibration` section sets the expected raw ADC
+centroids for Po‑210, Po‑218 and Po‑214 when using automatic calibration.
+If omitted, defaults of `{"Po210": 1250, "Po218": 1400, "Po214": 1800}`
+are used.
+
 `time_bins_fallback` under the `plotting` section sets the number of
 histogram bins to use when the automatic Freedman&ndash;Diaconis rule
 fails, typically due to zero IQR.  The default is `1`.

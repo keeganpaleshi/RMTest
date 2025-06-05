@@ -230,6 +230,11 @@ def derive_calibration_constants_auto(
         Window around nominal peaks used for matching.
     nominal_adc : dict or None
         Optional mapping of isotope -> ADC guess.
+        Expected ADC centroids for each isotope.  Keys should be
+        ``"Po210"``, ``"Po218"`` and ``"Po214"``.  If ``None`` a
+        reasonable default of ``{"Po210": 1250, "Po218": 1400, "Po214": 1800}``
+        is used.
+
     """
     if len(adc_values) == 0:
         raise RuntimeError("No ADC values provided")
@@ -238,15 +243,14 @@ def derive_calibration_constants_auto(
     mask = adc_arr >= noise_cutoff
     adc_arr = adc_arr[mask]
 
+    if nominal_adc is None:
+        nominal_adc = {"Po210": 1250, "Po218": 1400, "Po214": 1800}
+
     config = {
         "calibration": {
             "peak_prominence": 10,
             "peak_width": 3,
-            "nominal_adc": {
-                "Po210": 5200,
-                "Po218": 6000,
-                "Po214": 7600,
-            },
+            "nominal_adc": nominal_adc,
             # parameter renamed to ``peak_search_radius`` to match config.json
             "peak_search_radius": peak_search_radius,
             "fit_window_adc": 50,
