@@ -67,5 +67,7 @@
         "time_bins_fallback": 1,
         "plot_save_formats": ["png", "pdf"],
         "plot_show_residuals": true
+        "time_bins_fallback": 1,
+        "plot_save_formats": ["png", "pdf"]
     }
 }

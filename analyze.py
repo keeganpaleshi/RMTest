@@ -502,19 +502,22 @@ def main():
                 out_png=os.path.join(out_dir, "spectrum.png"),
                 bins=spec_plot_data["bins"],
                 bin_edges=spec_plot_data["bin_edges"],
+                config=cfg.get("plotting", {}),
             )
         except Exception as e:
             print(f"WARNING: Could not create spectrum plot: {e}")
 
     for iso, pdata in time_plot_data.items():
         try:
+            plot_cfg = dict(cfg.get("time_fit", {}))
+            plot_cfg.update(cfg.get("plotting", {}))
             _ = plot_time_series(
                 all_timestamps=pdata["events_times"],
                 all_energies=pdata["events_energy"],
                 fit_results=pdata["fit_dict"],
                 t_start=t0_global,
                 t_end=events["timestamp"].max(),
-                config=cfg["time_fit"],
+                config=plot_cfg,
                 out_png=os.path.join(out_dir, f"time_series_{iso}.png"),
             )
         except Exception as e:

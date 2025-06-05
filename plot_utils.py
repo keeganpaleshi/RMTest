@@ -185,7 +185,26 @@ def plot_spectrum(
     bin_edges=None,
     config=None,
 ):
-    """Plot energy spectrum and optional fit overlay."""
+    """Plot energy spectrum and optional fit overlay.
+
+    Parameters
+    ----------
+    energies : array-like
+        Energy values in MeV.
+    fit_vals : dict, optional
+        Dictionary of fit parameters to overlay. If provided and
+        ``config.get("plot_show_residuals")`` is ``True`` then a
+        residual panel is also produced.
+    out_png : str, optional
+        Output path (extension used if ``plot_save_formats`` not set).
+    bins : int, optional
+        Number of bins if ``bin_edges`` is not supplied.
+    bin_edges : array-like, optional
+        Explicit bin edges in MeV.  Overrides ``bins``.
+    config : dict, optional
+        Plotting configuration dictionary.
+    """
+    show_res = bool(config and config.get("plot_show_residuals", False) and fit_vals)
     if bin_edges is None and config is not None and "plot_spectrum_binsize_adc" in config:
         step = float(config["plot_spectrum_binsize_adc"])
         e_min, e_max = energies.min(), energies.max()
@@ -198,8 +217,16 @@ def plot_spectrum(
     centers = 0.5 * (edges[:-1] + edges[1:])
     width = edges[1] - edges[0]
 
-    plt.figure(figsize=(8, 6))
-    plt.bar(centers, hist, width=width, color="gray", alpha=0.7, label="Data")
+    if show_res:
+        fig, (ax_main, ax_res) = plt.subplots(
+            2, 1, sharex=True, figsize=(8, 6),
+            gridspec_kw={"height_ratios": [3, 1]}
+        )
+    else:
+        fig, ax_main = plt.subplots(figsize=(8, 6))
+        ax_res = None
+
+    ax_main.bar(centers, hist, width=width, color="gray", alpha=0.7, label="Data")
 
     if fit_vals:
         x = np.linspace(edges[0], edges[-1], 1000)
@@ -212,14 +239,40 @@ def plot_spectrum(
                 mu = fit_vals[mu_key]
                 amp = fit_vals[amp_key]
                 y += amp / (sigma_E * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu) / sigma_E) ** 2)
-        plt.plot(x, y * width, color="red", lw=2, label="Fit")
+        ax_main.plot(x, y * width, color="red", lw=2, label="Fit")
 
-    plt.xlabel("Energy (MeV)")
-    plt.ylabel("Counts per bin")
-    plt.title("Energy Spectrum")
+        if show_res:
+            y_cent = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * centers
+            for pk in ("Po210", "Po218", "Po214"):
+                mu_key = f"mu_{pk}"
+                amp_key = f"S_{pk}"
+                if mu_key in fit_vals and amp_key in fit_vals:
+                    mu = fit_vals[mu_key]
+                    amp = fit_vals[amp_key]
+                    y_cent += amp / (
+                        sigma_E * np.sqrt(2 * np.pi)
+                    ) * np.exp(-0.5 * ((centers - mu) / sigma_E) ** 2)
+            model_counts = y_cent * width
+            residuals = hist - model_counts
+            ax_res.bar(
+                centers,
+                residuals,
+                width=width,
+                color="gray",
+                alpha=0.7,
+            )
+            ax_res.axhline(0.0, color="black", lw=1)
+            ax_res.set_ylabel("Residuals")
+
+    ax_main.set_ylabel("Counts per bin")
+    ax_main.set_title("Energy Spectrum")
     if fit_vals:
-        plt.legend(fontsize="small")
-    plt.tight_layout()
+        ax_main.legend(fontsize="small")
+    if ax_res is not None:
+        ax_res.set_xlabel("Energy (MeV)")
+    else:
+        ax_main.set_xlabel("Energy (MeV)")
+    fig.tight_layout()
     os.makedirs(os.path.dirname(out_png), exist_ok=True)
 
     fmt_default = os.path.splitext(out_png)[1].lstrip(".") or "png"
@@ -233,8 +286,8 @@ def plot_spectrum(
 
     base = os.path.splitext(out_png)[0]
     for fmt in save_fmts:
-        plt.savefig(base + f".{fmt}", dpi=300)
-    plt.close()
+        fig.savefig(base + f".{fmt}", dpi=300)
+    plt.close(fig)
 
 
 # -----------------------------------------------------
