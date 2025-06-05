@@ -47,3 +47,34 @@ def test_plot_time_series_none_fit_results(tmp_path):
         str(out_png),
     )
     assert out_png.exists()
+
+
+def test_plot_time_series_auto_fd(tmp_path):
+    # 100 uniform events over 5 seconds
+    times = 1000.0 + np.linspace(0, 5, 100)
+    energies = np.full(100, 7.7)
+    cfg = basic_config()
+    cfg.update({
+        "plot_time_binning_mode": "AUTO",
+        "dump_time_series_json": True,
+    })
+    out_png = tmp_path / "ts_auto.png"
+    plot_time_series(times, energies, None, 1000.0, 1005.0, cfg, str(out_png))
+    js = out_png.with_name("ts_auto_ts.json")
+    assert out_png.exists() and js.exists()
+
+    import json
+    with open(js) as f:
+        data = json.load(f)
+
+    centers = data["centers_s"]
+    arr = times - 1000.0
+    q25, q75 = np.percentile(arr[(arr >= 0) & (arr <= 5)], [25, 75])
+    iqr = q75 - q25
+    if iqr <= 0:
+        expected = 1
+    else:
+        bw = 2 * iqr / (len(arr) ** (1.0 / 3.0))
+        expected = max(1, int(np.ceil((arr.max() - arr.min()) / bw)))
+
+    assert len(centers) == expected
