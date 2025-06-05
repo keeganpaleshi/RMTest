@@ -62,6 +62,8 @@
         "bkg_Po218": [0.0, 0.0],
         "sig_N0_Po214": 1.0,
         "sig_N0_Po218": 1.0,
+        "background_guess": 0.0,
+        "n0_guess_fraction": 0.1,
         "flags": {
             "fix_background_b": false,
             "fix_N0_Po218": false

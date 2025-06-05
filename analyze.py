@@ -430,6 +430,8 @@ def main():
                 "fix_background_b", False
             ),
             "fit_initial": not cfg["time_fit"]["flags"].get(f"fix_N0_{iso}", False),
+            "background_guess": cfg["time_fit"].get("background_guess", 0.0),
+            "n0_guess_fraction": cfg["time_fit"].get("n0_guess_fraction", 0.1),
         }
 
         # Run time-series fit
@@ -489,6 +491,8 @@ def main():
                     "fit_initial": not cfg["time_fit"]["flags"].get(
                         f"fix_N0_{iso}", False
                     ),
+                    "background_guess": cfg["time_fit"].get("background_guess", 0.0),
+                    "n0_guess_fraction": cfg["time_fit"].get("n0_guess_fraction", 0.1),
                 }
                 out = fit_time_series(
                     times_dict,
