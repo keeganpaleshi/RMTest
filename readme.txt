@@ -47,6 +47,19 @@ the bin edges are internally converted to energy using the calibration
 slope and intercept before plotting.  This ensures `spectrum.png`
 reflects the calibrated energy scale regardless of binning mode.
 
+The `spectral_fit` section provides priors for the unbinned likelihood
+fit.  Important keys include:
+
+- `fd_hist_bins` – number of histogram bins to use when the automatic
+  Freedman–Diaconis rule fails.
+- `mu_sigma` – uncertainty applied to peak centroids.
+- `amp_prior_scale` – scales the width of the peak amplitude priors.
+- `b0_prior` / `b1_prior` – `[mean, sigma]` priors for the linear
+  continuum terms.
+- `tau_{iso}_prior_mean` and `tau_{iso}_prior_sigma` – mean and
+  uncertainty for the exponential tail constant of each isotope when
+  `use_emg` enables that tail.
+
 ## Running Tests
 
 Install the required Python packages and run the test suite with `pytest`.
