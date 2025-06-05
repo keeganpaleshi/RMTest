@@ -326,6 +326,14 @@ def main():
             }
             if cfg["spectral_fit"].get("use_plot_bins_for_fit", False):
                 fit_kwargs.update({"bins": bins, "bin_edges": bin_edges})
+            bounds_cfg = cfg["spectral_fit"].get("mu_bounds", {})
+            if bounds_cfg:
+                bounds_map = {}
+                for iso, bnd in bounds_cfg.items():
+                    if bnd is not None:
+                        bounds_map[f"mu_{iso}"] = tuple(bnd)
+                if bounds_map:
+                    fit_kwargs["bounds"] = bounds_map
             spec_fit_out = fit_spectrum(**fit_kwargs)
             spectrum_results = spec_fit_out
         except Exception as e:

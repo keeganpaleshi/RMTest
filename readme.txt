@@ -68,6 +68,9 @@ fit.  Important keys include:
 - `tau_{iso}_prior_mean` and `tau_{iso}_prior_sigma` – mean and
   uncertainty for the exponential tail constant of each isotope when
   `use_emg` enables that tail.
+- `mu_bounds` – optional lower/upper limits for each peak centroid.
+  Set for example `{"Po218": [5.9, 6.2]}` to keep the Po‑218 fit from
+  drifting into the Po‑210 region.
 
 `dump_time_series_json` under `plotting` saves a `*_ts.json` file
 containing the binned time-series data when set to `true`.
