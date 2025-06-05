@@ -242,7 +242,7 @@ def main():
             bins = nbins
             bin_edges = None
         else:
-            # “1 ADC channel per bin”
+            # "ADC" binning mode → fixed width in raw channels
             width = 1
             if bin_cfg is not None:
                 width = bin_cfg.get("adc_bin_width", 1)
@@ -251,7 +251,10 @@ def main():
             adc_min = events["adc"].min()
             adc_max = events["adc"].max()
             bins = int(np.ceil((adc_max - adc_min + 1) / width))
-            bin_edges = np.arange(adc_min, adc_min + bins * width + 1, width)
+
+            # Build edges in ADC units then convert to energy for plotting
+            bin_edges_adc = np.arange(adc_min, adc_min + bins * width + 1, width)
+            bin_edges = bin_edges_adc * a + c
 
         # Find approximate ADC centroids for Po‐210, Po‐218, Po‐214
         expected_peaks = cfg["spectral_fit"].get(
@@ -325,7 +328,7 @@ def main():
             print(f"WARNING: Spectral fit failed → {e}")
             spectrum_results = {}
 
-        # Store plotting inputs to generate the figure after summary writing
+        # Store plotting inputs (bin_edges now in energy units)
         spec_plot_data = {
             "energies": events["energy_MeV"].values,
             "fit_vals": spec_fit_out if spectrum_results else None,

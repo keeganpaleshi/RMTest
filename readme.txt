@@ -42,6 +42,11 @@ The analysis writes results to `<output_dir>/<timestamp>/` including:
 histogram bins to use when the automatic Freedman&ndash;Diaconis rule
 fails, typically due to zero IQR.  The default is `1`.
 
+When the spectrum is binned in raw ADC channels (`"spectral_binning_mode": "adc"`),
+the bin edges are internally converted to energy using the calibration
+slope and intercept before plotting.  This ensures `spectrum.png`
+reflects the calibrated energy scale regardless of binning mode.
+
 ## Running Tests
 
 Install the required Python packages and run the test suite with `pytest`.
