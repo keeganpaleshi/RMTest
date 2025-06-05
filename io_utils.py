@@ -75,6 +75,49 @@ def load_events(csv_path):
     return df
 
 
+def apply_burst_filter(df, cfg):
+    """Remove burst windows from an event DataFrame.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Event data containing a ``timestamp`` column in seconds.
+    cfg : dict
+        Full configuration dictionary. The ``burst_filter`` section may define
+        ``burst_window_size_s``, ``rolling_median_window`` and
+        ``burst_multiplier``.
+
+    Returns
+    -------
+    tuple (DataFrame, int)
+        Filtered DataFrame and number of events removed.
+    """
+
+    bf_cfg = cfg.get("burst_filter", {}) if isinstance(cfg, dict) else {}
+    win = float(bf_cfg.get("burst_window_size_s", 1.0))
+    med_win = int(bf_cfg.get("rolling_median_window", 5))
+    mult = float(bf_cfg.get("burst_multiplier", 5.0))
+
+    if df.empty:
+        return df.copy(), 0
+
+    t0 = df["timestamp"].min()
+    bin_idx = ((df["timestamp"] - t0) / win).astype(int)
+    counts = bin_idx.value_counts().sort_index()
+    # Ensure continuous index
+    full_idx = range(bin_idx.min(), bin_idx.max() + 1)
+    counts = counts.reindex(full_idx, fill_value=0)
+
+    med = counts.rolling(med_win, center=True, min_periods=1).median()
+    burst_bins = counts.index[counts > mult * med]
+    mask_remove = bin_idx.isin(burst_bins)
+    removed = int(mask_remove.sum())
+    filtered = df.loc[~mask_remove].reset_index(drop=True)
+
+    logger.info(f"Burst filter removed {removed} events")
+    return filtered, removed
+
+
 def write_summary(output_dir, summary_dict, timestamp=None):
     """
     Write out ``summary_dict`` to ``summary.json`` under a timestamped

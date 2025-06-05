@@ -9,7 +9,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 import pandas as pd
 import pytest
-from io_utils import load_config, load_events, write_summary, copy_config
+from io_utils import (
+    load_config,
+    load_events,
+    write_summary,
+    copy_config,
+    apply_burst_filter,
+)
 
 
 def test_load_config(tmp_path):
@@ -20,7 +26,11 @@ def test_load_config(tmp_path):
             "peak_detection": {"height": 1, "distance": 1, "prominence": 1},
         },
         "efficiency": {"eff_po214": 0.4, "eff_po218": 0.8, "eff_override_all": 0.0},
-        "burst_filter": {"window_seconds": 60, "threshold_factor": 10},
+        "burst_filter": {
+            "burst_window_size_s": 60,
+            "rolling_median_window": 3,
+            "burst_multiplier": 10,
+        },
         "time_series": {"time_bin_seconds": 3600},
         "fit_options": {
             "fit_po214_only": True,
@@ -82,3 +92,34 @@ def test_write_summary_and_copy_config(tmp_path):
         json.dump(cfg, f)
     dest = copy_config(str(outdir), str(cp))
     assert Path(dest).exists()
+
+
+def make_events(timestamps):
+    return pd.DataFrame(
+        {
+            "fUniqueID": range(len(timestamps)),
+            "fBits": np.zeros(len(timestamps), dtype=int),
+            "timestamp": timestamps,
+            "adc": np.full(len(timestamps), 1000, dtype=int),
+            "fchannel": np.zeros(len(timestamps), dtype=int),
+        }
+    )
+
+
+def test_apply_burst_filter_no_burst():
+    ts = np.arange(100, dtype=float)
+    df = make_events(ts)
+    cfg = {"burst_filter": {"burst_window_size_s": 1.0, "rolling_median_window": 3, "burst_multiplier": 5}}
+    filtered, removed = apply_burst_filter(df, cfg)
+    assert len(filtered) == len(df)
+    assert removed == 0
+
+
+def test_apply_burst_filter_with_burst():
+    base_ts = np.arange(100, dtype=float)
+    burst_ts = 50 + np.linspace(0, 0.9, 10)
+    df = make_events(np.concatenate([base_ts, burst_ts]))
+    cfg = {"burst_filter": {"burst_window_size_s": 1.0, "rolling_median_window": 3, "burst_multiplier": 5}}
+    filtered, removed = apply_burst_filter(df, cfg)
+    assert removed == 11
+    assert len(filtered) == len(df) - removed

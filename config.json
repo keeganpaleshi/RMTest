@@ -3,6 +3,11 @@
         "log_level": "INFO",
         "random_seed": null
     },
+    "burst_filter": {
+        "burst_window_size_s": 60,
+        "rolling_median_window": 11,
+        "burst_multiplier": 5
+    },
     "calibration": {
         "method": "auto",
         "noise_cutoff": 300,
