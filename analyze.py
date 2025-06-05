@@ -49,7 +49,6 @@ To run (without baseline) for a single merged CSV:
 import argparse
 import os
 import sys
-import json
 import logging
 import random
 from datetime import datetime, timezone

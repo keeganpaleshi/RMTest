@@ -57,11 +57,13 @@ def plot_time_series(
     # 1) Choose binning:
     # Newer config files may store plot options under keys prefixed with
     # "plot_".  Fall back to the old names for backwards compatibility.
-    bin_mode = config.get(
-        "plot_time_binning_mode",
-        config.get("time_bin_mode", "fixed"),
+    bin_mode = str(
+        config.get(
+            "plot_time_binning_mode",
+            config.get("time_bin_mode", "fixed"),
+        )
     ).lower()
-    if bin_mode == "FD":
+    if bin_mode in ("fd", "auto"):
         # Freedman Diaconis rule on the entire time range:
         data = times_rel[(times_rel >= 0) & (times_rel <= (t_end - t_start))]
         if len(data) < 2:
@@ -98,7 +100,6 @@ def plot_time_series(
     # 2) Plot each isotope s histogram + overlay the model:
     plt.figure(figsize=(8, 6))
     colors = {"Po214": "tab:red", "Po218": "tab:blue"}
-    legend_entries = []
 
     for iso in iso_list:
         emin, emax = iso_params[iso]["window"]
