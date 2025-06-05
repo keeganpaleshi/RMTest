@@ -17,17 +17,17 @@ This script performs the following steps:
   1. Load JSON configuration.
   2. Load “merged” CSV of event data (timestamps, ADC, etc.).
   3. Perform energy calibration (either two‐point or auto, per config).
-     → Append `energy_MeV` to every event.
+     -> Append `energy_MeV` to every event.
   4. (Optional) Extract a “baseline” interval for background estimation.
   5. (Optional) Spectral fit (Po‐210, Po‐218, Po‐214) using unbinned likelihood.
-     → Can bin either in “1 ADC‐channel per bin” or Freedman‐Diaconis (per config).
-     → Uses EMG tails for Po‐210/Po‐218 if requested.
-     → Overlays fit on the spectrum plot.
+     -> Can bin either in “1 ADC‐channel per bin” or Freedman‐Diaconis (per config).
+     -> Uses EMG tails for Po‐210/Po‐218 if requested.
+     -> Overlays fit on the spectrum plot.
   6. Time‐series decay fit (Po‐218 and Po‐214 separately).
-     → Extract events in each isotope’s energy window.
-     → Subtract global t₀ so that model always starts at t=0.
-     → Fit unbinned decay (with efficiency, background, N₀, half‐life priors).
-     → Overlay fit curve on a time‐binned histogram (default 1 h bins), at 95% CL.
+     -> Extract events in each isotope’s energy window.
+     -> Subtract global t₀ so that model always starts at t=0.
+     -> Fit unbinned decay (with efficiency, background, N₀, half‐life priors).
+     -> Overlay fit curve on a time‐binned histogram (default 1 h bins), at 95% CL.
   7. (Optional) Systematics scan around user‐specified σ shifts.
   8. Produce a single JSON summary with:
        • calibration parameters
@@ -183,7 +183,7 @@ def main():
     c,  c_sig  = cal_params["c"]
     sigE_mean, sigE_sigma = cal_params["sigma_E"]
 
-    # Apply linear calibration → new column “energy_MeV”
+    # Apply linear calibration -> new column “energy_MeV”
     events["energy_MeV"] = events["adc"] * a + c
 
     # ────────────────────────────────────────────────────────────
@@ -243,7 +243,7 @@ def main():
             bins = nbins
             bin_edges = None
         else:
-            # "ADC" binning mode → fixed width in raw channels
+            # "ADC" binning mode -> fixed width in raw channels
             width = 1
             if bin_cfg is not None:
                 width = bin_cfg.get("adc_bin_width", 1)
@@ -329,7 +329,7 @@ def main():
             spec_fit_out = fit_spectrum(**fit_kwargs)
             spectrum_results = spec_fit_out
         except Exception as e:
-            print(f"WARNING: Spectral fit failed → {e}")
+            print(f"WARNING: Spectral fit failed -> {e}")
             spectrum_results = {}
 
         # Store plotting inputs (bin_edges now in energy units)
@@ -422,7 +422,7 @@ def main():
             )
             time_fit_results[iso] = decay_out
         except Exception as e:
-            print(f"WARNING: Decay‐curve fit for {iso} failed → {e}")
+            print(f"WARNING: Decay‐curve fit for {iso} failed -> {e}")
             time_fit_results[iso] = {}
 
         # Store inputs for plotting later
@@ -476,7 +476,7 @@ def main():
                 )
                 systematics_results[iso] = {"deltas": deltas, "total_unc": total_unc}
             except Exception as e:
-                print(f"WARNING: Systematics scan for {iso} → {e}")
+                print(f"WARNING: Systematics scan for {iso} -> {e}")
 
     # ────────────────────────────────────────────────────────────
     # 8. Assemble and write out the summary JSON
@@ -524,9 +524,9 @@ def main():
                 out_png=os.path.join(out_dir, f"time_series_{iso}.png"),
             )
         except Exception as e:
-            print(f"WARNING: Could not create time-series plot for {iso} → {e}")
+            print(f"WARNING: Could not create time-series plot for {iso} -> {e}")
 
-    print(f"Analysis complete. Results written to → {out_dir}")
+    print(f"Analysis complete. Results written to -> {out_dir}")
 
 
 if __name__ == "__main__":
