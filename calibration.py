@@ -56,21 +56,29 @@ def apply_calibration(adc_values, slope, intercept):
     return slope * adc_arr + intercept
 
 
-def calibrate_run(adc_values, config):
+def calibrate_run(adc_values, config, hist_bins=None):
     """
     Main entry to derive calibration constants for a single run:
-      - Build histogram of ADC (1 channel/bin by default, or FD if config['calibration']['use_fd']==True).
+      - Build histogram of ADC values.
+        By default each ADC channel is its own bin.
+        If ``hist_bins`` is provided the range is divided into that
+        many bins instead.
       - Identify approximate peak locations (Po-210, Po-218, Po-214).
       - Fit each peak with (EMG or Gaussian) depending on config flags.
       - Compute two-point linear calibration (using Po-210 & Po-214).
       - Return a dict with {a, c, sigma_E, peak_centroids_ADC, peak_sigmas_ADC, tau_ADC (if any)}.
     """
-    # 1) Build histogram (ADC channels are integers). Always 1 channel/bin:
+    # 1) Build histogram
     min_adc = int(np.min(adc_values))
     max_adc = int(np.max(adc_values))
-    # e.g. edges [min, min+1, ..., max+1]
-    bins = np.arange(min_adc, max_adc + 2)
-    hist, edges = np.histogram(adc_values, bins=bins)
+
+    if hist_bins is None:
+        # 1 ADC channel per bin (backwards compatible)
+        edges = np.arange(min_adc, max_adc + 2)
+    else:
+        edges = np.linspace(min_adc, max_adc, hist_bins + 1)
+
+    hist, edges = np.histogram(adc_values, bins=edges)
     centers = 0.5 * (edges[:-1] + edges[1:])  # effectively integer centers
 
     # 2) Peak‐finding with SciPy:
@@ -236,7 +244,15 @@ def derive_calibration_constants_auto(adc_values, noise_cutoff=300, hist_bins=20
         }
     }
 
-    return derive_calibration_constants(adc_arr, config)
+    # Run calibration with custom histogram binning and convert to legacy format
+    res = calibrate_run(adc_arr, config, hist_bins=hist_bins)
+    out = {
+        "a": (float(res["slope"]), 0.0),
+        "c": (float(res["intercept"]), 0.0),
+        "sigma_E": (float(res["sigma_E"]), 0.0),
+        "peaks": res.get("peaks", {}),
+    }
+    return out
 
 
 __all__ = [
