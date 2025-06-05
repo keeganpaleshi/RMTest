@@ -59,7 +59,7 @@ import pandas as pd
 # ‣ Import our supporting modules (all must live in the same folder).
 from io_utils     import load_config, copy_config, load_events, write_summary
 from calibration  import derive_calibration_constants, derive_calibration_constants_auto
-from fitting      import fit_spectrum, fit_time_series, fit_decay
+from fitting      import fit_spectrum, fit_time_series
 from plot_utils   import plot_spectrum, plot_time_series
 from systematics  import scan_systematics
 from utils        import find_adc_peaks
