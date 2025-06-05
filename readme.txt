@@ -60,6 +60,18 @@ fit.  Important keys include:
   uncertainty for the exponential tail constant of each isotope when
   `use_emg` enables that tail.
 
+`dump_time_series_json` under `plotting` saves a `*_ts.json` file
+containing the binned time-series data when set to `true`.
+
+`scan_keys` in the `systematics` section selects which fit parameters
+are varied during the systematic uncertainty scan.  By default no
+parameters are scanned.
+
+`plot_time_style` chooses how the histogram is drawn in the time-series
+plot.  Use `"steps"` (default) for a stepped histogram or `"lines"` to
+connect bin centers with straight lines.
+
+
 ## Running Tests
 
 Install the required Python packages and run the test suite with `pytest`.
