@@ -158,3 +158,36 @@ def test_plot_time_series_custom_half_life_po218(tmp_path, monkeypatch):
     expected = 0.1 * (1.0 - np.exp(-lam * centers))
     assert np.allclose(captured.get("y"), expected, rtol=1e-4)
 
+
+def test_plot_time_series_line_style(tmp_path, monkeypatch):
+    times = np.array([1000.2, 1000.8])
+    energies = np.array([7.7, 7.8])
+    cfg = basic_config()
+    cfg["plot_time_style"] = "lines"
+
+    called = {}
+
+    def fake_plot(*args, **kwargs):
+        called["plot"] = True
+        return type("obj", (), {})()
+
+    def fake_step(*args, **kwargs):
+        called["step"] = True
+        return type("obj", (), {})()
+
+    monkeypatch.setattr("plot_utils.plt.plot", fake_plot)
+    monkeypatch.setattr("plot_utils.plt.step", fake_step)
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    plot_time_series(
+        times,
+        energies,
+        None,
+        1000.0,
+        1001.0,
+        cfg,
+        str(tmp_path / "ts_lines.png"),
+    )
+
+    assert called.get("plot") and "step" not in called
+
