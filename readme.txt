@@ -74,8 +74,8 @@ fit.  Important keys include:
   search are clamped to this range before the fit starts.
 
 - `expected_peaks` – approximate ADC centroids used to locate the
-  Po‑210, Po‑218 and Po‑214 peaks before fitting. Typical values are
-  `{"Po210": 5300, "Po218": 6000, "Po214": 7690}`.
+  Po‑210, Po‑218 and Po‑214 peaks before fitting. The default is
+  `{"Po210": 1250, "Po218": 1400, "Po214": 1800}`.
 
 `dump_time_series_json` under `plotting` saves a `*_ts.json` file
 containing the binned time-series data when set to `true`.

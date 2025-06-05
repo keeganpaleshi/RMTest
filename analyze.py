@@ -256,6 +256,9 @@ def main():
 
         # Find approximate ADC centroids for Po‐210, Po‐218, Po‐214
 
+        if "expected_peaks" not in cfg.get("spectral_fit", {}):
+            raise KeyError("'spectral_fit.expected_peaks' must be provided in the configuration")
+
         expected_peaks = cfg["spectral_fit"]["expected_peaks"]
 
         # `find_adc_peaks` will return a dict: e.g. { "Po210": adc_centroid, … }
