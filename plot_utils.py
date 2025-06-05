@@ -150,7 +150,8 @@ def plot_time_series(
 
     plt.xlabel("Time since t_start (s)")
     plt.ylabel("Counts per bin")
-    plt.title("Po-214 & Po-218 Time Series Fit")
+    title_isos = " & ".join(iso_list)
+    plt.title(f"{title_isos} Time Series Fit")
     plt.legend(fontsize="small")
     plt.tight_layout()
     os.makedirs(os.path.dirname(out_png), exist_ok=True)
