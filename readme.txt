@@ -84,9 +84,10 @@ parameters are scanned.
 plot.  Use `"steps"` (default) for a stepped histogram or `"lines"` to
 connect bin centers with straight lines.
 
-`overlay_isotopes` under `plotting` keeps both energy windows when
-calling `plot_time_series`.  When `true`, Po‑214 and Po‑218 are overlaid
-in the same plot instead of appearing separately.
+`overlay_isotopes` under `plotting` keeps both isotope windows intact
+when invoking `plot_time_series`.  When set to `true` the analysis does
+not clear the other window, allowing Po‑214 and Po‑218 to be plotted
+together on a single overlay.
 
 `plot_time_series` also reads `hl_Po214` and `hl_Po218` from the
 `time_fit` section when present.  These half-life values are used for the
