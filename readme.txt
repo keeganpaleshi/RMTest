@@ -124,6 +124,10 @@ containing the binned time-series data when set to `true`.
 are varied during the systematic uncertainty scan.  By default no
 parameters are scanned.
 
+`adc_drift_rate` under `systematics` applies a linear time-dependent
+shift to the raw ADC values before calibration.  The value is in ADC
+counts per second and defaults to `0.0` (no correction).
+
 `plot_time_style` chooses how the histogram is drawn in the time-series
 plot.  Use `"steps"` (default) for a stepped histogram or `"lines"` to
 connect bin centers with straight lines.  The line style is useful when

@@ -88,7 +88,8 @@
             "efficiency_Po214_shift_pct": 0.10,
             "efficiency_Po218_shift_pct": 0.10
         },
-        "scan_keys": []
+        "scan_keys": [],
+        "adc_drift_rate": 0.0
     },
     "plotting": {
         "plot_spectrum_binsize_adc": 1,

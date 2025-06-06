@@ -1,5 +1,38 @@
 import math
 from typing import Callable, Dict, Tuple, List
+import numpy as np
+
+
+def apply_linear_adc_shift(adc_values, timestamps, rate, t_ref=None):
+    """Apply a linear time-dependent shift to ADC values.
+
+    Parameters
+    ----------
+    adc_values : array-like
+        Raw ADC readings.
+    timestamps : array-like
+        Event timestamps in seconds.
+    rate : float
+        ADC shift per second.  Positive values shift later events upward.
+    t_ref : float, optional
+        Reference time for zero shift.  Defaults to the first timestamp.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of shifted ADC values.
+    """
+
+    adc_arr = np.asarray(adc_values, dtype=float)
+    time_arr = np.asarray(timestamps, dtype=float)
+
+    if adc_arr.shape != time_arr.shape:
+        raise ValueError("adc_values and timestamps must have the same shape")
+
+    if t_ref is None:
+        t_ref = float(time_arr[0]) if len(time_arr) else 0.0
+
+    return adc_arr + rate * (time_arr - t_ref)
 
 
 def scan_systematics(
