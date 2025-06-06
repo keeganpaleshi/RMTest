@@ -728,11 +728,18 @@ def main():
             )
             n0_count = float(np.sum(probs_base))
             baseline_counts[iso] = n0_count
+
+            eff = cfg["time_fit"].get(f"eff_{iso}", [1.0])[0]
+            if baseline_live_time > 0 and eff > 0:
+                n0_activity = n0_count / (baseline_live_time * eff)
+                n0_sigma = np.sqrt(n0_count) / (baseline_live_time * eff)
+            else:
+                n0_activity = 0.0
+                n0_sigma = 1.0
+
             priors_time["N0"] = (
-                n0_count,
-                cfg["time_fit"].get(
-                    f"sig_N0_{iso}", np.sqrt(n0_count) if n0_count > 0 else 1.0
-                ),
+                n0_activity,
+                cfg["time_fit"].get(f"sig_N0_{iso}", n0_sigma),
             )
         else:
             priors_time["N0"] = (
