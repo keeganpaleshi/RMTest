@@ -29,8 +29,9 @@ def compute_radon_activity(
     err218, err214 : float or None
         Uncertainties on the rates in Bq.
     eff218, eff214 : float
-        Detection efficiencies of the two isotopes.  Non-positive values cause
-        the corresponding isotope to be ignored.
+        Detection efficiencies of the two isotopes.  Zero values cause the
+        corresponding isotope to be ignored.  Negative values raise a
+        ``ValueError``.
 
     Returns
     -------
@@ -39,6 +40,11 @@ def compute_radon_activity(
     float
         Propagated 1-sigma uncertainty.
     """
+    if eff218 < 0:
+        raise ValueError("eff218 must be non-negative")
+    if eff214 < 0:
+        raise ValueError("eff214 must be non-negative")
+
     values = []
     weights = []
 
