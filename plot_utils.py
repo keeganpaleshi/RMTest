@@ -15,6 +15,7 @@ __all__ = [
     "plot_spectrum",
     "plot_radon_activity",
     "plot_equivalent_air",
+    "plot_modeled_radon_activity",
 ]
 
 
@@ -392,6 +393,23 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
     for fmt in fmts:
         plt.savefig(base + f".{fmt}", dpi=300)
     plt.close()
+
+
+def plot_modeled_radon_activity(
+    times,
+    E,
+    dE,
+    N0,
+    dN0,
+    half_life_s,
+    out_png,
+    config=None,
+):
+    """Compute and plot modeled radon activity over time."""
+    from radon_activity import radon_activity_curve
+
+    activity, sigma = radon_activity_curve(times, E, dE, N0, dN0, half_life_s)
+    plot_radon_activity(times, activity, sigma, out_png, config=config)
 
 
 # -----------------------------------------------------
