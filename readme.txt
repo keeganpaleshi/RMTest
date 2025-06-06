@@ -24,12 +24,12 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-python analyze.py --config config.json --input merged_data.csv [--output_dir results]
+python analyze.py --config config.json --input merged_data.csv [--output_dir results] [--job-id MYRUN]
 ```
 
 ## Output
 
-The analysis writes results to `<output_dir>/<timestamp>/` including:
+The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--job-id` is given the folder `<output_dir>/<job-id>/` is used instead. The directory includes:
 
 - `summary.json` – calibration and fit summary.
 - `config_used.json` – copy of the configuration used.
