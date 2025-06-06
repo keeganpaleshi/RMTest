@@ -54,6 +54,7 @@ import random
 from datetime import datetime, timezone
 import subprocess
 import hashlib
+import json
 
 import numpy as np
 import pandas as pd
@@ -111,6 +112,29 @@ def parse_args():
         "--job-id",
         help="Optional identifier used for the results folder instead of the timestamp",
     )
+    p.add_argument(
+        "--efficiency-json",
+        help="Path to a JSON file containing efficiency inputs to merge into the configuration",
+    )
+    p.add_argument(
+        "--systematics-json",
+        help="Path to a JSON file with systematics settings overriding the config",
+    )
+    p.add_argument(
+        "--time-bin-mode",
+        choices=["auto", "fd", "fixed"],
+        help="Time-series binning mode (overrides plotting.plot_time_binning_mode)",
+    )
+    p.add_argument(
+        "--time-bin-width",
+        type=float,
+        help="Fixed time bin width in seconds (overrides plotting.plot_time_bin_width_s)",
+    )
+    p.add_argument(
+        "--dump-ts-json",
+        action="store_true",
+        help="Write *_ts.json files containing binned time-series data",
+    )
     return p.parse_args()
 
 
@@ -135,6 +159,30 @@ def main():
     except Exception as e:
         print(f"ERROR: Could not load config '{args.config}': {e}")
         sys.exit(1)
+
+    # Apply optional overrides from command-line arguments
+    if args.efficiency_json:
+        try:
+            with open(args.efficiency_json, "r", encoding="utf-8") as f:
+                cfg["efficiency"] = json.load(f)
+        except Exception as e:
+            print(f"ERROR: Could not load efficiency JSON '{args.efficiency_json}': {e}")
+            sys.exit(1)
+
+    if args.systematics_json:
+        try:
+            with open(args.systematics_json, "r", encoding="utf-8") as f:
+                cfg["systematics"] = json.load(f)
+        except Exception as e:
+            print(f"ERROR: Could not load systematics JSON '{args.systematics_json}': {e}")
+            sys.exit(1)
+
+    if args.time_bin_mode:
+        cfg.setdefault("plotting", {})["plot_time_binning_mode"] = args.time_bin_mode
+    if args.time_bin_width is not None:
+        cfg.setdefault("plotting", {})["plot_time_bin_width_s"] = float(args.time_bin_width)
+    if args.dump_ts_json:
+        cfg.setdefault("plotting", {})["dump_time_series_json"] = True
 
     # Configure logging as early as possible
     log_level = cfg.get("pipeline", {}).get("log_level", "INFO")

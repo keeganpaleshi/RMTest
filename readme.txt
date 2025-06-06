@@ -25,7 +25,10 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-python analyze.py --config config.json --input merged_data.csv [--output_dir results] [--job-id MYRUN]
+python analyze.py --config config.json --input merged_data.csv \
+    [--output_dir results] [--job-id MYRUN] \
+    [--efficiency-json eff.json] [--systematics-json syst.json] \
+    [--time-bin-mode fixed --time-bin-width 3600] [--dump-ts-json]
 ```
 
 ## Output
@@ -82,6 +85,11 @@ micro filter followed by the rate veto.  The default mode is `rate`.
 `time_bins_fallback` under the `plotting` section sets the number of
 histogram bins to use when the automatic Freedman&ndash;Diaconis rule
 fails, typically due to zero IQR.  The default is `1`.
+
+The CLI options `--time-bin-mode` and `--time-bin-width` override
+`plot_time_binning_mode` and `plot_time_bin_width_s` in the configuration
+to control the time-series histogram. Passing `--dump-ts-json` writes the
+histogram counts to a `*_ts.json` file alongside the plot.
 
 When the spectrum is binned in raw ADC channels (`"spectral_binning_mode": "adc"`),
 the bin edges are internally converted to energy using the calibration
@@ -197,6 +205,11 @@ with entries such as:
 
 `analyze.py` stores the calculated values and their BLUE combination in
 `summary.json` under the `efficiency` key.
+
+The option `--efficiency-json PATH` may be supplied on the command line to
+load the efficiency section from a separate file instead of embedding it
+directly in the main configuration.  Similarly `--systematics-json PATH`
+overrides the `systematics` section.
 
 
 ## Running Tests
