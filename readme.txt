@@ -198,6 +198,18 @@ fit.  Important keys include:
   Po‑210, Po‑218 and Po‑214 peaks before fitting. The default is
   `{"Po210": 1250, "Po218": 1400, "Po214": 1800}`.
 
+Example snippet:
+
+```json
+"spectral_fit": {
+    "bkg_mode": "manual",
+    "b0_prior": [0.0, 1.0],
+    "b1_prior": [0.0, 1.0],
+    "mu_sigma": 0.05,
+    "amp_prior_scale": 1.0
+}
+```
+
 `dump_time_series_json` under `plotting` saves a `*_ts.json` file
 containing the binned time-series data when set to `true`.
 
