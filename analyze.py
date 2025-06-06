@@ -70,7 +70,7 @@ from io_utils import (
 from calibration import derive_calibration_constants, derive_calibration_constants_auto
 from fitting import fit_spectrum, fit_time_series
 from plot_utils import plot_spectrum, plot_time_series
-from systematics import scan_systematics
+from systematics import scan_systematics, apply_linear_adc_shift
 from utils import find_adc_peaks
 
 
@@ -279,14 +279,16 @@ def main():
     else:
         t0_global = events["timestamp"].min()
 
-    if args.slope is not None:
-        try:
-            from systematics import apply_linear_adc_shift
+    drift_rate = float(args.slope) if args.slope is not None else float(
+        cfg.get("systematics", {}).get("adc_drift_rate", 0.0)
+    )
 
+    if drift_rate != 0.0:
+        try:
             events["adc"] = apply_linear_adc_shift(
                 events["adc"].values,
                 events["timestamp"].values,
-                float(args.slope),
+                float(drift_rate),
                 t_ref=t0_global,
             )
         except Exception as e:
