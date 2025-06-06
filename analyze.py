@@ -58,6 +58,7 @@ import json
 
 import numpy as np
 import pandas as pd
+from scipy.stats import norm
 
 # ‣ Import our supporting modules (all must live in the same folder).
 from io_utils import (
@@ -410,8 +411,22 @@ def main():
     c, c_sig = cal_params["c"]
     sigE_mean, sigE_sigma = cal_params["sigma_E"]
 
-    # Apply linear calibration -> new column “energy_MeV”
+    # Apply linear calibration -> new column “energy_MeV” and its uncertainty
     events["energy_MeV"] = events["adc"] * a + c
+    events["denergy_MeV"] = np.sqrt((events["adc"] * a_sig) ** 2 + c_sig ** 2)
+
+    def window_prob(E, sigma, lo, hi):
+        E = np.asarray(E, dtype=float)
+        sigma = np.asarray(sigma, dtype=float)
+        if np.isscalar(lo):
+            lo_val = lo
+            hi_val = hi
+        else:
+            lo_val = float(lo)
+            hi_val = float(hi)
+        if np.all(sigma == 0):
+            return ((E >= lo_val) & (E <= hi_val)).astype(float)
+        return norm.cdf(hi_val, loc=E, scale=sigma) - norm.cdf(lo_val, loc=E, scale=sigma)
 
     # ────────────────────────────────────────────────────────────
     # 4. Baseline run (optional)
@@ -677,8 +692,10 @@ def main():
                 continue
 
             lo, hi = win_range
-            iso_mask = (events["energy_MeV"] >= lo) & (events["energy_MeV"] <= hi)
+            probs = window_prob(events["energy_MeV"].values, events["denergy_MeV"].values, lo, hi)
+            iso_mask = probs > 0
             iso_events = events[iso_mask].copy()
+            iso_events["weight"] = probs[iso_mask]
             if iso_events.empty:
                 print(f"WARNING: No events found for {iso} in [{lo}, {hi}] MeV.")
                 continue
@@ -703,12 +720,13 @@ def main():
         # Initial N₀ from baseline (if provided)
         if baseline_range:
             # Count baseline events in this energy window
-            n0_count = float(
-                (
-                    (base_events["energy_MeV"] >= lo)
-                    & (base_events["energy_MeV"] <= hi)
-                ).sum()
+            probs_base = window_prob(
+                base_events["energy_MeV"].values,
+                base_events["denergy_MeV"].values,
+                lo,
+                hi,
             )
+            n0_count = float(np.sum(probs_base))
             baseline_counts[iso] = n0_count
             priors_time["N0"] = (
                 n0_count,
@@ -730,6 +748,7 @@ def main():
             cut = t0_global + float(args.settle_s)
             iso_events = iso_events[iso_events["timestamp"] >= cut]
         times_dict = {iso: iso_events["timestamp"].values}
+        weights_map = {iso: iso_events["weight"].values}
         fit_cfg = {
             "isotopes": {
                 iso: {
@@ -751,12 +770,21 @@ def main():
             t_start_fit = t0_global
             if args.settle_s is not None:
                 t_start_fit = t0_global + float(args.settle_s)
-            decay_out = fit_time_series(
-                times_dict,
-                t_start_fit,
-                t_end_global,
-                fit_cfg,
-            )
+            try:
+                decay_out = fit_time_series(
+                    times_dict,
+                    t_start_fit,
+                    t_end_global,
+                    fit_cfg,
+                    weights=weights_map,
+                )
+            except TypeError:
+                decay_out = fit_time_series(
+                    times_dict,
+                    t_start_fit,
+                    t_end_global,
+                    fit_cfg,
+                )
             time_fit_results[iso] = decay_out
         except Exception as e:
             print(f"WARNING: Decay‐curve fit for {iso} failed -> {e}")
@@ -787,11 +815,16 @@ def main():
                     raise ValueError(
                         f"Missing window for {iso} during systematics scan"
                     )
-                filtered_df = events[
-                    (events["energy_MeV"] >= win_range[0])
-                    & (events["energy_MeV"] <= win_range[1])
-                ]
+                probs = window_prob(
+                    events["energy_MeV"].values,
+                    events["denergy_MeV"].values,
+                    win_range[0],
+                    win_range[1],
+                )
+                mask = probs > 0
+                filtered_df = events[mask]
                 times_dict = {iso: filtered_df["timestamp"].values}
+                weights_local = {iso: probs[mask]}
                 cfg_fit = {
                     "isotopes": {
                         iso: {
@@ -808,12 +841,21 @@ def main():
                     "background_guess": cfg["time_fit"].get("background_guess", 0.0),
                     "n0_guess_fraction": cfg["time_fit"].get("n0_guess_fraction", 0.1),
                 }
-                out = fit_time_series(
-                    times_dict,
-                    t0_global,
-                    t_end_global,
-                    cfg_fit,
-                )
+                try:
+                    out = fit_time_series(
+                        times_dict,
+                        t0_global,
+                        t_end_global,
+                        cfg_fit,
+                        weights=weights_local,
+                    )
+                except TypeError:
+                    out = fit_time_series(
+                        times_dict,
+                        t0_global,
+                        t_end_global,
+                        cfg_fit,
+                    )
                 # Return the full fit result so scan_systematics can
                 # extract whichever parameter it needs.
                 return out
