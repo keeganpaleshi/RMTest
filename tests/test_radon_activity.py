@@ -94,6 +94,18 @@ def test_compute_radon_activity_single_218():
     assert s == pytest.approx(1.0)
 
 
+def test_compute_radon_activity_uncertainty_po214_only():
+    a, s = compute_radon_activity(4.0, None, 1.0, 5.0, 0.3, 1.0)
+    assert a == pytest.approx(5.0)
+    assert s == pytest.approx(0.3)
+
+
+def test_compute_radon_activity_uncertainty_po218_only():
+    a, s = compute_radon_activity(8.0, 0.8, 1.0, 9.0, None, 1.0)
+    assert a == pytest.approx(8.0)
+    assert s == pytest.approx(0.8)
+
+
 def test_compute_total_radon():
     conc, dconc, tot, dtot = compute_total_radon(5.0, 0.5, 10.0, 20.0)
     assert conc == pytest.approx(0.5)
