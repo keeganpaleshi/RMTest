@@ -123,6 +123,19 @@ rolling-median threshold (`burst_window_size_s`, `rolling_median_window`,
 `burst_multiplier`) and `both` applies the micro filter followed by the
 rate veto.
 
+Example snippet:
+
+```json
+"burst_filter": {
+    "burst_mode": "rate",
+    "burst_window_size_s": 60,
+    "rolling_median_window": 5,
+    "burst_multiplier": 5,
+    "micro_window_size_s": 1,
+    "micro_count_threshold": 3
+}
+```
+
 `time_bins_fallback` under the `plotting` section sets the number of
 histogram bins to use when the automatic Freedman&ndash;Diaconis rule
 fails, typically due to zero IQR.  The default is `1`.
