@@ -41,14 +41,19 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     cal_mock = {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0), "peaks": {"Po210": {"centroid_adc": 10}}}
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: {"E_Po214": 1.0})
+    captured = {}
+
+    def fake_fit_time_series(times_dict, t_start, t_end, cfg):
+        captured["times"] = times_dict.get("Po214")
+        return {"E_Po214": 1.0}
+
+    monkeypatch.setattr(analyze, "fit_time_series", fake_fit_time_series)
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(baseline_noise, "estimate_baseline_noise", lambda *a, **k: (5.0, {}))
 
-    captured = {}
     def fake_write(out_dir, summary, timestamp=None):
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
@@ -73,4 +78,5 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     assert summary["baseline"]["scale_factor"] == pytest.approx(0.0)
     assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(1.0)
     assert summary["baseline"].get("noise_level") == 5.0
+    assert list(captured.get("times", [])) == [20]
 
