@@ -930,16 +930,22 @@ def main():
 
         if "assay" in eff_cfg:
             acfg = eff_cfg["assay"]
-            try:
-                val = calc_assay_efficiency(
-                    acfg["rate_cps"], acfg["reference_bq"]
-                )
-                err = float(acfg.get("error", 0.0))
-                sources["assay"] = {"value": val, "error": err}
-                vals.append(val)
-                errs.append(err)
-            except Exception as e:
-                print(f"WARNING: Assay efficiency -> {e}")
+            if isinstance(acfg, dict):
+                acfg_list = [acfg]
+            else:
+                acfg_list = list(acfg)
+            for idx, cfg_item in enumerate(acfg_list, start=1):
+                try:
+                    val = calc_assay_efficiency(
+                        cfg_item["rate_cps"], cfg_item["reference_bq"]
+                    )
+                    err = float(cfg_item.get("error", 0.0))
+                    key = "assay" if isinstance(acfg, dict) else f"assay_{idx}"
+                    sources[key] = {"value": val, "error": err}
+                    vals.append(val)
+                    errs.append(err)
+                except Exception as e:
+                    print(f"WARNING: Assay efficiency -> {e}")
 
         if "decay" in eff_cfg:
             dcfg = eff_cfg["decay"]
