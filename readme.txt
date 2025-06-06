@@ -151,6 +151,8 @@ fit.  Important keys include:
   Freedman–Diaconis rule fails.
 - `mu_sigma` – uncertainty applied to peak centroids.
 - `amp_prior_scale` – scales the width of the peak amplitude priors.
+- `bkg_mode` – `"auto"` estimates the linear continuum from the spectrum
+  while `"manual"` uses the `b0_prior` / `b1_prior` values.
 - `b0_prior` / `b1_prior` – `[mean, sigma]` priors for the linear
   continuum terms.
 - `tau_{iso}_prior_mean` and `tau_{iso}_prior_sigma` – mean and

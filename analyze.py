@@ -597,8 +597,22 @@ def main():
                 )
 
         # Continuum priors
-        priors_spec["b0"] = tuple(cfg["spectral_fit"].get("b0_prior"))
-        priors_spec["b1"] = tuple(cfg["spectral_fit"].get("b1_prior"))
+        bkg_mode = str(cfg["spectral_fit"].get("bkg_mode", "manual")).lower()
+        if bkg_mode == "auto":
+            from background import estimate_linear_background
+
+            mu_map = {k: priors_spec[f"mu_{k}"][0] for k in adc_peaks.keys()}
+            peak_tol = cfg["spectral_fit"].get("spectral_peak_tolerance_mev", 0.3)
+            b0_est, b1_est = estimate_linear_background(
+                events["energy_MeV"].values,
+                mu_map,
+                peak_width=peak_tol,
+            )
+            priors_spec["b0"] = (b0_est, abs(b0_est) * 0.1 + 1e-3)
+            priors_spec["b1"] = (b1_est, abs(b1_est) * 0.1 + 1e-3)
+        else:
+            priors_spec["b0"] = tuple(cfg["spectral_fit"].get("b0_prior"))
+            priors_spec["b1"] = tuple(cfg["spectral_fit"].get("b1_prior"))
 
         # Flags controlling the spectral fit
         spec_flags = cfg["spectral_fit"].get("flags", {}).copy()
