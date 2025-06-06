@@ -40,6 +40,8 @@ The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--j
 - `spectrum.png` – spectrum plot with fitted peaks.
 - `time_series_Po214.png` and `time_series_Po218.png` – decay time-series plots.
 - Optional `*_ts.json` files containing binned time series when enabled.
+- `efficiency.png` – bar chart of individual efficiencies and the BLUE result.
+- `eff_cov.png` – heatmap of the efficiency covariance matrix.
 
 The `time_fit` routine currently fits only Po‑214 and Po‑218.  Supporting
 Po‑210 would require adding its half‑life and detection efficiency to the

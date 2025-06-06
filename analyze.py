@@ -70,6 +70,7 @@ from io_utils import (
 from calibration import derive_calibration_constants, derive_calibration_constants_auto
 from fitting import fit_spectrum, fit_time_series
 from plot_utils import plot_spectrum, plot_time_series
+from visualize import cov_heatmap, efficiency_bar
 from systematics import scan_systematics
 from utils import find_adc_peaks
 
@@ -659,10 +660,11 @@ def main():
         efficiency_results["sources"] = sources
         if vals:
             try:
-                comb_val, comb_err, _ = blue_combine(vals, errs)
+                comb_val, comb_err, weights = blue_combine(vals, errs)
                 efficiency_results["combined"] = {
                     "value": float(comb_val),
                     "error": float(comb_err),
+                    "weights": weights.tolist(),
                 }
             except Exception as e:
                 print(f"WARNING: BLUE combination failed -> {e}")
@@ -731,6 +733,24 @@ def main():
             )
         except Exception as e:
             print(f"WARNING: Could not create time-series plot for {iso} -> {e}")
+
+    # Additional visualizations
+    if efficiency_results.get("sources"):
+        try:
+            errs_arr = np.array([s.get("error", 0.0) for s in efficiency_results["sources"].values()])
+            if errs_arr.size > 0:
+                cov = np.diag(errs_arr ** 2)
+                cov_heatmap(
+                    cov,
+                    os.path.join(out_dir, "eff_cov.png"),
+                    labels=list(efficiency_results["sources"].keys()),
+                )
+            efficiency_bar(
+                efficiency_results,
+                os.path.join(out_dir, "efficiency.png"),
+            )
+        except Exception as e:
+            print(f"WARNING: Could not create efficiency plots -> {e}")
 
     print(f"Analysis complete. Results written to -> {out_dir}")
 
