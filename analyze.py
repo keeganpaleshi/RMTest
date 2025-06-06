@@ -81,6 +81,39 @@ from visualize import cov_heatmap, efficiency_bar
 from utils import find_adc_peaks, cps_to_bq
 
 
+def window_prob(E, sigma, lo, hi):
+    """Return probability that each ``E`` lies in [lo, hi].
+
+    Elements with ``sigma == 0`` are evaluated via a simple range check instead
+    of calling :func:`scipy.stats.norm.cdf` with ``scale=0``.
+    Parameters may be scalar or array-like and are broadcast element-wise.
+    """
+
+    E = np.asarray(E, dtype=float)
+    sigma = np.asarray(sigma, dtype=float)
+    E, sigma = np.broadcast_arrays(E, sigma)
+    lo_val = float(lo) if np.isscalar(lo) else float(lo)
+    hi_val = float(hi) if np.isscalar(hi) else float(hi)
+
+    prob = np.empty_like(E, dtype=float)
+    zero_mask = sigma == 0
+
+    if np.any(zero_mask):
+        prob[zero_mask] = (
+            (E[zero_mask] >= lo_val) & (E[zero_mask] <= hi_val)
+        ).astype(float)
+
+    if np.any(~zero_mask):
+        nz = ~zero_mask
+        prob[nz] = norm.cdf(hi_val, loc=E[nz], scale=sigma[nz]) - norm.cdf(
+            lo_val, loc=E[nz], scale=sigma[nz]
+        )
+
+    if prob.ndim == 0:
+        return float(prob)
+    return prob
+
+
 def parse_args():
     p = argparse.ArgumentParser(description="Full Radon Monitor Analysis Pipeline")
     p.add_argument(
@@ -414,19 +447,6 @@ def main():
     # Apply linear calibration -> new column “energy_MeV” and its uncertainty
     events["energy_MeV"] = events["adc"] * a + c
     events["denergy_MeV"] = np.sqrt((events["adc"] * a_sig) ** 2 + c_sig ** 2)
-
-    def window_prob(E, sigma, lo, hi):
-        E = np.asarray(E, dtype=float)
-        sigma = np.asarray(sigma, dtype=float)
-        if np.isscalar(lo):
-            lo_val = lo
-            hi_val = hi
-        else:
-            lo_val = float(lo)
-            hi_val = float(hi)
-        if np.all(sigma == 0):
-            return ((E >= lo_val) & (E <= hi_val)).astype(float)
-        return norm.cdf(hi_val, loc=E, scale=sigma) - norm.cdf(lo_val, loc=E, scale=sigma)
 
     # ────────────────────────────────────────────────────────────
     # 4. Baseline run (optional)
