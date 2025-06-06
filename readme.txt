@@ -115,9 +115,16 @@ When present the value is also written to `summary.json` under the
 ```json
 "analysis": {
     "analysis_start_time": "2020-01-01T00:00:00Z",
-    "ambient_concentration": 0.02
+"ambient_concentration": 0.02
 }
 ```
+
+`--ambient-file` may be supplied instead to account for a
+time-dependent background.  The option expects a two-column text file
+containing absolute timestamps (in seconds) and the corresponding
+ambient concentration in Bq/L.  These values are linearly interpolated
+to the radon-activity timestamps and override any constant value when
+calling `plot_equivalent_air`.
 
 `burst_filter` controls removal of short high-rate clusters.  The
 `burst_mode` key selects the default strategy which can be overridden by
