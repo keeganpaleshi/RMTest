@@ -3,7 +3,6 @@ import sys
 from pathlib import Path
 import pandas as pd
 import numpy as np
-import yaml
 import logging
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -447,57 +446,6 @@ def test_spike_count_cli(tmp_path, monkeypatch):
     assert recorded.get("cnt") == 42.0
     assert saved["summary"]["efficiency"]["sources"]["spike"]["error"] == 2.0
 
-
-def test_sys_yaml_cli(tmp_path, monkeypatch):
-    cfg = {
-        "pipeline": {"log_level": "INFO"},
-        "calibration": {},
-        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
-        "time_fit": {"do_time_fit": True, "window_Po214": [7.4,7.9], "hl_Po214": [1.0,0.0], "eff_Po214": [1.0,0.0], "flags": {}},
-        "systematics": {"enable": False},
-        "plotting": {"plot_save_formats": ["png"]},
-    }
-    cfg_path = tmp_path / "c.yml"
-    with open(cfg_path, "w") as f:
-        json.dump(cfg, f)
-
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1800], "fchannel": [1]})
-    data = tmp_path / "d.csv"
-    df.to_csv(data, index=False)
-
-    sys_cfg = {"enable": True, "sigma_shifts": {}, "scan_keys": []}
-    sys_path = tmp_path / "sys.yaml"
-    with open(sys_path, "w") as f:
-        yaml.dump(sys_cfg, f)
-
-    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0)})
-    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0)})
-
-    called = {}
-
-    def fake_scan(*a, **k):
-        called["scan"] = True
-        return ({}, 0.0)
-
-    monkeypatch.setattr(analyze, "scan_systematics", fake_scan)
-    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
-    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
-
-    args = [
-        "analyze.py",
-        "--config",
-        str(cfg_path),
-        "--input",
-        str(data),
-        "--output_dir",
-        str(tmp_path),
-        "--sys",
-        str(sys_path),
-    ]
-    monkeypatch.setattr(sys, "argv", args)
-    analyze.main()
-
-    assert called.get("scan") is True
 
 
 def test_debug_flag_sets_log_level(tmp_path, monkeypatch):

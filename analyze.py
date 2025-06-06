@@ -141,10 +141,6 @@ def parse_args():
         help="Discard events occurring this many seconds after the start",
     )
     p.add_argument(
-        "--sys",
-        help="Path to a systematics file (JSON or YAML)",
-    )
-    p.add_argument(
         "--debug",
         action="store_true",
         help="Enable debug logging",
@@ -206,18 +202,6 @@ def main():
             print(f"ERROR: Could not load systematics JSON '{args.systematics_json}': {e}")
             sys.exit(1)
 
-    if args.sys:
-        try:
-            with open(args.sys, "r", encoding="utf-8") as f:
-                if args.sys.endswith((".yml", ".yaml")):
-                    import yaml
-
-                    cfg["systematics"] = yaml.safe_load(f)
-                else:
-                    cfg["systematics"] = json.load(f)
-        except Exception as e:
-            print(f"ERROR: Could not load systematics file '{args.sys}': {e}")
-            sys.exit(1)
 
     if args.time_bin_mode:
         cfg.setdefault("plotting", {})["plot_time_binning_mode"] = args.time_bin_mode

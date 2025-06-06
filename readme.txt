@@ -29,7 +29,7 @@ python analyze.py --config config.json --input merged_data.csv \
     [--output_dir results] [--job-id MYRUN] \
     [--efficiency-json eff.json] [--systematics-json syst.json] \
     [--spike-count N --spike-count-err S] [--slope RATE] \
-    [--settle-s SEC] [--sys syst.yaml] [--debug] \
+    [--settle-s SEC] [--debug] \
     [--time-bin-mode fixed --time-bin-width 3600] [--dump-ts-json]
 ```
 
@@ -96,8 +96,8 @@ histogram counts to a `*_ts.json` file alongside the plot.
 Additional convenience flags include `--spike-count` (with optional
 `--spike-count-err`) to override spike efficiency inputs, `--slope` to
 apply a linear ADC drift correction, `--settle-s` to skip the initial
-settling period in the decay fit, `--sys` to load a YAML/JSON
-systematics file and `--debug` to increase log verbosity.
+settling period in the decay fit and `--debug` to increase log
+verbosity.
 
 When the spectrum is binned in raw ADC channels (`"spectral_binning_mode": "adc"`),
 the bin edges are internally converted to energy using the calibration
