@@ -95,6 +95,16 @@ Example snippet:
 }
 ```
 
+When present the value is also written to `summary.json` under the
+`analysis` section:
+
+```json
+"analysis": {
+    "analysis_start_time": "2020-01-01T00:00:00Z",
+    "ambient_concentration": 0.02
+}
+```
+
 `burst_filter` controls removal of short high-rate clusters.  The
 `burst_mode` key selects the default strategy which can be overridden by
 the command-line option `--burst-mode`.  `none` disables the filter,
