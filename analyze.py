@@ -71,6 +71,7 @@ from calibration import derive_calibration_constants, derive_calibration_constan
 from fitting import fit_spectrum, fit_time_series
 from plot_utils import plot_spectrum, plot_time_series
 from systematics import scan_systematics, apply_linear_adc_shift
+from visualize import cov_heatmap, efficiency_bar
 from utils import find_adc_peaks
 
 
@@ -265,6 +266,15 @@ def main():
 
     # Optional burst filter to remove high-rate clusters
     events, n_removed_burst = apply_burst_filter(events, cfg, mode=args.burst_mode)
+
+    # Optional ADC drift correction before calibration
+    drift_rate = float(cfg.get("systematics", {}).get("adc_drift_rate", 0.0))
+    if drift_rate != 0.0:
+        events["adc"] = apply_linear_adc_shift(
+            events["adc"].values,
+            events["timestamp"].values,
+            float(drift_rate),
+        )
 
     # Global t₀ reference
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
@@ -719,10 +729,11 @@ def main():
         efficiency_results["sources"] = sources
         if vals:
             try:
-                comb_val, comb_err, _ = blue_combine(vals, errs)
+                comb_val, comb_err, weights = blue_combine(vals, errs)
                 efficiency_results["combined"] = {
                     "value": float(comb_val),
                     "error": float(comb_err),
+                    "weights": weights.tolist(),
                 }
             except Exception as e:
                 print(f"WARNING: BLUE combination failed -> {e}")
@@ -739,6 +750,7 @@ def main():
         "systematics": systematics_results,
         "baseline": baseline_info,
         "burst_filter": {"removed_events": int(n_removed_burst)},
+        "adc_drift_rate": drift_rate,
         "efficiency": efficiency_results,
         "git_commit": commit,
         "cli_sha256": cli_sha256,
@@ -791,6 +803,24 @@ def main():
             )
         except Exception as e:
             print(f"WARNING: Could not create time-series plot for {iso} -> {e}")
+
+    # Additional visualizations
+    if efficiency_results.get("sources"):
+        try:
+            errs_arr = np.array([s.get("error", 0.0) for s in efficiency_results["sources"].values()])
+            if errs_arr.size > 0:
+                cov = np.diag(errs_arr ** 2)
+                cov_heatmap(
+                    cov,
+                    os.path.join(out_dir, "eff_cov.png"),
+                    labels=list(efficiency_results["sources"].keys()),
+                )
+            efficiency_bar(
+                efficiency_results,
+                os.path.join(out_dir, "efficiency.png"),
+            )
+        except Exception as e:
+            print(f"WARNING: Could not create efficiency plots -> {e}")
 
     print(f"Analysis complete. Results written to -> {out_dir}")
 

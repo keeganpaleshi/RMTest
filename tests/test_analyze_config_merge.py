@@ -62,6 +62,8 @@ def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
         return None
 
     monkeypatch.setattr(analyze, "plot_time_series", fake_plot_time_series)
+    monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
 
     args = [
         "analyze.py",
@@ -126,6 +128,8 @@ def test_analysis_start_time_applied(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit_time_series)
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
 
     args = [
         "analyze.py",
@@ -180,6 +184,8 @@ def test_job_id_overrides_results_folder(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: {})
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
 
     recorded = {}
 
@@ -298,6 +304,8 @@ def test_systematics_json_cli(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: {"E":0.0})
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
 
     called = {}
     def fake_scan(*a, **k):
@@ -359,6 +367,8 @@ def test_time_bin_cli(tmp_path, monkeypatch):
         return None
 
     monkeypatch.setattr(analyze, "plot_time_series", fake_plot_ts)
+    monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
 
     args = [
         "analyze.py",
