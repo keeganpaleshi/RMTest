@@ -28,6 +28,12 @@ def test_compute_radon_activity_only_214_error():
     assert s == pytest.approx(2.0)
 
 
+def test_compute_radon_activity_only_214_error_eff_not_one():
+    a, s = compute_radon_activity(10.0, None, 0.8, 12.0, 2.0, 0.9)
+    assert a == pytest.approx(12.0)
+    assert s == pytest.approx(2.0)
+
+
 def test_compute_radon_activity_mixed_efficiency():
     a, s = compute_radon_activity(10.0, 1.0, 0.0, 12.0, 2.0, 1.0)
     assert a == pytest.approx(12.0)
@@ -36,6 +42,12 @@ def test_compute_radon_activity_mixed_efficiency():
 
 def test_compute_radon_activity_only_218_error():
     a, s = compute_radon_activity(10.0, 1.0, 1.0, 12.0, None, 1.0)
+    assert a == pytest.approx(10.0)
+    assert s == pytest.approx(1.0)
+
+
+def test_compute_radon_activity_only_218_error_eff_not_one():
+    a, s = compute_radon_activity(10.0, 1.0, 0.7, 12.0, None, 0.6)
     assert a == pytest.approx(10.0)
     assert s == pytest.approx(1.0)
 

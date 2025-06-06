@@ -24,11 +24,13 @@ def compute_radon_activity(
     Parameters
     ----------
     rate218, rate214 : float or None
-        Measured count rates for the two isotopes.
+        Measured activities for the two isotopes in Bq.  Rates should already be
+        corrected for the detection efficiencies.
     err218, err214 : float or None
-        Uncertainties on the rates.
+        Uncertainties on the rates in Bq.
     eff218, eff214 : float
-        Detection efficiencies used to convert counts to Bq.
+        Detection efficiencies of the two isotopes.  Non-positive values cause
+        the corresponding isotope to be ignored.
 
     Returns
     -------
@@ -40,19 +42,17 @@ def compute_radon_activity(
     values = []
     weights = []
 
-    if rate218 is not None:
-        val = rate218 / eff218 if eff218 > 0 else 0.0
-        values.append(val)
-        if err218 is not None and err218 > 0 and eff218 > 0:
-            weights.append(1.0 / (err218 / eff218) ** 2)
+    if rate218 is not None and eff218 > 0:
+        values.append(rate218)
+        if err218 is not None and err218 > 0:
+            weights.append(1.0 / err218**2)
         else:
             weights.append(None)
 
-    if rate214 is not None:
-        val = rate214 / eff214 if eff214 > 0 else 0.0
-        values.append(val)
-        if err214 is not None and err214 > 0 and eff214 > 0:
-            weights.append(1.0 / (err214 / eff214) ** 2)
+    if rate214 is not None and eff214 > 0:
+        values.append(rate214)
+        if err214 is not None and err214 > 0:
+            weights.append(1.0 / err214**2)
         else:
             weights.append(None)
 
