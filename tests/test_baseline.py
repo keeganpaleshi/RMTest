@@ -68,7 +68,9 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     analyze.main()
 
     summary = captured["summary"]
-    assert summary["baseline"]["rates"]["Po214"] == pytest.approx(0.2)
-    assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(0.8)
+    conc = summary["baseline"]["concentration_Bq_m3"]["Po214"]
+    assert conc == pytest.approx(0.330578, rel=1e-3)
+    assert summary["baseline"]["scale_factor"] == pytest.approx(0.0)
+    assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(1.0)
     assert summary["baseline"].get("noise_level") == 5.0
 

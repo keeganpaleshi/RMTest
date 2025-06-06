@@ -72,7 +72,7 @@ from fitting import fit_spectrum, fit_time_series
 from plot_utils import plot_spectrum, plot_time_series
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
-from utils import find_adc_peaks
+from utils import find_adc_peaks, cps_to_bq
 
 
 def parse_args():
@@ -774,21 +774,22 @@ def main():
         for iso, count in baseline_counts.items():
             eff = cfg["time_fit"].get(f"eff_{iso}", [1.0])[0]
             if eff > 0:
-                baseline_rates[iso] = count / (baseline_live_time * eff)
+                rate = count / (baseline_live_time * eff)
             else:
-                baseline_rates[iso] = 0.0
+                rate = 0.0
+            baseline_rates[iso] = cps_to_bq(rate, volume_liters=monitor_vol)
 
     scale_factor = 0.0
-    if monitor_vol + sample_vol > 0:
-        scale_factor = monitor_vol / (monitor_vol + sample_vol)
+    if monitor_vol > 0:
+        scale_factor = sample_vol / monitor_vol
 
-    for iso, rate in baseline_rates.items():
+    for iso, conc in baseline_rates.items():
         fit = time_fit_results.get(iso)
         if fit and (f"E_{iso}" in fit):
-            fit["E_corrected"] = fit[f"E_{iso}"] - rate * scale_factor
+            fit["E_corrected"] = fit[f"E_{iso}"] - conc * scale_factor
 
     if baseline_rates:
-        baseline_info["rates"] = baseline_rates
+        baseline_info["concentration_Bq_m3"] = baseline_rates
         baseline_info["scale_factor"] = scale_factor
 
     # ────────────────────────────────────────────────────────────
