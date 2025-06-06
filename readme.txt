@@ -81,6 +81,19 @@ time origin for decay fitting and time-series plots.  Provide an
 ISO‑8601 string such as `"2020-01-01T00:00:00Z"`.  When omitted the first
 event timestamp is used.
 
+`ambient_concentration` may also be specified here to record the ambient
+radon concentration in Bq/m³ used for the equivalent air plot.  The
+command-line option `--ambient-concentration` overrides this value.
+
+Example snippet:
+
+```json
+"analysis": {
+    "analysis_start_time": "2020-01-01T00:00:00Z",
+    "ambient_concentration": 0.02
+}
+```
+
 `burst_filter` controls removal of short high-rate clusters.  The
 command-line option `--burst-mode` chooses the strategy:
 `none` disables the filter, `micro` applies a short sliding-window veto
