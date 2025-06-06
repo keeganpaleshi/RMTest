@@ -161,6 +161,11 @@ def parse_args():
         action="store_true",
         help="Write *_ts.json files containing binned time-series data",
     )
+    p.add_argument(
+        "--seed",
+        type=int,
+        help="Override random seed used by analysis algorithms",
+    )
     return p.parse_args()
 
 
@@ -203,6 +208,9 @@ def main():
             print(f"ERROR: Could not load systematics JSON '{args.systematics_json}': {e}")
             sys.exit(1)
 
+    if args.seed is not None:
+        cfg.setdefault("pipeline", {})["random_seed"] = int(args.seed)
+
 
     if args.time_bin_mode:
         cfg.setdefault("plotting", {})["plot_time_binning_mode"] = args.time_bin_mode
@@ -233,11 +241,13 @@ def main():
     )
 
     seed = cfg.get("pipeline", {}).get("random_seed")
+    seed_used = None
     if seed is not None:
         try:
             seed_int = int(seed)
             np.random.seed(seed_int)
             random.seed(seed_int)
+            seed_used = seed_int
         except Exception:
             logging.warning(f"Invalid random_seed '{seed}' ignored")
 
@@ -805,6 +815,7 @@ def main():
         "burst_filter": {"removed_events": int(n_removed_burst)},
         "adc_drift_rate": drift_rate,
         "efficiency": efficiency_results,
+        "random_seed": seed_used,
         "git_commit": commit,
         "cli_sha256": cli_sha256,
         "cli_args": cli_args,
