@@ -464,9 +464,11 @@ def main():
             baseline_info["noise_level"] = float(noise_level)
 
 
+
     # After creating ``base_events``, drop them from the dataset
     if baseline_range:
         events = events[~mask_base].reset_index(drop=True)
+
 
 
 
