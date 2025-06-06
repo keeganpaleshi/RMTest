@@ -36,6 +36,19 @@ python analyze.py --config config.json --input merged_data.csv \
     [--time-bin-mode fixed --time-bin-width 3600] [--dump-ts-json]
 ```
 
+## Input CSV Format
+
+The input file must be a comma-separated table with these columns:
+
+- `fUniqueID` – unique event number
+- `fBits` – status bits or flags
+- `timestamp` – event timestamp in seconds
+- `adc` – raw ADC value
+- `fchannel` – acquisition channel
+
+Columns beyond these are ignored. See `example_input.csv` for a
+sample layout.
+
 ## Output
 
 The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--job-id` is given the folder `<output_dir>/<job-id>/` is used instead. The directory includes:
