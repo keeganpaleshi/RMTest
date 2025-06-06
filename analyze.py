@@ -1064,13 +1064,20 @@ def main():
         for i in range(times.size):
             r214 = err214_i = None
             if A214 is not None:
-                r214 = A214[i] * eff_Po214
-                err214_i = dA214[i] * eff_Po214
+                r214 = A214[i]
+                err214_i = dA214[i]
             r218 = err218_i = None
             if A218 is not None:
-                r218 = A218[i] * eff_Po218
-                err218_i = dA218[i] * eff_Po218
-            A, s = compute_radon_activity(r218, err218_i, eff_Po218, r214, err214_i, eff_Po214)
+                r218 = A218[i]
+                err218_i = dA218[i]
+            A, s = compute_radon_activity(
+                r218,
+                err218_i,
+                1.0,
+                r214,
+                err214_i,
+                1.0,
+            )
             activity_arr[i] = A
             err_arr[i] = s
 
