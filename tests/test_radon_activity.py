@@ -94,13 +94,29 @@ def test_compute_radon_activity_single_218():
     assert s == pytest.approx(1.0)
 
 
+def test_compute_radon_activity_single_214_eff_not_one():
+    """Efficiency values should not scale single-isotope rates."""
+    a, s = compute_radon_activity(None, None, 0.5, 12.0, 2.0, 0.7)
+    assert a == pytest.approx(12.0)
+    assert s == pytest.approx(2.0)
+
+
+def test_compute_radon_activity_single_218_eff_not_one():
+    """Efficiency values should not scale single-isotope rates."""
+    a, s = compute_radon_activity(10.0, 1.0, 0.3, None, None, 0.8)
+    assert a == pytest.approx(10.0)
+    assert s == pytest.approx(1.0)
+
+
 def test_compute_radon_activity_uncertainty_po214_only():
+    """Returns Po-214 values when only its error is valid."""
     a, s = compute_radon_activity(4.0, None, 1.0, 5.0, 0.3, 1.0)
     assert a == pytest.approx(5.0)
     assert s == pytest.approx(0.3)
 
 
 def test_compute_radon_activity_uncertainty_po218_only():
+    """Returns Po-218 values when only its error is valid."""
     a, s = compute_radon_activity(8.0, 0.8, 1.0, 9.0, None, 1.0)
     assert a == pytest.approx(8.0)
     assert s == pytest.approx(0.8)

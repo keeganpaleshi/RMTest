@@ -175,7 +175,9 @@ def parse_args():
     )
     p.add_argument(
         "--ambient-file",
-        help="Path to two-column file with time and ambient concentration",
+        help=(
+            "Two-column text file of timestamp and ambient concentration in Bq/L"
+        ),
     )
     p.add_argument(
         "--ambient-concentration",

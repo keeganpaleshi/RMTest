@@ -885,11 +885,17 @@ def test_ambient_file_interpolation(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
 
+    # Constant radon activity so volumes depend only on ambient interpolation
+    import radon_activity
+    monkeypatch.setattr(radon_activity, "compute_radon_activity", lambda *a, **k: (10.0, 1.0))
+
     captured = {}
 
     def fake_plot_equivalent_air(t, v, e, conc, out_png, config=None):
         captured["conc"] = conc
         captured["times"] = list(t)
+        captured["vol"] = list(v)
+        captured["err"] = list(e)
         Path(out_png).touch()
 
     monkeypatch.setattr(analyze, "plot_equivalent_air", fake_plot_equivalent_air)
@@ -917,6 +923,14 @@ def test_ambient_file_interpolation(tmp_path, monkeypatch):
     analyze.main()
 
     assert captured.get("conc") is None
+
+    exp_times = np.linspace(0.0, 2.0, 100)
+    amb = np.interp(exp_times, [0.0, 2.0], [1.0, 2.0])
+    exp_vol = 10.0 / amb
+    exp_err = 1.0 / amb
+    assert np.allclose(captured["times"], exp_times.tolist())
+    assert np.allclose(captured["vol"], exp_vol.tolist())
+    assert np.allclose(captured["err"], exp_err.tolist())
 
 
 def test_burst_mode_from_config(tmp_path, monkeypatch):
