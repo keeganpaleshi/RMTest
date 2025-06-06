@@ -167,6 +167,10 @@ def parse_args():
         help="Write *_ts.json files containing binned time-series data",
     )
     p.add_argument(
+        "--ambient-file",
+        help="Path to two-column file with time and ambient concentration",
+    )
+    p.add_argument(
         "--ambient-concentration",
         type=float,
         help="Ambient radon concentration in Bq per liter for equivalent air plot",
@@ -411,6 +415,9 @@ def main():
 
         if noise_level is not None:
             baseline_info["noise_level"] = float(noise_level)
+
+        # Remove baseline events from the main dataset before any fits
+        events = events[~mask_base].reset_index(drop=True)
     baseline_counts = {}
     # ────────────────────────────────────────────────────────────
     # 5. Spectral fit (optional)
@@ -951,9 +958,50 @@ def main():
 
     # Radon activity and equivalent air plots
     try:
-        times = np.linspace(t0_global, events["timestamp"].max(), 20)
-        activity_arr = np.full_like(times, radon_results["radon_activity_Bq"]["value"], dtype=float)
-        err_arr = np.full_like(times, radon_results["radon_activity_Bq"]["uncertainty"], dtype=float)
+        from radon_activity import radon_activity_curve
+
+        times = np.linspace(t0_global, events["timestamp"].max(), 100)
+        t_rel = times - t0_global
+
+        A214 = dA214 = None
+        if "Po214" in time_fit_results:
+            fit = time_fit_results["Po214"]
+            E = fit.get("E_corrected", fit.get("E_Po214"))
+            dE = fit.get("dE_Po214", 0.0)
+            N0 = fit.get("N0_Po214", 0.0)
+            dN0 = fit.get("dN0_Po214", 0.0)
+            hl = cfg.get("time_fit", {}).get("hl_Po214", [328320])[0]
+            A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl)
+
+        A218 = dA218 = None
+        if "Po218" in time_fit_results:
+            fit = time_fit_results["Po218"]
+            E = fit.get("E_corrected", fit.get("E_Po218"))
+            dE = fit.get("dE_Po218", 0.0)
+            N0 = fit.get("N0_Po218", 0.0)
+            dN0 = fit.get("dN0_Po218", 0.0)
+            hl = cfg.get("time_fit", {}).get("hl_Po218", [328320])[0]
+            A218, dA218 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl)
+
+        activity_arr = np.zeros_like(times, dtype=float)
+        err_arr = np.zeros_like(times, dtype=float)
+        for i in range(times.size):
+            r214 = err214_i = None
+            if A214 is not None:
+                r214 = A214[i] * eff_Po214
+                err214_i = dA214[i] * eff_Po214
+            r218 = err218_i = None
+            if A218 is not None:
+                r218 = A218[i] * eff_Po218
+                err218_i = dA218[i] * eff_Po218
+            A, s = compute_radon_activity(r218, err218_i, eff_Po218, r214, err214_i, eff_Po214)
+            activity_arr[i] = A
+            err_arr[i] = s
+
+        if np.all(activity_arr == 0):
+            activity_arr.fill(radon_results["radon_activity_Bq"]["value"])
+            err_arr.fill(radon_results["radon_activity_Bq"]["uncertainty"])
+
         plot_radon_activity(
             times,
             activity_arr,
@@ -963,7 +1011,26 @@ def main():
         )
 
         ambient = cfg.get("analysis", {}).get("ambient_concentration")
-        if ambient:
+        ambient_interp = None
+        if args.ambient_file:
+            try:
+                dat = np.loadtxt(args.ambient_file, usecols=(0, 1))
+                ambient_interp = np.interp(times, dat[:, 0], dat[:, 1])
+            except Exception as e:
+                print(f"WARNING: Could not read ambient file '{args.ambient_file}': {e}")
+
+        if ambient_interp is not None:
+            vol_arr = activity_arr / ambient_interp
+            vol_err = err_arr / ambient_interp
+            plot_equivalent_air(
+                times,
+                vol_arr,
+                vol_err,
+                None,
+                os.path.join(out_dir, "equivalent_air.png"),
+                config=cfg.get("plotting", {}),
+            )
+        elif ambient:
             vol_arr = activity_arr / float(ambient)
             vol_err = err_arr / float(ambient)
             plot_equivalent_air(

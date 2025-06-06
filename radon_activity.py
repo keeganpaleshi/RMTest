@@ -7,6 +7,7 @@ from typing import Optional, Tuple
 __all__ = [
     "compute_radon_activity",
     "compute_total_radon",
+    "radon_activity_curve",
 ]
 
 
@@ -65,7 +66,7 @@ def compute_radon_activity(
         sigma = math.sqrt(1.0 / (w1 + w2))
         return A, sigma
 
-    if len(values) == 2 and any(w is not None for w in weights):
+    if len(values) == 2 and sum(w is not None for w in weights) == 1:
         idx = 0 if weights[0] is not None else 1
         return values[idx], math.sqrt(1.0 / weights[idx])
 
@@ -102,3 +103,49 @@ def compute_total_radon(
     total_bq = conc * sample_volume
     sigma_total = sigma_conc * sample_volume
     return conc, sigma_conc, total_bq, sigma_total
+
+
+def radon_activity_curve(
+    times,
+    E: float,
+    dE: float,
+    N0: float,
+    dN0: float,
+    half_life_s: float,
+) -> Tuple["np.ndarray", "np.ndarray"]:
+    """Activity over time from fitted decay parameters.
+
+    Parameters
+    ----------
+    times : array-like
+        Relative times in seconds.
+    E : float
+        Steady-state decay rate in Bq.
+    dE : float
+        Uncertainty on ``E``.
+    N0 : float
+        Initial activity parameter.
+    dN0 : float
+        Uncertainty on ``N0``.
+    half_life_s : float
+        Half-life used for the decay model.
+
+    Returns
+    -------
+    numpy.ndarray
+        Activity at each time in Bq.
+    numpy.ndarray
+        Propagated 1-sigma uncertainty at each time.
+    """
+    import numpy as np
+
+    t = np.asarray(times, dtype=float)
+    lam = math.log(2.0) / float(half_life_s)
+    exp_term = np.exp(-lam * t)
+    activity = E * (1.0 - exp_term) + lam * N0 * exp_term
+
+    dA_dE = 1.0 - exp_term
+    dA_dN0 = lam * exp_term
+    variance = (dA_dE * dE) ** 2 + (dA_dN0 * dN0) ** 2
+    sigma = np.sqrt(variance)
+    return activity, sigma

@@ -360,7 +360,14 @@ def plot_radon_activity(times, activity, errors, out_png, config=None):
 
 
 def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
-    """Plot equivalent air volume versus time."""
+    """Plot equivalent air volume versus time.
+
+    Parameters
+    ----------
+    conc : float or str or None
+        Ambient concentration label to include in the plot title. When ``None``
+        the concentration is omitted from the title.
+    """
     times = np.asarray(times, dtype=float)
     volumes = np.asarray(volumes, dtype=float)
     errors = np.asarray(errors, dtype=float)
@@ -369,7 +376,11 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
     plt.errorbar(times, volumes, yerr=errors, fmt="o-", color="tab:green")
     plt.xlabel("Time (s)")
     plt.ylabel("Equivalent Air Volume")
-    plt.title(f"Equivalent Air Volume vs. Time (ambient {conc} Bq/L)")
+    if conc is None:
+        title = "Equivalent Air Volume vs. Time"
+    else:
+        title = f"Equivalent Air Volume vs. Time (ambient {conc} Bq/L)"
+    plt.title(title)
     plt.tight_layout()
     os.makedirs(os.path.dirname(out_png), exist_ok=True)
 
