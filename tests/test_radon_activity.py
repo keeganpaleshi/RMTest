@@ -114,6 +114,16 @@ def test_compute_radon_activity_uncertainty_po214_only():
     assert a == pytest.approx(5.0)
     assert s == pytest.approx(0.3)
 
+
+def test_compute_radon_activity_negative_eff218():
+    with pytest.raises(ValueError):
+        compute_radon_activity(10.0, 1.0, -0.2, 12.0, 2.0, 1.0)
+
+
+def test_compute_radon_activity_negative_eff214():
+    with pytest.raises(ValueError):
+        compute_radon_activity(10.0, 1.0, 1.0, 12.0, 2.0, -0.5)
+
 def test_compute_total_radon():
     conc, dconc, tot, dtot = compute_total_radon(5.0, 0.5, 10.0, 20.0)
     assert conc == pytest.approx(0.5)
@@ -122,11 +132,17 @@ def test_compute_total_radon():
     assert dtot == pytest.approx(1.0)
 
 
+
 def test_compute_radon_activity_missing_uncertainty_returns_nan():
     """Single rate without uncertainty should propagate NaN error."""
     a, s = compute_radon_activity(5.0, None, 1.0, None, None, 1.0)
     assert a == pytest.approx(5.0)
     assert math.isnan(s)
+
+def test_compute_total_radon_negative_sample_volume():
+    with pytest.raises(ValueError):
+        compute_total_radon(5.0, 0.5, 10.0, -1.0)
+
 
 
 def test_radon_activity_curve():

@@ -29,8 +29,9 @@ def compute_radon_activity(
     err218, err214 : float or None
         Uncertainties on the rates in Bq.
     eff218, eff214 : float
-        Detection efficiencies of the two isotopes.  Non-positive values cause
-        the corresponding isotope to be ignored.
+        Detection efficiencies of the two isotopes.  Zero values cause the
+        corresponding isotope to be ignored.  Negative values raise a
+        ``ValueError``.
 
     Returns
     -------
@@ -39,6 +40,11 @@ def compute_radon_activity(
     float
         Propagated 1-sigma uncertainty.
     """
+    if eff218 < 0:
+        raise ValueError("eff218 must be non-negative")
+    if eff214 < 0:
+        raise ValueError("eff214 must be non-negative")
+
     values = []
     weights = []
 
@@ -86,6 +92,10 @@ def compute_total_radon(
 ) -> Tuple[float, float, float, float]:
     """Convert activity into concentration and total radon in the sample volume.
 
+    Both ``monitor_volume`` and ``sample_volume`` must be non-negative.  A
+    ``ValueError`` is raised if ``monitor_volume`` is not positive or if
+    ``sample_volume`` is negative.
+
     Returns
     -------
     concentration : float
@@ -99,6 +109,8 @@ def compute_total_radon(
     """
     if monitor_volume <= 0:
         raise ValueError("monitor_volume must be positive")
+    if sample_volume < 0:
+        raise ValueError("sample_volume must be non-negative")
     conc = activity_bq / monitor_volume
     sigma_conc = err_bq / monitor_volume
 
