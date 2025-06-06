@@ -986,11 +986,13 @@ def main():
         rate218, err218, eff_Po218, rate214, err214, eff_Po214
     )
 
+    # Convert activity to a concentration per liter of monitor volume and the
+    # total amount of radon present in just the assay sample.
     conc, dconc, total_bq, dtotal_bq = compute_total_radon(
         A_radon,
         dA_radon,
         monitor_vol,
-        monitor_vol + sample_vol,
+        sample_vol,
     )
 
     radon_results["radon_activity_Bq"] = {"value": A_radon, "uncertainty": dA_radon}
