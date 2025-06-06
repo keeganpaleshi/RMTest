@@ -65,7 +65,7 @@ def compute_radon_activity(
         sigma = math.sqrt(1.0 / (w1 + w2))
         return A, sigma
 
-    if len(values) == 2 and any(w is not None for w in weights):
+    if len(values) == 2 and sum(w is not None for w in weights) == 1:
         idx = 0 if weights[0] is not None else 1
         return values[idx], math.sqrt(1.0 / weights[idx])
 
