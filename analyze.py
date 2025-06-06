@@ -878,6 +878,10 @@ def main():
         "git_commit": commit,
         "cli_sha256": cli_sha256,
         "cli_args": cli_args,
+        "analysis": {
+            "analysis_start_time": t0_cfg,
+            "ambient_concentration": cfg.get("analysis", {}).get("ambient_concentration"),
+        },
     }
 
     out_dir = write_summary(args.output_dir, summary, args.job_id or now_str)
