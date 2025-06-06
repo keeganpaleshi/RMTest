@@ -230,3 +230,83 @@ def test_fit_spectrum_bounds_clip():
 
     out = fit_spectrum(energies, priors, bounds=bounds)
     assert lo <= out["mu_Po218"] <= hi
+
+
+def test_fit_spectrum_covariance_checks(monkeypatch):
+    """fit_valid should reflect covariance positive definiteness."""
+    rng = np.random.default_rng(5)
+    energies = np.concatenate([
+        rng.normal(5.3, 0.05, 200),
+        rng.normal(6.0, 0.05, 200),
+        rng.normal(7.7, 0.05, 200),
+    ])
+
+    priors = {
+        "sigma_E": (0.05, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (200, 20),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (200, 20),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (200, 20),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+
+    import fitting as fitting_mod
+
+    orig_curve_fit = fitting_mod.curve_fit
+
+    def good_curve_fit(*args, **kwargs):
+        popt, pcov = orig_curve_fit(*args, **kwargs)
+        return popt, np.eye(len(popt))
+
+    monkeypatch.setattr(fitting_mod, "curve_fit", good_curve_fit)
+    out = fit_spectrum(energies, priors)
+    assert out["fit_valid"]
+
+    def bad_curve_fit(*args, **kwargs):
+        popt, pcov = orig_curve_fit(*args, **kwargs)
+        pcov = np.eye(len(popt))
+        pcov[0, 0] = -1.0
+        return popt, pcov
+
+    monkeypatch.setattr(fitting_mod, "curve_fit", bad_curve_fit)
+    out_bad = fit_spectrum(energies, priors)
+    assert not out_bad["fit_valid"]
+
+
+def test_fit_time_series_covariance_checks(monkeypatch):
+    """Minuit covariance validity should propagate to fit_valid."""
+    T = 3600
+    E_true = 0.5
+    eff = 0.4
+    t_half = 164e-6
+    event_times = simulate_decay(E_true, eff, T)
+
+    times_dict = {"Po214": event_times}
+    cfg = {
+        "isotopes": {"Po214": {"half_life_s": t_half, "efficiency": eff}},
+        "fit_background": True,
+        "fit_initial": True,
+    }
+
+    import numpy.linalg as linalg
+
+    orig_eig = linalg.eigvals
+
+    def good_eigvals(x):
+        return np.ones(x.shape[0])
+
+    monkeypatch.setattr(linalg, "eigvals", good_eigvals)
+    res = fit_time_series(times_dict, 0.0, T, cfg)
+    assert res["fit_valid"]
+
+    def bad_eigvals(x):
+        vals = np.ones(x.shape[0])
+        vals[0] = -1.0
+        return vals
+
+    monkeypatch.setattr(linalg, "eigvals", bad_eigvals)
+    res_bad = fit_time_series(times_dict, 0.0, T, cfg)
+    assert not res_bad["fit_valid"]
