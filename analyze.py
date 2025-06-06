@@ -69,7 +69,12 @@ from io_utils import (
 )
 from calibration import derive_calibration_constants, derive_calibration_constants_auto
 from fitting import fit_spectrum, fit_time_series
-from plot_utils import plot_spectrum, plot_time_series
+from plot_utils import (
+    plot_spectrum,
+    plot_time_series,
+    plot_radon_activity,
+    plot_equivalent_air,
+)
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
 from utils import find_adc_peaks, cps_to_bq
@@ -162,6 +167,11 @@ def parse_args():
         help="Write *_ts.json files containing binned time-series data",
     )
     p.add_argument(
+        "--ambient-concentration",
+        type=float,
+        help="Ambient radon concentration in Bq per liter for equivalent air plot",
+    )
+    p.add_argument(
         "--seed",
         type=int,
         help="Override random seed used by analysis algorithms",
@@ -210,6 +220,11 @@ def main():
 
     if args.seed is not None:
         cfg.setdefault("pipeline", {})["random_seed"] = int(args.seed)
+
+    if args.ambient_concentration is not None:
+        cfg.setdefault("analysis", {})["ambient_concentration"] = float(
+            args.ambient_concentration
+        )
 
 
     if args.time_bin_mode:
@@ -803,6 +818,48 @@ def main():
         baseline_info["scale_factor"] = scale_factor
 
     # ────────────────────────────────────────────────────────────
+    # Radon activity extrapolation
+    # ────────────────────────────────────────────────────────────
+    from radon_activity import compute_radon_activity, compute_total_radon
+
+    radon_results = {}
+    eff_Po214 = cfg.get("time_fit", {}).get("eff_Po214", [1.0])[0]
+    eff_Po218 = cfg.get("time_fit", {}).get("eff_Po218", [1.0])[0]
+
+    rate214 = None
+    err214 = None
+    if "Po214" in time_fit_results:
+        rate214 = time_fit_results["Po214"].get("E_corrected", time_fit_results["Po214"].get("E_Po214"))
+        err214 = time_fit_results["Po214"].get("dE_Po214")
+
+    rate218 = None
+    err218 = None
+    if "Po218" in time_fit_results:
+        rate218 = time_fit_results["Po218"].get("E_corrected", time_fit_results["Po218"].get("E_Po218"))
+        err218 = time_fit_results["Po218"].get("dE_Po218")
+
+    A_radon, dA_radon = compute_radon_activity(
+        rate218, err218, eff_Po218, rate214, err214, eff_Po214
+    )
+
+    conc, dconc, total_bq, dtotal_bq = compute_total_radon(
+        A_radon,
+        dA_radon,
+        monitor_vol,
+        monitor_vol + sample_vol,
+    )
+
+    radon_results["radon_activity_Bq"] = {"value": A_radon, "uncertainty": dA_radon}
+    radon_results["radon_concentration_Bq_per_L"] = {
+        "value": conc,
+        "uncertainty": dconc,
+    }
+    radon_results["total_radon_in_sample_Bq"] = {
+        "value": total_bq,
+        "uncertainty": dtotal_bq,
+    }
+
+    # ────────────────────────────────────────────────────────────
     # 8. Assemble and write out the summary JSON
     # ────────────────────────────────────────────────────────────
     summary = {
@@ -813,6 +870,7 @@ def main():
         "time_fit": time_fit_results,
         "systematics": systematics_results,
         "baseline": baseline_info,
+        "radon_results": radon_results,
         "burst_filter": {"removed_events": int(n_removed_burst)},
         "adc_drift_rate": drift_rate,
         "efficiency": efficiency_results,
@@ -886,6 +944,34 @@ def main():
             )
         except Exception as e:
             print(f"WARNING: Could not create efficiency plots -> {e}")
+
+    # Radon activity and equivalent air plots
+    try:
+        times = np.linspace(t0_global, events["timestamp"].max(), 20)
+        activity_arr = np.full_like(times, radon_results["radon_activity_Bq"]["value"], dtype=float)
+        err_arr = np.full_like(times, radon_results["radon_activity_Bq"]["uncertainty"], dtype=float)
+        plot_radon_activity(
+            times,
+            activity_arr,
+            err_arr,
+            os.path.join(out_dir, "radon_activity.png"),
+            config=cfg.get("plotting", {}),
+        )
+
+        ambient = cfg.get("analysis", {}).get("ambient_concentration")
+        if ambient:
+            vol_arr = activity_arr / float(ambient)
+            vol_err = err_arr / float(ambient)
+            plot_equivalent_air(
+                times,
+                vol_arr,
+                vol_err,
+                float(ambient),
+                os.path.join(out_dir, "equivalent_air.png"),
+                config=cfg.get("plotting", {}),
+            )
+    except Exception as e:
+        print(f"WARNING: Could not create radon activity plots -> {e}")
 
     print(f"Analysis complete. Results written to -> {out_dir}")
 

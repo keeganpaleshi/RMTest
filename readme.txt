@@ -30,6 +30,7 @@ python analyze.py --config config.json --input merged_data.csv \
     [--efficiency-json eff.json] [--systematics-json syst.json] \
     [--spike-count N --spike-count-err S] [--slope RATE] \
     [--settle-s SEC] [--debug] [--seed SEED] \
+    [--ambient-concentration 0.1] \
     [--time-bin-mode fixed --time-bin-width 3600] [--dump-ts-json]
 ```
 
@@ -44,6 +45,8 @@ The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--j
 - Optional `*_ts.json` files containing binned time series when enabled.
 - `efficiency.png` – bar chart of individual efficiencies and the BLUE result.
 - `eff_cov.png` – heatmap of the efficiency covariance matrix.
+- `radon_activity.png` – extrapolated radon activity over time.
+- `equivalent_air.png` – equivalent air volume plot when `--ambient-concentration` is given.
 
 The `time_fit` routine currently fits only Po‑214 and Po‑218.  Supporting
 Po‑210 would require adding its half‑life and detection efficiency to the
@@ -235,6 +238,17 @@ You can invoke these from the command line:
 python utils.py 0.5 --to cpd
 python utils.py 0.5 --to bq --volume_liters 10
 ```
+
+## Radon Activity Output
+
+After the decay fits a weighted average of the Po‑218 and Po‑214 rates is
+converted to an instantaneous radon activity.  The result is written to
+`summary.json` under `radon_results` together with the corresponding
+concentration (per liter) and the total amount of radon in the combined
+monitor + sample volume.  The file `radon_activity.png` visualises this
+activity versus time.  When the option `--ambient-concentration` is
+supplied an additional plot `equivalent_air.png` shows the volume of
+ambient air containing the same activity.
 
 ## Efficiency Calculations
 
