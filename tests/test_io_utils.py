@@ -238,3 +238,33 @@ def test_apply_burst_filter_micro_burst():
     assert removed == 4
     assert len(filtered) == len(times) - 4
 
+
+def test_apply_burst_filter_single_searchsorted(monkeypatch):
+    times = np.arange(100)
+    df = pd.DataFrame(
+        {
+            "fUniqueID": range(len(times)),
+            "fBits": [0] * len(times),
+            "timestamp": times,
+            "adc": [1000] * len(times),
+            "fchannel": [1] * len(times),
+        }
+    )
+    cfg = {
+        "burst_filter": {
+            "micro_window_size_s": 1,
+            "micro_count_threshold": 2,
+        }
+    }
+
+    calls = {"n": 0}
+    orig_ss = np.searchsorted
+
+    def wrapped(*args, **kwargs):
+        calls["n"] += 1
+        return orig_ss(*args, **kwargs)
+
+    monkeypatch.setattr(np, "searchsorted", wrapped)
+    apply_burst_filter(df, cfg, mode="micro")
+    assert calls["n"] == 1
+

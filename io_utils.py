@@ -133,14 +133,20 @@ def apply_burst_filter(df, cfg, mode="rate"):
         micro_thr = bcfg.get("micro_count_threshold")
 
         if micro_win is not None and micro_thr is not None:
-            times = out_df["timestamp"].values
-            to_remove = np.zeros(len(times), dtype=bool)
-            for i in range(len(times)):
-                if to_remove[i]:
-                    continue
-                j = np.searchsorted(times, times[i] + float(micro_win), side="right")
-                if j - i >= int(micro_thr):
-                    to_remove[i:j] = True
+            times = out_df["timestamp"].values.astype(float)
+            window_end = times + float(micro_win)
+            j = np.searchsorted(times, window_end, side="right")
+            counts = j - np.arange(len(times))
+            starts = np.nonzero(counts >= int(micro_thr))[0]
+
+            if len(starts) > 0:
+                diff = np.zeros(len(times) + 1, dtype=int)
+                diff[starts] += 1
+                diff[j[starts]] -= 1
+                to_remove = np.cumsum(diff[:-1]) > 0
+            else:
+                to_remove = np.zeros(len(times), dtype=bool)
+
             removed_total += int(to_remove.sum())
             out_df = out_df[~to_remove].reset_index(drop=True)
 
