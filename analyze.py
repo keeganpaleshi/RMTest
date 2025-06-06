@@ -411,6 +411,9 @@ def main():
 
         if noise_level is not None:
             baseline_info["noise_level"] = float(noise_level)
+
+        # Remove baseline events from the main dataset before any fits
+        events = events[~mask_base].reset_index(drop=True)
     baseline_counts = {}
     # ────────────────────────────────────────────────────────────
     # 5. Spectral fit (optional)
