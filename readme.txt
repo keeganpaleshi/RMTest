@@ -28,6 +28,8 @@ pip install -r requirements.txt
 python analyze.py --config config.json --input merged_data.csv \
     [--output_dir results] [--job-id MYRUN] \
     [--efficiency-json eff.json] [--systematics-json syst.json] \
+    [--spike-count N --spike-count-err S] [--slope RATE] \
+    [--settle-s SEC] [--sys syst.yaml] [--debug] \
     [--time-bin-mode fixed --time-bin-width 3600] [--dump-ts-json]
 ```
 
@@ -90,6 +92,12 @@ The CLI options `--time-bin-mode` and `--time-bin-width` override
 `plot_time_binning_mode` and `plot_time_bin_width_s` in the configuration
 to control the time-series histogram. Passing `--dump-ts-json` writes the
 histogram counts to a `*_ts.json` file alongside the plot.
+
+Additional convenience flags include `--spike-count` (with optional
+`--spike-count-err`) to override spike efficiency inputs, `--slope` to
+apply a linear ADC drift correction, `--settle-s` to skip the initial
+settling period in the decay fit, `--sys` to load a YAML/JSON
+systematics file and `--debug` to increase log verbosity.
 
 When the spectrum is binned in raw ADC channels (`"spectral_binning_mode": "adc"`),
 the bin edges are internally converted to energy using the calibration
@@ -157,7 +165,8 @@ configuration.
 
 
 `settling_time_s` was removed from the `time_fit` section and is no
-longer needed.
+longer needed. The CLI option `--settle-s` may be used instead to
+discard the first seconds of data before the decay fit.
 
 ### Fitting Long Time Scales
 

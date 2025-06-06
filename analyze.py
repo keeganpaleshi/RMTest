@@ -121,6 +121,35 @@ def parse_args():
         help="Path to a JSON file with systematics settings overriding the config",
     )
     p.add_argument(
+        "--spike-count",
+        type=float,
+        help="Counts observed during a spike run for efficiency",
+    )
+    p.add_argument(
+        "--spike-count-err",
+        type=float,
+        help="Uncertainty on spike counts",
+    )
+    p.add_argument(
+        "--slope",
+        type=float,
+        help="Apply a linear ADC drift correction with the given slope",
+    )
+    p.add_argument(
+        "--settle-s",
+        type=float,
+        help="Discard events occurring this many seconds after the start",
+    )
+    p.add_argument(
+        "--sys",
+        help="Path to a systematics file (JSON or YAML)",
+    )
+    p.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug logging",
+    )
+    p.add_argument(
         "--time-bin-mode",
         choices=["auto", "fd", "fixed"],
         help="Time-series binning mode (overrides plotting.plot_time_binning_mode)",
@@ -177,12 +206,38 @@ def main():
             print(f"ERROR: Could not load systematics JSON '{args.systematics_json}': {e}")
             sys.exit(1)
 
+    if args.sys:
+        try:
+            with open(args.sys, "r", encoding="utf-8") as f:
+                if args.sys.endswith((".yml", ".yaml")):
+                    import yaml
+
+                    cfg["systematics"] = yaml.safe_load(f)
+                else:
+                    cfg["systematics"] = json.load(f)
+        except Exception as e:
+            print(f"ERROR: Could not load systematics file '{args.sys}': {e}")
+            sys.exit(1)
+
     if args.time_bin_mode:
         cfg.setdefault("plotting", {})["plot_time_binning_mode"] = args.time_bin_mode
     if args.time_bin_width is not None:
         cfg.setdefault("plotting", {})["plot_time_bin_width_s"] = float(args.time_bin_width)
     if args.dump_ts_json:
         cfg.setdefault("plotting", {})["dump_time_series_json"] = True
+
+    if args.spike_count is not None or args.spike_count_err is not None:
+        eff_sec = cfg.setdefault("efficiency", {}).setdefault("spike", {})
+        if args.spike_count is not None:
+            eff_sec["counts"] = float(args.spike_count)
+        if args.spike_count_err is not None:
+            eff_sec["error"] = float(args.spike_count_err)
+
+    if args.slope is not None:
+        cfg.setdefault("systematics", {})["adc_drift_rate"] = float(args.slope)
+
+    if args.debug:
+        cfg.setdefault("pipeline", {})["log_level"] = "DEBUG"
 
     # Configure logging as early as possible
     log_level = cfg.get("pipeline", {}).get("log_level", "INFO")
@@ -239,6 +294,19 @@ def main():
             t0_global = events["timestamp"].min()
     else:
         t0_global = events["timestamp"].min()
+
+    if args.slope is not None:
+        try:
+            from systematics import apply_linear_adc_shift
+
+            events["adc"] = apply_linear_adc_shift(
+                events["adc"].values,
+                events["timestamp"].values,
+                float(args.slope),
+                t_ref=t0_global,
+            )
+        except Exception as e:
+            print(f"WARNING: Could not apply ADC drift correction -> {e}")
 
     # ────────────────────────────────────────────────────────────
     # 3. Energy calibration
@@ -507,6 +575,9 @@ def main():
         priors_time_all[iso] = priors_time
 
         # Build configuration for fit_time_series
+        if args.settle_s is not None:
+            cut = t0_global + float(args.settle_s)
+            iso_events = iso_events[iso_events["timestamp"] >= cut]
         times_dict = {iso: iso_events["timestamp"].values}
         fit_cfg = {
             "isotopes": {
@@ -526,10 +597,13 @@ def main():
         # Run time-series fit
         decay_out = None  # fresh variable each iteration
         try:
+            t_start_fit = t0_global
+            if args.settle_s is not None:
+                t_start_fit = t0_global + float(args.settle_s)
             decay_out = fit_time_series(
                 times_dict,
-                t0_global,
-                iso_events["timestamp"].max(),
+                t_start_fit,
+                iso_events["timestamp"].max() if len(iso_events) else t_start_fit,
                 fit_cfg,
             )
             time_fit_results[iso] = decay_out
