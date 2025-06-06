@@ -22,3 +22,16 @@ def test_exponential_model():
     level, params = estimate_baseline_noise(adc, peak_adc=400, nbins=40, model="exponential")
     assert params.get("k") == pytest.approx(k_true, rel=0.3)
     assert level > 0
+
+
+def test_empty_adc_values():
+    level, params = estimate_baseline_noise([], peak_adc=200, nbins=10, model="constant")
+    assert level == 0.0
+    assert params == {}
+
+
+def test_unknown_model_raises():
+    rng = np.random.default_rng(2)
+    adc = rng.uniform(0, 200, 100)
+    with pytest.raises(ValueError):
+        estimate_baseline_noise(adc, peak_adc=250, nbins=20, model="unknown")
