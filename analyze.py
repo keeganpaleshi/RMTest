@@ -472,7 +472,7 @@ def main():
 
     # After creating ``base_events``, drop them from the dataset
     if baseline_range:
-
+        # Remove rows where ``mask_base`` is True
         events = events[~mask_base].reset_index(drop=True)
 
 

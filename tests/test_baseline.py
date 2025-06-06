@@ -79,7 +79,8 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     assert summary["baseline"]["scale_factor"] == pytest.approx(0.0)
     assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(1.0)
     assert summary["baseline"].get("noise_level") == 5.0
-    assert list(captured.get("times", [])) == [20]
+    times = list(captured.get("times", []))
+    assert times == [20]
     # Ensure baseline events were not passed to the time fit
-    assert all(t >= cfg["baseline"]["range"][1] for t in captured.get("times", []))
+    assert all(t >= cfg["baseline"]["range"][1] for t in times)
 
