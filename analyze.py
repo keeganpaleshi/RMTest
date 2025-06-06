@@ -387,6 +387,7 @@ def main():
             events["timestamp"] < t_end_base
         )
         base_events = events[mask_base].copy()
+        events = events[~mask_base].reset_index(drop=True)
         baseline_live_time = float(t_end_base - t_start_base)
         baseline_info = {
             "start": t_start_base,
@@ -415,9 +416,6 @@ def main():
 
         if noise_level is not None:
             baseline_info["noise_level"] = float(noise_level)
-
-        # Remove baseline events from the main dataset before any fits
-        events = events[~mask_base].reset_index(drop=True)
     baseline_counts = {}
     # ────────────────────────────────────────────────────────────
     # 5. Spectral fit (optional)
