@@ -178,6 +178,13 @@ def parse_args():
         help="Discard events before this ISO timestamp",
     )
     p.add_argument(
+        "--spike-period",
+        nargs=2,
+        metavar=("START", "END"),
+        action="append",
+        help="Exclude events between START and END (can be given multiple times)",
+    )
+    p.add_argument(
         "--slope",
         type=float,
         help="Apply a linear ADC drift correction with the given slope",
@@ -278,6 +285,9 @@ def main():
 
     if args.spike_end_time is not None:
         cfg.setdefault("analysis", {})["spike_end_time"] = args.spike_end_time
+
+    if args.spike_period:
+        cfg.setdefault("analysis", {})["spike_periods"] = args.spike_period
 
 
     if args.time_bin_mode:
@@ -391,6 +401,18 @@ def main():
             )
             t_spike_end = None
 
+    spike_periods_cfg = cfg.get("analysis", {}).get("spike_periods", [])
+    spike_periods = []
+    for period in spike_periods_cfg:
+        try:
+            start = _to_epoch(period[0])
+            end = _to_epoch(period[1])
+            if end <= start:
+                raise ValueError
+            spike_periods.append((start, end))
+        except Exception:
+            logging.warning(f"Invalid spike period '{period}' - ignoring")
+
     # Apply optional time window cuts before any baseline or fit operations
     if t_spike_end is not None:
         events = events[events["timestamp"] >= t_spike_end].reset_index(drop=True)
@@ -398,6 +420,10 @@ def main():
         events = events[events["timestamp"] <= t_end_global].reset_index(drop=True)
     else:
         t_end_global = events["timestamp"].max()
+
+    for start, end in spike_periods:
+        mask = (events["timestamp"] < start) | (events["timestamp"] >= end)
+        events = events[mask].reset_index(drop=True)
 
     # Optional ADC drift correction before calibration
     # Applied once using either the CLI value or the config default.
@@ -916,17 +942,24 @@ def main():
         vals, errs = [], []
 
         if "spike" in eff_cfg:
-            scfg = eff_cfg["spike"]
-            try:
-                val = calc_spike_efficiency(
-                    scfg["counts"], scfg["activity_bq"], scfg["live_time_s"]
-                )
-                err = float(scfg.get("error", 0.0))
-                sources["spike"] = {"value": val, "error": err}
-                vals.append(val)
-                errs.append(err)
-            except Exception as e:
-                print(f"WARNING: Spike efficiency -> {e}")
+            scfg_list = eff_cfg["spike"]
+            if isinstance(scfg_list, dict):
+                scfg_list = [scfg_list]
+            spike_entries = []
+            for scfg in scfg_list:
+                try:
+                    val = calc_spike_efficiency(
+                        scfg["counts"], scfg["activity_bq"], scfg["live_time_s"]
+                    )
+                    err = float(scfg.get("error", 0.0))
+                    spike_entries.append({"value": val, "error": err})
+                    vals.append(val)
+                    errs.append(err)
+                except Exception as e:
+                    print(f"WARNING: Spike efficiency -> {e}")
+
+            if spike_entries:
+                sources["spike"] = spike_entries[0] if len(spike_entries) == 1 else spike_entries
 
         if "assay" in eff_cfg:
             acfg = eff_cfg["assay"]
@@ -1059,6 +1092,7 @@ def main():
             "analysis_start_time": t0_cfg,
             "analysis_end_time": t_end_cfg,
             "spike_end_time": spike_end_cfg,
+            "spike_periods": spike_periods_cfg,
             "ambient_concentration": cfg.get("analysis", {}).get("ambient_concentration"),
         },
     }

@@ -30,6 +30,7 @@ python analyze.py --config config.json --input merged_data.csv \
     [--efficiency-json eff.json] [--systematics-json syst.json] \
     [--spike-count N --spike-count-err S] [--slope RATE] \
     [--analysis-end-time ISO --spike-end-time ISO] \
+    [--spike-period START END] \
     [--settle-s SEC] [--debug] [--seed SEED] \
     [--ambient-file amb.txt (time conc)] [--ambient-concentration 0.1] \
     [--burst-mode rate] \
@@ -103,9 +104,11 @@ event timestamp is used.
 
 `analysis_end_time` may be specified to stop processing after the given
 timestamp while `spike_end_time` discards all events before its value.
-Events outside this window are ignored when computing baselines and
-running the decay fits. Both accept ISO‑8601 strings and can also be set
-with the corresponding CLI options.
+`spike_periods` can list one or more `[start, end]` pairs of timestamps
+whose events should also be removed.  Events outside the final window
+are ignored when computing baselines and running the decay fits. All
+three options accept ISO‑8601 strings and can also be set with the
+corresponding CLI flags.
 
 `ambient_concentration` may also be specified here to record the ambient
 radon concentration in Bq/m³ used for the equivalent air plot.  The
@@ -124,6 +127,7 @@ Example snippet:
     "analysis_start_time": "2020-01-01T00:00:00Z",
     "analysis_end_time": "2020-01-02T00:00:00Z",
     "spike_end_time": "2020-01-01T01:00:00Z",
+    "spike_periods": [["2020-01-01T03:00:00Z", "2020-01-01T04:00:00Z"]],
     "ambient_concentration": 0.02
 }
 ```
@@ -134,6 +138,7 @@ When present the value is also written to `summary.json` under the
 ```json
 "analysis": {
     "analysis_start_time": "2020-01-01T00:00:00Z",
+    "spike_periods": [["2020-01-01T03:00:00Z", "2020-01-01T04:00:00Z"]],
 "ambient_concentration": 0.02
 }
 ```
@@ -354,7 +359,10 @@ with entries such as:
 
 ```json
 "efficiency": {
-    "spike": {"counts": 1000, "activity_bq": 50, "live_time_s": 3600},
+    "spike": [
+        {"counts": 1000, "activity_bq": 50, "live_time_s": 3600},
+        {"counts": 800, "activity_bq": 50, "live_time_s": 3600}
+    ],
     "assay": {"rate_cps": 0.8, "reference_bq": 2.0}
 }
 ```
