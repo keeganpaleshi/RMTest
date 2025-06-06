@@ -642,6 +642,11 @@ def test_ambient_concentration_recorded(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
 
     captured = {}
+    def fake_plot_equivalent_air(t, v, e, conc, out_png, config=None):
+        captured["conc"] = conc
+        Path(out_png).touch()
+
+    monkeypatch.setattr(analyze, "plot_equivalent_air", fake_plot_equivalent_air)
 
     def fake_write(out_dir, summary, timestamp=None):
         captured["summary"] = summary
@@ -667,6 +672,7 @@ def test_ambient_concentration_recorded(tmp_path, monkeypatch):
     analyze.main()
 
     assert captured["summary"]["analysis"]["ambient_concentration"] == 1.2
+    assert captured["conc"] == 1.2
 
 
 def test_ambient_concentration_from_config(tmp_path, monkeypatch):
@@ -696,6 +702,11 @@ def test_ambient_concentration_from_config(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
 
     captured = {}
+    def fake_plot_equivalent_air(t, v, e, conc, out_png, config=None):
+        captured["conc"] = conc
+        Path(out_png).touch()
+
+    monkeypatch.setattr(analyze, "plot_equivalent_air", fake_plot_equivalent_air)
 
     def fake_write(out_dir, summary, timestamp=None):
         captured["summary"] = summary
@@ -719,6 +730,7 @@ def test_ambient_concentration_from_config(tmp_path, monkeypatch):
     analyze.main()
 
     assert captured["summary"]["analysis"]["ambient_concentration"] == 0.7
+    assert captured["conc"] == 0.7
 
 
 def test_ambient_file_interpolation(tmp_path, monkeypatch):

@@ -4,8 +4,8 @@
         "random_seed": null
     },
     "analysis": {
-        "analysis_start_time": null,
-        "ambient_concentration": null
+        "ambient_concentration": null,
+        "analysis_start_time": null
     },
     "baseline": {
         "range": null,
