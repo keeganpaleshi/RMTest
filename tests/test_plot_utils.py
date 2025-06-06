@@ -361,3 +361,31 @@ def test_plot_equivalent_air_multiple_formats(tmp_path):
     assert out_png.exists()
     assert out_png.with_suffix('.pdf').exists()
 
+
+def test_plot_radon_activity_default_extension(tmp_path):
+    """Save radon activity plot when no extension is provided."""
+    times = np.array([0.0, 0.5, 1.0])
+    activity = np.array([1.0, 1.2, 1.4])
+    errors = np.array([0.1, 0.1, 0.1])
+    out_png = tmp_path / "radon_default"
+
+    from plot_utils import plot_radon_activity
+
+    plot_radon_activity(times, activity, errors, str(out_png))
+
+    assert out_png.with_suffix('.png').exists()
+
+
+def test_plot_equivalent_air_default_extension(tmp_path):
+    """Save equivalent air plot when no extension is provided."""
+    times = np.array([0.0, 0.5, 1.0])
+    volumes = np.array([0.1, 0.2, 0.3])
+    errors = np.array([0.01, 0.01, 0.01])
+    out_png = tmp_path / "air_default"
+
+    from plot_utils import plot_equivalent_air
+
+    plot_equivalent_air(times, volumes, errors, 1.0, str(out_png))
+
+    assert out_png.with_suffix('.png').exists()
+
