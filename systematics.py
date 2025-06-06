@@ -1,6 +1,5 @@
 import math
 from typing import Callable, Dict, Tuple, List
-import numpy as np
 
 
 def apply_linear_adc_shift(adc_values, timestamps, rate, t_ref=None):
@@ -23,16 +22,16 @@ def apply_linear_adc_shift(adc_values, timestamps, rate, t_ref=None):
         Array of shifted ADC values.
     """
 
-    adc_arr = np.asarray(adc_values, dtype=float)
-    time_arr = np.asarray(timestamps, dtype=float)
+    adc_arr = [float(v) for v in adc_values]
+    time_arr = [float(t) for t in timestamps]
 
-    if adc_arr.shape != time_arr.shape:
+    if len(adc_arr) != len(time_arr):
         raise ValueError("adc_values and timestamps must have the same shape")
 
     if t_ref is None:
         t_ref = float(time_arr[0]) if len(time_arr) else 0.0
 
-    return adc_arr + rate * (time_arr - t_ref)
+    return [a + rate * (t - t_ref) for a, t in zip(adc_arr, time_arr)]
 
 
 def scan_systematics(
