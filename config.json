@@ -4,10 +4,12 @@
         "random_seed": null
     },
     "analysis": {
+
         "analysis_start_time": null,
         "analysis_end_time": null,
         "spike_end_time": null,
         "ambient_concentration": null
+
     },
     "baseline": {
         "range": null,
@@ -15,6 +17,7 @@
         "sample_volume_l": 0.0
     },
     "burst_filter": {
+        "burst_mode": "rate",
         "burst_window_size_s": 60,
         "rolling_median_window": 5,
         "burst_multiplier": 5,
