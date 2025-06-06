@@ -9,6 +9,7 @@ This repository provides a complete pipeline to analyze electrostatic radon moni
 - `io_utils.py`: Functions to load raw data and write outputs.
 - `calibration.py`: Peak-finding and energy calibration routines.
 - `fitting.py`: Unbinned likelihood fit for Po-214 (and optional Po-218).
+- `efficiency.py`: Efficiency calculations and BLUE combination helpers.
 - `systematics.py`: Scan for systematic uncertainties (optional).
 - `plot_utils.py`: Plotting routines for spectrum and time-series.
 - `utils.py`: Miscellaneous utilities (time conversion, JSON validation,
@@ -179,6 +180,23 @@ You can invoke these from the command line:
 python utils.py 0.5 --to cpd
 python utils.py 0.5 --to bq --volume_liters 10
 ```
+
+## Efficiency Calculations
+
+`efficiency.py` implements helpers to derive efficiencies from spike,
+assay or decay data and combines multiple estimates using the BLUE
+method.  When the configuration file provides an `efficiency` section
+with entries such as:
+
+```json
+"efficiency": {
+    "spike": {"counts": 1000, "activity_bq": 50, "live_time_s": 3600},
+    "assay": {"rate_cps": 0.8, "reference_bq": 2.0}
+}
+```
+
+`analyze.py` stores the calculated values and their BLUE combination in
+`summary.json` under the `efficiency` key.
 
 
 ## Running Tests

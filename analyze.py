@@ -554,6 +554,72 @@ def main():
                 print(f"WARNING: Systematics scan for {iso} -> {e}")
 
     # ────────────────────────────────────────────────────────────
+    # 7b. Optional efficiency calculations
+    # ────────────────────────────────────────────────────────────
+    efficiency_results = {}
+    eff_cfg = cfg.get("efficiency", {})
+    if eff_cfg:
+        from efficiency import (
+            calc_spike_efficiency,
+            calc_assay_efficiency,
+            calc_decay_efficiency,
+            blue_combine,
+        )
+
+        sources = {}
+        vals, errs = [], []
+
+        if "spike" in eff_cfg:
+            scfg = eff_cfg["spike"]
+            try:
+                val = calc_spike_efficiency(
+                    scfg["counts"], scfg["activity_bq"], scfg["live_time_s"]
+                )
+                err = float(scfg.get("error", 0.0))
+                sources["spike"] = {"value": val, "error": err}
+                vals.append(val)
+                errs.append(err)
+            except Exception as e:
+                print(f"WARNING: Spike efficiency -> {e}")
+
+        if "assay" in eff_cfg:
+            acfg = eff_cfg["assay"]
+            try:
+                val = calc_assay_efficiency(
+                    acfg["rate_cps"], acfg["reference_bq"]
+                )
+                err = float(acfg.get("error", 0.0))
+                sources["assay"] = {"value": val, "error": err}
+                vals.append(val)
+                errs.append(err)
+            except Exception as e:
+                print(f"WARNING: Assay efficiency -> {e}")
+
+        if "decay" in eff_cfg:
+            dcfg = eff_cfg["decay"]
+            try:
+                val = calc_decay_efficiency(
+                    dcfg["observed_rate"], dcfg["expected_rate"]
+                )
+                err = float(dcfg.get("error", 0.0))
+                sources["decay"] = {"value": val, "error": err}
+                vals.append(val)
+                errs.append(err)
+            except Exception as e:
+                print(f"WARNING: Decay efficiency -> {e}")
+
+        efficiency_results["sources"] = sources
+        if vals:
+            try:
+                comb_val, comb_err, _ = blue_combine(vals, errs)
+                efficiency_results["combined"] = {
+                    "value": float(comb_val),
+                    "error": float(comb_err),
+                }
+            except Exception as e:
+                print(f"WARNING: BLUE combination failed -> {e}")
+
+    # ────────────────────────────────────────────────────────────
     # 8. Assemble and write out the summary JSON
     # ────────────────────────────────────────────────────────────
     summary = {
@@ -565,6 +631,7 @@ def main():
         "systematics": systematics_results,
         "baseline": baseline_info,
         "burst_filter": {"removed_events": int(n_removed_burst)},
+        "efficiency": efficiency_results,
         "git_commit": commit,
         "cli_sha256": cli_sha256,
         "cli_args": cli_args,
