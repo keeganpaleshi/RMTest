@@ -231,6 +231,7 @@ def _integral_model(E, N0, B, lam, eff, T):
 def _neg_log_likelihood_time(
     params,  # flattened list of all parameters in order
     times_dict,
+    weights_dict,
     t_start,
     t_end,
     iso_list,
@@ -242,7 +243,8 @@ def _neg_log_likelihood_time(
 ):
     """
     params: tuple of all (E_iso, [B_iso], [N0_iso], for each iso in iso_list, in the order recorded by param_indices)
-    times_dict: { iso: 1D np.ndarray of absolute timestamps }
+    times_dict: mapping of isotope -> array of event timestamps.
+    weights_dict: mapping of isotope -> array of per-event weights or None.
     t_start, t_end: floats (absolute UNIX seconds)
     lam_map: { iso: decay_constant (1/s) }
     eff_map: { iso: detection efficiency }
@@ -273,6 +275,7 @@ def _neg_log_likelihood_time(
         integral = _integral_model(E_iso, N0_iso, B_iso, lam, eff, T_rel)
         # 2) Sum of log[r(t_i)] for each event t_i in times_dict[iso]:
         times_iso = times_dict.get(iso, np.empty(0))
+        weights = weights_dict.get(iso)
         if len(times_iso) > 0:
             # Calculate rate r(t_i_rel) at each observed time:
             t_rel = times_iso - t_start
@@ -288,16 +291,22 @@ def _neg_log_likelihood_time(
             # If any rate_vals   0, penalize heavily:
             if np.any(rate_vals <= 0):
                 return 1e50
-            nll -= np.sum(np.log(rate_vals))  # because we want NEG log L
+            if weights is None:
+                nll -= np.sum(np.log(rate_vals))
+            else:
+                nll -= np.sum(weights * np.log(rate_vals))
         # Add the integral term:
         nll += integral
 
     return nll
 
 
-def fit_time_series(times_dict, t_start, t_end, config):
+def fit_time_series(times_dict, t_start, t_end, config, weights=None):
     """
-    times_dict: { "Po214": np.ndarray([...]), "Po218": np.ndarray([...]) }, absolute UNIX time (sec)
+    times_dict: mapping of isotope -> array of timestamps in seconds.
+    weights : dict or None
+        Optional mapping of isotope -> per-event weights matching
+        ``times_dict``.
     t_start, t_end: floats (absolute UNIX seconds) defining the fit window
     config: JSON dict with these keys:
           "isotopes": { "Po214": {"half_life_s": , "efficiency": ,  }, "Po218": {   } }
@@ -317,6 +326,12 @@ def fit_time_series(times_dict, t_start, t_end, config):
         }
     """
     iso_list = list(config["isotopes"].keys())
+
+    # Normalize weights mapping
+    if weights is None:
+        weights_dict = {iso: None for iso in iso_list}
+    else:
+        weights_dict = {iso: np.asarray(weights.get(iso), dtype=float) if weights.get(iso) is not None else None for iso in iso_list}
 
     # 1) Build maps: lam_map, eff_map, fix_b_map, fix_n0_map
     lam_map, eff_map = {}, {}
@@ -342,7 +357,12 @@ def fit_time_series(times_dict, t_start, t_end, config):
         #    E_iso
         param_indices[f"E_{iso}"] = idx
         # Make a  smart  initial guess: (#events)/(T_rel*eff) or 1e-3 if zero
-        Ntot = len(times_dict.get(iso, []))
+        times_arr = np.asarray(times_dict.get(iso, []), dtype=float)
+        w_arr = weights_dict.get(iso)
+        if w_arr is None:
+            Ntot = len(times_arr)
+        else:
+            Ntot = float(np.sum(w_arr))
         T_rel = t_end - t_start
         eff = eff_map[iso]
         guess_E = max((Ntot / (T_rel * eff))
@@ -372,6 +392,7 @@ def fit_time_series(times_dict, t_start, t_end, config):
         return _neg_log_likelihood_time(
             args,
             times_dict,
+            weights_dict,
             t_start,
             t_end,
             iso_list,
