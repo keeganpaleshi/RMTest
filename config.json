@@ -13,6 +13,7 @@
         "sample_volume_l": 0.0
     },
     "burst_filter": {
+        "burst_mode": "rate",
         "burst_window_size_s": 60,
         "rolling_median_window": 5,
         "burst_multiplier": 5,
