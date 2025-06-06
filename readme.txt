@@ -90,7 +90,8 @@ CLI options.
 
 `ambient_concentration` may also be specified here to record the ambient
 radon concentration in Bq/m³ used for the equivalent air plot.  The
-command-line option `--ambient-concentration` overrides this value.
+command-line option `--ambient-concentration` overrides this value.  The
+default configuration sets this key to `null`.
 
 Example snippet:
 

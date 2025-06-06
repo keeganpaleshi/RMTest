@@ -463,9 +463,18 @@ def main():
         if noise_level is not None:
             baseline_info["noise_level"] = float(noise_level)
 
+
     # After creating ``base_events``, drop them from the dataset
     if baseline_range:
         events = events[~mask_base].reset_index(drop=True)
+
+
+
+        # Baseline events were already removed above. Avoid reapplying the mask
+        # here since it may be misaligned after ``events`` has been
+        # reindexed, which can inadvertently drop all remaining rows on
+        # newer pandas versions.
+
 
     # Apply optional spike/analysis end time cuts after baseline extraction
     if t_spike_end is not None:
