@@ -463,7 +463,9 @@ def main():
             baseline_info["noise_level"] = float(noise_level)
 
 
-        # Remove baseline events from the main dataset before any fits
+        # Remove baseline events from the main dataset before any fits.
+        # This is done once here to avoid accidentally discarding data twice
+        # which previously left an empty DataFrame for the time fits.
         events = events[~mask_base].reset_index(drop=True)
 
     # Apply optional spike/analysis end time cuts after baseline extraction
