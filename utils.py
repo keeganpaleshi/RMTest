@@ -2,6 +2,7 @@
 
 import numpy as np
 from scipy.signal import find_peaks
+import math
 
 __all__ = ["to_native", "find_adc_peaks", "cps_to_cpd", "cps_to_bq"]
 
@@ -28,13 +29,18 @@ def to_native(obj):
             return obj.isoformat()
         elif isinstance(obj, (pd.Series, pd.Index)):
             return [to_native(x) for x in obj.tolist()]
-    if isinstance(obj, np.generic):
-        return obj.item()
-    elif isinstance(obj, np.ndarray):
+    if isinstance(obj, np.ndarray):
         # Convert array into list of native types
         return [to_native(x) for x in obj.tolist()]
-    else:
-        return obj
+
+    if isinstance(obj, np.generic):
+        obj = obj.item()
+
+    if isinstance(obj, float):
+        if math.isnan(obj) or not math.isfinite(obj):
+            return None
+
+    return obj
 
 
 def find_adc_peaks(adc_values, expected, window=50, prominence=0.0, width=None):
