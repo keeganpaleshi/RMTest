@@ -338,8 +338,8 @@ python utils.py 0.5 --to bq --volume_liters 10
 After the decay fits a weighted average of the Po‑218 and Po‑214 rates is
 converted to an instantaneous radon activity.  The result is written to
 `summary.json` under `radon_results` together with the corresponding
-concentration (per liter) and the total amount of radon in the combined
-monitor + sample volume.  The file `radon_activity.png` visualises this
+concentration (per liter) and the total amount of radon contained in the
+sample volume.  The file `radon_activity.png` visualises this
 activity versus time.  When either `--ambient-file` or
 `--ambient-concentration` is supplied an additional plot
 `equivalent_air.png` shows the volume of ambient air containing the same
