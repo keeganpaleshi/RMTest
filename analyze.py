@@ -455,6 +455,10 @@ def main():
 
         t_start_base = to_epoch(baseline_range[0])
         t_end_base = to_epoch(baseline_range[1])
+        if t_end_base <= t_start_base:
+            raise ValueError(
+                "baseline_range end time must be greater than start time"
+            )
         mask_base = (events["timestamp"] >= t_start_base) & (
             events["timestamp"] < t_end_base
         )
