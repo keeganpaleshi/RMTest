@@ -5,6 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
+import baseline_noise
 
 
 def test_simple_baseline_subtraction(tmp_path, monkeypatch):
@@ -37,13 +38,15 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
-    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0)})
-    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0)})
+    cal_mock = {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0), "peaks": {"Po210": {"centroid_adc": 10}}}
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: {"E_Po214": 1.0})
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(baseline_noise, "estimate_baseline_noise", lambda *a, **k: (5.0, {}))
 
     captured = {}
     def fake_write(out_dir, summary, timestamp=None):
@@ -67,4 +70,5 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     summary = captured["summary"]
     assert summary["baseline"]["rates"]["Po214"] == pytest.approx(0.2)
     assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(0.8)
+    assert summary["baseline"].get("noise_level") == 5.0
 
