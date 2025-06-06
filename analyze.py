@@ -418,6 +418,7 @@ def main():
     sample_vol = float(baseline_cfg.get("sample_volume_l", 0.0))
     base_events = pd.DataFrame()
     baseline_live_time = 0.0
+    mask_base = None
 
     if baseline_range:
 
@@ -433,7 +434,6 @@ def main():
             events["timestamp"] < t_end_base
         )
         base_events = events[mask_base].copy()
-        events = events[~mask_base].reset_index(drop=True)
         baseline_live_time = float(t_end_base - t_start_base)
         baseline_info = {
             "start": t_start_base,
@@ -463,9 +463,9 @@ def main():
         if noise_level is not None:
             baseline_info["noise_level"] = float(noise_level)
 
-        # Baseline events were already removed from ``events`` above
-        # when ``mask_base`` was first applied.  Avoid reusing the
-        # boolean mask here to prevent a misaligned index warning.
+    # After creating ``base_events``, drop them from the dataset
+    if baseline_range:
+        events = events[~mask_base].reset_index(drop=True)
 
     # Apply optional spike/analysis end time cuts after baseline extraction
     if t_spike_end is not None:
