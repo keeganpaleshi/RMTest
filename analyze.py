@@ -897,20 +897,20 @@ def main():
                 rate = count / (baseline_live_time * eff)
             else:
                 rate = 0.0
-            baseline_rates[iso] = cps_to_bq(rate, volume_liters=monitor_vol)
+            baseline_rates[iso] = rate  # Bq
 
-    scale_factor = 0.0
-    if monitor_vol > 0:
-        scale_factor = sample_vol / monitor_vol
+    dilution_factor = 0.0
+    if monitor_vol + sample_vol > 0:
+        dilution_factor = monitor_vol / (monitor_vol + sample_vol)
 
-    for iso, conc in baseline_rates.items():
+    for iso, rate in baseline_rates.items():
         fit = time_fit_results.get(iso)
         if fit and (f"E_{iso}" in fit):
-            fit["E_corrected"] = fit[f"E_{iso}"] - conc * scale_factor
+            fit["E_corrected"] = fit[f"E_{iso}"] - rate * dilution_factor
 
     if baseline_rates:
-        baseline_info["concentration_Bq_m3"] = baseline_rates
-        baseline_info["scale_factor"] = scale_factor
+        baseline_info["rate_Bq"] = baseline_rates
+        baseline_info["dilution_factor"] = dilution_factor
 
     # ────────────────────────────────────────────────────────────
     # Radon activity extrapolation
