@@ -189,6 +189,38 @@ Example snippet:
 }
 ```
 
+### Baseline Runs
+
+A baseline run measures the radon background with an empty monitor before
+an assay. Configuration must define three keys under `baseline`:
+
+- `baseline.range` – list of two ISO‑8601 timestamps selecting the baseline interval.
+- `monitor_volume_l` – internal volume of the radon monitor in liters.
+- `sample_volume_l` – volume of the assay sample in liters.
+
+Events collected during the baseline period are counted in the Po‑214 and
+Po‑218 windows. The count rates are converted to Bq/m³ via
+`cps_to_bq(rate, volume_liters=monitor_volume_l)` and scaled by detection
+efficiency. This baseline activity is then subtracted from the assay result
+after applying the ratio `sample_volume_l/monitor_volume_l`.
+
+Example snippet:
+
+```json
+"baseline": {
+    "range": ["2023-07-01T00:00:00Z", "2023-07-03T00:00:00Z"],
+    "monitor_volume_l": 10.0,
+    "sample_volume_l": 5.0
+}
+```
+
+Command line usage:
+
+```bash
+python analyze.py --config assay.json --input run.csv --output_dir results \
+    --baseline_range 2023-07-01T00:00:00Z 2023-07-03T00:00:00Z
+```
+
 ## Utility Conversions
 
 `utils.py` provides simple helpers to convert count rates:

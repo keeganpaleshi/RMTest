@@ -267,15 +267,6 @@ def main():
     # Optional burst filter to remove high-rate clusters
     events, n_removed_burst = apply_burst_filter(events, cfg, mode=args.burst_mode)
 
-    # Optional ADC drift correction before calibration
-    drift_rate = float(cfg.get("systematics", {}).get("adc_drift_rate", 0.0))
-    if drift_rate != 0.0:
-        events["adc"] = apply_linear_adc_shift(
-            events["adc"].values,
-            events["timestamp"].values,
-            float(drift_rate),
-        )
-
     # Global t₀ reference
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
     if t0_cfg is not None:
@@ -289,10 +280,11 @@ def main():
     else:
         t0_global = events["timestamp"].min()
 
+    # Optional ADC drift correction before calibration
+    # Applied once using either the CLI value or the config default.
     drift_rate = float(args.slope) if args.slope is not None else float(
         cfg.get("systematics", {}).get("adc_drift_rate", 0.0)
     )
-
     if drift_rate != 0.0:
         try:
             events["adc"] = apply_linear_adc_shift(
@@ -303,6 +295,7 @@ def main():
             )
         except Exception as e:
             print(f"WARNING: Could not apply ADC drift correction -> {e}")
+
 
     # ────────────────────────────────────────────────────────────
     # 3. Energy calibration
