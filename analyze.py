@@ -86,7 +86,7 @@ def parse_args():
         "--output_dir",
         "-o",
         required=True,
-        help="Directory under which to create a timestamped analysis folder",
+        help="Directory under which to create a timestamped analysis folder (override with --job-id)",
     )
     p.add_argument(
         "--baseline_range",
@@ -104,6 +104,10 @@ def parse_args():
         default="rate",
         choices=["none", "micro", "rate", "both"],
         help="Burst filtering mode to pass to apply_burst_filter",
+    )
+    p.add_argument(
+        "--job-id",
+        help="Optional identifier used for the results folder instead of the timestamp",
     )
     return p.parse_args()
 
@@ -551,7 +555,7 @@ def main():
         "burst_filter": {"removed_events": int(n_removed_burst)},
     }
 
-    out_dir = write_summary(args.output_dir, summary, now_str)
+    out_dir = write_summary(args.output_dir, summary, args.job_id or now_str)
     copy_config(out_dir, args.config)
 
     # Generate plots now that the output directory exists
