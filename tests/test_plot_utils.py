@@ -3,7 +3,12 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from plot_utils import plot_time_series, plot_spectrum
+from plot_utils import (
+    plot_time_series,
+    plot_spectrum,
+    plot_radon_activity,
+    plot_equivalent_air,
+)
 
 
 def basic_config():
@@ -190,4 +195,18 @@ def test_plot_time_series_line_style(tmp_path, monkeypatch):
     )
 
     assert called.get("plot") and "step" not in called
+
+
+def test_plot_radon_activity_and_equivalent_air(tmp_path):
+    times = np.linspace(0, 10, 5)
+    act = np.linspace(1, 5, 5)
+    err = np.full(5, 0.1)
+    out_png = tmp_path / "radon.png"
+
+    plot_radon_activity(times, act, err, str(out_png), config={})
+    assert out_png.exists()
+
+    eq_png = tmp_path / "air.png"
+    plot_equivalent_air(times, act, err, 0.5, str(eq_png), config={})
+    assert eq_png.exists()
 

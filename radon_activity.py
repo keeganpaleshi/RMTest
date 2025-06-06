@@ -65,9 +65,18 @@ def compute_radon_activity(
         sigma = math.sqrt(1.0 / (w1 + w2))
         return A, sigma
 
-    # Only one valid value or missing errors
+    # Exactly one valid measurement
+    if len(values) == 2:
+        idx = 0 if weights[0] is not None else 1
+        A = values[idx]
+        w = weights[idx]
+        sigma = math.sqrt(1.0 / w) if w is not None else 0.0
+        return A, sigma
+
+    # Only one value provided
     A = values[0]
-    sigma = math.sqrt(1.0 / weights[0]) if weights[0] is not None else 0.0
+    w = weights[0]
+    sigma = math.sqrt(1.0 / w) if w is not None else 0.0
     return A, sigma
 
 

@@ -383,6 +383,7 @@ def main():
             events["timestamp"] < t_end_base
         )
         base_events = events[mask_base].copy()
+        events = events[~mask_base].reset_index(drop=True)
         baseline_live_time = float(t_end_base - t_start_base)
         baseline_info = {
             "start": t_start_base,
@@ -948,8 +949,24 @@ def main():
     # Radon activity and equivalent air plots
     try:
         times = np.linspace(t0_global, events["timestamp"].max(), 20)
-        activity_arr = np.full_like(times, radon_results["radon_activity_Bq"]["value"], dtype=float)
-        err_arr = np.full_like(times, radon_results["radon_activity_Bq"]["uncertainty"], dtype=float)
+        t_rel = times - t0_global
+        hl = float(cfg.get("time_fit", {}).get("hl_Po214", [3.8 * 86400])[0])
+        lam = np.log(2.0) / hl
+        fit_po214 = time_fit_results.get("Po214", {})
+        E = fit_po214.get("E_corrected", fit_po214.get("E_Po214"))
+        dE = fit_po214.get("dE_Po214", 0.0)
+        N0 = fit_po214.get("N0_Po214", 0.0)
+        dN0 = fit_po214.get("dN0_Po214", 0.0)
+
+        if E is None:
+            activity_arr = np.full_like(times, radon_results["radon_activity_Bq"]["value"], dtype=float)
+            err_arr = np.full_like(times, radon_results["radon_activity_Bq"]["uncertainty"], dtype=float)
+        else:
+            activity_arr = E * (1.0 - np.exp(-lam * t_rel)) + lam * N0 * np.exp(-lam * t_rel)
+            err_arr = np.sqrt(
+                ((1.0 - np.exp(-lam * t_rel)) ** 2) * dE ** 2
+                + ((lam * np.exp(-lam * t_rel)) ** 2) * dN0 ** 2
+            )
         plot_radon_activity(
             times,
             activity_arr,
