@@ -465,10 +465,12 @@ def main():
 
 
 
+
         # Baseline events were already removed above. Avoid reapplying the mask
         # here since it may be misaligned after ``events`` has been
         # reindexed, which can inadvertently drop all remaining rows on
         # newer pandas versions.
+
 
     # Apply optional spike/analysis end time cuts after baseline extraction
     if t_spike_end is not None:
