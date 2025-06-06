@@ -451,7 +451,7 @@ def main():
             try:
                 return float(x)
             except Exception:
-                return pd.to_datetime(x).astype(np.int64) / 1e9
+                return pd.to_datetime(x, utc=True).timestamp()
 
         t_start_base = to_epoch(baseline_range[0])
         t_end_base = to_epoch(baseline_range[1])
