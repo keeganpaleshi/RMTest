@@ -24,14 +24,16 @@ def compute_radon_activity(
     Parameters
     ----------
     rate218, rate214 : float or None
-        Measured activities for the two isotopes in Bq.  Rates should already be
-        corrected for the detection efficiencies.
+        Measured activities for the two isotopes in Bq.  The values should
+        already include the detection efficiencies; this function will not
+        scale them further.
     err218, err214 : float or None
         Uncertainties on the rates in Bq.
     eff218, eff214 : float
-        Detection efficiencies of the two isotopes.  Zero values cause the
-        corresponding isotope to be ignored.  Negative values raise a
-        ``ValueError``.
+        Detection efficiencies for the two isotopes.  They are only used to
+        determine whether an isotope contributes to the average: a value of zero
+        disables that isotope and negative values raise a ``ValueError``.  The
+        efficiencies are not applied as multiplicative weights.
 
     Returns
     -------

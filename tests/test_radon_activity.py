@@ -22,6 +22,14 @@ def test_compute_radon_activity_weighted():
     assert s == pytest.approx(err)
 
 
+def test_compute_radon_activity_efficiencies_not_weighted():
+    """Non-zero efficiencies should not scale the rates."""
+    a_ref, s_ref = compute_radon_activity(10.0, 1.0, 1.0, 12.0, 2.0, 1.0)
+    a, s = compute_radon_activity(10.0, 1.0, 0.6, 12.0, 2.0, 0.7)
+    assert a == pytest.approx(a_ref)
+    assert s == pytest.approx(s_ref)
+
+
 def test_compute_radon_activity_only_214_error():
     a, s = compute_radon_activity(10.0, None, 1.0, 12.0, 2.0, 1.0)
     assert a == pytest.approx(12.0)
