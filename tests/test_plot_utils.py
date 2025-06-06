@@ -191,3 +191,29 @@ def test_plot_time_series_line_style(tmp_path, monkeypatch):
 
     assert called.get("plot") and "step" not in called
 
+
+def test_plot_radon_activity_output(tmp_path):
+    times = [0.0, 1.0, 2.0]
+    activity = [1.0, 2.0, 3.0]
+    errors = [0.1, 0.2, 0.3]
+    out_png = tmp_path / "radon.png"
+
+    from plot_utils import plot_radon_activity
+
+    plot_radon_activity(times, activity, errors, str(out_png))
+
+    assert out_png.exists()
+
+
+def test_plot_equivalent_air_output(tmp_path):
+    times = [0.0, 1.0, 2.0]
+    volumes = [0.1, 0.2, 0.3]
+    errors = [0.01, 0.02, 0.03]
+    out_png = tmp_path / "air.png"
+
+    from plot_utils import plot_equivalent_air
+
+    plot_equivalent_air(times, volumes, errors, 5.0, str(out_png))
+
+    assert out_png.exists()
+
