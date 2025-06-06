@@ -85,8 +85,9 @@ event timestamp is used.
 
 `analysis_end_time` may be specified to stop processing after the given
 timestamp while `spike_end_time` discards all events before its value.
-Both accept ISO‑8601 strings and can also be set with the corresponding
-CLI options.
+Events outside this window are ignored when computing baselines and
+running the decay fits. Both accept ISO‑8601 strings and can also be set
+with the corresponding CLI options.
 
 `ambient_concentration` may also be specified here to record the ambient
 radon concentration in Bq/m³ used for the equivalent air plot.  The
