@@ -355,6 +355,14 @@ def main():
             )
             t_spike_end = None
 
+    # Apply optional time window cuts before any baseline or fit operations
+    if t_spike_end is not None:
+        events = events[events["timestamp"] >= t_spike_end].reset_index(drop=True)
+    if t_end_global is not None:
+        events = events[events["timestamp"] <= t_end_global].reset_index(drop=True)
+    else:
+        t_end_global = events["timestamp"].max()
+
     # Optional ADC drift correction before calibration
     # Applied once using either the CLI value or the config default.
     drift_rate = float(args.slope) if args.slope is not None else float(
@@ -475,6 +483,9 @@ def main():
         # Remove rows where ``mask_base`` is True
         events = events[~mask_base].reset_index(drop=True)
 
+        if t_end_cfg is None:
+            t_end_global = events["timestamp"].max()
+
 
 
 
@@ -484,13 +495,7 @@ def main():
         # newer pandas versions.
 
 
-    # Apply optional spike/analysis end time cuts after baseline extraction
-    if t_spike_end is not None:
-        events = events[events["timestamp"] >= t_spike_end].reset_index(drop=True)
-    if t_end_global is not None:
-        events = events[events["timestamp"] <= t_end_global].reset_index(drop=True)
-    else:
-        t_end_global = events["timestamp"].max()
+
 
     baseline_counts = {}
     # ────────────────────────────────────────────────────────────
