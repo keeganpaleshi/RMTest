@@ -463,9 +463,11 @@ def main():
         if noise_level is not None:
             baseline_info["noise_level"] = float(noise_level)
 
+
         # Baseline events were already removed from ``events`` above
         # when ``mask_base`` was first applied.  Avoid reusing the
         # boolean mask here to prevent a misaligned index warning.
+
 
     # Apply optional spike/analysis end time cuts after baseline extraction
     if t_spike_end is not None:
