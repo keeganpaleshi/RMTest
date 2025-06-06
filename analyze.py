@@ -464,9 +464,12 @@ def main():
             baseline_info["noise_level"] = float(noise_level)
 
 
-        # Baseline events were already removed from ``events`` above
-        # when ``mask_base`` was first applied.  Avoid reusing the
-        # boolean mask here to prevent a misaligned index warning.
+
+        # Baseline events were already removed above. Avoid reapplying the mask
+        # here since it may be misaligned after ``events`` has been
+        # reindexed, which can inadvertently drop all remaining rows on
+        # newer pandas versions.
+
 
 
     # Apply optional spike/analysis end time cuts after baseline extraction
