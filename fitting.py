@@ -8,6 +8,16 @@ from iminuit import Minuit
 from scipy.optimize import curve_fit
 from calibration import emg_left, gaussian
 
+# Prevent overflow in exp calculations. Values beyond ~700 in magnitude
+# lead to inf/0 under IEEE-754 doubles.  Clip the exponent to a safe range
+# so the likelihood remains finite during optimization.
+_EXP_LIMIT = 700.0
+
+
+def _safe_exp(x):
+    """Return ``exp(x)`` with the input clipped to ``[-_EXP_LIMIT, _EXP_LIMIT]``."""
+    return np.exp(np.clip(x, -_EXP_LIMIT, _EXP_LIMIT))
+
 __all__ = ["fit_time_series", "fit_decay", "fit_spectrum"]
 
 
@@ -200,8 +210,20 @@ def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None, bounds
         fit_valid = bool(np.all(eigvals > 0))
     except np.linalg.LinAlgError:
         fit_valid = False
+
     if not fit_valid:
         logging.warning("fit_spectrum: covariance matrix not positive definite")
+        # Add a small diagonal jitter to attempt stabilising the matrix
+        jitter = 1e-12 * np.mean(np.diag(pcov))
+        if not np.isfinite(jitter) or jitter <= 0:
+            jitter = 1e-12
+        pcov = pcov + jitter * np.eye(pcov.shape[0])
+        try:
+            np.linalg.cholesky(pcov)
+            fit_valid = True
+            perr = np.sqrt(np.diag(pcov))
+        except np.linalg.LinAlgError:
+            pass
     out = {}
     for i, name in enumerate(param_order):
         out[name] = float(popt[i])
@@ -221,10 +243,14 @@ def _integral_model(E, N0, B, lam, eff, T):
     if lam <= 0:
         # In principle lam should never be <=0; return a large number to penalize
         return 1e50
+    if T < 0:
+        logging.debug("_integral_model called with negative T; using |T|")
+        T = abs(T)
     # Term1 = E * (T - (1 - e^{-lam T})/lam )
-    decay_term = (1.0 - np.exp(-lam * T)) / lam
+    exp_term = _safe_exp(-lam * T)
+    decay_term = (1.0 - exp_term) / lam
     term_E = E * (T - decay_term)
-    term_N0 = N0 * (1.0 - np.exp(-lam * T))
+    term_N0 = N0 * (1.0 - exp_term)
     return eff * (term_E + term_N0) + B * T
 
 
@@ -279,12 +305,17 @@ def _neg_log_likelihood_time(
         if len(times_iso) > 0:
             # Calculate rate r(t_i_rel) at each observed time:
             t_rel = times_iso - t_start
+            if np.any(t_rel < 0):
+                logging.debug(
+                    "fit_time_series: negative relative times detected; check t_start"
+                )
             # r_iso(t_rel) = eff * [ E*(1 - exp(-lam*t_rel)) + lam*N0*exp(-lam*t_rel) ] + B
+            exp_term = _safe_exp(-lam * t_rel)
             rate_vals = (
                 eff
                 * (
-                    E_iso * (1.0 - np.exp(-lam * t_rel))
-                    + lam * N0_iso * np.exp(-lam * t_rel)
+                    E_iso * (1.0 - exp_term)
+                    + lam * N0_iso * exp_term
                 )
                 + B_iso
             )
