@@ -2,6 +2,7 @@
 # fitting.py
 # -----------------------------------------------------
 
+import logging
 import numpy as np
 from iminuit import Minuit
 from scipy.optimize import curve_fit
@@ -194,11 +195,19 @@ def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None, bounds
     )
 
     perr = np.sqrt(np.diag(pcov))
+    try:
+        eigvals = np.linalg.eigvals(pcov)
+        fit_valid = bool(np.all(eigvals > 0))
+    except np.linalg.LinAlgError:
+        fit_valid = False
+    if not fit_valid:
+        logging.warning("fit_spectrum: covariance matrix not positive definite")
     out = {}
     for i, name in enumerate(param_order):
         out[name] = float(popt[i])
         out["d" + name] = float(perr[i])
 
+    out["fit_valid"] = fit_valid
     return out
 
 
@@ -403,7 +412,15 @@ def fit_time_series(times_dict, t_start, t_end, config):
         return out
 
     m.hesse()  # compute uncertainties
-    out["fit_valid"] = True
+    cov = np.array(m.covariance)
+    try:
+        eigvals = np.linalg.eigvals(cov)
+        fit_valid = bool(np.all(eigvals > 0))
+    except np.linalg.LinAlgError:
+        fit_valid = False
+    if not fit_valid:
+        logging.warning("fit_time_series: covariance matrix not positive definite")
+    out["fit_valid"] = fit_valid
     for pname in ordered_params:
         out[pname] = float(m.values[pname])
         out["d" + pname] = float(m.errors[pname]
