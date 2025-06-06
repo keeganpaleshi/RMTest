@@ -10,7 +10,12 @@ import matplotlib.pyplot as plt
 PO214_HALF_LIFE_S = 1.64e-4  # 164 µs
 PO218_HALF_LIFE_S = 183.0    # ~3.05 minutes
 
-__all__ = ["plot_time_series", "plot_spectrum"]
+__all__ = [
+    "plot_time_series",
+    "plot_spectrum",
+    "plot_radon_activity",
+    "plot_equivalent_air",
+]
 
 
 def plot_time_series(
@@ -328,6 +333,54 @@ def plot_spectrum(
     for fmt in save_fmts:
         fig.savefig(base + f".{fmt}", dpi=300)
     plt.close(fig)
+
+
+def plot_radon_activity(times, activity, errors, out_png, config=None):
+    """Plot radon activity versus time with uncertainties."""
+    times = np.asarray(times, dtype=float)
+    activity = np.asarray(activity, dtype=float)
+    errors = np.asarray(errors, dtype=float)
+
+    plt.figure(figsize=(8, 4))
+    plt.errorbar(times, activity, yerr=errors, fmt="o-", color="tab:purple")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Radon Activity (Bq)")
+    plt.title("Extrapolated Radon Activity vs. Time")
+    plt.tight_layout()
+    os.makedirs(os.path.dirname(out_png), exist_ok=True)
+
+    fmt_default = os.path.splitext(out_png)[1].lstrip(".") or "png"
+    fmts = config.get("plot_save_formats", [fmt_default]) if config else [fmt_default]
+    if isinstance(fmts, str):
+        fmts = [fmts]
+    base = os.path.splitext(out_png)[0]
+    for fmt in fmts:
+        plt.savefig(base + f".{fmt}", dpi=300)
+    plt.close()
+
+
+def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
+    """Plot equivalent air volume versus time."""
+    times = np.asarray(times, dtype=float)
+    volumes = np.asarray(volumes, dtype=float)
+    errors = np.asarray(errors, dtype=float)
+
+    plt.figure(figsize=(8, 4))
+    plt.errorbar(times, volumes, yerr=errors, fmt="o-", color="tab:green")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Equivalent Air Volume")
+    plt.title(f"Equivalent Air Volume vs. Time (ambient {conc} Bq/L)")
+    plt.tight_layout()
+    os.makedirs(os.path.dirname(out_png), exist_ok=True)
+
+    fmt_default = os.path.splitext(out_png)[1].lstrip(".") or "png"
+    fmts = config.get("plot_save_formats", [fmt_default]) if config else [fmt_default]
+    if isinstance(fmts, str):
+        fmts = [fmts]
+    base = os.path.splitext(out_png)[0]
+    for fmt in fmts:
+        plt.savefig(base + f".{fmt}", dpi=300)
+    plt.close()
 
 
 # -----------------------------------------------------
