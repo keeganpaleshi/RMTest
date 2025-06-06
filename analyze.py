@@ -110,9 +110,8 @@ def parse_args():
     )
     p.add_argument(
         "--burst-mode",
-        default="rate",
         choices=["none", "micro", "rate", "both"],
-        help="Burst filtering mode to pass to apply_burst_filter",
+        help="Burst filtering mode to pass to apply_burst_filter (overrides config)",
     )
     p.add_argument(
         "--job-id",
@@ -294,7 +293,12 @@ def main():
     events["timestamp"] = events["timestamp"].astype(float)
 
     # Optional burst filter to remove high-rate clusters
-    events, n_removed_burst = apply_burst_filter(events, cfg, mode=args.burst_mode)
+    burst_mode = (
+        args.burst_mode
+        if args.burst_mode is not None
+        else cfg.get("burst_filter", {}).get("burst_mode", "rate")
+    )
+    events, n_removed_burst = apply_burst_filter(events, cfg, mode=burst_mode)
 
     # Global t₀ reference
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
@@ -387,6 +391,7 @@ def main():
             events["timestamp"] < t_end_base
         )
         base_events = events[mask_base].copy()
+        events = events[~mask_base].reset_index(drop=True)
         baseline_live_time = float(t_end_base - t_start_base)
         baseline_info = {
             "start": t_start_base,
@@ -415,9 +420,6 @@ def main():
 
         if noise_level is not None:
             baseline_info["noise_level"] = float(noise_level)
-
-        # Remove baseline events from the main dataset before any fits
-        events = events[~mask_base].reset_index(drop=True)
     baseline_counts = {}
     # ────────────────────────────────────────────────────────────
     # 5. Spectral fit (optional)

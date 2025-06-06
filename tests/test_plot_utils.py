@@ -256,6 +256,7 @@ def test_plot_equivalent_air_no_conc(tmp_path):
     assert out_png.exists()
 
 
+
 def test_plot_radon_activity_time_variation(tmp_path, monkeypatch):
     times = np.array([0.0, 1.0, 2.0, 3.0])
 
@@ -277,4 +278,29 @@ def test_plot_radon_activity_time_variation(tmp_path, monkeypatch):
 
     assert "y" in captured
     assert not np.allclose(captured["y"], captured["y"][0])
+
+def test_plot_radon_activity_small_array(tmp_path):
+    times = np.array([0.0, 0.2, 0.4])
+    activity = np.array([1.0, 1.1, 1.2])
+    errors = np.array([0.1, 0.1, 0.1])
+    out_png = tmp_path / "radon_small.png"
+
+    from plot_utils import plot_radon_activity
+
+    plot_radon_activity(times, activity, errors, str(out_png))
+
+    assert out_png.exists()
+
+
+def test_plot_equivalent_air_small_array(tmp_path):
+    times = np.array([0.0, 0.5, 1.0])
+    volumes = np.array([0.1, 0.15, 0.2])
+    errors = np.array([0.01, 0.01, 0.02])
+    out_png = tmp_path / "air_small.png"
+
+    from plot_utils import plot_equivalent_air
+
+    plot_equivalent_air(times, volumes, errors, 2.5, str(out_png))
+
+    assert out_png.exists()
 

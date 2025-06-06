@@ -642,6 +642,11 @@ def test_ambient_concentration_recorded(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
 
     captured = {}
+    def fake_plot_equivalent_air(t, v, e, conc, out_png, config=None):
+        captured["conc"] = conc
+        Path(out_png).touch()
+
+    monkeypatch.setattr(analyze, "plot_equivalent_air", fake_plot_equivalent_air)
 
     def fake_write(out_dir, summary, timestamp=None):
         captured["summary"] = summary
@@ -667,6 +672,7 @@ def test_ambient_concentration_recorded(tmp_path, monkeypatch):
     analyze.main()
 
     assert captured["summary"]["analysis"]["ambient_concentration"] == 1.2
+    assert captured["conc"] == 1.2
 
 
 def test_ambient_concentration_from_config(tmp_path, monkeypatch):
@@ -696,6 +702,11 @@ def test_ambient_concentration_from_config(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
 
     captured = {}
+    def fake_plot_equivalent_air(t, v, e, conc, out_png, config=None):
+        captured["conc"] = conc
+        Path(out_png).touch()
+
+    monkeypatch.setattr(analyze, "plot_equivalent_air", fake_plot_equivalent_air)
 
     def fake_write(out_dir, summary, timestamp=None):
         captured["summary"] = summary
@@ -719,6 +730,7 @@ def test_ambient_concentration_from_config(tmp_path, monkeypatch):
     analyze.main()
 
     assert captured["summary"]["analysis"]["ambient_concentration"] == 0.7
+    assert captured["conc"] == 0.7
 
 
 def test_ambient_file_interpolation(tmp_path, monkeypatch):
@@ -787,4 +799,52 @@ def test_ambient_file_interpolation(tmp_path, monkeypatch):
     analyze.main()
 
     assert captured.get("conc") is None
+
+
+def test_burst_mode_from_config(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {"do_time_fit": False},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+        "burst_filter": {"burst_mode": "none"},
+    }
+    cfg_path = tmp_path / "cfg.json"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    data_path = tmp_path / "d.csv"
+    df.to_csv(data_path, index=False)
+
+    recorded = {}
+
+    def fake_burst(df, cfg, mode="rate"):
+        recorded["mode"] = mode
+        return df, 0
+
+    monkeypatch.setattr(analyze, "apply_burst_filter", fake_burst)
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0)})
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0)})
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: {})
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+    analyze.main()
+
+    assert recorded.get("mode") == "none"
 
