@@ -217,3 +217,16 @@ def test_plot_equivalent_air_output(tmp_path):
 
     assert out_png.exists()
 
+
+def test_plot_equivalent_air_no_conc(tmp_path):
+    times = [0.0, 1.0, 2.0]
+    volumes = [1.0, 2.0, 3.0]
+    errors = [0.1, 0.2, 0.3]
+    out_png = tmp_path / "air_none.png"
+
+    from plot_utils import plot_equivalent_air
+
+    plot_equivalent_air(times, volumes, errors, None, str(out_png))
+
+    assert out_png.exists()
+

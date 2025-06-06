@@ -167,6 +167,10 @@ def parse_args():
         help="Write *_ts.json files containing binned time-series data",
     )
     p.add_argument(
+        "--ambient-file",
+        help="Path to two-column file with time and ambient concentration",
+    )
+    p.add_argument(
         "--ambient-concentration",
         type=float,
         help="Ambient radon concentration in Bq per liter for equivalent air plot",
@@ -1007,7 +1011,26 @@ def main():
         )
 
         ambient = cfg.get("analysis", {}).get("ambient_concentration")
-        if ambient:
+        ambient_interp = None
+        if args.ambient_file:
+            try:
+                dat = np.loadtxt(args.ambient_file, usecols=(0, 1))
+                ambient_interp = np.interp(times, dat[:, 0], dat[:, 1])
+            except Exception as e:
+                print(f"WARNING: Could not read ambient file '{args.ambient_file}': {e}")
+
+        if ambient_interp is not None:
+            vol_arr = activity_arr / ambient_interp
+            vol_err = err_arr / ambient_interp
+            plot_equivalent_air(
+                times,
+                vol_arr,
+                vol_err,
+                None,
+                os.path.join(out_dir, "equivalent_air.png"),
+                config=cfg.get("plotting", {}),
+            )
+        elif ambient:
             vol_arr = activity_arr / float(ambient)
             vol_err = err_arr / float(ambient)
             plot_equivalent_air(
