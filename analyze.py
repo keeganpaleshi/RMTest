@@ -136,6 +136,14 @@ def parse_args():
         help="Uncertainty on spike counts",
     )
     p.add_argument(
+        "--analysis-end-time",
+        help="Ignore events occurring after this ISO timestamp",
+    )
+    p.add_argument(
+        "--spike-end-time",
+        help="Discard events before this ISO timestamp",
+    )
+    p.add_argument(
         "--slope",
         type=float,
         help="Apply a linear ADC drift correction with the given slope",
@@ -229,6 +237,12 @@ def main():
             args.ambient_concentration
         )
 
+    if args.analysis_end_time is not None:
+        cfg.setdefault("analysis", {})["analysis_end_time"] = args.analysis_end_time
+
+    if args.spike_end_time is not None:
+        cfg.setdefault("analysis", {})["spike_end_time"] = args.spike_end_time
+
 
     if args.time_bin_mode:
         cfg.setdefault("plotting", {})["plot_time_binning_mode"] = args.time_bin_mode
@@ -312,6 +326,34 @@ def main():
             t0_global = events["timestamp"].min()
     else:
         t0_global = events["timestamp"].min()
+
+    def _to_epoch(val):
+        try:
+            return float(val)
+        except Exception:
+            return pd.to_datetime(val, utc=True).timestamp()
+
+    t_end_cfg = cfg.get("analysis", {}).get("analysis_end_time")
+    t_end_global = None
+    if t_end_cfg is not None:
+        try:
+            t_end_global = _to_epoch(t_end_cfg)
+        except Exception:
+            logging.warning(
+                f"Invalid analysis_end_time '{t_end_cfg}' - using last event"
+            )
+            t_end_global = None
+
+    spike_end_cfg = cfg.get("analysis", {}).get("spike_end_time")
+    t_spike_end = None
+    if spike_end_cfg is not None:
+        try:
+            t_spike_end = _to_epoch(spike_end_cfg)
+        except Exception:
+            logging.warning(
+                f"Invalid spike_end_time '{spike_end_cfg}' - ignoring"
+            )
+            t_spike_end = None
 
     # Optional ADC drift correction before calibration
     # Applied once using either the CLI value or the config default.
@@ -420,6 +462,19 @@ def main():
 
         if noise_level is not None:
             baseline_info["noise_level"] = float(noise_level)
+
+
+        # Remove baseline events from the main dataset before any fits
+        events = events[~mask_base].reset_index(drop=True)
+
+    # Apply optional spike/analysis end time cuts after baseline extraction
+    if t_spike_end is not None:
+        events = events[events["timestamp"] >= t_spike_end].reset_index(drop=True)
+    if t_end_global is not None:
+        events = events[events["timestamp"] <= t_end_global].reset_index(drop=True)
+    else:
+        t_end_global = events["timestamp"].max()
+
     baseline_counts = {}
     # ────────────────────────────────────────────────────────────
     # 5. Spectral fit (optional)
@@ -661,7 +716,7 @@ def main():
             decay_out = fit_time_series(
                 times_dict,
                 t_start_fit,
-                iso_events["timestamp"].max() if len(iso_events) else t_start_fit,
+                t_end_global,
                 fit_cfg,
             )
             time_fit_results[iso] = decay_out
@@ -718,7 +773,7 @@ def main():
                 out = fit_time_series(
                     times_dict,
                     t0_global,
-                    filtered_df["timestamp"].max(),
+                    t_end_global,
                     cfg_fit,
                 )
                 # Return the full fit result so scan_systematics can
@@ -889,6 +944,8 @@ def main():
         "cli_args": cli_args,
         "analysis": {
             "analysis_start_time": t0_cfg,
+            "analysis_end_time": t_end_cfg,
+            "spike_end_time": spike_end_cfg,
             "ambient_concentration": cfg.get("analysis", {}).get("ambient_concentration"),
         },
     }
@@ -933,7 +990,7 @@ def main():
                 all_energies=ts_energy,
                 fit_results=fit_dict,
                 t_start=t0_global,
-                t_end=events["timestamp"].max(),
+                t_end=t_end_global,
                 config=plot_cfg,
                 out_png=os.path.join(out_dir, f"time_series_{iso}.png"),
             )
@@ -962,7 +1019,7 @@ def main():
     try:
         from radon_activity import radon_activity_curve
 
-        times = np.linspace(t0_global, events["timestamp"].max(), 100)
+        times = np.linspace(t0_global, t_end_global, 100)
         t_rel = times - t0_global
 
         A214 = dA214 = None
