@@ -29,6 +29,7 @@ python analyze.py --config config.json --input merged_data.csv \
     [--output_dir results] [--job-id MYRUN] \
     [--efficiency-json eff.json] [--systematics-json syst.json] \
     [--spike-count N --spike-count-err S] [--slope RATE] \
+    [--analysis-end-time ISO --spike-end-time ISO] \
     [--settle-s SEC] [--debug] [--seed SEED] \
     [--ambient-file amb.txt] [--ambient-concentration 0.1] \
     [--time-bin-mode fixed --time-bin-width 3600] [--dump-ts-json]
@@ -82,6 +83,11 @@ time origin for decay fitting and time-series plots.  Provide an
 ISO‑8601 string such as `"2020-01-01T00:00:00Z"`.  When omitted the first
 event timestamp is used.
 
+`analysis_end_time` may be specified to stop processing after the given
+timestamp while `spike_end_time` discards all events before its value.
+Both accept ISO‑8601 strings and can also be set with the corresponding
+CLI options.
+
 `ambient_concentration` may also be specified here to record the ambient
 radon concentration in Bq/m³ used for the equivalent air plot.  The
 command-line option `--ambient-concentration` overrides this value.
@@ -91,6 +97,8 @@ Example snippet:
 ```json
 "analysis": {
     "analysis_start_time": "2020-01-01T00:00:00Z",
+    "analysis_end_time": "2020-01-02T00:00:00Z",
+    "spike_end_time": "2020-01-01T01:00:00Z",
     "ambient_concentration": 0.02
 }
 ```
@@ -114,7 +122,8 @@ histogram counts to a `*_ts.json` file alongside the plot.
 
 Additional convenience flags include `--spike-count` (with optional
 `--spike-count-err`) to override spike efficiency inputs, `--slope` to
-apply a linear ADC drift correction, `--settle-s` to skip the initial
+apply a linear ADC drift correction, `--analysis-end-time` and
+`--spike-end-time` to clip the dataset, `--settle-s` to skip the initial
 settling period in the decay fit, `--seed` to set the random seed used
 by the analysis and `--debug` to increase log verbosity.
 

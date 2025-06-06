@@ -5,6 +5,8 @@
     },
     "analysis": {
         "analysis_start_time": null,
+        "analysis_end_time": null,
+        "spike_end_time": null,
         "ambient_concentration": null
     },
     "baseline": {
