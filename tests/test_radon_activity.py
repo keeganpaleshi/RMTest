@@ -94,6 +94,20 @@ def test_compute_radon_activity_single_218():
     assert s == pytest.approx(1.0)
 
 
+def test_compute_radon_activity_single_214_eff_not_one():
+    """Efficiency values should not scale single-isotope rates."""
+    a, s = compute_radon_activity(None, None, 0.5, 12.0, 2.0, 0.7)
+    assert a == pytest.approx(12.0)
+    assert s == pytest.approx(2.0)
+
+
+def test_compute_radon_activity_single_218_eff_not_one():
+    """Efficiency values should not scale single-isotope rates."""
+    a, s = compute_radon_activity(10.0, 1.0, 0.3, None, None, 0.8)
+    assert a == pytest.approx(10.0)
+    assert s == pytest.approx(1.0)
+
+
 def test_compute_total_radon():
     conc, dconc, tot, dtot = compute_total_radon(5.0, 0.5, 10.0, 20.0)
     assert conc == pytest.approx(0.5)
