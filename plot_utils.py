@@ -5,6 +5,8 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from datetime import datetime
 
 # Half-life constants used for the time-series overlay [seconds]
 PO214_HALF_LIFE_S = 1.64e-4  # 164 µs
@@ -117,6 +119,8 @@ def plot_time_series(
     # Now build histogram bins:
     edges = np.linspace(0, (t_end - t_start), n_bins + 1)
     centers = 0.5 * (edges[:-1] + edges[1:])
+    centers_abs = t_start + centers
+    centers_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in centers_abs])
     bin_widths = np.diff(edges)
 
     # 2) Plot each isotope s histogram + overlay the model:
@@ -138,7 +142,7 @@ def plot_time_series(
         style = str(config.get("plot_time_style", "steps")).lower()
         if style == "lines":
             plt.plot(
-                centers,
+                centers_dt,
                 counts_iso,
                 marker="o",
                 linestyle="-",
@@ -147,7 +151,7 @@ def plot_time_series(
             )
         else:
             plt.step(
-                centers,
+                centers_dt,
                 counts_iso,
                 where="mid",
                 color=colors[iso],
@@ -175,7 +179,7 @@ def plot_time_series(
         # Convert  rate (counts/s)     expected counts per bin = r_rel * bin_width
         model_counts = r_rel * bin_widths
         plt.plot(
-            centers,
+            centers_dt,
             model_counts,
             color=colors[iso],
             lw=2,
@@ -183,11 +187,21 @@ def plot_time_series(
             label=f"Model {iso}",
         )
 
-    plt.xlabel("Time since t_start (s)")
+    plt.xlabel("Time")
     plt.ylabel("Counts per bin")
     title_isos = " & ".join(iso_list)
     plt.title(f"{title_isos} Time Series Fit")
     plt.legend(fontsize="small")
+
+    ax = plt.gca()
+    locator = mdates.AutoDateLocator()
+    try:
+        formatter = mdates.ConciseDateFormatter(locator)
+    except AttributeError:  # older matplotlib
+        formatter = mdates.AutoDateFormatter(locator)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(formatter)
+    plt.gcf().autofmt_xdate()
     plt.tight_layout()
     os.makedirs(os.path.dirname(out_png), exist_ok=True)
 
@@ -342,11 +356,23 @@ def plot_radon_activity(times, activity, errors, out_png, config=None):
     activity = np.asarray(activity, dtype=float)
     errors = np.asarray(errors, dtype=float)
 
+    times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
+
     plt.figure(figsize=(8, 4))
-    plt.errorbar(times, activity, yerr=errors, fmt="o-", color="tab:purple")
-    plt.xlabel("Time (s)")
+    plt.errorbar(times_dt, activity, yerr=errors, fmt="o-", color="tab:purple")
+    plt.xlabel("Time")
     plt.ylabel("Radon Activity (Bq)")
     plt.title("Extrapolated Radon Activity vs. Time")
+
+    ax = plt.gca()
+    locator = mdates.AutoDateLocator()
+    try:
+        formatter = mdates.ConciseDateFormatter(locator)
+    except AttributeError:
+        formatter = mdates.AutoDateFormatter(locator)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(formatter)
+    plt.gcf().autofmt_xdate()
     plt.tight_layout()
     os.makedirs(os.path.dirname(out_png), exist_ok=True)
 
@@ -373,15 +399,27 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
     volumes = np.asarray(volumes, dtype=float)
     errors = np.asarray(errors, dtype=float)
 
+    times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
+
     plt.figure(figsize=(8, 4))
-    plt.errorbar(times, volumes, yerr=errors, fmt="o-", color="tab:green")
-    plt.xlabel("Time (s)")
+    plt.errorbar(times_dt, volumes, yerr=errors, fmt="o-", color="tab:green")
+    plt.xlabel("Time")
     plt.ylabel("Equivalent Air Volume")
     if conc is None:
         title = "Equivalent Air Volume vs. Time"
     else:
         title = f"Equivalent Air Volume vs. Time (ambient {conc} Bq/L)"
     plt.title(title)
+
+    ax = plt.gca()
+    locator = mdates.AutoDateLocator()
+    try:
+        formatter = mdates.ConciseDateFormatter(locator)
+    except AttributeError:
+        formatter = mdates.AutoDateFormatter(locator)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(formatter)
+    plt.gcf().autofmt_xdate()
     plt.tight_layout()
     os.makedirs(os.path.dirname(out_png), exist_ok=True)
 
