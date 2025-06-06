@@ -334,4 +334,30 @@ def test_plot_modeled_radon_activity_variation(tmp_path, monkeypatch):
 
     assert "y" in captured
     assert not np.allclose(captured["y"], captured["y"][0])
+def test_plot_radon_activity_multiple_formats(tmp_path):
+    times = np.array([0.0, 1.0, 2.0])
+    activity = np.array([1.0, 1.1, 1.2])
+    errors = np.array([0.1, 0.1, 0.1])
+    out_png = tmp_path / "radon_multi.png"
+
+    from plot_utils import plot_radon_activity
+
+    plot_radon_activity(times, activity, errors, str(out_png), config={"plot_save_formats": ["png", "pdf"]})
+
+    assert out_png.exists()
+    assert out_png.with_suffix('.pdf').exists()
+
+
+def test_plot_equivalent_air_multiple_formats(tmp_path):
+    times = np.array([0.0, 0.5, 1.0])
+    volumes = np.array([0.1, 0.2, 0.3])
+    errors = np.array([0.01, 0.01, 0.02])
+    out_png = tmp_path / "air_multi.png"
+
+    from plot_utils import plot_equivalent_air
+
+    plot_equivalent_air(times, volumes, errors, 1.0, str(out_png), config={"plot_save_formats": ["png", "pdf"]})
+
+    assert out_png.exists()
+    assert out_png.with_suffix('.pdf').exists()
 
