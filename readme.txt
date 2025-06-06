@@ -201,18 +201,18 @@ with entries such as:
 
 ## Running Tests
 
-Install the required Python packages before running `pytest`. The packages listed in `requirements.txt` must be installed:
+Use the provided setup script to install the required packages:
 ```bash
-pip install -r requirements.txt
+scripts/setup_tests.sh
 pytest -v
 ```
 
 ## Local Test Setup
 
-To run the tests locally, install the dependencies and execute `pytest`:
+When developing locally, run the setup script and then execute `pytest`:
 
 ```bash
-pip install -r requirements.txt
+scripts/setup_tests.sh
 pytest -v
 ```
 
