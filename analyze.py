@@ -293,17 +293,6 @@ def main():
         cfg.get("systematics", {}).get("adc_drift_rate", 0.0)
     )
 
-    if drift_rate != 0.0:
-        try:
-            events["adc"] = apply_linear_adc_shift(
-                events["adc"].values,
-                events["timestamp"].values,
-                float(drift_rate),
-                t_ref=t0_global,
-            )
-        except Exception as e:
-            print(f"WARNING: Could not apply ADC drift correction -> {e}")
-
     # ────────────────────────────────────────────────────────────
     # 3. Energy calibration
     # ────────────────────────────────────────────────────────────
@@ -338,28 +327,40 @@ def main():
     # 4. Baseline run (optional)
     # ────────────────────────────────────────────────────────────
     baseline_info = {}
+    baseline_cfg = cfg.get("baseline", {})
+    baseline_range = None
     if args.baseline_range:
+        baseline_range = args.baseline_range
+    elif "range" in baseline_cfg:
+        baseline_range = baseline_cfg.get("range")
+
+    monitor_vol = float(baseline_cfg.get("monitor_volume_l", 605.0))
+    sample_vol = float(baseline_cfg.get("sample_volume_l", 0.0))
+    base_events = pd.DataFrame()
+    baseline_live_time = 0.0
+
+    if baseline_range:
 
         def to_epoch(x):
             try:
                 return float(x)
-            except:
+            except Exception:
                 return pd.to_datetime(x).astype(np.int64) / 1e9
 
-        t_start_base = to_epoch(args.baseline_range[0])
-        t_end_base = to_epoch(args.baseline_range[1])
+        t_start_base = to_epoch(baseline_range[0])
+        t_end_base = to_epoch(baseline_range[1])
         mask_base = (events["timestamp"] >= t_start_base) & (
             events["timestamp"] < t_end_base
         )
         base_events = events[mask_base].copy()
+        baseline_live_time = float(t_end_base - t_start_base)
         baseline_info = {
             "start": t_start_base,
             "end": t_end_base,
             "n_events": len(base_events),
+            "live_time": baseline_live_time,
         }
-    else:
-        base_events = pd.DataFrame()
-
+    baseline_counts = {}
     # ────────────────────────────────────────────────────────────
     # 5. Spectral fit (optional)
     # ────────────────────────────────────────────────────────────
@@ -547,7 +548,7 @@ def main():
             priors_time["B0"] = tuple(cfg["time_fit"][f"bkg_{iso}"])
 
         # Initial N₀ from baseline (if provided)
-        if args.baseline_range:
+        if baseline_range:
             # Count baseline events in this energy window
             n0_count = float(
                 (
@@ -555,6 +556,7 @@ def main():
                     & (base_events["energy_MeV"] <= hi)
                 ).sum()
             )
+            baseline_counts[iso] = n0_count
             priors_time["N0"] = (
                 n0_count,
                 cfg["time_fit"].get(
@@ -737,6 +739,31 @@ def main():
                 }
             except Exception as e:
                 print(f"WARNING: BLUE combination failed -> {e}")
+
+    # ────────────────────────────────────────────────────────────
+    # Baseline subtraction
+    # ────────────────────────────────────────────────────────────
+    baseline_rates = {}
+    if baseline_live_time > 0:
+        for iso, count in baseline_counts.items():
+            eff = cfg["time_fit"].get(f"eff_{iso}", [1.0])[0]
+            if eff > 0:
+                baseline_rates[iso] = count / (baseline_live_time * eff)
+            else:
+                baseline_rates[iso] = 0.0
+
+    scale_factor = 0.0
+    if monitor_vol + sample_vol > 0:
+        scale_factor = monitor_vol / (monitor_vol + sample_vol)
+
+    for iso, rate in baseline_rates.items():
+        fit = time_fit_results.get(iso)
+        if fit and (f"E_{iso}" in fit):
+            fit["E_corrected"] = fit[f"E_{iso}"] - rate * scale_factor
+
+    if baseline_rates:
+        baseline_info["rates"] = baseline_rates
+        baseline_info["scale_factor"] = scale_factor
 
     # ────────────────────────────────────────────────────────────
     # 8. Assemble and write out the summary JSON
