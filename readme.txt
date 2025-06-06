@@ -32,6 +32,7 @@ python analyze.py --config config.json --input merged_data.csv \
     [--analysis-end-time ISO --spike-end-time ISO] \
     [--settle-s SEC] [--debug] [--seed SEED] \
     [--ambient-file amb.txt] [--ambient-concentration 0.1] \
+    [--burst-mode rate] \
     [--time-bin-mode fixed --time-bin-width 3600] [--dump-ts-json]
 ```
 
