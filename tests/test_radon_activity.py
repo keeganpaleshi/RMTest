@@ -58,6 +58,18 @@ def test_compute_radon_activity_mixed_efficiency_214():
     assert s == pytest.approx(1.0)
 
 
+def test_compute_radon_activity_single_214():
+    a, s = compute_radon_activity(None, None, 1.0, 12.0, 2.0, 1.0)
+    assert a == pytest.approx(12.0)
+    assert s == pytest.approx(2.0)
+
+
+def test_compute_radon_activity_single_218():
+    a, s = compute_radon_activity(10.0, 1.0, 1.0, None, None, 1.0)
+    assert a == pytest.approx(10.0)
+    assert s == pytest.approx(1.0)
+
+
 def test_compute_total_radon():
     conc, dconc, tot, dtot = compute_total_radon(5.0, 0.5, 10.0, 20.0)
     assert conc == pytest.approx(0.5)

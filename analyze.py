@@ -465,8 +465,14 @@ def main():
 
 
 
+        # Remove baseline events from the main dataset before any fits.
+        # This is done once here to avoid accidentally discarding data twice
+        # which previously left an empty DataFrame for the time fits.
+
+
     # After creating ``base_events``, drop them from the dataset
     if baseline_range:
+
         events = events[~mask_base].reset_index(drop=True)
 
 
