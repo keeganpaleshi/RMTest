@@ -70,8 +70,8 @@ from io_utils import (
 from calibration import derive_calibration_constants, derive_calibration_constants_auto
 from fitting import fit_spectrum, fit_time_series
 from plot_utils import plot_spectrum, plot_time_series
+from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
-from systematics import scan_systematics
 from utils import find_adc_peaks
 
 
@@ -227,6 +227,15 @@ def main():
 
     # Optional burst filter to remove high-rate clusters
     events, n_removed_burst = apply_burst_filter(events, cfg, mode=args.burst_mode)
+
+    # Optional ADC drift correction before calibration
+    drift_rate = float(cfg.get("systematics", {}).get("adc_drift_rate", 0.0))
+    if drift_rate != 0.0:
+        events["adc"] = apply_linear_adc_shift(
+            events["adc"].values,
+            events["timestamp"].values,
+            float(drift_rate),
+        )
 
     # Global t₀ reference
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
@@ -681,6 +690,7 @@ def main():
         "systematics": systematics_results,
         "baseline": baseline_info,
         "burst_filter": {"removed_events": int(n_removed_burst)},
+        "adc_drift_rate": drift_rate,
         "efficiency": efficiency_results,
         "git_commit": commit,
         "cli_sha256": cli_sha256,
