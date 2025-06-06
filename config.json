@@ -6,6 +6,11 @@
     "analysis": {
         "analysis_start_time": null
     },
+    "baseline": {
+        "range": null,
+        "monitor_volume_l": 605.0,
+        "sample_volume_l": 0.0
+    },
     "burst_filter": {
         "burst_window_size_s": 60,
         "rolling_median_window": 5,
