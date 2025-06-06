@@ -257,10 +257,11 @@ an assay. Configuration must define three keys under `baseline`:
 - `sample_volume_l` – volume of the assay sample in liters.
 
 Events collected during the baseline period are counted in the Po‑214 and
-Po‑218 windows. The count rates are converted to Bq/m³ via
-`cps_to_bq(rate, volume_liters=monitor_volume_l)` and scaled by detection
-efficiency. This baseline activity is then subtracted from the assay result
-after applying the ratio `sample_volume_l/monitor_volume_l`.
+Po‑218 windows. The counts are converted directly into a decay rate in
+Bq by dividing by the baseline live time and detection efficiency.  This
+rate is scaled by the dilution factor
+`monitor_volume_l / (monitor_volume_l + sample_volume_l)` before being
+subtracted from the fitted radon decay rate of the assay.
 
 Example snippet:
 
