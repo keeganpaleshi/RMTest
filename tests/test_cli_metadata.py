@@ -35,6 +35,8 @@ def test_summary_includes_git_and_cli(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: {})
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
 
     captured = {}
 
