@@ -409,3 +409,56 @@ def test_plot_equivalent_air_default_extension(tmp_path):
 
     assert out_png.with_suffix('.png').exists()
 
+
+def test_plot_time_series_bare_filename(tmp_path, monkeypatch):
+    times = np.array([1001.0, 1002.0])
+    energies = np.array([7.6, 7.8])
+    monkeypatch.chdir(tmp_path)
+
+    plot_time_series(
+        times,
+        energies,
+        {"E": 0.1, "B": 0.0, "N0": 0.0},
+        1000.0,
+        1005.0,
+        basic_config(),
+        "bare_ts.png",
+    )
+
+    assert Path("bare_ts.png").exists()
+
+
+def test_plot_spectrum_bare_filename(tmp_path, monkeypatch):
+    energies = np.linspace(0, 10, 5)
+    monkeypatch.chdir(tmp_path)
+
+    plot_spectrum(energies, out_png="bare_spec.png")
+
+    assert Path("bare_spec.png").exists()
+
+
+def test_plot_radon_activity_bare_filename(tmp_path, monkeypatch):
+    times = np.array([0.0, 1.0, 2.0])
+    activity = np.array([1.0, 1.1, 1.2])
+    errors = np.array([0.1, 0.1, 0.1])
+    monkeypatch.chdir(tmp_path)
+
+    from plot_utils import plot_radon_activity
+
+    plot_radon_activity(times, activity, errors, "bare_radon.png")
+
+    assert Path("bare_radon.png").exists()
+
+
+def test_plot_equivalent_air_bare_filename(tmp_path, monkeypatch):
+    times = np.array([0.0, 1.0, 2.0])
+    volumes = np.array([0.1, 0.2, 0.3])
+    errors = np.array([0.01, 0.01, 0.01])
+    monkeypatch.chdir(tmp_path)
+
+    from plot_utils import plot_equivalent_air
+
+    plot_equivalent_air(times, volumes, errors, 1.0, "bare_air.png")
+
+    assert Path("bare_air.png").exists()
+

@@ -203,7 +203,8 @@ def plot_time_series(
     ax.xaxis.set_major_formatter(formatter)
     plt.gcf().autofmt_xdate()
     plt.tight_layout()
-    os.makedirs(os.path.dirname(out_png), exist_ok=True)
+    dirpath = os.path.dirname(out_png) or "."
+    os.makedirs(dirpath, exist_ok=True)
 
     # Determine which formats to save. If not specified, fall back to the
     # extension of the provided output path.
@@ -333,7 +334,8 @@ def plot_spectrum(
     else:
         ax_main.set_xlabel("Energy (MeV)")
     fig.tight_layout()
-    os.makedirs(os.path.dirname(out_png), exist_ok=True)
+    dirpath = os.path.dirname(out_png) or "."
+    os.makedirs(dirpath, exist_ok=True)
 
     fmt_default = os.path.splitext(out_png)[1].lstrip(".") or "png"
     save_fmts = []
@@ -374,7 +376,8 @@ def plot_radon_activity(times, activity, errors, out_png, config=None):
     ax.xaxis.set_major_formatter(formatter)
     plt.gcf().autofmt_xdate()
     plt.tight_layout()
-    os.makedirs(os.path.dirname(out_png), exist_ok=True)
+    dirpath = os.path.dirname(out_png) or "."
+    os.makedirs(dirpath, exist_ok=True)
 
     fmt_default = os.path.splitext(out_png)[1].lstrip(".") or "png"
     fmts = config.get("plot_save_formats", [fmt_default]) if config else [fmt_default]
@@ -421,7 +424,8 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
     ax.xaxis.set_major_formatter(formatter)
     plt.gcf().autofmt_xdate()
     plt.tight_layout()
-    os.makedirs(os.path.dirname(out_png), exist_ok=True)
+    dirpath = os.path.dirname(out_png) or "."
+    os.makedirs(dirpath, exist_ok=True)
 
     fmt_default = os.path.splitext(out_png)[1].lstrip(".") or "png"
     fmts = config.get("plot_save_formats", [fmt_default]) if config else [fmt_default]
