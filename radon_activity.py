@@ -86,6 +86,10 @@ def compute_total_radon(
 ) -> Tuple[float, float, float, float]:
     """Convert activity into concentration and total radon in the sample volume.
 
+    Both ``monitor_volume`` and ``sample_volume`` must be non-negative.  A
+    ``ValueError`` is raised if ``monitor_volume`` is not positive or if
+    ``sample_volume`` is negative.
+
     Returns
     -------
     concentration : float
@@ -99,6 +103,8 @@ def compute_total_radon(
     """
     if monitor_volume <= 0:
         raise ValueError("monitor_volume must be positive")
+    if sample_volume < 0:
+        raise ValueError("sample_volume must be non-negative")
     conc = activity_bq / monitor_volume
     sigma_conc = err_bq / monitor_volume
 

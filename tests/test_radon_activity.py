@@ -122,6 +122,11 @@ def test_compute_total_radon():
     assert dtot == pytest.approx(1.0)
 
 
+def test_compute_total_radon_negative_sample_volume():
+    with pytest.raises(ValueError):
+        compute_total_radon(5.0, 0.5, 10.0, -1.0)
+
+
 def test_radon_activity_curve():
     times = [0.0, 1.0]
     E = 5.0
