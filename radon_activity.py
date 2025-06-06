@@ -63,7 +63,7 @@ def compute_radon_activity(
             weights.append(None)
 
     if not values:
-        return 0.0, 0.0
+        return 0.0, math.nan
 
     # If both have valid uncertainties use weighted average
     if len(values) == 2 and all(w is not None for w in weights):
@@ -80,7 +80,7 @@ def compute_radon_activity(
 
     # Only one valid value or missing errors
     A = values[0]
-    sigma = math.sqrt(1.0 / weights[0]) if weights[0] is not None else 0.0
+    sigma = math.sqrt(1.0 / weights[0]) if weights[0] is not None else math.nan
     return A, sigma
 
 
