@@ -67,6 +67,10 @@ from utils import cps_to_bq
 activity_bq_m3 = cps_to_bq(fit_result["E_Po214"], volume_liters=10.0)
 ```
 
+When using ``compute_radon_activity`` you should pass the fitted rates
+directly. They already represent activities in Bq and no additional
+division by the detection efficiency is required.
+
 ## Configuration
 
 `nominal_adc` under the `calibration` section sets the expected raw ADC
