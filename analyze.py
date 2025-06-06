@@ -365,6 +365,27 @@ def main():
             "n_events": len(base_events),
             "live_time": baseline_live_time,
         }
+
+        # Estimate electronic noise level from ADC values below Po-210
+        noise_level = None
+        try:
+            from baseline_noise import estimate_baseline_noise
+
+            peak_adc = (
+                cal_params.get("peaks", {})
+                .get("Po210", {})
+                .get("centroid_adc")
+            )
+            if peak_adc is not None:
+                noise_level, _ = estimate_baseline_noise(
+                    base_events["adc"].values,
+                    peak_adc=peak_adc,
+                )
+        except Exception as e:
+            print(f"WARNING: Baseline noise estimation failed -> {e}")
+
+        if noise_level is not None:
+            baseline_info["noise_level"] = float(noise_level)
     baseline_counts = {}
     # ────────────────────────────────────────────────────────────
     # 5. Spectral fit (optional)
