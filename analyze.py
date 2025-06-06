@@ -110,9 +110,8 @@ def parse_args():
     )
     p.add_argument(
         "--burst-mode",
-        default="rate",
         choices=["none", "micro", "rate", "both"],
-        help="Burst filtering mode to pass to apply_burst_filter",
+        help="Burst filtering mode to pass to apply_burst_filter (overrides config)",
     )
     p.add_argument(
         "--job-id",
@@ -294,7 +293,12 @@ def main():
     events["timestamp"] = events["timestamp"].astype(float)
 
     # Optional burst filter to remove high-rate clusters
-    events, n_removed_burst = apply_burst_filter(events, cfg, mode=args.burst_mode)
+    burst_mode = (
+        args.burst_mode
+        if args.burst_mode is not None
+        else cfg.get("burst_filter", {}).get("burst_mode", "rate")
+    )
+    events, n_removed_burst = apply_burst_filter(events, cfg, mode=burst_mode)
 
     # Global t₀ reference
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
