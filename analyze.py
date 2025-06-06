@@ -52,6 +52,8 @@ import sys
 import logging
 import random
 from datetime import datetime, timezone
+import subprocess
+import hashlib
 
 import numpy as np
 import pandas as pd
@@ -113,6 +115,16 @@ def parse_args():
 
 
 def main():
+    cli_args = sys.argv[:]
+    cli_sha256 = hashlib.sha256(" ".join(cli_args).encode("utf-8")).hexdigest()
+    try:
+        commit = (
+            subprocess.check_output(["git", "rev-parse", "HEAD"], encoding="utf-8")
+            .strip()
+        )
+    except Exception:
+        commit = "unknown"
+
     args = parse_args()
 
     # ────────────────────────────────────────────────────────────
@@ -620,6 +632,9 @@ def main():
         "baseline": baseline_info,
         "burst_filter": {"removed_events": int(n_removed_burst)},
         "efficiency": efficiency_results,
+        "git_commit": commit,
+        "cli_sha256": cli_sha256,
+        "cli_args": cli_args,
     }
 
     out_dir = write_summary(args.output_dir, summary, args.job_id or now_str)
