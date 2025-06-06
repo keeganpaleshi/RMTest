@@ -433,7 +433,6 @@ def main():
             events["timestamp"] < t_end_base
         )
         base_events = events[mask_base].copy()
-        events = events[~mask_base].reset_index(drop=True)
         baseline_live_time = float(t_end_base - t_start_base)
         baseline_info = {
             "start": t_start_base,
