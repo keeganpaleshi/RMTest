@@ -46,6 +46,7 @@
         "fd_hist_bins": 400,
         "mu_sigma": 0.05,
         "amp_prior_scale": 1.0,
+        "bkg_mode": "manual",
         "b0_prior": [0.0, 1.0],
         "b1_prior": [0.0, 1.0],
         "tau_Po210_prior_mean": 0.0,
