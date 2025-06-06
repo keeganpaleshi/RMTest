@@ -126,7 +126,10 @@ parameters are scanned.
 
 `adc_drift_rate` under `systematics` applies a linear time-dependent
 shift to the raw ADC values before calibration.  The value is in ADC
-counts per second and defaults to `0.0` (no correction).
+counts per second and defaults to `0.0` (no correction).  When the rate
+is non-zero `analyze.py` applies the shift using
+`apply_linear_adc_shift` and stores the value in `summary.json` under
+`adc_drift_rate`.
 
 `plot_time_style` chooses how the histogram is drawn in the time-series
 plot.  Use `"steps"` (default) for a stepped histogram or `"lines"` to
