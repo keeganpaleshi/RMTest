@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 import pandas as pd
 import numpy as np
+import logging
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
@@ -389,3 +390,175 @@ def test_time_bin_cli(tmp_path, monkeypatch):
     assert captured["config"]["plot_time_binning_mode"] == "fixed"
     assert captured["config"]["plot_time_bin_width_s"] == 5.0
     assert captured["config"]["dump_time_series_json"] is True
+
+
+def test_spike_count_cli(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {"do_time_fit": False},
+        "systematics": {"enable": False},
+        "efficiency": {"spike": {"activity_bq": 5, "live_time_s": 100}},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    cfg_path = tmp_path / "cfg.json"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    data_path = tmp_path / "d.csv"
+    df.to_csv(data_path, index=False)
+
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0)})
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0)})
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: {})
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+
+    import efficiency
+
+    recorded = {}
+
+    def fake_spike(cnt, act, live):
+        recorded["cnt"] = cnt
+        return 0.1
+
+    monkeypatch.setattr(efficiency, "calc_spike_efficiency", fake_spike)
+
+    saved = {}
+
+    def fake_write(out_dir, summary, timestamp=None):
+        saved["summary"] = summary
+        d = Path(out_dir) / "x"
+        d.mkdir(parents=True, exist_ok=True)
+        return str(d)
+
+    monkeypatch.setattr(analyze, "write_summary", fake_write)
+    monkeypatch.setattr(analyze, "copy_config", lambda *a, **k: None)
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+        "--spike-count",
+        "42",
+        "--spike-count-err",
+        "2",
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+    analyze.main()
+
+    assert recorded.get("cnt") == 42.0
+    assert saved["summary"]["efficiency"]["sources"]["spike"]["error"] == 2.0
+
+
+
+def test_debug_flag_sets_log_level(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {"do_time_fit": False},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    cfg_path = tmp_path / "cfg.json"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    data_path = tmp_path / "d.csv"
+    df.to_csv(data_path, index=False)
+
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0)})
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0)})
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: {})
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+
+    captured = {}
+
+    def fake_basic(level=None, **kwargs):
+        captured["level"] = level
+
+    monkeypatch.setattr(logging, "basicConfig", fake_basic)
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+        "--debug",
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+    analyze.main()
+
+    assert captured.get("level") == logging.DEBUG
+
+
+def test_settle_s_cli(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {
+            "do_time_fit": True,
+            "window_Po214": [0.0, 20.0],
+            "hl_Po214": [1.0, 0.0],
+            "eff_Po214": [1.0, 0.0],
+            "flags": {},
+        },
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    cfg_path = tmp_path / "cfg.json"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    df = pd.DataFrame({
+        "fUniqueID": [1, 2],
+        "fBits": [0, 0],
+        "timestamp": [0.0, 10.0],
+        "adc": [8.0, 8.0],
+        "fchannel": [1, 1],
+    })
+    data_path = tmp_path / "d.csv"
+    df.to_csv(data_path, index=False)
+
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0)})
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0)})
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+
+    captured = {}
+
+    def fake_fit(ts_dict, t_start, t_end, config):
+        captured["times"] = ts_dict["Po214"].tolist()
+        return {}
+
+    monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+        "--settle-s",
+        "5",
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+    analyze.main()
+
+    assert captured["times"] == [10.0]
+
