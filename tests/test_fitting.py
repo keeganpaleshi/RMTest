@@ -310,3 +310,25 @@ def test_fit_time_series_covariance_checks(monkeypatch):
     monkeypatch.setattr(linalg, "eigvals", bad_eigvals)
     res_bad = fit_time_series(times_dict, 0.0, T, cfg)
     assert not res_bad["fit_valid"]
+
+
+def test_fit_time_series_half_life_zero_raises():
+    times_dict = {"Po214": np.array([0.0, 1.0])}
+    cfg = {
+        "isotopes": {"Po214": {"half_life_s": 0.0, "efficiency": 1.0}},
+        "fit_background": True,
+        "fit_initial": True,
+    }
+    with pytest.raises(ValueError):
+        fit_time_series(times_dict, 0.0, 10.0, cfg)
+
+
+def test_fit_time_series_half_life_negative_raises():
+    times_dict = {"Po214": np.array([0.0, 1.0])}
+    cfg = {
+        "isotopes": {"Po214": {"half_life_s": -1.0, "efficiency": 1.0}},
+        "fit_background": True,
+        "fit_initial": True,
+    }
+    with pytest.raises(ValueError):
+        fit_time_series(times_dict, 0.0, 10.0, cfg)
