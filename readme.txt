@@ -216,7 +216,9 @@ fit.  Important keys include:
   continuum terms.
 - `tau_{iso}_prior_mean` and `tau_{iso}_prior_sigma` – mean and
   uncertainty for the exponential tail constant of each isotope when
-  `use_emg` enables that tail.
+  `use_emg` enables that tail.  Use a strictly positive prior mean (e.g.
+  ``0.005``) to prevent numerical overflow when the tail constant
+  approaches zero.
 - `mu_bounds` – optional lower/upper limits for each peak centroid.
   Set for example `{"Po218": [5.9, 6.2]}` to keep the Po‑218 fit from
   drifting into the Po‑210 region.  Centroid guesses found during peak
