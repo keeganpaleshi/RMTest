@@ -156,6 +156,9 @@ def radon_activity_curve(
     """
     import numpy as np
 
+    if half_life_s <= 0:
+        raise ValueError("half_life_s must be positive")
+
     t = np.asarray(times, dtype=float)
     lam = math.log(2.0) / float(half_life_s)
     exp_term = np.exp(-lam * t)
@@ -182,6 +185,9 @@ def radon_delta(
     Parameters are identical to :func:`radon_activity_curve` with ``t_start``
     and ``t_end`` specifying the relative times in seconds.
     """
+
+    if half_life_s <= 0:
+        raise ValueError("half_life_s must be positive")
 
     lam = math.log(2.0) / float(half_life_s)
     exp1 = math.exp(-lam * float(t_start))
