@@ -1294,6 +1294,13 @@ def main():
             dN0 = fit.get("dN0_Po214", 0.0)
             hl = cfg.get("time_fit", {}).get("hl_Po214", [328320])[0]
             A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl)
+            plot_radon_activity(
+                times,
+                A214,
+                dA214,
+                os.path.join(out_dir, "radon_activity_po214.png"),
+                config=cfg.get("plotting", {}),
+            )
 
         A218 = dA218 = None
         if "Po218" in time_fit_results:
@@ -1393,6 +1400,15 @@ def main():
                 os.path.join(out_dir, "equivalent_air.png"),
                 config=cfg.get("plotting", {}),
             )
+            if A214 is not None:
+                plot_equivalent_air(
+                    times,
+                    A214 / ambient_interp,
+                    dA214 / ambient_interp,
+                    None,
+                    os.path.join(out_dir, "equivalent_air_po214.png"),
+                    config=cfg.get("plotting", {}),
+                )
         elif ambient:
             vol_arr = activity_arr / float(ambient)
             vol_err = err_arr / float(ambient)
@@ -1404,6 +1420,15 @@ def main():
                 os.path.join(out_dir, "equivalent_air.png"),
                 config=cfg.get("plotting", {}),
             )
+            if A214 is not None:
+                plot_equivalent_air(
+                    times,
+                    A214 / float(ambient),
+                    dA214 / float(ambient),
+                    float(ambient),
+                    os.path.join(out_dir, "equivalent_air_po214.png"),
+                    config=cfg.get("plotting", {}),
+                )
     except Exception as e:
         print(f"WARNING: Could not create radon activity plots -> {e}")
 
