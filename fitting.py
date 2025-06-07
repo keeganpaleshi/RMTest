@@ -370,6 +370,8 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None):
     for iso in iso_list:
         iso_cfg = config["isotopes"][iso]
         hl = float(iso_cfg["half_life_s"])
+        if hl <= 0:
+            raise ValueError("half_life_s must be positive")
         lam_map[iso] = np.log(2.0) / hl
         eff_map[iso] = float(iso_cfg.get("efficiency", 1.0))
         fix_b_map[iso] = not bool(config.get("fit_background", False))
