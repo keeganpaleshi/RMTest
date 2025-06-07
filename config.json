@@ -34,7 +34,7 @@
         "peak_search_radius": 200,
         "peak_prominence": 10,
         "peak_width": 3,
-        "nominal_adc": {"Po210": 1250, "Po218": 1400, "Po214": 1800},
+        "nominal_adc": {"Po210": 1250, "Po218": 1405, "Po214": 1800},
         "fit_window_adc": 50,
         "use_emg": false,
         "init_sigma_adc": 10.0,
@@ -69,10 +69,10 @@
         "peak_search_prominence": 50,
         "peak_search_width_adc": 5,
         "use_plot_bins_for_fit": false,
-        "expected_peaks": {"Po210": 1250, "Po218": 1400, "Po214": 1800},
+        "expected_peaks": {"Po210": 1250, "Po218": 1405, "Po214": 1800},
         "mu_bounds": {
             "Po210": null,
-            "Po218": null,
+            "Po218": [5.9, 6.2],
             "Po214": null
         }
     },
