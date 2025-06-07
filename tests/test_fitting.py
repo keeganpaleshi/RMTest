@@ -319,8 +319,6 @@ def test_fit_time_series_covariance_checks(monkeypatch):
 
     import numpy.linalg as linalg
 
-    orig_eig = linalg.eigvals
-
     def good_eigvals(x):
         return np.ones(x.shape[0])
 
@@ -333,7 +331,11 @@ def test_fit_time_series_covariance_checks(monkeypatch):
         vals[0] = -1.0
         return vals
 
+    def cholesky_fail(x):
+        raise linalg.LinAlgError("not PD")
+
     monkeypatch.setattr(linalg, "eigvals", bad_eigvals)
+    monkeypatch.setattr(linalg, "cholesky", cholesky_fail)
     res_bad = fit_time_series(times_dict, 0.0, T, cfg)
     assert not res_bad["fit_valid"]
 
