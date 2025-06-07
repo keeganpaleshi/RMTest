@@ -462,3 +462,15 @@ def test_plot_equivalent_air_bare_filename(tmp_path, monkeypatch):
 
     assert Path("bare_air.png").exists()
 
+
+def test_plot_radon_trend_output(tmp_path):
+    from plot_utils import plot_radon_trend
+
+    times = [0.0, 1.0, 2.0]
+    activity = [1.0, 1.2, 1.4]
+    out_png = tmp_path / "trend.png"
+
+    plot_radon_trend(times, activity, str(out_png))
+
+    assert out_png.exists()
+

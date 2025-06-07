@@ -30,7 +30,8 @@ python analyze.py --config config.json --input merged_data.csv \
     [--efficiency-json eff.json] [--systematics-json syst.json] \
     [--spike-count N --spike-count-err S] [--slope RATE] \
     [--analysis-end-time ISO --spike-end-time ISO] \
-    [--spike-period START END] \
+    [--spike-period START END] [--run-period START END] \
+    [--radon-interval START END] \
     [--settle-s SEC] [--debug] [--seed SEED] \
     [--ambient-file amb.txt (time conc)] [--ambient-concentration 0.1] \
     [--burst-mode rate] \
@@ -107,6 +108,10 @@ timestamp while `spike_end_time` discards all events before its value.
 `spike_periods` holds a list of `[start, end]` pairs where events are
 excluded entirely.  All of these accept ISO‑8601 strings and can also be
 set with the corresponding CLI options.
+`run_periods` specifies the intervals of valid data to keep after spike
+filtering.  Events falling outside all provided periods are discarded.
+`radon_interval` sets two timestamps used to compute the change in radon
+activity between them.
 
 `ambient_concentration` may also be specified here to record the ambient
 radon concentration in Bq/m³ used for the equivalent air plot.  The
@@ -126,6 +131,8 @@ Example snippet:
     "analysis_end_time": "2020-01-02T00:00:00Z",
     "spike_end_time": "2020-01-01T01:00:00Z",
     "spike_periods": [["2020-01-01T03:00:00Z", "2020-01-01T04:00:00Z"]],
+    "run_periods": [["2020-01-01T02:00:00Z", "2020-01-01T06:00:00Z"]],
+    "radon_interval": ["2020-01-01T02:00:00Z", "2020-01-01T06:00:00Z"],
     "ambient_concentration": 0.02
 }
 ```
@@ -139,6 +146,8 @@ When present the value is also written to `summary.json` under the
     "analysis_end_time": "2020-01-02T00:00:00Z",
     "spike_end_time": "2020-01-01T01:00:00Z",
     "spike_periods": [["2020-01-01T03:00:00Z", "2020-01-01T04:00:00Z"]],
+    "run_periods": [["2020-01-01T02:00:00Z", "2020-01-01T06:00:00Z"]],
+    "radon_interval": ["2020-01-01T02:00:00Z", "2020-01-01T06:00:00Z"],
     "ambient_concentration": 0.02
 }
 ```

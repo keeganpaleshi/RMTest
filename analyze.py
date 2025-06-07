@@ -185,6 +185,19 @@ def parse_args():
         help="Discard events between START and END (can be given multiple times)",
     )
     p.add_argument(
+        "--run-period",
+        nargs=2,
+        action="append",
+        metavar=("START", "END"),
+        help="Keep events between START and END (can be given multiple times)",
+    )
+    p.add_argument(
+        "--radon-interval",
+        nargs=2,
+        metavar=("START", "END"),
+        help="Time interval to evaluate radon delta",
+    )
+    p.add_argument(
         "--slope",
         type=float,
         help="Apply a linear ADC drift correction with the given slope",
@@ -288,6 +301,12 @@ def main():
 
     if args.spike_period:
         cfg.setdefault("analysis", {})["spike_periods"] = args.spike_period
+
+    if args.run_period:
+        cfg.setdefault("analysis", {})["run_periods"] = args.run_period
+
+    if args.radon_interval:
+        cfg.setdefault("analysis", {})["radon_interval"] = args.radon_interval
 
 
     if args.time_bin_mode:
@@ -414,6 +433,35 @@ def main():
         except Exception as e:
             logging.warning(f"Invalid spike_period {period} -> {e}")
 
+    run_periods_cfg = cfg.get("analysis", {}).get("run_periods", [])
+    if run_periods_cfg is None:
+        run_periods_cfg = []
+    run_periods = []
+    for period in run_periods_cfg:
+        try:
+            start, end = period
+            start_ts = _to_epoch(start)
+            end_ts = _to_epoch(end)
+            if end_ts <= start_ts:
+                raise ValueError("end <= start")
+            run_periods.append((start_ts, end_ts))
+        except Exception as e:
+            logging.warning(f"Invalid run_period {period} -> {e}")
+
+    radon_interval_cfg = cfg.get("analysis", {}).get("radon_interval")
+    radon_interval = None
+    if radon_interval_cfg:
+        try:
+            start_r, end_r = radon_interval_cfg
+            start_r_ts = _to_epoch(start_r)
+            end_r_ts = _to_epoch(end_r)
+            if end_r_ts <= start_r_ts:
+                raise ValueError("end <= start")
+            radon_interval = (start_r_ts, end_r_ts)
+        except Exception as e:
+            logging.warning(f"Invalid radon_interval {radon_interval_cfg} -> {e}")
+            radon_interval = None
+
     # Apply optional time window cuts before any baseline or fit operations
     if t_spike_end is not None:
         events = events[events["timestamp"] >= t_spike_end].reset_index(drop=True)
@@ -421,6 +469,13 @@ def main():
         mask = (events["timestamp"] >= start_ts) & (events["timestamp"] < end_ts)
         if mask.any():
             events = events[~mask].reset_index(drop=True)
+    if run_periods:
+        keep_mask = np.zeros(len(events), dtype=bool)
+        for start_ts, end_ts in run_periods:
+            keep_mask |= (events["timestamp"] >= start_ts) & (events["timestamp"] < end_ts)
+        events = events[keep_mask].reset_index(drop=True)
+        if t_end_cfg is None and len(events) > 0:
+            t_end_global = events["timestamp"].max()
     if t_end_global is not None:
         events = events[events["timestamp"] <= t_end_global].reset_index(drop=True)
     else:
@@ -1072,6 +1127,58 @@ def main():
         "uncertainty": dtotal_bq,
     }
 
+    if radon_interval is not None:
+        from radon_activity import radon_delta
+
+        t_start_rel = radon_interval[0] - t0_global
+        t_end_rel = radon_interval[1] - t0_global
+
+        delta214 = err_delta214 = None
+        if "Po214" in time_fit_results:
+            fit = time_fit_results["Po214"]
+            E = fit.get("E_corrected", fit.get("E_Po214"))
+            dE = fit.get("dE_Po214", 0.0)
+            N0 = fit.get("N0_Po214", 0.0)
+            dN0 = fit.get("dN0_Po214", 0.0)
+            hl = cfg.get("time_fit", {}).get("hl_Po214", [328320])[0]
+            delta214, err_delta214 = radon_delta(
+                t_start_rel,
+                t_end_rel,
+                E,
+                dE,
+                N0,
+                dN0,
+                hl,
+            )
+
+        delta218 = err_delta218 = None
+        if "Po218" in time_fit_results:
+            fit = time_fit_results["Po218"]
+            E = fit.get("E_corrected", fit.get("E_Po218"))
+            dE = fit.get("dE_Po218", 0.0)
+            N0 = fit.get("N0_Po218", 0.0)
+            dN0 = fit.get("dN0_Po218", 0.0)
+            hl = cfg.get("time_fit", {}).get("hl_Po218", [328320])[0]
+            delta218, err_delta218 = radon_delta(
+                t_start_rel,
+                t_end_rel,
+                E,
+                dE,
+                N0,
+                dN0,
+                hl,
+            )
+
+        d_radon, d_err = compute_radon_activity(
+            delta218,
+            err_delta218,
+            eff_Po218,
+            delta214,
+            err_delta214,
+            eff_Po214,
+        )
+        radon_results["radon_delta_Bq"] = {"value": d_radon, "uncertainty": d_err}
+
     # ────────────────────────────────────────────────────────────
     # 8. Assemble and write out the summary JSON
     # ────────────────────────────────────────────────────────────
@@ -1096,6 +1203,8 @@ def main():
             "analysis_end_time": t_end_cfg,
             "spike_end_time": spike_end_cfg,
             "spike_periods": spike_periods_cfg,
+            "run_periods": run_periods_cfg,
+            "radon_interval": radon_interval_cfg,
             "ambient_concentration": cfg.get("analysis", {}).get("ambient_concentration"),
         },
     }
@@ -1225,6 +1334,40 @@ def main():
             os.path.join(out_dir, "radon_activity.png"),
             config=cfg.get("plotting", {}),
         )
+
+        if radon_interval is not None:
+            times_trend = np.linspace(radon_interval[0], radon_interval[1], 50)
+            rel_trend = times_trend - t0_global
+            A214_tr = None
+            if "Po214" in time_fit_results:
+                fit = time_fit_results["Po214"]
+                E214 = fit.get("E_corrected", fit.get("E_Po214"))
+                dE214 = fit.get("dE_Po214", 0.0)
+                N0214 = fit.get("N0_Po214", 0.0)
+                dN0214 = fit.get("dN0_Po214", 0.0)
+                hl214 = cfg.get("time_fit", {}).get("hl_Po214", [328320])[0]
+                A214_tr, _ = radon_activity_curve(rel_trend, E214, dE214, N0214, dN0214, hl214)
+            A218_tr = None
+            if "Po218" in time_fit_results:
+                fit = time_fit_results["Po218"]
+                E218 = fit.get("E_corrected", fit.get("E_Po218"))
+                dE218 = fit.get("dE_Po218", 0.0)
+                N0218 = fit.get("N0_Po218", 0.0)
+                dN0218 = fit.get("dN0_Po218", 0.0)
+                hl218 = cfg.get("time_fit", {}).get("hl_Po218", [328320])[0]
+                A218_tr, _ = radon_activity_curve(rel_trend, E218, dE218, N0218, dN0218, hl218)
+            trend = np.zeros_like(times_trend)
+            for i in range(times_trend.size):
+                r214 = A214_tr[i] if A214_tr is not None else None
+                r218 = A218_tr[i] if A218_tr is not None else None
+                A, _ = compute_radon_activity(r218, None, 1.0, r214, None, 1.0)
+                trend[i] = A
+            plot_radon_trend(
+                times_trend,
+                trend,
+                os.path.join(out_dir, "radon_trend.png"),
+                config=cfg.get("plotting", {}),
+            )
 
         ambient = cfg.get("analysis", {}).get("ambient_concentration")
         ambient_interp = None
