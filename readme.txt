@@ -86,6 +86,12 @@ When using ``compute_radon_activity`` you should pass the fitted rates
 directly. They already represent activities in Bq and no additional
 division by the detection efficiency is required.
 
+The time-series fit checks whether the covariance matrix returned by
+Minuit is positive definite.  If not, a tiny diagonal jitter is added
+before repeating the check.  When even the jittered matrix fails this
+test the result still contains the fitted values but ``fit_valid`` is set
+to ``False``.
+
 ## Configuration
 
 `nominal_adc` under the `calibration` section sets the expected raw ADC

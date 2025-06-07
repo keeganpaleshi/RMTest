@@ -479,6 +479,7 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None):
 
     m.hesse()  # compute uncertainties
     cov = np.array(m.covariance)
+    perr = np.sqrt(np.diag(cov))
     try:
         eigvals = np.linalg.eigvals(cov)
         fit_valid = bool(np.all(eigvals > 0))
@@ -486,11 +487,20 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None):
         fit_valid = False
     if not fit_valid:
         logging.warning("fit_time_series: covariance matrix not positive definite")
+        jitter = 1e-12 * np.mean(np.diag(cov))
+        if not np.isfinite(jitter) or jitter <= 0:
+            jitter = 1e-12
+        cov = cov + jitter * np.eye(cov.shape[0])
+        try:
+            np.linalg.cholesky(cov)
+            fit_valid = True
+            perr = np.sqrt(np.diag(cov))
+        except np.linalg.LinAlgError:
+            fit_valid = False
     out["fit_valid"] = fit_valid
-    for pname in ordered_params:
+    for i, pname in enumerate(ordered_params):
         out[pname] = float(m.values[pname])
-        out["d" + pname] = float(m.errors[pname]
-                                 if pname in m.errors else np.nan)
+        out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
 
     return out
 
