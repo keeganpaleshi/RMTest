@@ -33,6 +33,7 @@ def test_apply_linear_adc_shift_noop():
     adc = np.array([100, 101, 102])
     t = np.array([0.0, 1.0, 2.0])
     out = apply_linear_adc_shift(adc, t, 0.0)
+    assert isinstance(out, np.ndarray)
     assert np.allclose(out, adc)
 
 
@@ -40,6 +41,7 @@ def test_apply_linear_adc_shift_rate():
     adc = np.zeros(3)
     t = np.array([0.0, 1.0, 2.0])
     out = apply_linear_adc_shift(adc, t, 1.0)
+    assert isinstance(out, np.ndarray)
     assert np.allclose(out, [0.0, 1.0, 2.0])
 
 
