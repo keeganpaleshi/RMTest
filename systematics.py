@@ -1,4 +1,5 @@
 import math
+import numpy as np
 from typing import Callable, Dict, Tuple, List
 
 
@@ -31,7 +32,10 @@ def apply_linear_adc_shift(adc_values, timestamps, rate, t_ref=None):
     if t_ref is None:
         t_ref = float(time_arr[0]) if len(time_arr) else 0.0
 
-    return [a + rate * (t - t_ref) for a, t in zip(adc_arr, time_arr)]
+    return np.array(
+        [a + rate * (t - t_ref) for a, t in zip(adc_arr, time_arr)],
+        dtype=float,
+    )
 
 
 def scan_systematics(

@@ -75,6 +75,7 @@ def test_adc_drift_applied(tmp_path, monkeypatch):
     analyze.main()
 
     assert captured.get("shift_called") is True
+    assert isinstance(captured.get("cal_adc"), np.ndarray)
     assert np.allclose(captured.get("cal_adc"), np.array([15, 15, 15]))
     assert captured["summary"].get("adc_drift_rate") == 1.0
 
@@ -120,5 +121,6 @@ def test_adc_drift_zero_noop(tmp_path, monkeypatch):
     analyze.main()
 
     assert captured.get("called") is None
+    assert isinstance(captured.get("cal_adc"), np.ndarray)
     assert np.allclose(captured.get("cal_adc"), np.array([10, 10, 10]))
     assert captured["summary"].get("adc_drift_rate") == 0.0
