@@ -37,6 +37,8 @@ def two_point_calibration(adc_centroids, energies):
     """
     x1, x2 = adc_centroids
     E1, E2 = energies
+    if x1 == x2:
+        raise ValueError("ADC centroids must be distinct for calibration")
     a = (E2 - E1) / (x2 - x1)
     c = E1 - a * x1
     return float(a), float(c)

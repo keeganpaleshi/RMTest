@@ -20,6 +20,11 @@ def test_two_point_calibration():
     assert pytest.approx(m * 2000 + c, rel=1e-3) == 7.69
 
 
+def test_two_point_calibration_identical_centroids_error():
+    with pytest.raises(ValueError):
+        two_point_calibration([1000, 1000], [5.3, 7.7])
+
+
 def test_apply_calibration():
     slope, intercept = 0.005, 0.02
     adc_vals = np.array([0, 100, 200])
