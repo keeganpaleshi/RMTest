@@ -8,6 +8,7 @@
         "analysis_start_time": null,
         "analysis_end_time": null,
         "spike_end_time": null,
+        "spike_periods": null,
         "ambient_concentration": null
 
     },

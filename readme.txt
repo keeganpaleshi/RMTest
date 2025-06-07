@@ -30,6 +30,7 @@ python analyze.py --config config.json --input merged_data.csv \
     [--efficiency-json eff.json] [--systematics-json syst.json] \
     [--spike-count N --spike-count-err S] [--slope RATE] \
     [--analysis-end-time ISO --spike-end-time ISO] \
+    [--spike-period START END] \
     [--settle-s SEC] [--debug] [--seed SEED] \
     [--ambient-file amb.txt (time conc)] [--ambient-concentration 0.1] \
     [--burst-mode rate] \
@@ -103,9 +104,9 @@ event timestamp is used.
 
 `analysis_end_time` may be specified to stop processing after the given
 timestamp while `spike_end_time` discards all events before its value.
-Events outside this window are ignored when computing baselines and
-running the decay fits. Both accept ISO‑8601 strings and can also be set
-with the corresponding CLI options.
+`spike_periods` holds a list of `[start, end]` pairs where events are
+excluded entirely.  All of these accept ISO‑8601 strings and can also be
+set with the corresponding CLI options.
 
 `ambient_concentration` may also be specified here to record the ambient
 radon concentration in Bq/m³ used for the equivalent air plot.  The
@@ -124,6 +125,7 @@ Example snippet:
     "analysis_start_time": "2020-01-01T00:00:00Z",
     "analysis_end_time": "2020-01-02T00:00:00Z",
     "spike_end_time": "2020-01-01T01:00:00Z",
+    "spike_periods": [["2020-01-01T03:00:00Z", "2020-01-01T04:00:00Z"]],
     "ambient_concentration": 0.02
 }
 ```
@@ -134,7 +136,10 @@ When present the value is also written to `summary.json` under the
 ```json
 "analysis": {
     "analysis_start_time": "2020-01-01T00:00:00Z",
-"ambient_concentration": 0.02
+    "analysis_end_time": "2020-01-02T00:00:00Z",
+    "spike_end_time": "2020-01-01T01:00:00Z",
+    "spike_periods": [["2020-01-01T03:00:00Z", "2020-01-01T04:00:00Z"]],
+    "ambient_concentration": 0.02
 }
 ```
 
@@ -179,9 +184,10 @@ histogram counts to a `*_ts.json` file alongside the plot.
 Additional convenience flags include `--spike-count` (with optional
 `--spike-count-err`) to override spike efficiency inputs, `--slope` to
 apply a linear ADC drift correction, `--analysis-end-time` and
-`--spike-end-time` to clip the dataset, `--settle-s` to skip the initial
-settling period in the decay fit, `--seed` to set the random seed used
-by the analysis and `--debug` to increase log verbosity.
+`--spike-end-time` to clip the dataset, one or more `--spike-period`
+options to exclude specific time windows, `--settle-s` to skip the
+initial settling period in the decay fit, `--seed` to set the random
+seed used by the analysis and `--debug` to increase log verbosity.
 
 When the spectrum is binned in raw ADC channels (`"spectral_binning_mode": "adc"`),
 the bin edges are internally converted to energy using the calibration
@@ -349,13 +355,18 @@ activity.
 
 `efficiency.py` implements helpers to derive efficiencies from spike,
 assay or decay data and combines multiple estimates using the BLUE
-method.  When the configuration file provides an `efficiency` section
-with entries such as:
+method.  Each entry may be a single dictionary or a list of dictionaries
+which will be combined.  When the configuration file provides an
+`efficiency` section with entries such as:
 
 ```json
 "efficiency": {
-    "spike": {"counts": 1000, "activity_bq": 50, "live_time_s": 3600},
-    "assay": {"rate_cps": 0.8, "reference_bq": 2.0}
+    "spike": [
+        {"counts": 1000, "activity_bq": 50, "live_time_s": 3600}
+    ],
+    "assay": [
+        {"rate_cps": 0.8, "reference_bq": 2.0}
+    ]
 }
 ```
 
