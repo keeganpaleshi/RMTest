@@ -74,6 +74,8 @@ def calc_decay_efficiency(observed_rate_cps: float, expected_rate_cps: float) ->
     """
     if expected_rate_cps <= 0:
         raise ValueError("expected_rate_cps must be positive")
+    if observed_rate_cps < 0:
+        raise ValueError("observed_rate_cps cannot be negative")
     return float(observed_rate_cps) / float(expected_rate_cps)
 
 

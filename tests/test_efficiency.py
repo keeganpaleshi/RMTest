@@ -27,6 +27,11 @@ def test_calc_decay_efficiency():
     assert eff == pytest.approx(0.9)
 
 
+def test_calc_decay_efficiency_negative_observed():
+    with pytest.raises(ValueError):
+        calc_decay_efficiency(-0.1, 1.0)
+
+
 def test_blue_combine_uncorrelated():
     vals = np.array([0.4, 0.5, 0.6])
     errs = np.array([0.1, 0.2, 0.1])
