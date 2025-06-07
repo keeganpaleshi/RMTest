@@ -367,7 +367,9 @@ def main():
     # Ensure “timestamp” column is float‐seconds since epoch
     # If user provided ISO‐strings, convert to epoch:
     if events["timestamp"].dtype == object:
-        events["timestamp"] = pd.to_datetime(events["timestamp"]).astype(np.int64) / 1e9
+        events["timestamp"] = (
+            pd.to_datetime(events["timestamp"], utc=True).astype(np.int64) / 1e9
+        )
 
     events["timestamp"] = events["timestamp"].astype(float)
 
