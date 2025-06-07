@@ -2,6 +2,7 @@ import numpy as np
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 from scipy.stats import exponnorm
+from constants import _TAU_MIN
 
 # Limit for stable exponentiation when evaluating the EMG tail. Values
 # beyond ~700 in magnitude overflow in IEEE-754 doubles.  Match the
@@ -149,7 +150,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
         sigma0 = config["calibration"]["init_sigma_adc"]
         tau_cfg = config["calibration"].get("init_tau_adc", 0.0)
         # Avoid zero or negative starting tau which can cause numerical issues
-        tau0 = max(tau_cfg, 1e-6) if use_emg else 0.0
+        tau0 = max(tau_cfg, _TAU_MIN) if use_emg else 0.0
 
         if use_emg and iso in ("Po210", "Po218"):
             # Fit EMG: parameters [amp, mu, sigma, tau]
@@ -158,7 +159,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
             p0 = [amp0, mu0, sigma0, tau0]
             bounds = (
-                [0, mu0 - window, 1e-3, 1e-6],  # lower bounds
+                [0, mu0 - window, 1e-3, _TAU_MIN],  # lower bounds
                 [np.inf, mu0 + window, 50.0, 200.0],  # upper bounds (tunable)
             )
             popt, pcov = curve_fit(
