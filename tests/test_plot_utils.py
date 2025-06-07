@@ -1,6 +1,7 @@
 import numpy as np
 import sys
 from pathlib import Path
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from plot_utils import plot_time_series, plot_spectrum
@@ -157,6 +158,36 @@ def test_plot_time_series_custom_half_life_po218(tmp_path, monkeypatch):
     centers = np.array([0.5, 1.5, 2.5])
     expected = 0.1 * (1.0 - np.exp(-lam * centers))
     assert np.allclose(captured.get("y"), expected, rtol=1e-4)
+
+
+def test_plot_time_series_invalid_half_life_po214(tmp_path):
+    cfg = basic_config()
+    cfg["hl_Po214"] = [0.0]
+    with pytest.raises(ValueError):
+        plot_time_series(
+            np.array([1000.1]),
+            np.array([7.7]),
+            None,
+            1000.0,
+            1001.0,
+            cfg,
+            str(tmp_path / "ts_bad214.png"),
+        )
+
+
+def test_plot_time_series_invalid_half_life_po218(tmp_path):
+    cfg = basic_config()
+    cfg.update({"window_Po218": [5.8, 6.3], "eff_Po218": [1.0], "hl_Po218": [-2.0]})
+    with pytest.raises(ValueError):
+        plot_time_series(
+            np.array([1000.1]),
+            np.array([6.0]),
+            None,
+            1000.0,
+            1001.0,
+            cfg,
+            str(tmp_path / "ts_bad218.png"),
+        )
 
 
 def test_plot_time_series_line_style(tmp_path, monkeypatch):
