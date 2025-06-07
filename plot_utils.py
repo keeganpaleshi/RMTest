@@ -66,6 +66,11 @@ def plot_time_series(
         else float(config.get("hl_Po218", [PO218_HALF_LIFE_S])[0])
     )
 
+    if po214_hl <= 0:
+        raise ValueError("hl_Po214 must be positive")
+    if po218_hl <= 0:
+        raise ValueError("hl_Po218 must be positive")
+
     iso_params = {
         "Po214": {
             "window": _cfg_get(config, "window_Po214"),
