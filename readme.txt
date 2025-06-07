@@ -227,6 +227,9 @@ fit.  Important keys include:
 - `expected_peaks` – approximate ADC centroids used to locate the
   Po‑210, Po‑218 and Po‑214 peaks before fitting. The default is
   `{"Po210": 1250, "Po218": 1400, "Po214": 1800}`.
+- `emg_left` evaluations are wrapped in `np.errstate` and passed through
+  `np.nan_to_num` for stability so that NaN or infinite values never
+  reach `curve_fit`.
 
 Example snippet:
 
