@@ -13,6 +13,10 @@ from calibration import emg_left, gaussian
 # so the likelihood remains finite during optimization.
 _EXP_LIMIT = 700.0
 
+# Minimum allowed value for the exponential tail constant to avoid
+# divide-by-zero overflow when evaluating the EMG component.
+_TAU_MIN = 1e-6
+
 
 def _safe_exp(x):
     """Return ``exp(x)`` with the input clipped to ``[-_EXP_LIMIT, _EXP_LIMIT]``."""
@@ -154,6 +158,9 @@ def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None, bounds
     eps = 1e-12
     for name in param_order:
         mean, sig = p(name, 1.0)
+        # Enforce a strictly positive initial tau to avoid singular EMG tails
+        if name.startswith("tau_"):
+            mean = max(mean, _TAU_MIN)
         p0.append(mean)
         if flags.get(f"fix_{name}", False) or sig == 0:
             # curve_fit requires lower < upper; use a tiny width around fixed values
@@ -169,6 +176,8 @@ def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None, bounds
                 lo = max(lo, user_lo)
             if user_hi is not None:
                 hi = min(hi, user_hi)
+        if name.startswith("tau_"):
+            lo = max(lo, _TAU_MIN)
         bounds_lo.append(lo)
         bounds_hi.append(hi)
 
@@ -187,7 +196,10 @@ def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None, bounds
             if use_emg[iso]:
                 tau = params[idx]
                 idx += 1
-                y += S * emg_left(x, mu, sigma_E, tau)
+                with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+                    y_emg = emg_left(x, mu, sigma_E, tau)
+                y_emg = np.nan_to_num(y_emg, nan=0.0, posinf=0.0, neginf=0.0)
+                y += S * y_emg
             else:
                 y += S * gaussian(x, mu, sigma_E)
         b0 = params[idx]

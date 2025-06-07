@@ -158,7 +158,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
             p0 = [amp0, mu0, sigma0, tau0]
             bounds = (
-                [0, mu0 - window, 1e-3, 0],  # lower bounds
+                [0, mu0 - window, 1e-3, 1e-6],  # lower bounds
                 [np.inf, mu0 + window, 50.0, 200.0],  # upper bounds (tunable)
             )
             popt, pcov = curve_fit(
