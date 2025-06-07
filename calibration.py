@@ -3,30 +3,47 @@ from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 from scipy.stats import exponnorm
 
+# Limit for stable exponentiation when evaluating the EMG tail. Values
+# beyond ~700 in magnitude overflow in IEEE-754 doubles.  Match the
+# safeguard used in :mod:`fitting`.
+_EXP_LIMIT = 700.0
+
+
+def _safe_exp(x: np.ndarray) -> np.ndarray:
+    """Return ``exp(x)`` with the input clipped to ``[-_EXP_LIMIT, _EXP_LIMIT]``."""
+    return np.exp(np.clip(x, -_EXP_LIMIT, _EXP_LIMIT))
+
+
 # Known α energies (MeV) from config or central constants:
 # Default alpha energies (MeV) used for calibration when not specified
 # in the configuration file.  Values are Po-210, Po-218 and Po-214
 DEFAULT_KNOWN_ENERGIES = {
-    "Po210": 5.304,   # MeV
-    "Po218": 6.002,   # MeV
-    "Po214": 7.687    # MeV  (use the SNOLAB‐observed centroids if desired)
+    "Po210": 5.304,  # MeV
+    "Po218": 6.002,  # MeV
+    "Po214": 7.687,  # MeV  (use the SNOLAB‐observed centroids if desired)
 }
 
 
 def emg_left(x, mu, sigma, tau):
-    """Exponentially modified Gaussian (left-skewed) PDF."""
+    """Exponentially modified Gaussian (left-skewed) PDF.
+
+    ``exponnorm.pdf`` can overflow for large ``(x - mu)/sigma``.  Use the
+    logarithmic form with explicit clipping for numerical stability.
+    """
 
     if tau <= 0:
         return gaussian(x, mu, sigma)
 
-    # SciPy's `exponnorm` uses shape parameter K = tau / sigma
     K = tau / sigma
-    return exponnorm.pdf(x, K, loc=mu, scale=sigma)
+    logpdf = exponnorm.logpdf(x, K, loc=mu, scale=sigma)
+    return _safe_exp(logpdf)
 
 
 def gaussian(x, mu, sigma):
     """Standard Gaussian PDF (unit area)."""
-    return np.exp(-0.5 * ((x - mu) / sigma) ** 2) / (sigma * np.sqrt(2 * np.pi))
+    return np.exp(-0.5 * ((x - mu) / sigma) ** 2) / (
+        sigma * np.sqrt(2 * np.pi)
+    )
 
 
 def two_point_calibration(adc_centroids, energies):
@@ -111,7 +128,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
     # 4) For each chosen peak, perform a local fit with EMG or Gaussian:
     peak_fits = {}
     window = config["calibration"]["fit_window_adc"]  # e.g. ±50 ADC channels
-    use_emg = config["calibration"]["use_emg"]        # True/False
+    use_emg = config["calibration"]["use_emg"]  # True/False
     for iso, idx_center in chosen_idx.items():
         x0 = centers[idx_center]
         lo = x0 - window
@@ -138,36 +155,40 @@ def calibrate_run(adc_values, config, hist_bins=None):
             # Fit EMG: parameters [amp, mu, sigma, tau]
             def model_emg(x, A, mu, sigma, tau):
                 return A * emg_left(x, mu, sigma, tau)
+
             p0 = [amp0, mu0, sigma0, tau0]
             bounds = (
-                [0, mu0 - window, 1e-3, 0],         # lower bounds
-                [np.inf, mu0 + window, 50.0, 200.0]  # upper bounds (tunable)
+                [0, mu0 - window, 1e-3, 0],  # lower bounds
+                [np.inf, mu0 + window, 50.0, 200.0],  # upper bounds (tunable)
             )
             popt, pcov = curve_fit(
-                model_emg, x_slice, y_slice, p0=p0, bounds=bounds)
+                model_emg, x_slice, y_slice, p0=p0, bounds=bounds
+            )
             A_fit, mu_fit, sigma_fit, tau_fit = popt
             peak_fits[iso] = {
                 "centroid_adc": float(mu_fit),
                 "sigma_adc": float(sigma_fit),
                 "tau_adc": float(tau_fit),
                 "amplitude": float(A_fit),
-                "covariance": pcov.tolist()
+                "covariance": pcov.tolist(),
             }
         else:
             # Fit pure Gaussian: [A, mu, sigma]
             def model_gauss(x, A, mu, sigma):
                 return A * gaussian(x, mu, sigma)
+
             p0 = [amp0, mu0, sigma0]
             bounds = ([0, mu0 - window, 1e-3], [np.inf, mu0 + window, 50.0])
-            popt, pcov = curve_fit(model_gauss, x_slice,
-                                   y_slice, p0=p0, bounds=bounds)
+            popt, pcov = curve_fit(
+                model_gauss, x_slice, y_slice, p0=p0, bounds=bounds
+            )
             A_fit, mu_fit, sigma_fit = popt
             peak_fits[iso] = {
                 "centroid_adc": float(mu_fit),
                 "sigma_adc": float(sigma_fit),
                 "tau_adc": 0.0,
                 "amplitude": float(A_fit),
-                "covariance": pcov.tolist()
+                "covariance": pcov.tolist(),
             }
 
     # 5) Two-point linear calibration using Po-210 & Po-214:
@@ -175,10 +196,14 @@ def calibrate_run(adc_values, config, hist_bins=None):
     adc214 = peak_fits["Po214"]["centroid_adc"]
 
     cfg_energies = config.get("calibration", {}).get("known_energies")
-    energies = DEFAULT_KNOWN_ENERGIES if cfg_energies is None else {
-        **DEFAULT_KNOWN_ENERGIES,
-        **cfg_energies,
-    }
+    energies = (
+        DEFAULT_KNOWN_ENERGIES
+        if cfg_energies is None
+        else {
+            **DEFAULT_KNOWN_ENERGIES,
+            **cfg_energies,
+        }
+    )
 
     E210 = energies["Po210"]
     E214 = energies["Po214"]
@@ -186,7 +211,9 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
     # 6) Convert fitted centroids to energy for sanity checks
     for iso, info in peak_fits.items():
-        info["centroid_mev"] = float(apply_calibration(info["centroid_adc"], a, c))
+        info["centroid_mev"] = float(
+            apply_calibration(info["centroid_adc"], a, c)
+        )
 
     # Sanity check that fitted energies match expectations within tolerance
     tol = float(config.get("calibration", {}).get("sanity_tolerance_mev", 0.5))
@@ -207,7 +234,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
         "slope": a,
         "intercept": c,
         "sigma_E": float(sigma_E),
-        "peaks": peak_fits
+        "peaks": peak_fits,
     }
     return calib_dict
 
