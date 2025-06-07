@@ -9,6 +9,8 @@
         "analysis_end_time": null,
         "spike_end_time": null,
         "spike_periods": null,
+        "run_periods": null,
+        "radon_interval": null,
         "ambient_concentration": null
 
     },

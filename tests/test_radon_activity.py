@@ -7,6 +7,7 @@ from radon_activity import (
     compute_radon_activity,
     compute_total_radon,
     radon_activity_curve,
+    radon_delta,
 )
 import math
 import numpy as np
@@ -168,3 +169,22 @@ def test_radon_activity_curve():
     var = ((1 - exp_term) * dE) ** 2 + ((lam * exp_term) * dN0) ** 2
     assert np.allclose(act, expected)
     assert np.allclose(err, np.sqrt(var))
+
+
+def test_radon_delta():
+    start = 0.0
+    end = 2.0
+    E = 5.0
+    dE = 0.5
+    N0 = 2.0
+    dN0 = 0.2
+    hl = 10.0
+    delta, sigma = radon_delta(start, end, E, dE, N0, dN0, hl)
+
+    lam = math.log(2.0) / hl
+    exp1 = math.exp(-lam * start)
+    exp2 = math.exp(-lam * end)
+    expected = E * (exp1 - exp2) + lam * N0 * (exp2 - exp1)
+    var = ((exp1 - exp2) * dE) ** 2 + ((lam * (exp2 - exp1)) * dN0) ** 2
+    assert delta == pytest.approx(expected)
+    assert sigma == pytest.approx(math.sqrt(var))

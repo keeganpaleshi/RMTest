@@ -18,6 +18,7 @@ __all__ = [
     "plot_radon_activity",
     "plot_equivalent_air",
     "plot_modeled_radon_activity",
+    "plot_radon_trend",
 ]
 
 
@@ -452,6 +453,43 @@ def plot_modeled_radon_activity(
 
     activity, sigma = radon_activity_curve(times, E, dE, N0, dN0, half_life_s)
     plot_radon_activity(times, activity, sigma, out_png, config=config)
+
+
+def plot_radon_trend(times, activity, out_png, config=None):
+    """Plot modeled radon activity trend without uncertainties."""
+    times = np.asarray(times, dtype=float)
+    activity = np.asarray(activity, dtype=float)
+
+    times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
+
+    plt.figure(figsize=(8, 4))
+    plt.plot(times_dt, activity, "o-", color="tab:purple")
+    plt.xlabel("Time")
+    plt.ylabel("Radon Activity (Bq)")
+    plt.title("Radon Activity Trend")
+
+    ax = plt.gca()
+    locator = mdates.AutoDateLocator()
+    try:
+        formatter = mdates.ConciseDateFormatter(locator)
+    except AttributeError:
+        formatter = mdates.AutoDateFormatter(locator)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(formatter)
+    plt.gcf().autofmt_xdate()
+    plt.tight_layout()
+
+    dirpath = os.path.dirname(out_png) or "."
+    os.makedirs(dirpath, exist_ok=True)
+
+    fmt_default = os.path.splitext(out_png)[1].lstrip(".") or "png"
+    fmts = config.get("plot_save_formats", [fmt_default]) if config else [fmt_default]
+    if isinstance(fmts, str):
+        fmts = [fmts]
+    base = os.path.splitext(out_png)[0]
+    for fmt in fmts:
+        plt.savefig(base + f".{fmt}", dpi=300)
+    plt.close()
 
 
 # -----------------------------------------------------

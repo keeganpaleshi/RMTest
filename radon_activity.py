@@ -8,6 +8,7 @@ __all__ = [
     "compute_radon_activity",
     "compute_total_radon",
     "radon_activity_curve",
+    "radon_delta",
 ]
 
 
@@ -165,3 +166,31 @@ def radon_activity_curve(
     variance = (dA_dE * dE) ** 2 + (dA_dN0 * dN0) ** 2
     sigma = np.sqrt(variance)
     return activity, sigma
+
+
+def radon_delta(
+    t_start: float,
+    t_end: float,
+    E: float,
+    dE: float,
+    N0: float,
+    dN0: float,
+    half_life_s: float,
+) -> Tuple[float, float]:
+    """Change in activity between two times.
+
+    Parameters are identical to :func:`radon_activity_curve` with ``t_start``
+    and ``t_end`` specifying the relative times in seconds.
+    """
+
+    lam = math.log(2.0) / float(half_life_s)
+    exp1 = math.exp(-lam * float(t_start))
+    exp2 = math.exp(-lam * float(t_end))
+
+    delta = E * (exp1 - exp2) + lam * N0 * (exp2 - exp1)
+
+    d_delta_dE = exp1 - exp2
+    d_delta_dN0 = lam * (exp2 - exp1)
+    variance = (d_delta_dE * dE) ** 2 + (d_delta_dN0 * dN0) ** 2
+    sigma = math.sqrt(variance)
+    return delta, sigma
