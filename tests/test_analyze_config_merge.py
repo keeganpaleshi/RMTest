@@ -1423,3 +1423,61 @@ def test_ambient_concentration_written_to_summary_file(tmp_path, monkeypatch):
 
     assert summary["analysis"]["ambient_concentration"] == 1.3
 
+
+def test_spike_periods_null_config(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "analysis": {"spike_periods": None},
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {
+            "do_time_fit": True,
+            "window_Po214": [0.0, 20.0],
+            "hl_Po214": [1.0, 0.0],
+            "eff_Po214": [1.0, 0.0],
+            "flags": {},
+        },
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+
+    cfg_path = tmp_path / "cfg.json"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0.0], "adc": [8.0], "fchannel": [1]})
+    data_path = tmp_path / "d.csv"
+    df.to_csv(data_path, index=False)
+
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)})
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)})
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: {})
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+
+    saved = {}
+
+    def fake_write(out_dir, summary, timestamp=None):
+        saved["summary"] = summary
+        d = Path(out_dir) / "x"
+        d.mkdir(parents=True, exist_ok=True)
+        return str(d)
+
+    monkeypatch.setattr(analyze, "write_summary", fake_write)
+    monkeypatch.setattr(analyze, "copy_config", lambda *a, **k: None)
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+
+    analyze.main()
+
+    assert saved["summary"]["analysis"]["spike_periods"] == []
+

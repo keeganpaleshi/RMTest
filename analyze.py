@@ -423,6 +423,8 @@ def main():
             t_spike_end = None
 
     spike_periods_cfg = cfg.get("analysis", {}).get("spike_periods", [])
+    if spike_periods_cfg is None:
+        spike_periods_cfg = []
     spike_periods = []
     for period in spike_periods_cfg:
         try:
