@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from fitting import fit_time_series, fit_spectrum
+from fitting import fit_time_series, fit_spectrum, _TAU_MIN
 
 
 def simulate_decay(E_true, eff, T, n_events=1000):
@@ -230,6 +230,32 @@ def test_fit_spectrum_bounds_clip():
 
     out = fit_spectrum(energies, priors, bounds=bounds)
     assert lo <= out["mu_Po218"] <= hi
+
+
+def test_fit_spectrum_tau_lower_bound():
+    """Tau prior near zero should be clipped to the minimum allowed value."""
+    rng = np.random.default_rng(6)
+    energies = np.concatenate([
+        rng.normal(5.3, 0.05, 100),
+        rng.normal(6.0, 0.05, 100),
+        rng.normal(7.7, 0.05, 100),
+    ])
+
+    priors = {
+        "sigma_E": (0.05, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (100, 10),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (100, 10),
+        "tau_Po218": (0.0, 0.01),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (100, 10),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+
+    result = fit_spectrum(energies, priors)
+    assert result["tau_Po218"] >= _TAU_MIN
 
 
 def test_fit_spectrum_covariance_checks(monkeypatch):
