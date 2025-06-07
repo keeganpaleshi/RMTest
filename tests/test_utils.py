@@ -18,3 +18,13 @@ def test_cps_to_bq_volume():
 
 def test_cps_to_bq_simple():
     assert cps_to_bq(3.5) == pytest.approx(3.5)
+
+
+def test_cps_to_bq_zero_volume():
+    with pytest.raises(ValueError):
+        cps_to_bq(1.0, volume_liters=0)
+
+
+def test_cps_to_bq_negative_volume():
+    with pytest.raises(ValueError):
+        cps_to_bq(1.0, volume_liters=-1.0)
