@@ -193,3 +193,17 @@ def test_radon_delta():
     var = ((exp1 - exp2) * dE) ** 2 + ((lam * (exp2 - exp1)) * dN0) ** 2
     assert delta == pytest.approx(expected)
     assert sigma == pytest.approx(math.sqrt(var))
+
+
+def test_radon_activity_curve_invalid_half_life():
+    with pytest.raises(ValueError):
+        radon_activity_curve([0.0, 1.0], 1.0, 0.1, 2.0, 0.2, 0.0)
+    with pytest.raises(ValueError):
+        radon_activity_curve([0.0, 1.0], 1.0, 0.1, 2.0, 0.2, -5.0)
+
+
+def test_radon_delta_invalid_half_life():
+    with pytest.raises(ValueError):
+        radon_delta(0.0, 2.0, 1.0, 0.1, 2.0, 0.2, 0.0)
+    with pytest.raises(ValueError):
+        radon_delta(0.0, 2.0, 1.0, 0.1, 2.0, 0.2, -5.0)
