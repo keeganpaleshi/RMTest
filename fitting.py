@@ -7,6 +7,7 @@ import numpy as np
 from iminuit import Minuit
 from scipy.optimize import curve_fit
 from calibration import emg_left, gaussian
+from constants import _TAU_MIN
 
 # Prevent overflow in exp calculations. Values beyond ~700 in magnitude
 # lead to inf/0 under IEEE-754 doubles.  Clip the exponent to a safe range
@@ -14,9 +15,8 @@ from calibration import emg_left, gaussian
 _EXP_LIMIT = 700.0
 
 # Minimum allowed value for the exponential tail constant to avoid
-# divide-by-zero overflow when evaluating the EMG component.
-_TAU_MIN = 1e-6
-
+# divide-by-zero overflow when evaluating the EMG component. The
+# value itself lives in :mod:`constants` as ``_TAU_MIN``.
 
 def _safe_exp(x):
     """Return ``exp(x)`` with the input clipped to ``[-_EXP_LIMIT, _EXP_LIMIT]``."""
