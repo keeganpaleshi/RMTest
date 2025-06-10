@@ -12,7 +12,7 @@ import baseline_noise
 def test_time_window_filters_events(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},
-        "baseline": {"range": [0, 5], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
+        "baseline": {"range": ["1970-01-01T00:00:00Z", "1970-01-01T00:00:05Z"], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
         "calibration": {},
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
@@ -79,9 +79,9 @@ def test_time_window_filters_events(tmp_path, monkeypatch):
         "--output_dir",
         str(tmp_path),
         "--analysis-end-time",
-        "6",
+        "1970-01-01T00:00:06Z",
         "--spike-end-time",
-        "1",
+        "1970-01-01T00:00:01Z",
     ]
     monkeypatch.setattr(sys, "argv", args)
     analyze.main()
@@ -94,7 +94,7 @@ def test_time_window_filters_events(tmp_path, monkeypatch):
 def test_invalid_baseline_range_raises(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},
-        "baseline": {"range": [5, 2], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
+        "baseline": {"range": ["1970-01-01T00:00:05Z", "1970-01-01T00:00:02Z"], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
         "calibration": {},
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
@@ -143,8 +143,8 @@ def test_invalid_baseline_range_raises(tmp_path, monkeypatch):
 def test_time_window_filters_events_config(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},
-        "baseline": {"range": [0, 5], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
-        "analysis": {"analysis_end_time": 6, "spike_end_time": 1},
+        "baseline": {"range": ["1970-01-01T00:00:00Z", "1970-01-01T00:00:05Z"], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
+        "analysis": {"analysis_end_time": "1970-01-01T00:00:06Z", "spike_end_time": "1970-01-01T00:00:01Z"},
         "calibration": {},
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
@@ -222,8 +222,8 @@ def test_time_window_filters_events_config(tmp_path, monkeypatch):
 def test_run_period_filters_events(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},
-        "baseline": {"range": [0, 1], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
-        "analysis": {"run_periods": [[1, 6]]},
+        "baseline": {"range": ["1970-01-01T00:00:00Z", "1970-01-01T00:00:01Z"], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
+        "analysis": {"run_periods": [["1970-01-01T00:00:01Z", "1970-01-01T00:00:06Z"]]},
         "calibration": {},
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
@@ -309,7 +309,7 @@ def test_baseline_range_iso_strings(tmp_path, monkeypatch, start, end):
     cfg = {
         "pipeline": {"log_level": "INFO"},
         "baseline": {"range": [start, end], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
-        "analysis": {"analysis_end_time": 6, "spike_end_time": 1},
+        "analysis": {"analysis_end_time": "1970-01-01T00:00:06Z", "spike_end_time": "1970-01-01T00:00:01Z"},
         "calibration": {},
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
