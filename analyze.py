@@ -208,6 +208,16 @@ def parse_args():
         help="Discard events occurring this many seconds after the start",
     )
     p.add_argument(
+        "--hl-po214",
+        type=float,
+        help="Half-life to use for Po-214 in seconds",
+    )
+    p.add_argument(
+        "--hl-po218",
+        type=float,
+        help="Half-life to use for Po-218 in seconds",
+    )
+    p.add_argument(
         "--debug",
         action="store_true",
         help="Enable debug logging",
@@ -307,6 +317,22 @@ def main():
 
     if args.radon_interval:
         cfg.setdefault("analysis", {})["radon_interval"] = args.radon_interval
+
+    if args.hl_po214 is not None:
+        tf = cfg.setdefault("time_fit", {})
+        sig = 0.0
+        current = tf.get("hl_Po214")
+        if isinstance(current, list) and len(current) > 1:
+            sig = current[1]
+        tf["hl_Po214"] = [float(args.hl_po214), sig]
+
+    if args.hl_po218 is not None:
+        tf = cfg.setdefault("time_fit", {})
+        sig = 0.0
+        current = tf.get("hl_Po218")
+        if isinstance(current, list) and len(current) > 1:
+            sig = current[1]
+        tf["hl_Po218"] = [float(args.hl_po218), sig]
 
 
     if args.time_bin_mode:

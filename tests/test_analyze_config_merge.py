@@ -128,6 +128,7 @@ def test_analysis_start_time_applied(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit_time_series)
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(analyze, "apply_burst_filter", lambda df, cfg, mode="rate": (df, 0))
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
 
@@ -184,6 +185,7 @@ def test_job_id_overrides_results_folder(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: {})
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(analyze, "apply_burst_filter", lambda df, cfg, mode="rate": (df, 0))
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
 
@@ -1480,4 +1482,65 @@ def test_spike_periods_null_config(tmp_path, monkeypatch):
     analyze.main()
 
     assert saved["summary"]["analysis"]["spike_periods"] == []
+
+
+def test_hl_po214_cli_overrides(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {
+            "do_time_fit": True,
+            "window_Po214": [0.0, 20.0],
+            "window_Po218": [0.0, 20.0],
+            "hl_Po214": [1.0, 0.0],
+            "hl_Po218": [2.0, 0.0],
+            "eff_Po214": [1.0, 0.0],
+            "eff_Po218": [1.0, 0.0],
+            "flags": {},
+        },
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+
+    cfg_path = tmp_path / "cfg.json"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0.0], "adc": [8.0], "fchannel": [1]})
+    data_path = tmp_path / "d.csv"
+    df.to_csv(data_path, index=False)
+
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)})
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)})
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+
+    calls = []
+
+    def fake_fit(ts_dict, t_start, t_end, config):
+        iso = list(ts_dict.keys())[0]
+        calls.append((iso, config))
+        return {}
+
+    monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+        "--hl-po214",
+        "5",
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+
+    analyze.main()
+
+    values = {iso: c["isotopes"][iso]["half_life_s"] for iso, c in calls}
+    assert values["Po214"] == 5.0
+
 
