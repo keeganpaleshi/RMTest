@@ -370,6 +370,9 @@ activity versus time.  When either `--ambient-file` or
 `--ambient-concentration` is supplied an additional plot
 `equivalent_air.png` shows the volume of ambient air containing the same
 activity.
+The Po‑214 activity alone is plotted in `radon_activity_po214.png`. When
+ambient concentration data are available, `equivalent_air_po214.png`
+shows the equivalent air volume derived from this Po‑214 activity.
 
 ## Efficiency Calculations
 
