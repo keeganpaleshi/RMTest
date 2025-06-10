@@ -777,7 +777,7 @@ def test_analysis_end_time_cli(tmp_path, monkeypatch):
         "--output_dir",
         str(tmp_path),
         "--analysis-end-time",
-        "5",
+        "1970-01-01T00:00:05Z",
     ]
     monkeypatch.setattr(sys, "argv", args)
     analyze.main()
@@ -836,7 +836,7 @@ def test_spike_end_time_cli(tmp_path, monkeypatch):
         "--output_dir",
         str(tmp_path),
         "--spike-end-time",
-        "5",
+        "1970-01-01T00:00:05Z",
     ]
     monkeypatch.setattr(sys, "argv", args)
     analyze.main()
@@ -906,17 +906,20 @@ def test_spike_period_cli(tmp_path, monkeypatch):
         "--output_dir",
         str(tmp_path),
         "--spike-period",
-        "0",
-        "5",
+        "1970-01-01T00:00:00Z",
+        "1970-01-01T00:00:05Z",
         "--spike-period",
-        "10",
-        "13",
+        "1970-01-01T00:00:10Z",
+        "1970-01-01T00:00:13Z",
     ]
     monkeypatch.setattr(sys, "argv", args)
     analyze.main()
 
     assert captured["times"] == [6.0]
-    assert saved["summary"]["analysis"]["spike_periods"] == [["0", "5"], ["10", "13"]]
+    assert saved["summary"]["analysis"]["spike_periods"] == [
+        ["1970-01-01T00:00:00Z", "1970-01-01T00:00:05Z"],
+        ["1970-01-01T00:00:10Z", "1970-01-01T00:00:13Z"],
+    ]
 
 
 def test_seed_cli_sets_random_seed(tmp_path, monkeypatch):

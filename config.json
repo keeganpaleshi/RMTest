@@ -5,17 +5,17 @@
     },
     "analysis": {
 
-        "analysis_start_time": null,
-        "analysis_end_time": null,
-        "spike_end_time": null,
-        "spike_periods": null,
-        "run_periods": null,
-        "radon_interval": null,
+        "analysis_start_time": "1970-01-01T00:00:00Z",
+        "analysis_end_time": "1970-01-01T06:00:00Z",
+        "spike_end_time": "1970-01-01T00:10:00Z",
+        "spike_periods": [["1970-01-01T01:00:00Z", "1970-01-01T02:00:00Z"]],
+        "run_periods": [["1970-01-01T02:00:00Z", "1970-01-01T05:00:00Z"]],
+        "radon_interval": ["1970-01-01T03:00:00Z", "1970-01-01T04:00:00Z"],
         "ambient_concentration": null
 
     },
     "baseline": {
-        "range": null,
+        "range": ["1970-01-01T00:00:00Z", "1970-01-01T00:05:00Z"],
         "monitor_volume_l": 605.0,
         "sample_volume_l": 0.0
     },

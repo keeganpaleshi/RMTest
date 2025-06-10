@@ -110,6 +110,11 @@ time origin for decay fitting and time-series plots.  Provide an
 ISO‑8601 string such as `"2020-01-01T00:00:00Z"`.  When omitted the first
 event timestamp is used.
 
+All other time-related fields (`analysis_end_time`, `spike_end_time`,
+`spike_periods`, `run_periods`, `radon_interval` and
+`baseline.range`) likewise accept absolute timestamps in ISO 8601
+format.
+
 `analysis_end_time` may be specified to stop processing after the given
 timestamp while `spike_end_time` discards all events before its value.
 `spike_periods` holds a list of `[start, end]` pairs where events are
