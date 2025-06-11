@@ -31,7 +31,7 @@ def test_fit_time_series_po214_only():
     }
 
     res = fit_time_series(times_dict, 0.0, T, cfg)
-    E_fit = res["E_Po214"]
+    E_fit = res.params["E_Po214"]
     # Basic sanity: E_fit should be within factor of 2 of E_true (low stats)
     assert E_fit > 0
     assert abs(E_fit - E_true) / E_true < 1.0
@@ -82,7 +82,7 @@ def test_fit_time_series_time_window_config():
     count_narrow = mask2.sum()
 
     assert count_narrow < count_full
-    assert res_narrow["E_Po214"] < res_full["E_Po214"]
+    assert res_narrow.params["E_Po214"] < res_full.params["E_Po214"]
 
 
 def test_fit_spectrum_use_emg_flag():
@@ -115,9 +115,9 @@ def test_fit_spectrum_use_emg_flag():
     out_emg = fit_spectrum(energies, priors_emg)
 
     # The EMG fit should return a tau parameter and modify the peak shape
-    assert "tau_Po218" in out_emg
-    assert out_emg["tau_Po218"] != 0
-    assert abs(out_emg["S_Po218"] - out_no_emg["S_Po218"]) > 1e-3
+    assert "tau_Po218" in out_emg.params
+    assert out_emg.params["tau_Po218"] != 0
+    assert abs(out_emg.params["S_Po218"] - out_no_emg.params["S_Po218"]) > 1e-3
 
 
 def test_fit_spectrum_fixed_parameter_bounds():
@@ -142,7 +142,7 @@ def test_fit_spectrum_fixed_parameter_bounds():
     }
 
     out = fit_spectrum(energies, priors, flags={"fix_mu_Po210": True})
-    assert "mu_Po210" in out
+    assert "mu_Po210" in out.params
 
 
 def test_fit_spectrum_custom_bins_and_edges():
@@ -168,12 +168,12 @@ def test_fit_spectrum_custom_bins_and_edges():
 
     # Using integer number of bins
     out_bins = fit_spectrum(energies, priors, bins=30)
-    assert "sigma_E" in out_bins
+    assert "sigma_E" in out_bins.params
 
     # Using explicit bin edges
     edges = np.linspace(5.0, 8.0, 25)
     out_edges = fit_spectrum(energies, priors, bin_edges=edges)
-    assert "sigma_E" in out_edges
+    assert "sigma_E" in out_edges.params
 
 
 def test_fit_spectrum_custom_bounds():
@@ -199,7 +199,7 @@ def test_fit_spectrum_custom_bounds():
 
     bounds = {"mu_Po218": (5.9, 6.1)}
     out = fit_spectrum(energies, priors, bounds=bounds)
-    assert 5.9 <= out["mu_Po218"] <= 6.1
+    assert 5.9 <= out.params["mu_Po218"] <= 6.1
 
 
 def test_fit_spectrum_bounds_clip():
@@ -229,7 +229,7 @@ def test_fit_spectrum_bounds_clip():
     priors["mu_Po218"] = (mu_clipped, priors["mu_Po218"][1])
 
     out = fit_spectrum(energies, priors, bounds=bounds)
-    assert lo <= out["mu_Po218"] <= hi
+    assert lo <= out.params["mu_Po218"] <= hi
 
 
 def test_fit_spectrum_tau_lower_bound():
@@ -255,7 +255,7 @@ def test_fit_spectrum_tau_lower_bound():
     }
 
     result = fit_spectrum(energies, priors)
-    assert result["tau_Po218"] >= _TAU_MIN
+    assert result.params["tau_Po218"] >= _TAU_MIN
 
 
 def test_fit_spectrum_covariance_checks(monkeypatch):
@@ -289,7 +289,7 @@ def test_fit_spectrum_covariance_checks(monkeypatch):
 
     monkeypatch.setattr(fitting_mod, "curve_fit", good_curve_fit)
     out = fit_spectrum(energies, priors)
-    assert out["fit_valid"]
+    assert out.params["fit_valid"]
 
     def bad_curve_fit(*args, **kwargs):
         popt, pcov = orig_curve_fit(*args, **kwargs)
@@ -299,7 +299,7 @@ def test_fit_spectrum_covariance_checks(monkeypatch):
 
     monkeypatch.setattr(fitting_mod, "curve_fit", bad_curve_fit)
     out_bad = fit_spectrum(energies, priors)
-    assert not out_bad["fit_valid"]
+    assert not out_bad.params["fit_valid"]
 
 
 def test_fit_time_series_covariance_checks(monkeypatch):
@@ -324,7 +324,7 @@ def test_fit_time_series_covariance_checks(monkeypatch):
 
     monkeypatch.setattr(linalg, "eigvals", good_eigvals)
     res = fit_time_series(times_dict, 0.0, T, cfg)
-    assert res["fit_valid"]
+    assert res.params["fit_valid"]
 
     def bad_eigvals(x):
         vals = np.ones(x.shape[0])
@@ -337,7 +337,7 @@ def test_fit_time_series_covariance_checks(monkeypatch):
     monkeypatch.setattr(linalg, "eigvals", bad_eigvals)
     monkeypatch.setattr(linalg, "cholesky", cholesky_fail)
     res_bad = fit_time_series(times_dict, 0.0, T, cfg)
-    assert not res_bad["fit_valid"]
+    assert not res_bad.params["fit_valid"]
 
 
 def test_fit_time_series_half_life_zero_raises():

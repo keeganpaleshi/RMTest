@@ -5,6 +5,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
+import numpy as np
+from fitting import FitResult
 
 
 def test_analyze_noise_cutoff(tmp_path, monkeypatch):
@@ -55,7 +57,7 @@ def test_analyze_noise_cutoff(tmp_path, monkeypatch):
 
     def fake_fit_time_series(times_dict, t_start, t_end, cfg, weights=None):
         captured["fit_times"] = list(times_dict.get("Po214", []))
-        return {"E_Po214": 1.0}
+        return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit_time_series)
 

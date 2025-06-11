@@ -3,6 +3,8 @@ import json
 from pathlib import Path
 import pandas as pd
 import pytest
+import numpy as np
+from fitting import FitResult
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
@@ -57,7 +59,7 @@ def test_time_window_filters_events(tmp_path, monkeypatch):
 
     def fake_fit(ts_dict, t_start, t_end, config):
         captured["times"] = ts_dict.get("Po214", []).tolist()
-        return {"E_Po214": 1.0}
+        return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
@@ -189,7 +191,7 @@ def test_time_window_filters_events_config(tmp_path, monkeypatch):
 
     def fake_fit(ts_dict, t_start, t_end, config):
         captured["times"] = ts_dict.get("Po214", []).tolist()
-        return {"E_Po214": 1.0}
+        return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
@@ -268,7 +270,7 @@ def test_run_period_filters_events(tmp_path, monkeypatch):
 
     def fake_fit(ts_dict, t_start, t_end, config):
         captured["times"] = ts_dict.get("Po214", []).tolist()
-        return {"E_Po214": 1.0}
+        return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
@@ -354,7 +356,7 @@ def test_baseline_range_iso_strings(tmp_path, monkeypatch, start, end):
 
     def fake_fit(ts_dict, t_start, t_end, config):
         captured["times"] = ts_dict.get("Po214", []).tolist()
-        return {"E_Po214": 1.0}
+        return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 

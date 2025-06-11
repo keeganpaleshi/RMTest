@@ -6,6 +6,8 @@ import logging
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
+import numpy as np
+from fitting import FitResult
 
 
 def test_noise_cutoff_filters_events(tmp_path, monkeypatch):
@@ -50,7 +52,7 @@ def test_noise_cutoff_filters_events(tmp_path, monkeypatch):
 
     def fake_fit(ts_dict, t_start, t_end, cfg, weights=None):
         captured["times"] = ts_dict.get("Po214", []).tolist()
-        return {"E_Po214": 1.0}
+        return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
@@ -118,7 +120,7 @@ def test_invalid_noise_cutoff_skips_cut(tmp_path, monkeypatch, caplog):
 
     def fake_fit(ts_dict, t_start, t_end, cfg, weights=None):
         captured["times"] = ts_dict.get("Po214", []).tolist()
-        return {"E_Po214": 1.0}
+        return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 

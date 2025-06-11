@@ -6,6 +6,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
+import numpy as np
+from fitting import FitResult
 
 
 def _write_basic(tmp_path, drift_rate):
@@ -49,7 +51,7 @@ def test_adc_drift_applied(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "apply_linear_adc_shift", fake_shift)
     monkeypatch.setattr(analyze, "derive_calibration_constants", fake_cal)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", fake_cal)
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: {})
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
 
@@ -95,7 +97,7 @@ def test_adc_drift_zero_noop(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "apply_linear_adc_shift", fake_shift)
     monkeypatch.setattr(analyze, "derive_calibration_constants", fake_cal)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", fake_cal)
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: {})
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
 
