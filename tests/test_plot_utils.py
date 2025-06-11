@@ -531,3 +531,35 @@ def test_plot_equivalent_air_po214(tmp_path):
 
     assert out_png.exists()
 
+
+def test_plot_time_series_rate_normalised(tmp_path, monkeypatch):
+    times = np.array([1000.4, 1001.2, 1002.3, 1002.9])
+    energies = np.full(4, 7.7)
+    cfg = basic_config()
+    cfg.update({
+        "plot_time_bin_width_s": 2,
+        "plot_time_normalise_rate": True,
+    })
+    captured = {}
+
+    def fake_step(x, y, *args, **kwargs):
+        captured["y"] = np.asarray(y)
+        return type("obj", (), {})()
+
+    monkeypatch.setattr("plot_utils.plt.step", fake_step)
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+    monkeypatch.setattr("plot_utils.plt.ylabel", lambda t: captured.setdefault("label", t))
+
+    plot_time_series(
+        times,
+        energies,
+        None,
+        1000.0,
+        1004.0,
+        cfg,
+        str(tmp_path / "ts_rate.png"),
+    )
+
+    assert np.allclose(captured.get("y"), [1.0, 1.0])
+    assert captured.get("label") == "Counts / s"
+

@@ -105,6 +105,10 @@ peak energies must be to their known values.  The default of `0.5` MeV
 causes calibration to fail when any Po‑210, Po‑218 or Po‑214 centroid
 deviates by more than this amount.
 
+`noise_cutoff` sets the minimum ADC value retained when loading the event
+CSV.  Events below this threshold are removed before burst filtering.
+The template configuration uses `400`.
+
 `analysis_start_time` in the optional `analysis` section sets the global
 time origin for decay fitting and time-series plots.  Provide an
 ISO‑8601 string such as `"2020-01-01T00:00:00Z"`.  When omitted the first
@@ -275,6 +279,11 @@ is non-zero `analyze.py` applies the shift using
 plot.  Use `"steps"` (default) for a stepped histogram or `"lines"` to
 connect bin centers with straight lines.  The line style is useful when
 overlaying multiple isotopes so one does not obscure the other.
+
+`plot_time_normalise_rate` divides the histogram by its bin width so the
+vertical axis shows a rate in counts per second.  The model curve is
+likewise drawn in rate units.  Set this to `true` when comparing runs with
+different bin widths.
 
 `overlay_isotopes` under `plotting` keeps both isotope windows intact
 when invoking `plot_time_series`.  When set to `true` the analysis does
