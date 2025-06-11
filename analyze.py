@@ -78,6 +78,7 @@ from plot_utils import (
 )
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
+from constants import PO214, PO218
 from utils import find_adc_peaks, cps_to_bq
 
 
@@ -1204,7 +1205,7 @@ def main():
             dE = fit.get("dE_Po214", 0.0)
             N0 = fit.get("N0_Po214", 0.0)
             dN0 = fit.get("dN0_Po214", 0.0)
-            hl = cfg.get("time_fit", {}).get("hl_Po214", [328320])[0]
+            hl = cfg.get("time_fit", {}).get("hl_Po214", [PO214.half_life_s])[0]
             delta214, err_delta214 = radon_delta(
                 t_start_rel,
                 t_end_rel,
@@ -1222,7 +1223,7 @@ def main():
             dE = fit.get("dE_Po218", 0.0)
             N0 = fit.get("N0_Po218", 0.0)
             dN0 = fit.get("dN0_Po218", 0.0)
-            hl = cfg.get("time_fit", {}).get("hl_Po218", [328320])[0]
+            hl = cfg.get("time_fit", {}).get("hl_Po218", [PO218.half_life_s])[0]
             delta218, err_delta218 = radon_delta(
                 t_start_rel,
                 t_end_rel,
@@ -1354,7 +1355,7 @@ def main():
             dE = fit.get("dE_Po214", 0.0)
             N0 = fit.get("N0_Po214", 0.0)
             dN0 = fit.get("dN0_Po214", 0.0)
-            hl = cfg.get("time_fit", {}).get("hl_Po214", [328320])[0]
+            hl = cfg.get("time_fit", {}).get("hl_Po214", [PO214.half_life_s])[0]
             A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl)
             plot_radon_activity(
                 times,
@@ -1371,7 +1372,7 @@ def main():
             dE = fit.get("dE_Po218", 0.0)
             N0 = fit.get("N0_Po218", 0.0)
             dN0 = fit.get("dN0_Po218", 0.0)
-            hl = cfg.get("time_fit", {}).get("hl_Po218", [328320])[0]
+            hl = cfg.get("time_fit", {}).get("hl_Po218", [PO218.half_life_s])[0]
             A218, dA218 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl)
 
         activity_arr = np.zeros_like(times, dtype=float)
@@ -1418,7 +1419,7 @@ def main():
                 dE214 = fit.get("dE_Po214", 0.0)
                 N0214 = fit.get("N0_Po214", 0.0)
                 dN0214 = fit.get("dN0_Po214", 0.0)
-                hl214 = cfg.get("time_fit", {}).get("hl_Po214", [328320])[0]
+                hl214 = cfg.get("time_fit", {}).get("hl_Po214", [PO214.half_life_s])[0]
                 A214_tr, _ = radon_activity_curve(rel_trend, E214, dE214, N0214, dN0214, hl214)
             A218_tr = None
             if "Po218" in time_fit_results:
@@ -1427,7 +1428,7 @@ def main():
                 dE218 = fit.get("dE_Po218", 0.0)
                 N0218 = fit.get("N0_Po218", 0.0)
                 dN0218 = fit.get("dN0_Po218", 0.0)
-                hl218 = cfg.get("time_fit", {}).get("hl_Po218", [328320])[0]
+                hl218 = cfg.get("time_fit", {}).get("hl_Po218", [PO218.half_life_s])[0]
                 A218_tr, _ = radon_activity_curve(rel_trend, E218, dE218, N0218, dN0218, hl218)
             trend = np.zeros_like(times_trend)
             for i in range(times_trend.size):

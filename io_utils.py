@@ -6,6 +6,8 @@ import logging
 from datetime import datetime
 import pandas as pd
 
+from constants import load_half_life_overrides
+
 import numpy as np
 from utils import to_native
 
@@ -29,6 +31,12 @@ def load_config(config_path):
 
     with open(config_path, "r", encoding="utf-8") as f:
         cfg = json.load(f)
+
+    # Allow overriding nuclide constants via the configuration
+    try:
+        load_half_life_overrides(cfg)
+    except Exception as exc:
+        logger.warning(f"Failed to apply constant overrides: {exc}")
 
     # Basic validation: check for required keys within each section
     required_structure = {
