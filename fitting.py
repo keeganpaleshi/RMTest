@@ -9,12 +9,12 @@ import numpy as np
 from iminuit import Minuit
 from scipy.optimize import curve_fit
 from calibration import emg_left, gaussian
-from constants import _TAU_MIN
+from constants import _TAU_MIN, EXP_OVERFLOW_DOUBLE, CURVE_FIT_MAX_EVALS
 
 # Prevent overflow in exp calculations. Values beyond ~700 in magnitude
 # lead to inf/0 under IEEE-754 doubles.  Clip the exponent to a safe range
 # so the likelihood remains finite during optimization.
-_EXP_LIMIT = 700.0
+_EXP_LIMIT = EXP_OVERFLOW_DOUBLE
 
 # Minimum allowed value for the exponential tail constant to avoid
 # divide-by-zero overflow when evaluating the EMG component. The
@@ -224,7 +224,7 @@ def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None, bounds
         hist,
         p0=p0,
         bounds=(bounds_lo, bounds_hi),
-        maxfev=10000,
+        maxfev=CURVE_FIT_MAX_EVALS,
     )
 
     perr = np.sqrt(np.diag(pcov))

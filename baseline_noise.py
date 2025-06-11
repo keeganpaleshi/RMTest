@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.optimize import curve_fit
+from constants import CURVE_FIT_MAX_EVALS
 
 __all__ = ["estimate_baseline_noise"]
 
@@ -49,7 +50,9 @@ def estimate_baseline_noise(adc_values, peak_adc=None, nbins=50, model="constant
     if model == "exponential":
         p0 = [hist.max(), 0.001]
         try:
-            popt, _ = curve_fit(_exponential, centers, hist, p0=p0, maxfev=10000)
+            popt, _ = curve_fit(
+                _exponential, centers, hist, p0=p0, maxfev=CURVE_FIT_MAX_EVALS
+            )
             A, k = popt
             return float(A), {"A": float(A), "k": float(k)}
         except Exception:
