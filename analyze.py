@@ -407,8 +407,8 @@ def main():
         try:
             thr_val = int(noise_thr)
             events = events[events["adc"] > thr_val].reset_index(drop=True)
-        except Exception:
-            pass
+        except ValueError:
+            logging.warning(f"Invalid noise_cutoff '{noise_thr}' ignored")
 
     # Optional burst filter to remove high-rate clusters
     burst_mode = (
