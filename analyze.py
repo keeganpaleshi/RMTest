@@ -203,6 +203,11 @@ def parse_args():
         help="Apply a linear ADC drift correction with the given slope",
     )
     p.add_argument(
+        "--noise-cutoff",
+        type=int,
+        help="ADC threshold for the noise cut (overrides calibration.noise_cutoff)",
+    )
+    p.add_argument(
         "--settle-s",
         type=float,
         help="Discard events occurring this many seconds after the start",
@@ -351,6 +356,9 @@ def main():
 
     if args.slope is not None:
         cfg.setdefault("systematics", {})["adc_drift_rate"] = float(args.slope)
+
+    if args.noise_cutoff is not None:
+        cfg.setdefault("calibration", {})["noise_cutoff"] = int(args.noise_cutoff)
 
     if args.debug:
         cfg.setdefault("pipeline", {})["log_level"] = "DEBUG"
