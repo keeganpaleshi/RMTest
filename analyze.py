@@ -258,6 +258,10 @@ def parse_args():
         type=int,
         help="Override random seed used by analysis algorithms",
     )
+    p.add_argument(
+        "--palette",
+        help="Color palette for plots (overrides plotting.palette)",
+    )
     return p.parse_args()
 
 
@@ -362,6 +366,9 @@ def main():
 
     if args.debug:
         cfg.setdefault("pipeline", {})["log_level"] = "DEBUG"
+
+    if args.palette:
+        cfg.setdefault("plotting", {})["palette"] = args.palette
 
     # Configure logging as early as possible
     log_level = cfg.get("pipeline", {}).get("log_level", "INFO")
@@ -1344,6 +1351,7 @@ def main():
             efficiency_bar(
                 efficiency_results,
                 os.path.join(out_dir, "efficiency.png"),
+                config=cfg.get("plotting", {}),
             )
         except Exception as e:
             print(f"WARNING: Could not create efficiency plots -> {e}")

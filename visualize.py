@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+from color_schemes import COLOR_SCHEMES
 
 __all__ = ["cov_heatmap", "efficiency_bar"]
 
@@ -32,7 +33,7 @@ def cov_heatmap(cov_matrix, out_png, labels=None):
     return corr
 
 
-def efficiency_bar(eff_dict, out_png):
+def efficiency_bar(eff_dict, out_png, config=None):
     """Bar chart of efficiency sources annotated with BLUE weights."""
     sources = eff_dict.get("sources", {})
     names = list(sources.keys())
@@ -47,7 +48,10 @@ def efficiency_bar(eff_dict, out_png):
 
     x = np.arange(len(names))
     plt.figure(figsize=(6, 4))
-    plt.bar(x, values, yerr=errors, capsize=4, color="tab:blue", alpha=0.7)
+    palette_name = str(config.get("palette", "default")) if config else "default"
+    palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
+    color = palette.get("efficiency_bar", "tab:blue")
+    plt.bar(x, values, yerr=errors, capsize=4, color=color, alpha=0.7)
     plt.xticks(x, names, rotation=45, ha="right")
     plt.ylabel("Efficiency")
     plt.title("Efficiency Estimates")
