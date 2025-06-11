@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import datetime
+from color_schemes import COLOR_SCHEMES
 
 # Half-life constants used for the time-series overlay [seconds]
 PO214_HALF_LIFE_S = 1.64e-4  # 164 µs
@@ -146,7 +147,13 @@ def plot_time_series(
 
     # 2) Plot each isotope s histogram + overlay the model:
     plt.figure(figsize=(8, 6))
-    colors = {"Po214": "tab:red", "Po218": "tab:blue", "Po210": "tab:green"}
+    palette_name = str(config.get("palette", "default"))
+    palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
+    colors = {
+        "Po214": palette.get("Po214", "tab:red"),
+        "Po218": palette.get("Po218", "tab:blue"),
+        "Po210": palette.get("Po210", "tab:green"),
+    }
 
     for iso in iso_list:
         emin, emax = iso_params[iso]["window"]
@@ -314,7 +321,10 @@ def plot_spectrum(
         fig, ax_main = plt.subplots(figsize=(8, 6))
         ax_res = None
 
-    ax_main.bar(centers, hist, width=width, color="gray", alpha=0.7, label="Data")
+    palette_name = str(config.get("palette", "default")) if config else "default"
+    palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
+    hist_color = palette.get("hist", "gray")
+    ax_main.bar(centers, hist, width=width, color=hist_color, alpha=0.7, label="Data")
 
     if fit_vals:
         x = np.linspace(edges[0], edges[-1], 1000)
@@ -327,7 +337,10 @@ def plot_spectrum(
                 mu = fit_vals[mu_key]
                 amp = fit_vals[amp_key]
                 y += amp / (sigma_E * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu) / sigma_E) ** 2)
-        ax_main.plot(x, y * width, color="red", lw=2, label="Fit")
+        palette_name = str(config.get("palette", "default")) if config else "default"
+        palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
+        fit_color = palette.get("fit", "red")
+        ax_main.plot(x, y * width, color=fit_color, lw=2, label="Fit")
 
         if show_res:
             y_cent = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * centers
@@ -346,7 +359,7 @@ def plot_spectrum(
                 centers,
                 residuals,
                 width=width,
-                color="gray",
+                color=hist_color,
                 alpha=0.7,
             )
             ax_res.axhline(0.0, color="black", lw=1)
@@ -388,7 +401,10 @@ def plot_radon_activity(times, activity, errors, out_png, config=None):
     times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
 
     plt.figure(figsize=(8, 4))
-    plt.errorbar(times_dt, activity, yerr=errors, fmt="o-", color="tab:purple")
+    palette_name = str(config.get("palette", "default")) if config else "default"
+    palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
+    color = palette.get("radon_activity", "tab:purple")
+    plt.errorbar(times_dt, activity, yerr=errors, fmt="o-", color=color)
     plt.xlabel("Time")
     plt.ylabel("Radon Activity (Bq)")
     plt.title("Extrapolated Radon Activity vs. Time")
@@ -432,7 +448,10 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
     times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
 
     plt.figure(figsize=(8, 4))
-    plt.errorbar(times_dt, volumes, yerr=errors, fmt="o-", color="tab:green")
+    palette_name = str(config.get("palette", "default")) if config else "default"
+    palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
+    color = palette.get("equivalent_air", "tab:green")
+    plt.errorbar(times_dt, volumes, yerr=errors, fmt="o-", color=color)
     plt.xlabel("Time")
     plt.ylabel("Equivalent Air Volume")
     if conc is None:
@@ -489,7 +508,10 @@ def plot_radon_trend(times, activity, out_png, config=None):
     times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
 
     plt.figure(figsize=(8, 4))
-    plt.plot(times_dt, activity, "o-", color="tab:purple")
+    palette_name = str(config.get("palette", "default")) if config else "default"
+    palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
+    color = palette.get("radon_activity", "tab:purple")
+    plt.plot(times_dt, activity, "o-", color=color)
     plt.xlabel("Time")
     plt.ylabel("Radon Activity (Bq)")
     plt.title("Radon Activity Trend")

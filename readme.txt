@@ -29,6 +29,7 @@ python analyze.py --config config.json --input merged_data.csv \
     [--output_dir results] [--job-id MYRUN] \
     [--efficiency-json eff.json] [--systematics-json syst.json] \
     [--spike-count N --spike-count-err S] [--slope RATE] \
+    [--noise-cutoff N] \
     [--analysis-end-time ISO --spike-end-time ISO] \
     [--spike-period START END] [--run-period START END] \
     [--radon-interval START END] \
@@ -309,6 +310,10 @@ together on a single overlay.
 Specifying `window_Po210` (and optional `eff_Po210`) adds a Po‑210
 histogram to the time-series plots. The model curve appears only when
 fit results for Po‑210 are available.
+
+`palette` under `plotting` selects the color scheme used for all plots.
+Available options are `"default"`, `"colorblind"` and `"grayscale"`.
+The command line option `--palette NAME` overrides the configuration.
 
 
 `plot_time_normalise_rate` controls how the y-axis is scaled in the
