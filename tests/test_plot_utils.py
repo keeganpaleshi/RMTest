@@ -254,6 +254,49 @@ def test_plot_time_series_po210_no_model(tmp_path, monkeypatch):
     assert "Model Po210" not in labels
 
 
+def test_plot_time_series_rate_normalisation(tmp_path, monkeypatch):
+    times = np.array(
+        [1000.5, 1001.0, 1002.1, 1002.9, 1004.0]
+    )
+    energies = np.full_like(times, 7.7)
+    cfg = basic_config()
+    cfg.update(
+        {
+            "plot_time_normalise_rate": True,
+            "plot_time_binning_mode": "fixed",
+            "plot_time_bin_width_s": 2.0,
+        }
+    )
+
+    captured = {}
+
+    def fake_step(x, y, *args, **kwargs):
+        captured["y"] = np.array(y)
+        return type("obj", (), {})()
+
+    monkeypatch.setattr("plot_utils.plt.step", fake_step)
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    plot_time_series(
+        times,
+        energies,
+        None,
+        1000.0,
+        1006.0,
+        cfg,
+        str(tmp_path / "ts_norm.png"),
+    )
+
+    dt = cfg["plot_time_bin_width_s"]
+    n_bins = int(np.floor((1006.0 - 1000.0) / dt))
+    edges = np.arange(0, (n_bins + 1) * dt, dt, dtype=float)
+    counts, _ = np.histogram(times - 1000.0, bins=edges)
+    expected = counts / dt
+
+    assert "y" in captured
+    assert np.allclose(captured["y"], expected)
+
+
 def test_plot_radon_activity_output(tmp_path):
     times = [0.0, 1.0, 2.0]
     activity = [1.0, 2.0, 3.0]
