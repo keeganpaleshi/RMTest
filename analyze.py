@@ -950,6 +950,22 @@ def main():
             "events_energy": iso_events["energy_MeV"].values,
         }
 
+    # Also extract Po-210 events for plotting if a window is provided
+    win_p210 = cfg.get("time_fit", {}).get("window_Po210")
+    if win_p210 is not None:
+        lo, hi = win_p210
+        mask210 = (
+            (events["energy_MeV"] >= lo)
+            & (events["energy_MeV"] <= hi)
+            & (events["timestamp"] >= t0_global)
+            & (events["timestamp"] <= t_end_global)
+        )
+        events_p210 = events[mask210]
+        time_plot_data["Po210"] = {
+            "events_times": events_p210["timestamp"].values,
+            "events_energy": events_p210["energy_MeV"].values,
+        }
+
     # ────────────────────────────────────────────────────────────
     # 7. Systematics scan (optional)
     # ────────────────────────────────────────────────────────────
@@ -1273,9 +1289,10 @@ def main():
         try:
             plot_cfg = dict(cfg.get("time_fit", {}))
             plot_cfg.update(cfg.get("plotting", {}))
-            other = "Po214" if iso == "Po218" else "Po218"
             if not overlay:
-                plot_cfg[f"window_{other}"] = None
+                for other_iso in ("Po214", "Po218", "Po210"):
+                    if other_iso != iso:
+                        plot_cfg[f"window_{other_iso}"] = None
                 ts_times = pdata["events_times"]
                 ts_energy = pdata["events_energy"]
                 fit_dict = time_fit_results.get(iso, {})
@@ -1283,8 +1300,8 @@ def main():
                 ts_times = events["timestamp"].values
                 ts_energy = events["energy_MeV"].values
                 fit_dict = {}
-                fit_dict.update(time_fit_results.get("Po214", {}))
-                fit_dict.update(time_fit_results.get("Po218", {}))
+                for k in ("Po214", "Po218", "Po210"):
+                    fit_dict.update(time_fit_results.get(k, {}))
             _ = plot_time_series(
                 all_timestamps=ts_times,
                 all_energies=ts_energy,
