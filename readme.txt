@@ -128,6 +128,9 @@ To disable the cut:
 }
 ```
 
+When the cut is applied the analysis logs how many events were removed. This
+count also appears in `summary.json` under `noise_cut.removed_events`.
+
 `analysis_start_time` in the optional `analysis` section sets the global
 time origin for decay fitting and time-series plots.  Provide an
 ISO‑8601 string such as `"2020-01-01T00:00:00Z"`.  When omitted the first
