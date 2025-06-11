@@ -1,5 +1,5 @@
 # io_utils.py
-import os
+from pathlib import Path
 import shutil
 import json
 import logging
@@ -14,8 +14,9 @@ logger = logging.getLogger(__name__)
 
 def ensure_dir(path):
     """Create directory if it does not exist."""
-    if not os.path.isdir(path):
-        os.makedirs(path, exist_ok=True)
+    p = Path(path)
+    if not p.is_dir():
+        p.mkdir(parents=True, exist_ok=True)
 
 
 def load_config(config_path):
@@ -24,10 +25,11 @@ def load_config(config_path):
     Returns a dict.
     Raises FileNotFoundError or json.JSONDecodeError on failure.
     """
-    if not os.path.isfile(config_path):
+    path = Path(config_path)
+    if not path.is_file():
         raise FileNotFoundError(f"Config file not found: {config_path}")
 
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(path, "r", encoding="utf-8") as f:
         cfg = json.load(f)
 
     # Basic validation: check for required keys within each section
@@ -57,11 +59,12 @@ def load_events(csv_path):
     - Sort ascending by timestamp.
     - Returns DataFrame.
     """
-    if not os.path.isfile(csv_path):
+    path = Path(csv_path)
+    if not path.is_file():
         raise FileNotFoundError(f"Input CSV not found: {csv_path}")
 
     # Read CSV; assume no header comments, first row is header
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(path)
 
     # Check required columns
     required_cols = ["fUniqueID", "fBits", "timestamp", "adc", "fchannel"]
@@ -187,7 +190,7 @@ def write_summary(output_dir, summary_dict, timestamp=None):
 
     Parameters
     ----------
-    output_dir : str
+    output_dir : Path or str
         Parent directory under which the results folder will be created.
     summary_dict : dict
         Data to serialise into ``summary.json``.
@@ -198,10 +201,11 @@ def write_summary(output_dir, summary_dict, timestamp=None):
     # Create timestamped subfolder
     if timestamp is None:
         timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-    results_folder = os.path.join(output_dir, timestamp)
+    output_path = Path(output_dir)
+    results_folder = output_path / timestamp
     ensure_dir(results_folder)
 
-    summary_path = os.path.join(results_folder, "summary.json")
+    summary_path = results_folder / "summary.json"
 
     # Convert numpy types to native Python using shared helper
     sanitized = to_native(summary_dict)
@@ -222,18 +226,31 @@ def copy_config(output_dir, config_path):
     In both cases the configuration file will be copied alongside the
     generated ``summary.json``.
 
-    Returns the destination path.
+    Parameters
+    ----------
+    output_dir : Path or str
+        Directory containing the summary JSON.
+    config_path : Path or str
+        Configuration file to copy.
+
+    Returns
+    -------
+    Path
+        Destination of the copied config.
     """
 
     # If ``summary.json`` exists directly under ``output_dir`` we assume the
     # caller provided the timestamped folder path.
-    if os.path.isfile(os.path.join(output_dir, "summary.json")):
-        dest_folder = output_dir
+    output_path = Path(output_dir)
+    config_path = Path(config_path)
+
+    if (output_path / "summary.json").is_file():
+        dest_folder = output_path
     else:
         subfolders = [
             d
-            for d in os.listdir(output_dir)
-            if os.path.isdir(os.path.join(output_dir, d))
+            for d in output_path.iterdir()
+            if d.is_dir()
         ]
         if not subfolders:
             raise RuntimeError(
@@ -241,9 +258,9 @@ def copy_config(output_dir, config_path):
             )
         # Pick the most recent (lexicographically largest) folder
         timestamped = sorted(subfolders)[-1]
-        dest_folder = os.path.join(output_dir, timestamped)
+        dest_folder = output_path / timestamped
 
-    dest_path = os.path.join(dest_folder, "config_used.json")
+    dest_path = dest_folder / "config_used.json"
     shutil.copyfile(config_path, dest_path)
     logger.info(f"Copied config {config_path} -> {dest_path}")
     return dest_path
