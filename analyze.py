@@ -69,7 +69,7 @@ from io_utils import (
     apply_burst_filter,
 )
 from calibration import derive_calibration_constants, derive_calibration_constants_auto
-from fitting import fit_spectrum, fit_time_series
+from fitting import fit_spectrum, fit_time_series, FitResult
 from plot_utils import (
     plot_spectrum,
     plot_time_series,
@@ -79,6 +79,15 @@ from plot_utils import (
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
 from utils import find_adc_peaks, cps_to_bq
+
+
+def _fit_params(obj):
+    """Return fit parameters dictionary from either a FitResult or mapping."""
+    if isinstance(obj, FitResult):
+        return obj.params
+    if isinstance(obj, dict):
+        return obj
+    return {}
 
 
 def window_prob(E, sigma, lo, hi):
@@ -820,9 +829,14 @@ def main():
             spectrum_results = {}
 
         # Store plotting inputs (bin_edges now in energy units)
+        fit_vals = None
+        if isinstance(spec_fit_out, FitResult):
+            fit_vals = spec_fit_out.params
+        elif isinstance(spec_fit_out, dict):
+            fit_vals = spec_fit_out
         spec_plot_data = {
             "energies": events["energy_MeV"].values,
-            "fit_vals": spec_fit_out.params if spectrum_results else None,
+            "fit_vals": fit_vals,
             "bins": bins,
             "bin_edges": bin_edges,
         }
@@ -1140,8 +1154,9 @@ def main():
 
     for iso, rate in baseline_rates.items():
         fit = time_fit_results.get(iso)
-        if fit and (f"E_{iso}" in fit.params):
-            fit.params["E_corrected"] = fit.params[f"E_{iso}"] - rate * dilution_factor
+        params = _fit_params(fit)
+        if params and (f"E_{iso}" in params):
+            params["E_corrected"] = params[f"E_{iso}"] - rate * dilution_factor
 
     if baseline_rates:
         baseline_info["rate_Bq"] = baseline_rates
@@ -1159,14 +1174,14 @@ def main():
     rate214 = None
     err214 = None
     if "Po214" in time_fit_results:
-        fit_dict = time_fit_results["Po214"].params
+        fit_dict = _fit_params(time_fit_results["Po214"])
         rate214 = fit_dict.get("E_corrected", fit_dict.get("E_Po214"))
         err214 = fit_dict.get("dE_Po214")
 
     rate218 = None
     err218 = None
     if "Po218" in time_fit_results:
-        fit_dict = time_fit_results["Po218"].params
+        fit_dict = _fit_params(time_fit_results["Po218"])
         rate218 = fit_dict.get("E_corrected", fit_dict.get("E_Po218"))
         err218 = fit_dict.get("dE_Po218")
 
@@ -1201,7 +1216,7 @@ def main():
 
         delta214 = err_delta214 = None
         if "Po214" in time_fit_results:
-            fit = time_fit_results["Po214"].params
+            fit = _fit_params(time_fit_results["Po214"])
             E = fit.get("E_corrected", fit.get("E_Po214"))
             dE = fit.get("dE_Po214", 0.0)
             N0 = fit.get("N0_Po214", 0.0)
@@ -1219,7 +1234,7 @@ def main():
 
         delta218 = err_delta218 = None
         if "Po218" in time_fit_results:
-            fit = time_fit_results["Po218"].params
+            fit = _fit_params(time_fit_results["Po218"])
             E = fit.get("E_corrected", fit.get("E_Po218"))
             dE = fit.get("dE_Po218", 0.0)
             N0 = fit.get("N0_Po218", 0.0)
@@ -1249,16 +1264,23 @@ def main():
     # 8. Assemble and write out the summary JSON
     # ────────────────────────────────────────────────────────────
     spec_dict = {}
-    if spectrum_results:
+    if isinstance(spectrum_results, FitResult):
         spec_dict = dict(spectrum_results.params)
         spec_dict["cov"] = spectrum_results.cov.tolist()
         spec_dict["ndf"] = spectrum_results.ndf
+    elif isinstance(spectrum_results, dict):
+        spec_dict = spectrum_results
 
     time_fit_serializable = {}
     for iso, fit in time_fit_results.items():
-        d = dict(fit.params)
-        d["cov"] = fit.cov.tolist()
-        d["ndf"] = fit.ndf
+        if isinstance(fit, FitResult):
+            d = dict(fit.params)
+            d["cov"] = fit.cov.tolist()
+            d["ndf"] = fit.ndf
+        elif isinstance(fit, dict):
+            d = fit
+        else:
+            d = {}
         time_fit_serializable[iso] = d
 
     summary = {
@@ -1319,7 +1341,7 @@ def main():
                 ts_times = pdata["events_times"]
                 ts_energy = pdata["events_energy"]
                 fit_obj = time_fit_results.get(iso)
-                fit_dict = fit_obj.params if fit_obj else {}
+                fit_dict = _fit_params(fit_obj)
             else:
                 ts_times = events["timestamp"].values
                 ts_energy = events["energy_MeV"].values
@@ -1327,7 +1349,7 @@ def main():
                 for k in ("Po214", "Po218", "Po210"):
                     obj = time_fit_results.get(k)
                     if obj:
-                        fit_dict.update(obj.params)
+                        fit_dict.update(_fit_params(obj))
             _ = plot_time_series(
                 all_timestamps=ts_times,
                 all_energies=ts_energy,
@@ -1367,7 +1389,7 @@ def main():
 
         A214 = dA214 = None
         if "Po214" in time_fit_results:
-            fit = time_fit_results["Po214"].params
+            fit = _fit_params(time_fit_results["Po214"])
             E = fit.get("E_corrected", fit.get("E_Po214"))
             dE = fit.get("dE_Po214", 0.0)
             N0 = fit.get("N0_Po214", 0.0)
@@ -1384,7 +1406,7 @@ def main():
 
         A218 = dA218 = None
         if "Po218" in time_fit_results:
-            fit = time_fit_results["Po218"].params
+            fit = _fit_params(time_fit_results["Po218"])
             E = fit.get("E_corrected", fit.get("E_Po218"))
             dE = fit.get("dE_Po218", 0.0)
             N0 = fit.get("N0_Po218", 0.0)
@@ -1431,7 +1453,7 @@ def main():
             rel_trend = times_trend - t0_global
             A214_tr = None
             if "Po214" in time_fit_results:
-                fit = time_fit_results["Po214"].params
+                fit = _fit_params(time_fit_results["Po214"])
                 E214 = fit.get("E_corrected", fit.get("E_Po214"))
                 dE214 = fit.get("dE_Po214", 0.0)
                 N0214 = fit.get("N0_Po214", 0.0)
@@ -1440,7 +1462,7 @@ def main():
                 A214_tr, _ = radon_activity_curve(rel_trend, E214, dE214, N0214, dN0214, hl214)
             A218_tr = None
             if "Po218" in time_fit_results:
-                fit = time_fit_results["Po218"].params
+                fit = _fit_params(time_fit_results["Po218"])
                 E218 = fit.get("E_corrected", fit.get("E_Po218"))
                 dE218 = fit.get("dE_Po218", 0.0)
                 N0218 = fit.get("N0_Po218", 0.0)
