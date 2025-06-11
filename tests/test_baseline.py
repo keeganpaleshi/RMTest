@@ -2,10 +2,12 @@ import sys, json
 from pathlib import Path
 import pandas as pd
 import pytest
+import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
 import baseline_noise
+from fitting import FitResult
 
 
 def test_simple_baseline_subtraction(tmp_path, monkeypatch):
@@ -45,7 +47,7 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
 
     def fake_fit_time_series(times_dict, t_start, t_end, cfg):
         captured["times"] = times_dict.get("Po214")
-        return {"E_Po214": 1.0}
+        return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit_time_series)
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
@@ -119,7 +121,7 @@ def test_baseline_scaling_factor(tmp_path, monkeypatch):
     cal_mock = {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0), "peaks": {"Po210": {"centroid_adc": 10}}}
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: {"E_Po214": 1.0})
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({"E_Po214": 1.0}, np.zeros((1,1)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
@@ -193,7 +195,7 @@ def test_n0_prior_from_baseline(tmp_path, monkeypatch):
     captured = {}
 
     def fake_fit_time_series(times_dict, t_start, t_end, cfg):
-        return {"E_Po214": 1.0}
+        return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit_time_series)
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)

@@ -3,6 +3,7 @@
 import numpy as np
 from scipy.signal import find_peaks
 import math
+from dataclasses import is_dataclass, asdict
 
 __all__ = ["to_native", "find_adc_peaks", "cps_to_cpd", "cps_to_bq"]
 
@@ -21,6 +22,8 @@ def to_native(obj):
         return {to_native(k): to_native(v) for k, v in obj.items()}
     elif isinstance(obj, list):
         return [to_native(x) for x in obj]
+    if is_dataclass(obj):
+        return to_native(asdict(obj))
     if pd is not None:
         # Handle pandas scalar types
         if obj is pd.NA:

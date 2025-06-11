@@ -3,6 +3,8 @@
 # -----------------------------------------------------
 
 import logging
+from dataclasses import dataclass
+
 import numpy as np
 from iminuit import Minuit
 from scipy.optimize import curve_fit
@@ -23,6 +25,15 @@ def _safe_exp(x):
     return np.exp(np.clip(x, -_EXP_LIMIT, _EXP_LIMIT))
 
 __all__ = ["fit_time_series", "fit_decay", "fit_spectrum"]
+
+
+@dataclass
+class FitResult:
+    """Container for fit output."""
+
+    params: dict[str, float]
+    cov: np.ndarray
+    ndf: int
 
 
 def fit_decay(times, priors, t0=0.0, t_end=None, flags=None):
@@ -242,7 +253,9 @@ def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None, bounds
         out["d" + name] = float(perr[i])
 
     out["fit_valid"] = fit_valid
-    return out
+
+    ndf = hist.size - len(popt)
+    return FitResult(out, pcov, int(ndf))
 
 
 def _integral_model(E, N0, B, lam, eff, T):
@@ -466,16 +479,19 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None):
         m.simplex()
         m.migrad()
 
+    n_events = sum(len(np.asarray(times_dict.get(iso, []))) for iso in iso_list)
+    ndf = n_events - len(ordered_params)
+
     out = {}
     if not m.valid:
         out["fit_valid"] = False
-        # Still return whatever values Minuit has found
         for pname in ordered_params:
             val = float(m.values[pname])
             err = float(m.errors[pname]) if pname in m.errors else np.nan
             out[pname] = val
             out["d" + pname] = err
-        return out
+        cov = np.zeros((len(ordered_params), len(ordered_params)))
+        return FitResult(out, cov, int(ndf))
 
     m.hesse()  # compute uncertainties
     cov = np.array(m.covariance)
@@ -502,7 +518,7 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None):
         out[pname] = float(m.values[pname])
         out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
 
-    return out
+    return FitResult(out, cov, int(ndf))
 
 
 # -----------------------------------------------------
