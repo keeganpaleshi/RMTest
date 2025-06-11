@@ -70,6 +70,7 @@ from io_utils import (
 )
 from calibration import derive_calibration_constants, derive_calibration_constants_auto
 from fitting import fit_spectrum, fit_time_series
+from constants import DEFAULT_NOISE_CUTOFF
 from plot_utils import (
     plot_spectrum,
     plot_time_series,
@@ -557,7 +558,7 @@ def main():
             # Auto‐cal using Freedman‐Diaconis histogram + peak detection
             cal_params = derive_calibration_constants_auto(
                 adc_vals,
-                noise_cutoff=cfg["calibration"].get("noise_cutoff", 300),
+                noise_cutoff=cfg["calibration"].get("noise_cutoff", DEFAULT_NOISE_CUTOFF),
                 hist_bins=cfg["calibration"].get("hist_bins", 2000),
                 peak_search_radius=cfg["calibration"].get("peak_search_radius", 200),
                 nominal_adc=cfg["calibration"].get("nominal_adc"),
