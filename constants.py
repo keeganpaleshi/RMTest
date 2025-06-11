@@ -11,7 +11,13 @@ from typing import Mapping, Any
 
 @dataclass(frozen=True)
 class NuclideConst:
-    """Physical constants for a nuclide."""
+__all__ = [
+    "_TAU_MIN",
+    "NuclideConst",
+    "PO214",
+    "PO218",
+    "load_half_life_overrides",
+]
 
     half_life_s: float
     Q_value_MeV: float | None = None
