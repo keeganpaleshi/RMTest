@@ -2,12 +2,12 @@ import numpy as np
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 from scipy.stats import exponnorm
-from constants import _TAU_MIN
+from constants import _TAU_MIN, EXP_OVERFLOW_DOUBLE, DEFAULT_NOISE_CUTOFF
 
 # Limit for stable exponentiation when evaluating the EMG tail. Values
 # beyond ~700 in magnitude overflow in IEEE-754 doubles.  Match the
 # safeguard used in :mod:`fitting`.
-_EXP_LIMIT = 700.0
+_EXP_LIMIT = EXP_OVERFLOW_DOUBLE
 
 
 def _safe_exp(x: np.ndarray) -> np.ndarray:
@@ -254,7 +254,7 @@ def derive_calibration_constants(adc_values, config):
 
 def derive_calibration_constants_auto(
     adc_values,
-    noise_cutoff=300,
+    noise_cutoff=DEFAULT_NOISE_CUTOFF,
     hist_bins=2000,
     peak_search_radius=200,
     nominal_adc=None,

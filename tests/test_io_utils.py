@@ -56,7 +56,7 @@ def test_load_config(tmp_path):
     p = tmp_path / "cfg.json"
     with open(p, "w") as f:
         json.dump(cfg, f)
-    loaded = load_config(str(p))
+    loaded = load_config(p)
     assert loaded["adc"]["min_channel"] == 0
     assert loaded["efficiency"]["eff_po214"] == 0.4
 
@@ -73,7 +73,7 @@ def test_load_config_missing_key(tmp_path):
     with open(p, "w") as f:
         json.dump(cfg, f)
     with pytest.raises(KeyError):
-        load_config(str(p))
+        load_config(p)
 
 
 def test_load_config_missing_section(tmp_path):
@@ -87,7 +87,7 @@ def test_load_config_missing_section(tmp_path):
     with open(p, "w") as f:
         json.dump(cfg, f)
     with pytest.raises(KeyError):
-        load_config(str(p))
+        load_config(p)
 
 
 def test_load_events(tmp_path, caplog):
@@ -103,7 +103,7 @@ def test_load_events(tmp_path, caplog):
     p = tmp_path / "data.csv"
     df.to_csv(p, index=False)
     with caplog.at_level(logging.INFO):
-        loaded = load_events(str(p))
+        loaded = load_events(p)
     assert np.array_equal(loaded["timestamp"].values, np.array([1000, 1005, 1010]))
     assert np.array_equal(loaded["adc"].values, np.array([1200, 1300, 1250]))
     assert "0 discarded" in caplog.text
@@ -122,7 +122,7 @@ def test_load_events_drop_bad_rows(tmp_path, caplog):
     p = tmp_path / "data_bad.csv"
     df.to_csv(p, index=False)
     with caplog.at_level(logging.INFO):
-        loaded = load_events(str(p))
+        loaded = load_events(p)
     # Expect rows with NaN/inf removed and duplicate dropped
     assert np.array_equal(loaded["timestamp"].values, np.array([1000, 1005, 1020]))
     assert "3 discarded" in caplog.text
@@ -132,14 +132,14 @@ def test_write_summary_and_copy_config(tmp_path):
     summary = {"a": 1, "b": 2}
     outdir = tmp_path / "out"
     ts = "19700101T000000Z"
-    results = write_summary(str(outdir), summary, ts)
+    results = write_summary(outdir, summary, ts)
     assert (Path(results) / "summary.json").exists()
     # Create dummy config and copy
     cfg = {"test": 1}
     cp = tmp_path / "cfg.json"
     with open(cp, "w") as f:
         json.dump(cfg, f)
-    dest = copy_config(str(outdir), str(cp))
+    dest = copy_config(outdir, cp)
     assert Path(dest).exists()
 
 
@@ -148,7 +148,7 @@ def test_write_summary_with_nullable_integers(tmp_path):
     summary = {"present": series.iloc[0], "missing": series.iloc[1], "list": series.tolist()}
     outdir = tmp_path / "out2"
     ts = "19700101T000001Z"
-    results = write_summary(str(outdir), summary, ts)
+    results = write_summary(outdir, summary, ts)
     summary_path = Path(results) / "summary.json"
     assert summary_path.exists()
     with open(summary_path, "r", encoding="utf-8") as f:
@@ -162,7 +162,7 @@ def test_write_summary_with_nan_values(tmp_path):
     summary = {"nan": float("nan"), "inf": float("inf"), "list": [float("nan"), 1.0]}
     outdir = tmp_path / "out_nan"
     ts = "19700101T000002Z"
-    results = write_summary(str(outdir), summary, ts)
+    results = write_summary(outdir, summary, ts)
     summary_path = Path(results) / "summary.json"
     assert summary_path.exists()
     with open(summary_path, "r", encoding="utf-8") as f:

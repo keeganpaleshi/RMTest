@@ -47,7 +47,6 @@ To run (without baseline) for a single merged CSV:
 
 
 import argparse
-import os
 import sys
 import logging
 import random
@@ -55,6 +54,7 @@ from datetime import datetime, timezone
 import subprocess
 import hashlib
 import json
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -70,6 +70,7 @@ from io_utils import (
 )
 from calibration import derive_calibration_constants, derive_calibration_constants_auto
 from fitting import fit_spectrum, fit_time_series
+from constants import DEFAULT_NOISE_CUTOFF
 from plot_utils import (
     plot_spectrum,
     plot_time_series,
@@ -204,6 +205,11 @@ def parse_args():
         help="Apply a linear ADC drift correction with the given slope",
     )
     p.add_argument(
+        "--noise-cutoff",
+        type=int,
+        help="ADC threshold for the noise cut (overrides calibration.noise_cutoff)",
+    )
+    p.add_argument(
         "--settle-s",
         type=float,
         help="Discard events occurring this many seconds after the start",
@@ -254,6 +260,10 @@ def parse_args():
         type=int,
         help="Override random seed used by analysis algorithms",
     )
+    p.add_argument(
+        "--palette",
+        help="Color palette for plots (overrides plotting.palette)",
+    )
     return p.parse_args()
 
 
@@ -269,6 +279,16 @@ def main():
         commit = "unknown"
 
     args = parse_args()
+    # Convert CLI paths to Path objects
+    args.config = Path(args.config)
+    args.input = Path(args.input)
+    args.output_dir = Path(args.output_dir)
+    if args.efficiency_json:
+        args.efficiency_json = Path(args.efficiency_json)
+    if args.systematics_json:
+        args.systematics_json = Path(args.systematics_json)
+    if args.ambient_file:
+        args.ambient_file = Path(args.ambient_file)
 
     # ────────────────────────────────────────────────────────────
     # 1. Load configuration
@@ -353,8 +373,14 @@ def main():
     if args.slope is not None:
         cfg.setdefault("systematics", {})["adc_drift_rate"] = float(args.slope)
 
+    if args.noise_cutoff is not None:
+        cfg.setdefault("calibration", {})["noise_cutoff"] = int(args.noise_cutoff)
+
     if args.debug:
         cfg.setdefault("pipeline", {})["log_level"] = "DEBUG"
+
+    if args.palette:
+        cfg.setdefault("plotting", {})["palette"] = args.palette
 
     # Configure logging as early as possible
     log_level = cfg.get("pipeline", {}).get("log_level", "INFO")
@@ -558,7 +584,7 @@ def main():
             # Auto‐cal using Freedman‐Diaconis histogram + peak detection
             cal_params = derive_calibration_constants_auto(
                 adc_vals,
-                noise_cutoff=cfg["calibration"].get("noise_cutoff", 300),
+                noise_cutoff=cfg["calibration"].get("noise_cutoff", DEFAULT_NOISE_CUTOFF),
                 hist_bins=cfg["calibration"].get("hist_bins", 2000),
                 peak_search_radius=cfg["calibration"].get("peak_search_radius", 200),
                 nominal_adc=cfg["calibration"].get("nominal_adc"),
@@ -1249,7 +1275,7 @@ def main():
     # ────────────────────────────────────────────────────────────
     summary = {
         "timestamp": now_str,
-        "config_used": os.path.basename(args.config),
+        "config_used": args.config.name,
         "calibration": cal_params,
         "spectral_fit": spectrum_results,
         "time_fit": time_fit_results,
@@ -1284,7 +1310,7 @@ def main():
             _ = plot_spectrum(
                 energies=spec_plot_data["energies"],
                 fit_vals=spec_plot_data["fit_vals"],
-                out_png=os.path.join(out_dir, "spectrum.png"),
+                out_png=Path(out_dir) / "spectrum.png",
                 bins=spec_plot_data["bins"],
                 bin_edges=spec_plot_data["bin_edges"],
                 config=cfg.get("plotting", {}),
@@ -1318,7 +1344,7 @@ def main():
                 t_start=t0_global,
                 t_end=t_end_global,
                 config=plot_cfg,
-                out_png=os.path.join(out_dir, f"time_series_{iso}.png"),
+                out_png=Path(out_dir) / f"time_series_{iso}.png",
             )
         except Exception as e:
             print(f"WARNING: Could not create time-series plot for {iso} -> {e}")
@@ -1331,12 +1357,13 @@ def main():
                 cov = np.diag(errs_arr ** 2)
                 cov_heatmap(
                     cov,
-                    os.path.join(out_dir, "eff_cov.png"),
+                    Path(out_dir) / "eff_cov.png",
                     labels=list(efficiency_results["sources"].keys()),
                 )
             efficiency_bar(
                 efficiency_results,
-                os.path.join(out_dir, "efficiency.png"),
+                Path(out_dir) / "efficiency.png",
+                config=cfg.get("plotting", {}),
             )
         except Exception as e:
             print(f"WARNING: Could not create efficiency plots -> {e}")
@@ -1361,7 +1388,7 @@ def main():
                 times,
                 A214,
                 dA214,
-                os.path.join(out_dir, "radon_activity_po214.png"),
+                Path(out_dir) / "radon_activity_po214.png",
                 config=cfg.get("plotting", {}),
             )
 
@@ -1405,7 +1432,7 @@ def main():
             times,
             activity_arr,
             err_arr,
-            os.path.join(out_dir, "radon_activity.png"),
+            Path(out_dir) / "radon_activity.png",
             config=cfg.get("plotting", {}),
         )
 
@@ -1439,7 +1466,7 @@ def main():
             plot_radon_trend(
                 times_trend,
                 trend,
-                os.path.join(out_dir, "radon_trend.png"),
+                Path(out_dir) / "radon_trend.png",
                 config=cfg.get("plotting", {}),
             )
 
@@ -1460,7 +1487,7 @@ def main():
                 vol_arr,
                 vol_err,
                 None,
-                os.path.join(out_dir, "equivalent_air.png"),
+                Path(out_dir) / "equivalent_air.png",
                 config=cfg.get("plotting", {}),
             )
             if A214 is not None:
@@ -1469,7 +1496,7 @@ def main():
                     A214 / ambient_interp,
                     dA214 / ambient_interp,
                     None,
-                    os.path.join(out_dir, "equivalent_air_po214.png"),
+                    Path(out_dir) / "equivalent_air_po214.png",
                     config=cfg.get("plotting", {}),
                 )
         elif ambient:
@@ -1480,7 +1507,7 @@ def main():
                 vol_arr,
                 vol_err,
                 float(ambient),
-                os.path.join(out_dir, "equivalent_air.png"),
+                Path(out_dir) / "equivalent_air.png",
                 config=cfg.get("plotting", {}),
             )
             if A214 is not None:
@@ -1489,7 +1516,7 @@ def main():
                     A214 / float(ambient),
                     dA214 / float(ambient),
                     float(ambient),
-                    os.path.join(out_dir, "equivalent_air_po214.png"),
+                    Path(out_dir) / "equivalent_air_po214.png",
                     config=cfg.get("plotting", {}),
                 )
     except Exception as e:
