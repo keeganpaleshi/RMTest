@@ -105,6 +105,28 @@ peak energies must be to their known values.  The default of `0.5` MeV
 causes calibration to fail when any Po‑210, Po‑218 or Po‑214 centroid
 deviates by more than this amount.
 
+`noise_cutoff` defines a pedestal noise threshold in ADC.  Events with raw
+ADC values at or below this threshold are removed before any fits.  The
+default is `400`.  Set it to `null` to skip the cut entirely.  The
+`analyze.py` pipeline applies this filter right after loading the event
+CSV.
+
+Example snippet:
+
+```json
+"calibration": {
+    "noise_cutoff": 400
+}
+```
+
+To disable the cut:
+
+```json
+"calibration": {
+    "noise_cutoff": null
+}
+```
+
 `analysis_start_time` in the optional `analysis` section sets the global
 time origin for decay fitting and time-series plots.  Provide an
 ISO‑8601 string such as `"2020-01-01T00:00:00Z"`.  When omitted the first
@@ -280,6 +302,18 @@ overlaying multiple isotopes so one does not obscure the other.
 when invoking `plot_time_series`.  When set to `true` the analysis does
 not clear the other window, allowing Po‑214 and Po‑218 to be plotted
 together on a single overlay.
+
+`plot_time_normalise_rate` controls how the y-axis is scaled in the
+time-series plot.  With the default `true` the histogram is normalised to
+counts per second.  Set it to `false` to show the raw counts per bin.
+
+Example snippet:
+
+```json
+"plotting": {
+    "plot_time_normalise_rate": false
+}
+```
 
 `plot_time_series` takes its half-life values from the `time_fit` section.
 When these keys are omitted, `hl_Po214` and `hl_Po218` default to the radon half-life (~3.8 days or about `3.28e5` s). Specify them to use other values. These custom half-lives control the decay model drawn over the time-series histogram.
