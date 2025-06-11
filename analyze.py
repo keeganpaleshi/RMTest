@@ -399,6 +399,17 @@ def main():
 
     events["timestamp"] = events["timestamp"].astype(float)
 
+    # ───────────────────────────────────────────────
+    # 2a. Pedestal / electronic-noise cut (integer ADC)
+    # ───────────────────────────────────────────────
+    noise_thr = cfg.get("calibration", {}).get("noise_cutoff")
+    if noise_thr is not None:
+        try:
+            thr_val = int(noise_thr)
+            events = events[events["adc"] > thr_val].reset_index(drop=True)
+        except Exception:
+            pass
+
     # Optional burst filter to remove high-rate clusters
     burst_mode = (
         args.burst_mode
