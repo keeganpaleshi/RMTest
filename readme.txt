@@ -29,6 +29,7 @@ python analyze.py --config config.json --input merged_data.csv \
     [--output_dir results] [--job-id MYRUN] \
     [--efficiency-json eff.json] [--systematics-json syst.json] \
     [--spike-count N --spike-count-err S] [--slope RATE] \
+    [--noise-cutoff N] \
     [--analysis-end-time ISO --spike-end-time ISO] \
     [--spike-period START END] [--run-period START END] \
     [--radon-interval START END] \
