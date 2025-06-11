@@ -223,6 +223,37 @@ def test_plot_time_series_line_style(tmp_path, monkeypatch):
     assert called.get("plot") and "step" not in called
 
 
+def test_plot_time_series_po210_no_model(tmp_path, monkeypatch):
+    times = np.array([1000.1, 1000.2])
+    energies = np.array([5.3, 5.25])
+    cfg = basic_config()
+    cfg.update({"window_Po210": [5.2, 5.4], "eff_Po210": [1.0]})
+
+    labels = []
+
+    def fake_plot(*args, **kwargs):
+        lbl = kwargs.get("label")
+        if lbl:
+            labels.append(lbl)
+        return type("obj", (), {})()
+
+    monkeypatch.setattr("plot_utils.plt.plot", fake_plot)
+    monkeypatch.setattr("plot_utils.plt.step", fake_plot)
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    plot_time_series(
+        times,
+        energies,
+        None,
+        1000.0,
+        1001.0,
+        cfg,
+        str(tmp_path / "ts_p210.png"),
+    )
+
+    assert "Model Po210" not in labels
+
+
 def test_plot_radon_activity_output(tmp_path):
     times = [0.0, 1.0, 2.0]
     activity = [1.0, 2.0, 3.0]
