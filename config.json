@@ -29,7 +29,7 @@
     },
     "calibration": {
         "method": "auto",
-        "noise_cutoff": 300,
+        "noise_cutoff": 400,
         "hist_bins": 2000,
         "peak_search_radius": 100,
         "peak_prominence": 10,
@@ -109,7 +109,8 @@
     "plotting": {
         "plot_spectrum_binsize_adc": 1,
         "plot_time_binning_mode": "auto",
-        "plot_time_bin_width_s": 3600,
+        "plot_time_bin_width_s": 21600,
+        "plot_time_normalise_rate": true,
         "time_bins_fallback": 1,
         "plot_save_formats": ["png", "pdf"],
         "dump_time_series_json": false,

@@ -111,23 +111,33 @@ def plot_time_series(
                 n_bins = max(
                     1, int(np.ceil((data.max() - data.min()) / bin_width)))
     else:
-        # fixed width in seconds (e.g. 3600 s):
-        dt = float(
+        # fixed-width bins (integer-second data) – use floor so the
+        # very last partial bin is dropped and every remaining bin has
+        # exactly the same width.
+        dt = int(
             config.get(
                 "plot_time_bin_width_s",
-                config.get("time_bin_s", 3600.0),
+                config.get("time_bin_s", 3600),
             )
         )
-        n_bins = int(np.ceil((t_end - t_start) / dt))
+        n_bins = int(np.floor((t_end - t_start) / dt))
         if n_bins < 1:
             n_bins = 1
 
-    # Now build histogram bins:
-    edges = np.linspace(0, (t_end - t_start), n_bins + 1)
+    # ------------------------------------------------------------------
+    # Build equally-spaced edges so Δt is identical for each bin
+    # ------------------------------------------------------------------
+    if bin_mode not in ("fd", "auto"):
+        edges = np.arange(0, (n_bins + 1) * dt, dt, dtype=float)
+    else:
+        edges = np.linspace(0, (t_end - t_start), n_bins + 1)
     centers = 0.5 * (edges[:-1] + edges[1:])
     centers_abs = t_start + centers
     centers_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in centers_abs])
     bin_widths = np.diff(edges)
+
+    # Optional normalisation to counts / s (set in config)
+    normalise_rate = bool(config.get("plot_time_normalise_rate", False))
 
     # 2) Plot each isotope s histogram + overlay the model:
     plt.figure(figsize=(8, 6))
@@ -145,6 +155,9 @@ def plot_time_series(
 
         # Histogram of observed counts:
         counts_iso, _ = np.histogram(t_iso_rel, bins=edges)
+        if normalise_rate:
+            counts_iso = counts_iso / bin_widths
+
         style = str(config.get("plot_time_style", "steps")).lower()
         if style == "lines":
             plt.plot(
@@ -182,8 +195,8 @@ def plot_time_series(
             + B_iso
         )
 
-        # Convert  rate (counts/s)     expected counts per bin = r_rel * bin_width
-        model_counts = r_rel * bin_widths
+        # Convert rate (counts/s) to expected counts per bin if not normalising
+        model_counts = r_rel if normalise_rate else r_rel * bin_widths
         plt.plot(
             centers_dt,
             model_counts,
@@ -194,7 +207,7 @@ def plot_time_series(
         )
 
     plt.xlabel("Time")
-    plt.ylabel("Counts per bin")
+    plt.ylabel("Counts / s" if normalise_rate else "Counts per bin")
     title_isos = " & ".join(iso_list)
     plt.title(f"{title_isos} Time Series Fit")
     plt.legend(fontsize="small")
