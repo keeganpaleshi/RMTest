@@ -11,6 +11,7 @@ def test_noise_cutoff_cli_overrides(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},
         "calibration": {"noise_cutoff": 100},
+
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
@@ -26,13 +27,18 @@ def test_noise_cutoff_cli_overrides(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({
-        "fUniqueID": [1, 2],
-        "fBits": [0, 0],
-        "timestamp": [1.0, 2.0],
-        "adc": [3, 9],
-        "fchannel": [1, 1],
-    })
+
+    df = pd.DataFrame(
+        {
+            "fUniqueID": [1, 2],
+            "fBits": [0, 0],
+            "timestamp": [1.0, 2.0],
+            "adc": [5, 15],
+            "fchannel": [1, 1],
+        }
+    )
+
+
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
@@ -64,6 +70,7 @@ def test_noise_cutoff_cli_overrides(tmp_path, monkeypatch):
 
     args = [
         "analyze.py",
+
         "--config", str(cfg_path),
         "--input", str(data_path),
         "--output_dir", str(tmp_path),
@@ -74,4 +81,3 @@ def test_noise_cutoff_cli_overrides(tmp_path, monkeypatch):
 
     assert captured.get("times") == [2.0]
     assert captured["summary"]["noise_cut"]["removed_events"] == 1
-
