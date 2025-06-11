@@ -307,6 +307,10 @@ Specifying `window_Po210` (and optional `eff_Po210`) adds a Po‑210
 histogram to the time-series plots. The model curve appears only when
 fit results for Po‑210 are available.
 
+`palette` under `plotting` selects the color scheme used for all plots.
+Available options are `"default"`, `"colorblind"` and `"grayscale"`.
+The command line option `--palette NAME` overrides the configuration.
+
 
 `plot_time_normalise_rate` controls how the y-axis is scaled in the
 time-series plot.  With the default `true` the histogram is normalised to
