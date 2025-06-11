@@ -70,6 +70,7 @@ from io_utils import (
 )
 from calibration import derive_calibration_constants, derive_calibration_constants_auto
 from fitting import fit_spectrum, fit_time_series
+from constants import DEFAULT_NOISE_CUTOFF
 from plot_utils import (
     plot_spectrum,
     plot_time_series,
@@ -203,6 +204,11 @@ def parse_args():
         help="Apply a linear ADC drift correction with the given slope",
     )
     p.add_argument(
+        "--noise-cutoff",
+        type=int,
+        help="ADC threshold for the noise cut (overrides calibration.noise_cutoff)",
+    )
+    p.add_argument(
         "--settle-s",
         type=float,
         help="Discard events occurring this many seconds after the start",
@@ -252,6 +258,10 @@ def parse_args():
         "--seed",
         type=int,
         help="Override random seed used by analysis algorithms",
+    )
+    p.add_argument(
+        "--palette",
+        help="Color palette for plots (overrides plotting.palette)",
     )
     return p.parse_args()
 
@@ -362,8 +372,14 @@ def main():
     if args.slope is not None:
         cfg.setdefault("systematics", {})["adc_drift_rate"] = float(args.slope)
 
+    if args.noise_cutoff is not None:
+        cfg.setdefault("calibration", {})["noise_cutoff"] = int(args.noise_cutoff)
+
     if args.debug:
         cfg.setdefault("pipeline", {})["log_level"] = "DEBUG"
+
+    if args.palette:
+        cfg.setdefault("plotting", {})["palette"] = args.palette
 
     # Configure logging as early as possible
     log_level = cfg.get("pipeline", {}).get("log_level", "INFO")
@@ -567,7 +583,7 @@ def main():
             # Auto‐cal using Freedman‐Diaconis histogram + peak detection
             cal_params = derive_calibration_constants_auto(
                 adc_vals,
-                noise_cutoff=cfg["calibration"].get("noise_cutoff", 300),
+                noise_cutoff=cfg["calibration"].get("noise_cutoff", DEFAULT_NOISE_CUTOFF),
                 hist_bins=cfg["calibration"].get("hist_bins", 2000),
                 peak_search_radius=cfg["calibration"].get("peak_search_radius", 200),
                 nominal_adc=cfg["calibration"].get("nominal_adc"),
@@ -1346,6 +1362,7 @@ def main():
             efficiency_bar(
                 efficiency_results,
                 Path(out_dir) / "efficiency.png",
+                config=cfg.get("plotting", {}),
             )
         except Exception as e:
             print(f"WARNING: Could not create efficiency plots -> {e}")
