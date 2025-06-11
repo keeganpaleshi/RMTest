@@ -333,6 +333,20 @@ When these keys are omitted, `hl_Po214` and `hl_Po218` default to the radon half
 The same values are used in the `time_fit` routine itself, so changing
 `hl_Po214` or `hl_Po218` affects both the unbinned fit and the overlay in
 `plot_time_series`. For monitoring that spans multiple days you may set
+The default half-lives for Po‑214 and Po‑218 are defined in
+``constants.py``.  They can be overridden globally by adding a
+``"constants"`` section to the configuration:
+
+```json
+"constants": {
+    "hl_Po214": 1.64e-4,
+    "hl_Po218": 183.0
+}
+```
+
+Values specified here take precedence over both the built-in defaults and
+the entries under ``time_fit``.
+
 them to the radon half-life (~3.8 days) to match the slowly varying
 radon activity.
 
