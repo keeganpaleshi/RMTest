@@ -403,12 +403,19 @@ def main():
     # 2a. Pedestal / electronic-noise cut (integer ADC)
     # ───────────────────────────────────────────────
     noise_thr = cfg.get("calibration", {}).get("noise_cutoff")
+    n_removed_noise = 0
     if noise_thr is not None:
         try:
             thr_val = int(noise_thr)
+        except (ValueError, TypeError):
+            logging.warning(
+                f"Invalid noise_cutoff '{noise_thr}' - skipping noise cut"
+            )
+        else:
+            before = len(events)
             events = events[events["adc"] > thr_val].reset_index(drop=True)
-        except ValueError:
-            logging.warning(f"Invalid noise_cutoff '{noise_thr}' ignored")
+            n_removed_noise = before - len(events)
+            logging.info(f"Noise cut removed {n_removed_noise} events")
 
     # Optional burst filter to remove high-rate clusters
     burst_mode = (
@@ -1248,6 +1255,7 @@ def main():
         "systematics": systematics_results,
         "baseline": baseline_info,
         "radon_results": radon_results,
+        "noise_cut": {"removed_events": int(n_removed_noise)},
         "burst_filter": {"removed_events": int(n_removed_burst)},
         "adc_drift_rate": drift_rate,
         "efficiency": efficiency_results,
