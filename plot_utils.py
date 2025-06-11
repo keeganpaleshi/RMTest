@@ -82,6 +82,11 @@ def plot_time_series(
             "eff": float(_cfg_get(config, "eff_Po218", [1.0])[0]),
             "half_life": po218_hl,
         },
+        "Po210": {
+            "window": _cfg_get(config, "window_Po210"),
+            "eff": float(_cfg_get(config, "eff_Po210", [1.0])[0]),
+            "half_life": float(_cfg_get(config, "hl_Po210", [328320])[0]),
+        },
     }
     iso_list = [iso for iso, p in iso_params.items() if p["window"] is not None]
     # Time since t_start:
@@ -141,7 +146,7 @@ def plot_time_series(
 
     # 2) Plot each isotope s histogram + overlay the model:
     plt.figure(figsize=(8, 6))
-    colors = {"Po214": "tab:red", "Po218": "tab:blue"}
+    colors = {"Po214": "tab:red", "Po218": "tab:blue", "Po210": "tab:green"}
 
     for iso in iso_list:
         emin, emax = iso_params[iso]["window"]
@@ -177,34 +182,37 @@ def plot_time_series(
                 label=f"Data {iso}",
             )
 
-        # Overlay the continuous model curve (scaled to counts/bin):
-        lam = np.log(2.0) / iso_params[iso]["half_life"]
-        eff = iso_params[iso]["eff"]
+        # Overlay the continuous model curve (scaled to counts/bin)
+        # only when fit results are provided for this isotope.
+        has_fit = any(k in fit_results for k in (f"E_{iso}", "E"))
+        if has_fit:
+            lam = np.log(2.0) / iso_params[iso]["half_life"]
+            eff = iso_params[iso]["eff"]
 
-        E_iso = fit_results.get(f"E_{iso}", fit_results.get("E", 0.0))
-        B_iso = fit_results.get(f"B_{iso}", fit_results.get("B", 0.0))
-        N0_iso = fit_results.get(f"N0_{iso}", fit_results.get("N0", 0.0))
+            E_iso = fit_results.get(f"E_{iso}", fit_results.get("E", 0.0))
+            B_iso = fit_results.get(f"B_{iso}", fit_results.get("B", 0.0))
+            N0_iso = fit_results.get(f"N0_{iso}", fit_results.get("N0", 0.0))
 
-        # r_iso(t_rel) = eff * [E*(1 - exp(-lam*t_rel)) + lam*N0*exp(-lam*t_rel)] + B
-        r_rel = (
-            eff
-            * (
-                E_iso * (1.0 - np.exp(-lam * centers))
-                + lam * N0_iso * np.exp(-lam * centers)
+            # r_iso(t_rel) = eff * [E*(1 - exp(-lam*t_rel)) + lam*N0*exp(-lam*t_rel)] + B
+            r_rel = (
+                eff
+                * (
+                    E_iso * (1.0 - np.exp(-lam * centers))
+                    + lam * N0_iso * np.exp(-lam * centers)
+                )
+                + B_iso
             )
-            + B_iso
-        )
 
-        # Convert rate (counts/s) to expected counts per bin if not normalising
-        model_counts = r_rel if normalise_rate else r_rel * bin_widths
-        plt.plot(
-            centers_dt,
-            model_counts,
-            color=colors[iso],
-            lw=2,
-            ls="--",
-            label=f"Model {iso}",
-        )
+            # Convert rate (counts/s) to expected counts per bin if not normalising
+            model_counts = r_rel if normalise_rate else r_rel * bin_widths
+            plt.plot(
+                centers_dt,
+                model_counts,
+                color=colors[iso],
+                lw=2,
+                ls="--",
+                label=f"Model {iso}",
+            )
 
     plt.xlabel("Time")
     plt.ylabel("Counts / s" if normalise_rate else "Counts per bin")

@@ -60,6 +60,7 @@ The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--j
 - `config_used.json` – copy of the configuration used.
 - `spectrum.png` – spectrum plot with fitted peaks.
 - `time_series_Po214.png` and `time_series_Po218.png` – decay time-series plots.
+- `time_series_Po210.png` when `window_Po210` is set.
 - Optional `*_ts.json` files containing binned time series when enabled.
 - `efficiency.png` – bar chart of individual efficiencies and the BLUE result.
 - `eff_cov.png` – heatmap of the efficiency covariance matrix.
@@ -67,9 +68,9 @@ The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--j
  - `equivalent_air.png` – equivalent air volume plot when `--ambient-file` or
    `--ambient-concentration` is provided.
 
-The `time_fit` routine currently fits only Po‑214 and Po‑218.  Supporting
-Po‑210 would require adding its half‑life and detection efficiency to the
-configuration along with a plotting color in the code.
+The `time_fit` routine still fits only Po‑214 and Po‑218.
+When `window_Po210` is provided the Po‑210 events are extracted and a
+time‑series histogram is produced without a decay fit.
 
 The time‐series model multiplies the decay rate by the detection efficiency
 internally.  Therefore the fitted `E_Po214` and `E_Po218` values correspond to
@@ -302,6 +303,10 @@ overlaying multiple isotopes so one does not obscure the other.
 when invoking `plot_time_series`.  When set to `true` the analysis does
 not clear the other window, allowing Po‑214 and Po‑218 to be plotted
 together on a single overlay.
+Specifying `window_Po210` (and optional `eff_Po210`) adds a Po‑210
+histogram to the time-series plots. The model curve appears only when
+fit results for Po‑210 are available.
+
 
 `plot_time_normalise_rate` controls how the y-axis is scaled in the
 time-series plot.  With the default `true` the histogram is normalised to
