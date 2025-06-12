@@ -60,6 +60,8 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 
+from hierarchical import fit_hierarchical_runs
+
 # ‣ Import our supporting modules (all must live in the same folder).
 from io_utils import (
     load_config,
@@ -275,6 +277,14 @@ def parse_args():
         "--palette",
         help="Color palette for plots (overrides plotting.palette)",
     )
+    p.add_argument(
+        "--hierarchical-summary",
+        metavar="OUTFILE",
+        help=(
+            "Combine half-life and calibration results from previous runs and "
+            "write a hierarchical fit summary to OUTFILE"
+        ),
+    )
     return p.parse_args()
 
 
@@ -300,6 +310,8 @@ def main():
         args.systematics_json = Path(args.systematics_json)
     if args.ambient_file:
         args.ambient_file = Path(args.ambient_file)
+    if args.hierarchical_summary:
+        args.hierarchical_summary = Path(args.hierarchical_summary)
 
     # ────────────────────────────────────────────────────────────
     # 1. Load configuration
@@ -1569,6 +1581,39 @@ def main():
                 )
     except Exception as e:
         print(f"WARNING: Could not create radon activity plots -> {e}")
+
+    if args.hierarchical_summary:
+        try:
+            run_results = []
+            for p in args.output_dir.glob("*/summary.json"):
+                try:
+                    with open(p, "r", encoding="utf-8") as f:
+                        dat = json.load(f)
+                except Exception as e:
+                    print(f"WARNING: Skipping {p} -> {e}")
+                    continue
+                hl = dat.get("half_life")
+                dhl = dat.get("dhalf_life")
+                cal = dat.get("calibration", {})
+                slope, dslope = cal.get("a", (None, None))
+                intercept, dintercept = cal.get("c", (None, None))
+                if hl is not None:
+                    run_results.append(
+                        {
+                            "half_life": hl,
+                            "dhalf_life": dhl,
+                            "slope": slope,
+                            "dslope": dslope,
+                            "intercept": intercept,
+                            "dintercept": dintercept,
+                        }
+                    )
+            if run_results:
+                hier_out = fit_hierarchical_runs(run_results)
+                with open(args.hierarchical_summary, "w", encoding="utf-8") as f:
+                    json.dump(hier_out, f, indent=4)
+        except Exception as e:
+            print(f"WARNING: hierarchical fit failed -> {e}")
 
     print(f"Analysis complete. Results written to -> {out_dir}")
 
