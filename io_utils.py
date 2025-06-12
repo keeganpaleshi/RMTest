@@ -10,6 +10,34 @@ from constants import load_nuclide_overrides
 import numpy as np
 from utils import to_native
 
+
+def extract_time_series_events(events, cfg):
+    """Slice events for time-series fits based on isotope windows.
+
+    Parameters
+    ----------
+    events : pandas.DataFrame
+        Event data with ``timestamp`` and ``energy_MeV`` columns.
+    cfg : dict
+        Configuration containing ``time_fit`` settings.
+
+    Returns
+    -------
+    dict
+        Mapping of isotope name to ``numpy.ndarray`` of timestamps.
+    """
+
+    ts_cfg = cfg.get("time_fit", {})
+    out = {}
+    for iso in ("Po214", "Po218", "Po210"):
+        win = ts_cfg.get(f"window_{iso}")
+        if win is None:
+            continue
+        lo, hi = win
+        mask = (events["energy_MeV"] >= lo) & (events["energy_MeV"] <= hi)
+        out[iso] = events.loc[mask, "timestamp"].values.astype(float)
+    return out
+
 logger = logging.getLogger(__name__)
 
 
