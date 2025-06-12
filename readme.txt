@@ -477,3 +477,7 @@ scripts/setup_tests.sh
 pytest -v
 ```
 
+
+## Hierarchical Analysis
+
+Use `hierarchical.py` to perform Bayesian hierarchical inference across multiple runs. The function `fit_hierarchical_runs` pools measurements of the half-life and calibration constants. It returns posterior means, standard deviations and 95% credible intervals for the global parameters.
