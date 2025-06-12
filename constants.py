@@ -5,9 +5,6 @@
 _TAU_MIN = 1e-6
 
 
-    # Ensure the class body isn't empty for Python's parser
-    pass
-
 from dataclasses import dataclass, replace
 from typing import Mapping, Any
 
