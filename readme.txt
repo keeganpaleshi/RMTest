@@ -37,7 +37,8 @@ python analyze.py --config config.json --input merged_data.csv \
     [--settle-s SEC] [--debug] [--seed SEED] \
     [--ambient-file amb.txt (time conc)] [--ambient-concentration 0.1] \
     [--burst-mode rate] \
-    [--time-bin-mode fixed --time-bin-width 3600] [--dump-ts-json]
+    [--time-bin-mode fixed --time-bin-width 3600] [--dump-ts-json] \
+    [--hierarchical-summary OUT.json]
 ```
 
 ## Input CSV Format
@@ -235,7 +236,8 @@ apply a linear ADC drift correction, `--analysis-end-time` and
 `--spike-end-time` to clip the dataset, one or more `--spike-period`
 options to exclude specific time windows, `--settle-s` to skip the
 initial settling period in the decay fit, `--seed` to set the random
-seed used by the analysis and `--debug` to increase log verbosity.
+seed used by the analysis, `--hierarchical-summary PATH` to produce a
+Bayesian combination across runs and `--debug` to increase log verbosity.
 The half-lives used in the decay fit can also be changed with
 `--hl-po214` and `--hl-po218`.
 
@@ -480,4 +482,4 @@ pytest -v
 
 ## Hierarchical Analysis
 
-Use `hierarchical.py` to perform Bayesian hierarchical inference across multiple runs. The function `fit_hierarchical_runs` pools measurements of the half-life and calibration constants. It returns posterior means, standard deviations and 95% credible intervals for the global parameters.
+Use `hierarchical.py` to perform Bayesian hierarchical inference across multiple runs. The function `fit_hierarchical_runs` pools measurements of the half-life and calibration constants. It returns posterior means, standard deviations and 95% credible intervals for the global parameters. Running `analyze.py` with `--hierarchical-summary result.json` collects the half-life and calibration outputs from all `summary.json` files under the chosen output directory and writes the combined fit to `result.json`.
