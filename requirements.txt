@@ -4,3 +4,4 @@ matplotlib>=3.3
 pytest>=6.0
 pandas>=1.2
 iminuit>=2.0
+pymc
