@@ -5,6 +5,7 @@ import json
 import logging
 from datetime import datetime
 import pandas as pd
+from constants import load_nuclide_overrides
 
 import numpy as np
 from utils import to_native
@@ -31,6 +32,8 @@ def load_config(config_path):
 
     with open(path, "r", encoding="utf-8") as f:
         cfg = json.load(f)
+
+    cfg["nuclide_constants"] = load_nuclide_overrides(cfg)
 
     # Basic validation: check for required keys within each section
     required_structure = {
