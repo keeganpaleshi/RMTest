@@ -7,11 +7,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import datetime
+from constants import PO214, PO218
 from color_schemes import COLOR_SCHEMES
 
+
 # Half-life constants used for the time-series overlay [seconds]
-PO214_HALF_LIFE_S = 1.64e-4  # 164 µs
-PO218_HALF_LIFE_S = 183.0    # ~3.05 minutes
+PO214_HALF_LIFE_S = PO214.half_life_s
+PO218_HALF_LIFE_S = PO218.half_life_s
 
 __all__ = [
     "plot_time_series",
