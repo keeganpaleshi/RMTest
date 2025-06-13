@@ -131,6 +131,7 @@ def radon_activity_curve(
     N0: float,
     dN0: float,
     half_life_s: float,
+    cov_en0: float = 0.0,
 ) -> Tuple["np.ndarray", "np.ndarray"]:
     """Activity over time from fitted decay parameters.
 
@@ -148,6 +149,9 @@ def radon_activity_curve(
         Uncertainty on ``N0``.
     half_life_s : float
         Half-life used for the decay model.
+    cov_en0 : float, optional
+        Covariance between ``E`` and ``N0``.  If omitted the covariance is
+        assumed to be zero.
 
     Returns
     -------
@@ -168,7 +172,11 @@ def radon_activity_curve(
 
     dA_dE = 1.0 - exp_term
     dA_dN0 = lam * exp_term
-    variance = (dA_dE * dE) ** 2 + (dA_dN0 * dN0) ** 2
+    variance = (
+        (dA_dE * dE) ** 2
+        + (dA_dN0 * dN0) ** 2
+        + 2.0 * dA_dE * dA_dN0 * cov_en0
+    )
     sigma = np.sqrt(variance)
     return activity, sigma
 
@@ -181,11 +189,13 @@ def radon_delta(
     N0: float,
     dN0: float,
     half_life_s: float,
+    cov_en0: float = 0.0,
 ) -> Tuple[float, float]:
     """Change in activity between two times.
 
     Parameters are identical to :func:`radon_activity_curve` with ``t_start``
-    and ``t_end`` specifying the relative times in seconds.
+    and ``t_end`` specifying the relative times in seconds. ``cov_en0``
+    represents the covariance between ``E`` and ``N0`` and defaults to zero.
     """
 
     if half_life_s <= 0:
@@ -199,6 +209,10 @@ def radon_delta(
 
     d_delta_dE = exp1 - exp2
     d_delta_dN0 = lam * (exp2 - exp1)
-    variance = (d_delta_dE * dE) ** 2 + (d_delta_dN0 * dN0) ** 2
+    variance = (
+        (d_delta_dE * dE) ** 2
+        + (d_delta_dN0 * dN0) ** 2
+        + 2.0 * d_delta_dE * d_delta_dN0 * cov_en0
+    )
     sigma = math.sqrt(variance)
     return delta, sigma
