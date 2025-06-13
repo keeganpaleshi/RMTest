@@ -38,15 +38,7 @@ def test_load_config(tmp_path):
             "baseline_range": None,
             "cl_level": 0.95,
         },
-        "systematics": {
-            "enable": False,
-            "sigma_shifts": {
-                "slope": 0.05,
-                "intercept": 0.05,
-                "eff_po214": 0.1,
-                "eff_po218": 0.1,
-            },
-        },
+        "systematics": {"enable": False},
         "pipeline": {"log_level": "INFO"},
         "spectral_fit": {
             "expected_peaks": {"Po210": 1250, "Po218": 1400, "Po214": 1800}
