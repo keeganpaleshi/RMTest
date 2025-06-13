@@ -8,6 +8,7 @@ import logging
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
 from fitting import FitResult
+from constants import PO210
 
 
 def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
@@ -1891,6 +1892,103 @@ def test_hl_po210_default_used(tmp_path, monkeypatch):
     analyze.main()
 
     assert "hl_Po210" not in received["config"]
+
+
+def test_radon_interval_defaults_po210_half_life(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {
+            "do_time_fit": True,
+            "window_Po214": [7.5, 8.0],
+            "eff_Po214": [1.0, 0.0],
+            "flags": {},
+        },
+        "analysis": {
+            "radon_interval": ["1970-01-01T00:00:00Z", "1970-01-01T00:00:10Z"]
+        },
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+
+    cfg_path = tmp_path / "cfg.json"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    df = pd.DataFrame({
+        "fUniqueID": [1],
+        "fBits": [0],
+        "timestamp": [0.0],
+        "adc": [8.0],
+        "fchannel": [1],
+    })
+    data_path = tmp_path / "d.csv"
+    df.to_csv(data_path, index=False)
+
+    captured_cfg = {}
+    orig_load = analyze.load_config
+
+    def fake_load_config(path):
+        cfg = orig_load(path)
+        captured_cfg["cfg"] = cfg
+        cfg.setdefault("time_fit", {})["hl_Po214"] = [1.0, 0.0]
+        return cfg
+
+    monkeypatch.setattr(analyze, "load_config", fake_load_config)
+
+    monkeypatch.setattr(
+        analyze,
+        "derive_calibration_constants",
+        lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)},
+    )
+    monkeypatch.setattr(
+        analyze,
+        "derive_calibration_constants_auto",
+        lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)},
+    )
+
+    def fake_fit_time_series(*args, **kwargs):
+        params = {
+            "E_Po214": 0.0,
+            "dE_Po214": 0.0,
+            "N0_Po214": 0.0,
+            "dN0_Po214": 0.0,
+        }
+        captured_cfg.get("cfg", {}).get("time_fit", {}).pop("hl_Po214", None)
+        return FitResult(params, np.zeros((4, 4)), 0)
+
+    monkeypatch.setattr(analyze, "fit_time_series", fake_fit_time_series)
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
+
+    import radon_activity
+
+    captured = {}
+
+    def fake_radon_delta(*args, **kwargs):
+        captured["hl"] = args[6]
+        return 0.0, 0.0
+
+    monkeypatch.setattr(radon_activity, "radon_delta", fake_radon_delta)
+    monkeypatch.setattr(radon_activity, "compute_radon_activity", lambda *a, **k: (0.0, 0.0))
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+
+    analyze.main()
+
+    assert captured.get("hl") == PO210.half_life_s
 
 
 

@@ -74,7 +74,7 @@ from calibration import derive_calibration_constants, derive_calibration_constan
 
 from fitting import fit_spectrum, fit_time_series, FitResult
 
-from constants import DEFAULT_NOISE_CUTOFF, RN222
+from constants import DEFAULT_NOISE_CUTOFF, PO210
 
 from plot_utils import (
     plot_spectrum,
@@ -1348,7 +1348,7 @@ def main():
             N0 = fit.get("N0_Po214", 0.0)
             dN0 = fit.get("dN0_Po214", 0.0)
             default_rn = (
-                cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+                cfg.get("nuclide_constants", {}).get("Po210", PO210).half_life_s
             )
             hl = cfg.get("time_fit", {}).get("hl_Po214", [default_rn])[0]
             cov = _cov_entry(fit_result, "E_Po214", "N0_Po214")
@@ -1372,7 +1372,7 @@ def main():
             N0 = fit.get("N0_Po218", 0.0)
             dN0 = fit.get("dN0_Po218", 0.0)
             default_rn = (
-                cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+                cfg.get("nuclide_constants", {}).get("Po210", PO210).half_life_s
             )
             hl = cfg.get("time_fit", {}).get("hl_Po218", [default_rn])[0]
             cov = _cov_entry(fit_result, "E_Po218", "N0_Po218")
@@ -1538,7 +1538,7 @@ def main():
             N0 = fit.get("N0_Po214", 0.0)
             dN0 = fit.get("dN0_Po214", 0.0)
             default_rn = (
-                cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+                cfg.get("nuclide_constants", {}).get("Po210", PO210).half_life_s
             )
             hl = cfg.get("time_fit", {}).get("hl_Po214", [default_rn])[0]
             cov = _cov_entry(fit_result, "E_Po214", "N0_Po214")
@@ -1560,7 +1560,7 @@ def main():
             N0 = fit.get("N0_Po218", 0.0)
             dN0 = fit.get("dN0_Po218", 0.0)
             default_rn = (
-                cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+                cfg.get("nuclide_constants", {}).get("Po210", PO210).half_life_s
             )
             hl = cfg.get("time_fit", {}).get("hl_Po218", [default_rn])[0]
             cov = _cov_entry(fit_result, "E_Po218", "N0_Po218")
@@ -1612,7 +1612,7 @@ def main():
                 N0214 = fit.get("N0_Po214", 0.0)
                 dN0214 = fit.get("dN0_Po214", 0.0)
                 default_rn = (
-                    cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+                    cfg.get("nuclide_constants", {}).get("Po210", PO210).half_life_s
                 )
                 hl214 = cfg.get("time_fit", {}).get("hl_Po214", [default_rn])[0]
                 cov214 = _cov_entry(fit_result, "E_Po214", "N0_Po214")
@@ -1628,7 +1628,7 @@ def main():
                 N0218 = fit.get("N0_Po218", 0.0)
                 dN0218 = fit.get("dN0_Po218", 0.0)
                 default_rn = (
-                    cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+                    cfg.get("nuclide_constants", {}).get("Po210", PO210).half_life_s
                 )
                 hl218 = cfg.get("time_fit", {}).get("hl_Po218", [default_rn])[0]
                 cov218 = _cov_entry(fit_result, "E_Po218", "N0_Po218")
