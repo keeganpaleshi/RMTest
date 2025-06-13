@@ -114,6 +114,8 @@ default is `400`.  Set it to `null` to skip the cut entirely.  The
 `analyze.py` pipeline applies this filter right after loading the event
 CSV.
 
+The command-line option `--noise-cutoff` overrides this value if set.
+
 Example snippet:
 
 ```json
@@ -379,6 +381,9 @@ an assay. Configuration must define three keys under `baseline`:
 - `baseline.range` – list of two ISO‑8601 timestamps selecting the baseline interval.
 - `monitor_volume_l` – internal volume of the radon monitor in liters.
 - `sample_volume_l` – volume of the assay sample in liters.
+
+Passing `--baseline_range START END` on the command line overrides
+`baseline.range` in the configuration.
 
 Events collected during the baseline period are counted in the Po‑214 and
 Po‑218 windows. The counts are converted directly into a decay rate in
