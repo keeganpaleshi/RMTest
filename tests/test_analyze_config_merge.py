@@ -559,6 +559,62 @@ def test_spike_count_cli(tmp_path, monkeypatch):
     assert saved["summary"]["efficiency"]["sources"]["spike"]["error"] == 2.0
 
 
+def test_spike_count_single_call(tmp_path, monkeypatch):
+    """calc_spike_efficiency should only run once when --spike-count is used."""
+
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {"do_time_fit": False},
+        "systematics": {"enable": False},
+        "efficiency": {"spike": {"activity_bq": 5, "live_time_s": 100}},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    cfg_path = tmp_path / "cfg.json"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    data_path = tmp_path / "d.csv"
+    df.to_csv(data_path, index=False)
+
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0)})
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0)})
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+
+    import efficiency
+
+    calls = []
+
+    def fake_spike(cnt, act, live):
+        calls.append((cnt, act, live))
+        return 0.1
+
+    monkeypatch.setattr(efficiency, "calc_spike_efficiency", fake_spike)
+
+    analyze._spike_eff_cache.clear()
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+        "--spike-count",
+        "42",
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+
+    analyze.main()
+
+    assert len(calls) == 1
+
+
 def test_assay_efficiency_list(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},
@@ -690,6 +746,8 @@ def test_spike_efficiency_list(tmp_path, monkeypatch):
     monkeypatch.setattr(efficiency, "calc_assay_efficiency", lambda *a, **k: 0.1)
     monkeypatch.setattr(efficiency, "calc_decay_efficiency", lambda *a, **k: 0.1)
     monkeypatch.setattr(efficiency, "blue_combine", fake_blue)
+
+    analyze._spike_eff_cache.clear()
 
     saved = {}
 
