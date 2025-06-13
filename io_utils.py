@@ -75,6 +75,61 @@ CONFIG_SCHEMA = {
             "properties": {"plot_save_formats": {"type": "array"}},
             "required": ["plot_save_formats"],
         },
+        "baseline": {
+            "type": "object",
+            "properties": {
+                "range": {"type": "array", "items": {"type": ["string", "number"]}, "minItems": 2, "maxItems": 2},
+                "monitor_volume_l": {"type": "number", "minimum": 0},
+                "sample_volume_l": {"type": "number", "minimum": 0},
+            },
+        },
+        "burst_filter": {
+            "type": "object",
+            "properties": {
+                "burst_mode": {"type": "string"},
+                "burst_window_size_s": {"type": "number", "minimum": 0},
+                "rolling_median_window": {"type": "number", "minimum": 0},
+                "burst_multiplier": {"type": "number", "minimum": 0},
+                "micro_window_size_s": {"type": "number", "minimum": 0},
+                "micro_count_threshold": {"type": "number", "minimum": 0},
+            },
+        },
+        "calibration": {
+            "type": "object",
+            "properties": {
+                "method": {"type": "string"},
+                "noise_cutoff": {"type": "number", "minimum": 0},
+                "hist_bins": {"type": "integer", "minimum": 1},
+                "peak_search_radius": {"type": "number", "minimum": 0},
+                "peak_prominence": {"type": "number", "minimum": 0},
+                "peak_width": {"type": "number", "minimum": 0},
+                "nominal_adc": {"type": "object"},
+                "fit_window_adc": {"type": "number", "minimum": 0},
+                "use_emg": {"type": "boolean"},
+                "init_sigma_adc": {"type": "number", "minimum": 0},
+                "init_tau_adc": {"type": "number", "minimum": 0},
+                "sanity_tolerance_mev": {"type": "number", "minimum": 0},
+                "known_energies": {"type": "object"},
+            },
+        },
+        "analysis": {
+            "type": "object",
+            "properties": {
+                "analysis_start_time": {"type": ["string", "number", "null"]},
+                "analysis_end_time": {"type": ["string", "number", "null"]},
+                "spike_end_time": {"type": ["string", "number", "null"]},
+                "spike_periods": {
+                    "type": ["array", "null"],
+                    "items": {"type": "array", "items": {"type": ["string", "number"]}, "minItems": 2, "maxItems": 2},
+                },
+                "run_periods": {
+                    "type": "array",
+                    "items": {"type": "array", "items": {"type": ["string", "number"]}, "minItems": 2, "maxItems": 2},
+                },
+                "radon_interval": {"type": "array", "items": {"type": ["string", "number"]}, "minItems": 2, "maxItems": 2},
+                "ambient_concentration": {"type": ["number", "null"]},
+            },
+        },
     },
     "required": [
         "pipeline",

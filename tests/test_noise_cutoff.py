@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 import pandas as pd
 import logging
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
@@ -140,9 +141,5 @@ def test_invalid_noise_cutoff_skips_cut(tmp_path, monkeypatch, caplog):
         "--output_dir", str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
-    with caplog.at_level(logging.WARNING):
+    with pytest.raises(SystemExit):
         analyze.main()
-
-    assert captured.get("times") == [1.0, 2.0]
-    assert "Invalid noise_cutoff" in caplog.text
-    assert captured["summary"]["noise_cut"]["removed_events"] == 0

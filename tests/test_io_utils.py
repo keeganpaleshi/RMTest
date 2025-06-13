@@ -316,3 +316,35 @@ def test_load_config_invalid_half_life(tmp_path):
     with pytest.raises(jsonschema.exceptions.ValidationError):
         load_config(p)
 
+
+def test_load_config_invalid_baseline(tmp_path):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "baseline": {"monitor_volume_l": -1, "sample_volume_l": 0.0},
+        "spectral_fit": {"expected_peaks": {"Po210": 1}},
+        "time_fit": {"do_time_fit": True},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    p = tmp_path / "cfg.json"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+    with pytest.raises(jsonschema.exceptions.ValidationError):
+        load_config(p)
+
+
+def test_load_config_invalid_burst_filter(tmp_path):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "burst_filter": {"burst_window_size_s": -5},
+        "spectral_fit": {"expected_peaks": {"Po210": 1}},
+        "time_fit": {"do_time_fit": True},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    p = tmp_path / "cfg.json"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+    with pytest.raises(jsonschema.exceptions.ValidationError):
+        load_config(p)
+
