@@ -115,7 +115,7 @@ default is `400`.  Set it to `null` to skip the cut entirely.  The
 CSV.
 
 The command-line option `--noise-cutoff` overrides this value when
-provided.
+provided, replacing the configuration entry `calibration.noise_cutoff`.
 
 Example snippet:
 
@@ -395,8 +395,8 @@ Bq by dividing by the baseline live time and detection efficiency.  This
 rate is scaled by the dilution factor
 `monitor_volume_l / (monitor_volume_l + sample_volume_l)` before being
 subtracted from the fitted radon decay rate of the assay. The command-line
-option `--baseline_range` overrides `baseline.range` from the
-configuration when provided.
+option `--baseline_range START END` replaces the configuration entry
+`baseline.range` when provided.
 
 Example snippet:
 
