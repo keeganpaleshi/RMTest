@@ -1721,7 +1721,6 @@ def test_hl_po210_cli_overrides(tmp_path, monkeypatch):
         "time_fit": {
             "do_time_fit": True,
             "window_Po214": [0.0, 20.0],
-            "window_Po210": [5.0, 6.0],
             "window_Po218": [0.0, 20.0],
             "window_Po210": [5.2, 5.4],
             "hl_Po214": [1.0, 0.0],
