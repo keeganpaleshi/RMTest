@@ -115,7 +115,7 @@ default is `400`.  Set it to `null` to skip the cut entirely.  The
 CSV.
 
 The command-line option `--noise-cutoff` overrides this value when
-provided.
+provided, replacing the configuration entry `calibration.noise_cutoff`.
 
 Example snippet:
 
@@ -292,9 +292,6 @@ Example snippet:
 `dump_time_series_json` under `plotting` saves a `*_ts.json` file
 containing the binned time-series data when set to `true`.
 
-`scan_keys` in the `systematics` section selects which fit parameters
-are varied during the systematic uncertainty scan.  By default no
-parameters are scanned.
 
 `adc_drift_rate` under `systematics` applies a linear time-dependent
 shift to the raw ADC values before calibration.  The value is in ADC
@@ -395,8 +392,8 @@ Bq by dividing by the baseline live time and detection efficiency.  This
 rate is scaled by the dilution factor
 `monitor_volume_l / (monitor_volume_l + sample_volume_l)` before being
 subtracted from the fitted radon decay rate of the assay. The command-line
-option `--baseline_range` overrides `baseline.range` from the
-configuration when provided.
+option `--baseline_range START END` replaces the configuration entry
+`baseline.range` when provided.
 
 Example snippet:
 
@@ -417,11 +414,15 @@ python analyze.py --config assay.json --input run.csv --output_dir results \
 
 ## Utility Conversions
 
-`utils.py` provides simple helpers to convert count rates:
+`utils.py` provides simple helpers to convert count rates and to search for
+peak centroids:
 
 - `cps_to_cpd(rate_cps)` converts counts/s to counts/day.
 - `cps_to_bq(rate_cps, volume_liters=None)` returns the activity in Bq, or
   Bq/m^3 when a detector volume is supplied.
+- `find_adc_bin_peaks(adc_values, expected, window=50, prominence=0.0, width=None)`
+  histogramises the raw ADC spectrum, searches for maxima near each expected
+  centroid and returns a `{peak: adc_centroid}` mapping in ADC units.
 
 You can invoke these from the command line:
 

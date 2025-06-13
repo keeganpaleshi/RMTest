@@ -255,6 +255,7 @@ def parse_args():
         help=(
             "ADC threshold for the noise cut. Providing this option overrides "
             "`calibration.noise_cutoff` in config.json"
+
         ),
     )
     p.add_argument(
@@ -373,6 +374,13 @@ def main():
         print(f"ERROR: Could not load config '{args.config}': {e}")
         sys.exit(1)
 
+    def _log_override(section, key, new_val):
+        prev = cfg.get(section, {}).get(key)
+        if prev is not None and prev != new_val:
+            logging.info(
+                f"Overriding {section}.{key}={prev!r} with {new_val!r} from CLI"
+            )
+
     # Apply optional overrides from command-line arguments
     if args.efficiency_json:
         try:
@@ -395,26 +403,37 @@ def main():
             sys.exit(1)
 
     if args.seed is not None:
+        _log_override("pipeline", "random_seed", int(args.seed))
         cfg.setdefault("pipeline", {})["random_seed"] = int(args.seed)
 
     if args.ambient_concentration is not None:
+        _log_override(
+            "analysis",
+            "ambient_concentration",
+            float(args.ambient_concentration),
+        )
         cfg.setdefault("analysis", {})["ambient_concentration"] = float(
             args.ambient_concentration
         )
 
     if args.analysis_end_time is not None:
+        _log_override("analysis", "analysis_end_time", args.analysis_end_time)
         cfg.setdefault("analysis", {})["analysis_end_time"] = args.analysis_end_time
 
     if args.spike_end_time is not None:
+        _log_override("analysis", "spike_end_time", args.spike_end_time)
         cfg.setdefault("analysis", {})["spike_end_time"] = args.spike_end_time
 
     if args.spike_period:
+        _log_override("analysis", "spike_periods", args.spike_period)
         cfg.setdefault("analysis", {})["spike_periods"] = args.spike_period
 
     if args.run_period:
+        _log_override("analysis", "run_periods", args.run_period)
         cfg.setdefault("analysis", {})["run_periods"] = args.run_period
 
     if args.radon_interval:
+        _log_override("analysis", "radon_interval", args.radon_interval)
         cfg.setdefault("analysis", {})["radon_interval"] = args.radon_interval
 
     if args.hl_po214 is not None:
@@ -423,6 +442,7 @@ def main():
         current = tf.get("hl_Po214")
         if isinstance(current, list) and len(current) > 1:
             sig = current[1]
+        _log_override("time_fit", "hl_Po214", [float(args.hl_po214), sig])
         tf["hl_Po214"] = [float(args.hl_po214), sig]
 
     if args.hl_po218 is not None:
@@ -431,6 +451,7 @@ def main():
         current = tf.get("hl_Po218")
         if isinstance(current, list) and len(current) > 1:
             sig = current[1]
+        _log_override("time_fit", "hl_Po218", [float(args.hl_po218), sig])
         tf["hl_Po218"] = [float(args.hl_po218), sig]
 
     if args.hl_po210 is not None:
@@ -439,14 +460,8 @@ def main():
         current = tf.get("hl_Po210")
         if isinstance(current, list) and len(current) > 1:
             sig = current[1]
+        _log_override("time_fit", "hl_Po210", [float(args.hl_po210), sig])
         tf["hl_Po210"] = [float(args.hl_po210), sig]
-
-    def _log_override(section, key, new_val):
-        prev = cfg.get(section, {}).get(key)
-        if prev is not None and prev != new_val:
-            logging.info(
-                f"Overriding {section}.{key}={prev!r} with {new_val!r} from CLI"
-            )
 
     if args.time_bin_mode:
         _log_override("plotting", "plot_time_binning_mode", args.time_bin_mode)
@@ -471,6 +486,7 @@ def main():
             eff_sec["error"] = float(args.spike_count_err)
 
     if args.slope is not None:
+        _log_override("systematics", "adc_drift_rate", float(args.slope))
         cfg.setdefault("systematics", {})["adc_drift_rate"] = float(args.slope)
 
     if args.noise_cutoff is not None:

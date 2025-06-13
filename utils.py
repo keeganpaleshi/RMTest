@@ -88,12 +88,7 @@ def find_adc_bin_peaks(adc_values, expected, window=50, prominence=0.0, width=No
         mask = (centers >= lo) & (centers <= hi)
         if np.any(mask):
             idx_candidates = np.where(mask)[0]
-            if len(idx_candidates) == 0:
-                results[name] = float(guess)
-                continue
-
             candidate_peak_indices = [idx for idx in idx_candidates if idx in peak_indices]
-
             if not candidate_peak_indices:
                 # Default to candidate bin with the highest histogram count
                 best_idx = idx_candidates[np.argmax(hist[idx_candidates])]
