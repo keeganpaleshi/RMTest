@@ -129,6 +129,36 @@ def window_prob(E, sigma, lo, hi):
     return prob
 
 
+_spike_eff_cache = {}
+
+
+def get_spike_efficiency(cfg):
+    """Return spike efficiency calculated from ``cfg`` with caching."""
+    from efficiency import calc_spike_efficiency
+
+    eff_section = cfg.get("efficiency", {}).get("spike")
+    if eff_section is None:
+        return None
+
+    items = [eff_section] if isinstance(eff_section, dict) else list(eff_section)
+    results = []
+    for item in items:
+        key = (
+            item.get("counts"),
+            item.get("activity_bq"),
+            item.get("live_time_s"),
+        )
+        if key not in _spike_eff_cache:
+            try:
+                _spike_eff_cache[key] = calc_spike_efficiency(*key)
+            except Exception as e:
+                print(f"WARNING: Spike efficiency -> {e}")
+                _spike_eff_cache[key] = None
+        results.append(_spike_eff_cache[key])
+
+    return results[0] if isinstance(eff_section, dict) else results
+
+
 def parse_args():
     p = argparse.ArgumentParser(description="Full Radon Monitor Analysis Pipeline")
     p.add_argument(
@@ -1154,7 +1184,6 @@ def main():
     eff_cfg = cfg.get("efficiency", {})
     if eff_cfg:
         from efficiency import (
-            calc_spike_efficiency,
             calc_assay_efficiency,
             calc_decay_efficiency,
             blue_combine,
@@ -1167,17 +1196,13 @@ def main():
             scfg_raw = eff_cfg["spike"]
             scfg_list = [scfg_raw] if isinstance(scfg_raw, dict) else list(scfg_raw)
             for idx, scfg in enumerate(scfg_list, start=1):
-                try:
-                    val = calc_spike_efficiency(
-                        scfg["counts"], scfg["activity_bq"], scfg["live_time_s"]
-                    )
-                    err = float(scfg.get("error", 0.0))
-                    key = "spike" if isinstance(scfg_raw, dict) else f"spike_{idx}"
+                val = get_spike_efficiency({"efficiency": {"spike": scfg}})
+                err = float(scfg.get("error", 0.0))
+                key = "spike" if isinstance(scfg_raw, dict) else f"spike_{idx}"
+                if val is not None:
                     sources[key] = {"value": val, "error": err}
                     vals.append(val)
                     errs.append(err)
-                except Exception as e:
-                    print(f"WARNING: Spike efficiency -> {e}")
 
         if "assay" in eff_cfg:
             acfg = eff_cfg["assay"]
