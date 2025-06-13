@@ -1175,9 +1175,9 @@ def main():
                         t_end_global,
                         cfg_fit,
                     )
-                # Return the full fit result so scan_systematics can
-                # extract whichever parameter it needs.
-                return out
+                # Return only the parameter dictionary so scan_systematics
+                # works with a simple mapping.
+                return out.params
 
             try:
                 deltas, total_unc = scan_systematics(
