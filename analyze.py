@@ -74,7 +74,7 @@ from calibration import derive_calibration_constants, derive_calibration_constan
 
 from fitting import fit_spectrum, fit_time_series, FitResult
 
-from constants import DEFAULT_NOISE_CUTOFF, RN222
+from constants import DEFAULT_NOISE_CUTOFF, PO210
 
 from plot_utils import (
     plot_spectrum,
@@ -186,16 +186,13 @@ def parse_args():
         nargs=2,
         metavar=("TSTART", "TEND"),
         help=(
-            "Optional baseline-run interval overriding `baseline.range` in "
-            "config.json. Provide two values (either ISO strings or epoch "
-            "floats). If set, those events are extracted (same energy cuts) and "
-            "listed in `baseline` of the summary."
+            "Optional baseline-run interval. Providing this option overrides `baseline.range` in config.json. Provide two values (either ISO strings or epoch floats). If set, those events are extracted (same energy cuts) and listed in `baseline` of the summary."
         ),
     )
     p.add_argument(
         "--burst-mode",
         choices=["none", "micro", "rate", "both"],
-        help="Burst filtering mode to pass to apply_burst_filter (overrides config)",
+        help="Burst filtering mode to pass to apply_burst_filter. Providing this option overrides `burst_filter.burst_mode` in config.json",
     )
     p.add_argument(
         "--job-id",
@@ -221,43 +218,44 @@ def parse_args():
     )
     p.add_argument(
         "--analysis-end-time",
-        help="Ignore events occurring after this ISO timestamp",
+        help="Ignore events occurring after this ISO timestamp. Providing this option overrides `analysis.analysis_end_time` in config.json",
     )
     p.add_argument(
         "--spike-end-time",
-        help="Discard events before this ISO timestamp",
+        help="Discard events before this ISO timestamp. Providing this option overrides `analysis.spike_end_time` in config.json",
     )
     p.add_argument(
         "--spike-period",
         nargs=2,
         action="append",
         metavar=("START", "END"),
-        help="Discard events between START and END (can be given multiple times)",
+        help="Discard events between START and END (can be given multiple times). Providing this option overrides `analysis.spike_periods` in config.json",
     )
     p.add_argument(
         "--run-period",
         nargs=2,
         action="append",
         metavar=("START", "END"),
-        help="Keep events between START and END (can be given multiple times)",
+        help="Keep events between START and END (can be given multiple times). Providing this option overrides `analysis.run_periods` in config.json",
     )
     p.add_argument(
         "--radon-interval",
         nargs=2,
         metavar=("START", "END"),
-        help="Time interval to evaluate radon delta",
+        help="Time interval to evaluate radon delta. Providing this option overrides `analysis.radon_interval` in config.json",
     )
     p.add_argument(
         "--slope",
         type=float,
-        help="Apply a linear ADC drift correction with the given slope",
+        help="Apply a linear ADC drift correction with the given slope. Providing this option overrides `systematics.adc_drift_rate` in config.json",
     )
     p.add_argument(
         "--noise-cutoff",
         type=int,
         help=(
-            "ADC threshold for the noise cut. Overrides "
+            "ADC threshold for the noise cut. Providing this option overrides "
             "`calibration.noise_cutoff` in config.json"
+
         ),
     )
     p.add_argument(
@@ -268,28 +266,28 @@ def parse_args():
     p.add_argument(
         "--hl-po214",
         type=float,
-        help="Half-life to use for Po-214 in seconds",
+        help="Half-life to use for Po-214 in seconds. Providing this option overrides `time_fit.hl_Po214` in config.json",
     )
     p.add_argument(
         "--hl-po218",
         type=float,
-        help="Half-life to use for Po-218 in seconds",
+        help="Half-life to use for Po-218 in seconds. Providing this option overrides `time_fit.hl_Po218` in config.json",
     )
     p.add_argument(
         "--hl-po210",
         type=float,
-        help="Half-life to use for Po-210 in seconds",
+        help="Half-life to use for Po-210 in seconds. Providing this option overrides `time_fit.hl_Po210` in config.json",
     )
     p.add_argument(
         "--debug",
         action="store_true",
-        help="Enable debug logging",
+        help="Enable debug logging. Providing this option overrides `pipeline.log_level` in config.json",
     )
     p.add_argument(
         "--plot-time-binning-mode",
         dest="time_bin_mode",
         choices=["auto", "fd", "fixed"],
-        help="Time-series binning mode (overrides plotting.plot_time_binning_mode)",
+        help="Time-series binning mode. Providing this option overrides `plotting.plot_time_binning_mode` in config.json",
     )
     p.add_argument(
         "--time-bin-mode",
@@ -301,7 +299,7 @@ def parse_args():
         "--plot-time-bin-width",
         dest="time_bin_width",
         type=float,
-        help="Fixed time bin width in seconds (overrides plotting.plot_time_bin_width_s)",
+        help="Fixed time bin width in seconds. Providing this option overrides `plotting.plot_time_bin_width_s` in config.json",
     )
     p.add_argument(
         "--time-bin-width",
@@ -321,16 +319,16 @@ def parse_args():
     p.add_argument(
         "--ambient-concentration",
         type=float,
-        help="Ambient radon concentration in Bq per liter for equivalent air plot",
+        help="Ambient radon concentration in Bq per liter for equivalent air plot. Providing this option overrides `analysis.ambient_concentration` in config.json",
     )
     p.add_argument(
         "--seed",
         type=int,
-        help="Override random seed used by analysis algorithms",
+        help="Override random seed used by analysis algorithms. Providing this option overrides `pipeline.random_seed` in config.json",
     )
     p.add_argument(
         "--palette",
-        help="Color palette for plots (overrides plotting.palette)",
+        help="Color palette for plots. Providing this option overrides `plotting.palette` in config.json",
     )
     p.add_argument(
         "--hierarchical-summary",
@@ -376,6 +374,13 @@ def main():
         print(f"ERROR: Could not load config '{args.config}': {e}")
         sys.exit(1)
 
+    def _log_override(section, key, new_val):
+        prev = cfg.get(section, {}).get(key)
+        if prev is not None and prev != new_val:
+            logging.info(
+                f"Overriding {section}.{key}={prev!r} with {new_val!r} from CLI"
+            )
+
     # Apply optional overrides from command-line arguments
     if args.efficiency_json:
         try:
@@ -398,26 +403,37 @@ def main():
             sys.exit(1)
 
     if args.seed is not None:
+        _log_override("pipeline", "random_seed", int(args.seed))
         cfg.setdefault("pipeline", {})["random_seed"] = int(args.seed)
 
     if args.ambient_concentration is not None:
+        _log_override(
+            "analysis",
+            "ambient_concentration",
+            float(args.ambient_concentration),
+        )
         cfg.setdefault("analysis", {})["ambient_concentration"] = float(
             args.ambient_concentration
         )
 
     if args.analysis_end_time is not None:
+        _log_override("analysis", "analysis_end_time", args.analysis_end_time)
         cfg.setdefault("analysis", {})["analysis_end_time"] = args.analysis_end_time
 
     if args.spike_end_time is not None:
+        _log_override("analysis", "spike_end_time", args.spike_end_time)
         cfg.setdefault("analysis", {})["spike_end_time"] = args.spike_end_time
 
     if args.spike_period:
+        _log_override("analysis", "spike_periods", args.spike_period)
         cfg.setdefault("analysis", {})["spike_periods"] = args.spike_period
 
     if args.run_period:
+        _log_override("analysis", "run_periods", args.run_period)
         cfg.setdefault("analysis", {})["run_periods"] = args.run_period
 
     if args.radon_interval:
+        _log_override("analysis", "radon_interval", args.radon_interval)
         cfg.setdefault("analysis", {})["radon_interval"] = args.radon_interval
 
     if args.hl_po214 is not None:
@@ -426,6 +442,7 @@ def main():
         current = tf.get("hl_Po214")
         if isinstance(current, list) and len(current) > 1:
             sig = current[1]
+        _log_override("time_fit", "hl_Po214", [float(args.hl_po214), sig])
         tf["hl_Po214"] = [float(args.hl_po214), sig]
 
     if args.hl_po218 is not None:
@@ -434,6 +451,7 @@ def main():
         current = tf.get("hl_Po218")
         if isinstance(current, list) and len(current) > 1:
             sig = current[1]
+        _log_override("time_fit", "hl_Po218", [float(args.hl_po218), sig])
         tf["hl_Po218"] = [float(args.hl_po218), sig]
 
     if args.hl_po210 is not None:
@@ -442,14 +460,8 @@ def main():
         current = tf.get("hl_Po210")
         if isinstance(current, list) and len(current) > 1:
             sig = current[1]
+        _log_override("time_fit", "hl_Po210", [float(args.hl_po210), sig])
         tf["hl_Po210"] = [float(args.hl_po210), sig]
-
-    def _log_override(section, key, new_val):
-        prev = cfg.get(section, {}).get(key)
-        if prev is not None and prev != new_val:
-            logging.info(
-                f"Overriding {section}.{key}={prev!r} with {new_val!r} from CLI"
-            )
 
     if args.time_bin_mode:
         _log_override("plotting", "plot_time_binning_mode", args.time_bin_mode)
@@ -474,6 +486,7 @@ def main():
             eff_sec["error"] = float(args.spike_count_err)
 
     if args.slope is not None:
+        _log_override("systematics", "adc_drift_rate", float(args.slope))
         cfg.setdefault("systematics", {})["adc_drift_rate"] = float(args.slope)
 
     if args.noise_cutoff is not None:
@@ -1118,14 +1131,17 @@ def main():
     systematics_results = {}
     if cfg.get("systematics", {}).get("enable", False):
         sys_cfg = cfg.get("systematics", {})
-        sigma_dict = {}
-        for name in ("sigma_E_frac", "tail_fraction", "energy_shift_keV"):
-            if name in sys_cfg:
-                sigma_dict[name] = sys_cfg[name]
 
         for iso, fit_out in time_fit_results.items():
             if not fit_out:
                 continue
+
+            sigma_dict = {}
+            for name in ("sigma_E_frac", "tail_fraction", "energy_shift_keV"):
+                if name in sys_cfg:
+                    base = name.replace("_frac", "").replace("_keV", "")
+                    if base in priors_time_all.get(iso, {}):
+                        sigma_dict[name] = sys_cfg[name]
 
             # Build a wrapper to re‐run fit_time_series with modified priors
             def fit_wrapper(priors_mod):
@@ -1175,9 +1191,9 @@ def main():
                         t_end_global,
                         cfg_fit,
                     )
-                # Return the full fit result so scan_systematics can
-                # extract whichever parameter it needs.
-                return out
+                # Return only the parameter dictionary so scan_systematics
+                # works with a simple mapping.
+                return out.params
 
             try:
                 deltas, total_unc = scan_systematics(
@@ -1347,10 +1363,9 @@ def main():
             dE = fit.get("dE_Po214", 0.0)
             N0 = fit.get("N0_Po214", 0.0)
             dN0 = fit.get("dN0_Po214", 0.0)
-            default_rn = (
-                cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
-            )
-            hl = cfg.get("time_fit", {}).get("hl_Po214", [default_rn])[0]
+            default_const = cfg.get("nuclide_constants", {})
+            default_hl = default_const.get("Po210", PO210).half_life_s
+            hl = cfg.get("time_fit", {}).get("hl_Po214", [default_hl])[0]
             cov = _cov_entry(fit_result, "E_Po214", "N0_Po214")
             delta214, err_delta214 = radon_delta(
                 t_start_rel,
@@ -1371,10 +1386,9 @@ def main():
             dE = fit.get("dE_Po218", 0.0)
             N0 = fit.get("N0_Po218", 0.0)
             dN0 = fit.get("dN0_Po218", 0.0)
-            default_rn = (
-                cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
-            )
-            hl = cfg.get("time_fit", {}).get("hl_Po218", [default_rn])[0]
+            default_const = cfg.get("nuclide_constants", {})
+            default_hl = default_const.get("Po210", PO210).half_life_s
+            hl = cfg.get("time_fit", {}).get("hl_Po218", [default_hl])[0]
             cov = _cov_entry(fit_result, "E_Po218", "N0_Po218")
             delta218, err_delta218 = radon_delta(
                 t_start_rel,
@@ -1537,10 +1551,9 @@ def main():
             dE = fit.get("dE_Po214", 0.0)
             N0 = fit.get("N0_Po214", 0.0)
             dN0 = fit.get("dN0_Po214", 0.0)
-            default_rn = (
-                cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
-            )
-            hl = cfg.get("time_fit", {}).get("hl_Po214", [default_rn])[0]
+            default_const = cfg.get("nuclide_constants", {})
+            default_hl = default_const.get("Po210", PO210).half_life_s
+            hl = cfg.get("time_fit", {}).get("hl_Po214", [default_hl])[0]
             cov = _cov_entry(fit_result, "E_Po214", "N0_Po214")
             A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
             plot_radon_activity(
@@ -1559,10 +1572,9 @@ def main():
             dE = fit.get("dE_Po218", 0.0)
             N0 = fit.get("N0_Po218", 0.0)
             dN0 = fit.get("dN0_Po218", 0.0)
-            default_rn = (
-                cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
-            )
-            hl = cfg.get("time_fit", {}).get("hl_Po218", [default_rn])[0]
+            default_const = cfg.get("nuclide_constants", {})
+            default_hl = default_const.get("Po210", PO210).half_life_s
+            hl = cfg.get("time_fit", {}).get("hl_Po218", [default_hl])[0]
             cov = _cov_entry(fit_result, "E_Po218", "N0_Po218")
             A218, dA218 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
 
@@ -1611,10 +1623,9 @@ def main():
                 dE214 = fit.get("dE_Po214", 0.0)
                 N0214 = fit.get("N0_Po214", 0.0)
                 dN0214 = fit.get("dN0_Po214", 0.0)
-                default_rn = (
-                    cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
-                )
-                hl214 = cfg.get("time_fit", {}).get("hl_Po214", [default_rn])[0]
+                default_const = cfg.get("nuclide_constants", {})
+                default_hl = default_const.get("Po210", PO210).half_life_s
+                hl214 = cfg.get("time_fit", {}).get("hl_Po214", [default_hl])[0]
                 cov214 = _cov_entry(fit_result, "E_Po214", "N0_Po214")
                 A214_tr, _ = radon_activity_curve(
                     rel_trend, E214, dE214, N0214, dN0214, hl214, cov214
@@ -1627,10 +1638,9 @@ def main():
                 dE218 = fit.get("dE_Po218", 0.0)
                 N0218 = fit.get("N0_Po218", 0.0)
                 dN0218 = fit.get("dN0_Po218", 0.0)
-                default_rn = (
-                    cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
-                )
-                hl218 = cfg.get("time_fit", {}).get("hl_Po218", [default_rn])[0]
+                default_const = cfg.get("nuclide_constants", {})
+                default_hl = default_const.get("Po210", PO210).half_life_s
+                hl218 = cfg.get("time_fit", {}).get("hl_Po218", [default_hl])[0]
                 cov218 = _cov_entry(fit_result, "E_Po218", "N0_Po218")
                 A218_tr, _ = radon_activity_curve(
                     rel_trend, E218, dE218, N0218, dN0218, hl218, cov218
