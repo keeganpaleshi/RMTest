@@ -186,16 +186,13 @@ def parse_args():
         nargs=2,
         metavar=("TSTART", "TEND"),
         help=(
-            "Extract baseline events in the given time range. "
-            "Providing this option replaces `baseline.range` from config.json. "
-            "Give two values (ISO strings or epoch floats). If set, those events "
-            "are extracted (same energy cuts) and listed in `baseline` of the summary."
+            "Optional baseline-run interval. Providing this option overrides `baseline.range` in config.json. Provide two values (either ISO strings or epoch floats). If set, those events are extracted (same energy cuts) and listed in `baseline` of the summary."
         ),
     )
     p.add_argument(
         "--burst-mode",
         choices=["none", "micro", "rate", "both"],
-        help="Burst filtering mode to pass to apply_burst_filter (overrides config)",
+        help="Burst filtering mode to pass to apply_burst_filter. Providing this option overrides `burst_filter.burst_mode` in config.json",
     )
     p.add_argument(
         "--job-id",
@@ -221,43 +218,44 @@ def parse_args():
     )
     p.add_argument(
         "--analysis-end-time",
-        help="Ignore events occurring after this ISO timestamp",
+        help="Ignore events occurring after this ISO timestamp. Providing this option overrides `analysis.analysis_end_time` in config.json",
     )
     p.add_argument(
         "--spike-end-time",
-        help="Discard events before this ISO timestamp",
+        help="Discard events before this ISO timestamp. Providing this option overrides `analysis.spike_end_time` in config.json",
     )
     p.add_argument(
         "--spike-period",
         nargs=2,
         action="append",
         metavar=("START", "END"),
-        help="Discard events between START and END (can be given multiple times)",
+        help="Discard events between START and END (can be given multiple times). Providing this option overrides `analysis.spike_periods` in config.json",
     )
     p.add_argument(
         "--run-period",
         nargs=2,
         action="append",
         metavar=("START", "END"),
-        help="Keep events between START and END (can be given multiple times)",
+        help="Keep events between START and END (can be given multiple times). Providing this option overrides `analysis.run_periods` in config.json",
     )
     p.add_argument(
         "--radon-interval",
         nargs=2,
         metavar=("START", "END"),
-        help="Time interval to evaluate radon delta",
+        help="Time interval to evaluate radon delta. Providing this option overrides `analysis.radon_interval` in config.json",
     )
     p.add_argument(
         "--slope",
         type=float,
-        help="Apply a linear ADC drift correction with the given slope",
+        help="Apply a linear ADC drift correction with the given slope. Providing this option overrides `systematics.adc_drift_rate` in config.json",
     )
     p.add_argument(
         "--noise-cutoff",
         type=int,
         help=(
-            "ADC threshold for the noise cut. "
-            "CLI value overrides `calibration.noise_cutoff` in the configuration"
+            "ADC threshold for the noise cut. Providing this option overrides "
+            "`calibration.noise_cutoff` in config.json"
+
         ),
     )
     p.add_argument(
@@ -268,28 +266,28 @@ def parse_args():
     p.add_argument(
         "--hl-po214",
         type=float,
-        help="Half-life to use for Po-214 in seconds",
+        help="Half-life to use for Po-214 in seconds. Providing this option overrides `time_fit.hl_Po214` in config.json",
     )
     p.add_argument(
         "--hl-po218",
         type=float,
-        help="Half-life to use for Po-218 in seconds",
+        help="Half-life to use for Po-218 in seconds. Providing this option overrides `time_fit.hl_Po218` in config.json",
     )
     p.add_argument(
         "--hl-po210",
         type=float,
-        help="Half-life to use for Po-210 in seconds",
+        help="Half-life to use for Po-210 in seconds. Providing this option overrides `time_fit.hl_Po210` in config.json",
     )
     p.add_argument(
         "--debug",
         action="store_true",
-        help="Enable debug logging",
+        help="Enable debug logging. Providing this option overrides `pipeline.log_level` in config.json",
     )
     p.add_argument(
         "--plot-time-binning-mode",
         dest="time_bin_mode",
         choices=["auto", "fd", "fixed"],
-        help="Time-series binning mode (overrides plotting.plot_time_binning_mode)",
+        help="Time-series binning mode. Providing this option overrides `plotting.plot_time_binning_mode` in config.json",
     )
     p.add_argument(
         "--time-bin-mode",
@@ -301,7 +299,7 @@ def parse_args():
         "--plot-time-bin-width",
         dest="time_bin_width",
         type=float,
-        help="Fixed time bin width in seconds (overrides plotting.plot_time_bin_width_s)",
+        help="Fixed time bin width in seconds. Providing this option overrides `plotting.plot_time_bin_width_s` in config.json",
     )
     p.add_argument(
         "--time-bin-width",
@@ -321,16 +319,16 @@ def parse_args():
     p.add_argument(
         "--ambient-concentration",
         type=float,
-        help="Ambient radon concentration in Bq per liter for equivalent air plot",
+        help="Ambient radon concentration in Bq per liter for equivalent air plot. Providing this option overrides `analysis.ambient_concentration` in config.json",
     )
     p.add_argument(
         "--seed",
         type=int,
-        help="Override random seed used by analysis algorithms",
+        help="Override random seed used by analysis algorithms. Providing this option overrides `pipeline.random_seed` in config.json",
     )
     p.add_argument(
         "--palette",
-        help="Color palette for plots (overrides plotting.palette)",
+        help="Color palette for plots. Providing this option overrides `plotting.palette` in config.json",
     )
     p.add_argument(
         "--hierarchical-summary",
