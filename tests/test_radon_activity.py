@@ -252,3 +252,25 @@ def test_radon_delta_invalid_half_life():
         radon_delta(0.0, 2.0, 1.0, 0.1, 2.0, 0.2, 0.0)
     with pytest.raises(ValueError):
         radon_delta(0.0, 2.0, 1.0, 0.1, 2.0, 0.2, -5.0)
+
+
+def test_compute_radon_activity_three_isotopes_weighted():
+    a, s = compute_radon_activity(10.0, 1.0, 1.0, 12.0, 2.0, 1.0, 8.0, 1.5, 1.0)
+    w1 = 1 / 1.0**2
+    w2 = 1 / 2.0**2
+    w3 = 1 / 1.5**2
+    expected = (10.0 * w1 + 12.0 * w2 + 8.0 * w3) / (w1 + w2 + w3)
+    err = (1 / (w1 + w2 + w3)) ** 0.5
+    assert a == pytest.approx(expected)
+    assert s == pytest.approx(err)
+
+
+def test_compute_radon_activity_single_po210():
+    a, s = compute_radon_activity(None, None, 1.0, None, None, 1.0, 5.0, 0.2, 1.0)
+    assert a == pytest.approx(5.0)
+    assert s == pytest.approx(0.2)
+
+
+def test_compute_radon_activity_negative_eff210():
+    with pytest.raises(ValueError):
+        compute_radon_activity(None, None, 1.0, None, None, 1.0, 1.0, 0.1, -0.2)
