@@ -25,12 +25,14 @@ class NuclideConst:
 
 PO214 = NuclideConst(half_life_s=1.64e-4)
 PO218 = NuclideConst(half_life_s=183.0)
+PO210 = NuclideConst(half_life_s=138.376 * 24 * 3600)
 RN222 = NuclideConst(half_life_s=3.8 * 86400.0)
 
 
 _NUCLIDE_DEFAULTS = {
     "Po214": PO214,
     "Po218": PO218,
+    "Po210": PO210,
     "Rn222": RN222,
 }
 
@@ -47,15 +49,31 @@ def load_nuclide_overrides(cfg: dict | None) -> dict[str, NuclideConst]:
         return _NUCLIDE_DEFAULTS.copy()
 
     section = cfg.get("nuclides", {}) if isinstance(cfg, dict) else {}
+    tf = cfg.get("time_fit", {}) if isinstance(cfg, dict) else {}
 
     result: dict[str, NuclideConst] = {}
     for name, const in _NUCLIDE_DEFAULTS.items():
         override = section.get(name, {}) if isinstance(section, dict) else {}
         hl = override.get("half_life_s", const.half_life_s)
+        tf_key = f"hl_{name.lower()}"
+        if isinstance(tf, dict) and tf_key in tf:
+            val = tf[tf_key]
+            if isinstance(val, list):
+                if val:
+                    hl = val[0]
+            else:
+                hl = val
         qv = override.get("Q_value_MeV", const.Q_value_MeV)
         result[name] = NuclideConst(half_life_s=float(hl), Q_value_MeV=qv)
 
     return result
+
+
+def load_half_life_overrides(cfg: dict | None) -> dict[str, float]:
+    """Return half-life values with optional overrides from ``cfg``."""
+
+    consts = load_nuclide_overrides(cfg)
+    return {name: nc.half_life_s for name, nc in consts.items()}
 
 __all__ = [
     "_TAU_MIN",
@@ -65,6 +83,8 @@ __all__ = [
     "NuclideConst",
     "PO214",
     "PO218",
+    "PO210",
     "RN222",
     "load_nuclide_overrides",
+    "load_half_life_overrides",
 ]

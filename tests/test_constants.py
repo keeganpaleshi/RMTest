@@ -1,0 +1,20 @@
+import sys
+from pathlib import Path
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from constants import PO210, load_nuclide_overrides, load_half_life_overrides
+
+
+def test_po210_default():
+    assert PO210.half_life_s == pytest.approx(138.376 * 24 * 3600)
+
+
+def test_po210_override():
+    cfg = {"time_fit": {"hl_po210": [42.0]}}
+    consts = load_nuclide_overrides(cfg)
+    assert consts["Po210"].half_life_s == 42.0
+    hl = load_half_life_overrides(cfg)
+    assert hl["Po210"] == 42.0
+
