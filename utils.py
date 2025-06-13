@@ -5,7 +5,7 @@ from scipy.signal import find_peaks
 import math
 from dataclasses import is_dataclass, asdict
 
-__all__ = ["to_native", "find_adc_peaks", "cps_to_cpd", "cps_to_bq"]
+__all__ = ["to_native", "find_adc_bin_peaks", "cps_to_cpd", "cps_to_bq"]
 
 try:
     import pandas as pd
@@ -46,7 +46,7 @@ def to_native(obj):
     return obj
 
 
-def find_adc_peaks(adc_values, expected, window=50, prominence=0.0, width=None):
+def find_adc_bin_peaks(adc_values, expected, window=50, prominence=0.0, width=None):
     """Locate peak centroids in an ADC array.
 
     Parameters
@@ -65,7 +65,7 @@ def find_adc_peaks(adc_values, expected, window=50, prominence=0.0, width=None):
     Returns
     -------
     dict
-        {peak_name: adc_centroid}
+        Mapping of peak name to centroid position in ADC units.
     """
     adc_arr = np.asarray(adc_values, dtype=float)
     if adc_arr.size == 0:
