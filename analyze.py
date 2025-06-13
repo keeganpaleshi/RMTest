@@ -405,9 +405,15 @@ def main():
             sys.exit(1)
 
     if args.seed is not None:
+        _log_override("pipeline", "random_seed", int(args.seed))
         cfg.setdefault("pipeline", {})["random_seed"] = int(args.seed)
 
     if args.ambient_concentration is not None:
+        _log_override(
+            "analysis",
+            "ambient_concentration",
+            float(args.ambient_concentration),
+        )
         cfg.setdefault("analysis", {})["ambient_concentration"] = float(
             args.ambient_concentration
         )
@@ -421,6 +427,7 @@ def main():
         cfg.setdefault("analysis", {})["spike_end_time"] = args.spike_end_time
 
     if args.spike_period:
+        _log_override("analysis", "spike_periods", args.spike_period)
         cfg.setdefault("analysis", {})["spike_periods"] = args.spike_period
 
     if args.run_period:
@@ -437,6 +444,7 @@ def main():
         current = tf.get("hl_Po214")
         if isinstance(current, list) and len(current) > 1:
             sig = current[1]
+        _log_override("time_fit", "hl_Po214", [float(args.hl_po214), sig])
         tf["hl_Po214"] = [float(args.hl_po214), sig]
 
     if args.hl_po218 is not None:
@@ -445,6 +453,7 @@ def main():
         current = tf.get("hl_Po218")
         if isinstance(current, list) and len(current) > 1:
             sig = current[1]
+        _log_override("time_fit", "hl_Po218", [float(args.hl_po218), sig])
         tf["hl_Po218"] = [float(args.hl_po218), sig]
 
     if args.hl_po210 is not None:
@@ -453,6 +462,7 @@ def main():
         current = tf.get("hl_Po210")
         if isinstance(current, list) and len(current) > 1:
             sig = current[1]
+        _log_override("time_fit", "hl_Po210", [float(args.hl_po210), sig])
         tf["hl_Po210"] = [float(args.hl_po210), sig]
 
     if args.time_bin_mode:
