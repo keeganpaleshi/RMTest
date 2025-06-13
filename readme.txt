@@ -61,8 +61,7 @@ The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--j
 - `summary.json` – calibration and fit summary.
 - `config_used.json` – copy of the configuration used.
 - `spectrum.png` – spectrum plot with fitted peaks.
-- `time_series_Po214.png` and `time_series_Po218.png` – decay time-series plots.
-- `time_series_Po210.png` when `window_Po210` is set.
+ - `time_series_Po214.png`, `time_series_Po218.png` and `time_series_Po210.png` – decay time-series plots when the corresponding windows are provided.
 - Optional `*_ts.json` files containing binned time series when enabled.
 - `efficiency.png` – bar chart of individual efficiencies and the BLUE result.
 - `eff_cov.png` – heatmap of the efficiency covariance matrix.
@@ -70,9 +69,9 @@ The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--j
  - `equivalent_air.png` – equivalent air volume plot when `--ambient-file` or
    `--ambient-concentration` is provided.
 
-The `time_fit` routine still fits only Po‑214 and Po‑218.
-When `window_Po210` is provided the Po‑210 events are extracted and a
-time‑series histogram is produced without a decay fit.
+The `time_fit` routine fits Po‑214 and Po‑218 by default. When
+`window_Po210` (and optional `eff_Po210`) is supplied Po‑210 is fitted as
+well and its model curve appears in the time-series plot.
 
 The time‐series model multiplies the decay rate by the detection efficiency
 internally.  Therefore the fitted `E_Po214` and `E_Po218` values correspond to
@@ -421,8 +420,8 @@ python utils.py 0.5 --to bq --volume_liters 10
 
 ## Radon Activity Output
 
-After the decay fits a weighted average of the Po‑218 and Po‑214 rates is
-converted to an instantaneous radon activity.  The result is written to
+After the decay fits a weighted average of the Po‑218, Po‑214 and, when
+available, Po‑210 rates is converted to an instantaneous radon activity.  The result is written to
 `summary.json` under `radon_results` together with the corresponding
 concentration (per liter) and the total amount of radon contained in the
 sample volume.  The file `radon_activity.png` visualises this
@@ -431,8 +430,9 @@ activity versus time.  When either `--ambient-file` or
 `equivalent_air.png` shows the volume of ambient air containing the same
 activity.
 The Po‑214 activity alone is plotted in `radon_activity_po214.png`. When
+Po‑210 is fitted, `radon_activity_po210.png` shows its contribution. When
 ambient concentration data are available, `equivalent_air_po214.png`
-shows the equivalent air volume derived from this Po‑214 activity.
+shows the equivalent air volume derived from the Po‑214 activity.
 
 ## Efficiency Calculations
 

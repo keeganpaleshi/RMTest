@@ -902,17 +902,20 @@ def main():
     priors_time_all = {}
     time_plot_data = {}
     if cfg.get("time_fit", {}).get("do_time_fit", False):
-        for iso in ("Po218", "Po214"):
+        isotopes_to_fit = []
+        for iso in ("Po218", "Po214", "Po210"):
             win_key = f"window_{iso}"
-
-            # Missing energy window for this isotope -> skip gracefully
             win_range = cfg.get("time_fit", {}).get(win_key)
-            if win_range is None:
+            hl_key = f"hl_{iso}"
+            if win_range is None or hl_key not in cfg.get("time_fit", {}):
+                missing = win_key if win_range is None else hl_key
                 print(
-                    f"INFO: Config key '{win_key}' not found. Skipping time fit for {iso}."
+                    f"INFO: Config key '{missing}' not found. Skipping time fit for {iso}."
                 )
                 continue
+            isotopes_to_fit.append((iso, win_range))
 
+        for iso, win_range in isotopes_to_fit:
             lo, hi = win_range
             probs = window_prob(events["energy_MeV"].values, events["denergy_MeV"].values, lo, hi)
             iso_mask = probs > 0
@@ -1027,7 +1030,7 @@ def main():
 
     # Also extract Po-210 events for plotting if a window is provided
     win_p210 = cfg.get("time_fit", {}).get("window_Po210")
-    if win_p210 is not None:
+    if win_p210 is not None and "Po210" not in time_plot_data:
         lo, hi = win_p210
         mask210 = (
             (events["energy_MeV"] >= lo)
@@ -1224,6 +1227,7 @@ def main():
     radon_results = {}
     eff_Po214 = cfg.get("time_fit", {}).get("eff_Po214", [1.0])[0]
     eff_Po218 = cfg.get("time_fit", {}).get("eff_Po218", [1.0])[0]
+    eff_Po210 = cfg.get("time_fit", {}).get("eff_Po210", [1.0])[0]
 
     rate214 = None
     err214 = None
@@ -1239,8 +1243,23 @@ def main():
         rate218 = fit_dict.get("E_corrected", fit_dict.get("E_Po218"))
         err218 = fit_dict.get("dE_Po218")
 
+    rate210 = None
+    err210 = None
+    if "Po210" in time_fit_results:
+        fit_dict = _fit_params(time_fit_results["Po210"])
+        rate210 = fit_dict.get("E_corrected", fit_dict.get("E_Po210"))
+        err210 = fit_dict.get("dE_Po210")
+
     A_radon, dA_radon = compute_radon_activity(
-        rate218, err218, eff_Po218, rate214, err214, eff_Po214
+        rate218,
+        err218,
+        eff_Po218,
+        rate214,
+        err214,
+        eff_Po214,
+        rate210,
+        err210,
+        eff_Po210,
     )
 
     # Convert activity to a concentration per liter of monitor volume and the
@@ -1306,6 +1325,25 @@ def main():
                 hl,
             )
 
+        delta210 = err_delta210 = None
+        if "Po210" in time_fit_results:
+            fit = _fit_params(time_fit_results["Po210"])
+            E = fit.get("E_corrected", fit.get("E_Po210"))
+            dE = fit.get("dE_Po210", 0.0)
+            N0 = fit.get("N0_Po210", 0.0)
+            dN0 = fit.get("dN0_Po210", 0.0)
+            default_rn = cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+            hl = cfg.get("time_fit", {}).get("hl_Po210", [default_rn])[0]
+            delta210, err_delta210 = radon_delta(
+                t_start_rel,
+                t_end_rel,
+                E,
+                dE,
+                N0,
+                dN0,
+                hl,
+            )
+
         d_radon, d_err = compute_radon_activity(
             delta218,
             err_delta218,
@@ -1313,6 +1351,9 @@ def main():
             delta214,
             err_delta214,
             eff_Po214,
+            delta210,
+            err_delta210,
+            eff_Po210,
         )
         radon_results["radon_delta_Bq"] = {"value": d_radon, "uncertainty": d_err}
 
@@ -1473,6 +1514,24 @@ def main():
             hl = cfg.get("time_fit", {}).get("hl_Po218", [default_rn])[0]
             A218, dA218 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl)
 
+        A210 = dA210 = None
+        if "Po210" in time_fit_results:
+            fit = _fit_params(time_fit_results["Po210"])
+            E = fit.get("E_corrected", fit.get("E_Po210"))
+            dE = fit.get("dE_Po210", 0.0)
+            N0 = fit.get("N0_Po210", 0.0)
+            dN0 = fit.get("dN0_Po210", 0.0)
+            default_rn = cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+            hl = cfg.get("time_fit", {}).get("hl_Po210", [default_rn])[0]
+            A210, dA210 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl)
+            plot_radon_activity(
+                times,
+                A210,
+                dA210,
+                Path(out_dir) / "radon_activity_po210.png",
+                config=cfg.get("plotting", {}),
+            )
+
         activity_arr = np.zeros_like(times, dtype=float)
         err_arr = np.zeros_like(times, dtype=float)
         for i in range(times.size):
@@ -1484,12 +1543,19 @@ def main():
             if A218 is not None:
                 r218 = A218[i]
                 err218_i = dA218[i]
+            r210 = err210_i = None
+            if A210 is not None:
+                r210 = A210[i]
+                err210_i = dA210[i]
             A, s = compute_radon_activity(
                 r218,
                 err218_i,
                 1.0,
                 r214,
                 err214_i,
+                1.0,
+                r210,
+                err210_i,
                 1.0,
             )
             activity_arr[i] = A
@@ -1530,12 +1596,35 @@ def main():
                 default_rn = cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
                 hl218 = cfg.get("time_fit", {}).get("hl_Po218", [default_rn])[0]
                 A218_tr, _ = radon_activity_curve(rel_trend, E218, dE218, N0218, dN0218, hl218)
+            
+            A210_tr = None
+            if "Po210" in time_fit_results:
+                fit = _fit_params(time_fit_results["Po210"])
+                E210 = fit.get("E_corrected", fit.get("E_Po210"))
+                dE210 = fit.get("dE_Po210", 0.0)
+                N0210 = fit.get("N0_Po210", 0.0)
+                dN0210 = fit.get("dN0_Po210", 0.0)
+                default_rn = cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+                hl210 = cfg.get("time_fit", {}).get("hl_Po210", [default_rn])[0]
+                A210_tr, _ = radon_activity_curve(rel_trend, E210, dE210, N0210, dN0210, hl210)
+
             trend = np.zeros_like(times_trend)
             for i in range(times_trend.size):
                 r214 = A214_tr[i] if A214_tr is not None else None
                 r218 = A218_tr[i] if A218_tr is not None else None
-                A, _ = compute_radon_activity(r218, None, 1.0, r214, None, 1.0)
-                trend[i] = A
+                r210 = A210_tr[i] if A210_tr is not None else None
+            A, _ = compute_radon_activity(
+                r218,
+                None,
+                1.0,
+                r214,
+                None,
+                1.0,
+                r210,
+                None,
+                1.0,
+            )
+            trend[i] = A
             plot_radon_trend(
                 times_trend,
                 trend,

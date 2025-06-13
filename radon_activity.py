@@ -19,22 +19,25 @@ def compute_radon_activity(
     rate214: Optional[float] = None,
     err214: Optional[float] = None,
     eff214: float = 1.0,
+    rate210: Optional[float] = None,
+    err210: Optional[float] = None,
+    eff210: float = 1.0,
 ) -> Tuple[float, float]:
-    """Combine Po-218 and Po-214 rates into a radon activity.
+    """Combine Po-218, Po-214 and optionally Po-210 rates into a radon activity.
 
     Parameters
     ----------
-    rate218, rate214 : float or None
-        Measured activities for the two isotopes in Bq.  The values should
-        already include the detection efficiencies; this function will not
-        scale them further.
-    err218, err214 : float or None
+    rate218, rate214, rate210 : float or None
+        Measured activities for the isotopes in Bq.  The values should already
+        include the detection efficiencies; this function will not scale them
+        further.
+    err218, err214, err210 : float or None
         Uncertainties on the rates in Bq.
-    eff218, eff214 : float
-        Detection efficiencies for the two isotopes.  They are only used to
-        determine whether an isotope contributes to the average: a value of zero
-        disables that isotope and negative values raise a ``ValueError``.  The
-        efficiencies are not applied as multiplicative weights.
+    eff218, eff214, eff210 : float
+        Detection efficiencies for the isotopes.  They are only used to
+        determine whether an isotope contributes to the average: a value of
+        zero disables that isotope and negative values raise a ``ValueError``.
+        The efficiencies are not applied as multiplicative weights.
 
     Returns
     -------
@@ -47,6 +50,8 @@ def compute_radon_activity(
         raise ValueError("eff218 must be non-negative")
     if eff214 < 0:
         raise ValueError("eff214 must be non-negative")
+    if eff210 < 0:
+        raise ValueError("eff210 must be non-negative")
 
     values = []
     weights = []
@@ -65,23 +70,29 @@ def compute_radon_activity(
         else:
             weights.append(None)
 
+    if rate210 is not None and eff210 > 0:
+        values.append(rate210)
+        if err210 is not None and err210 > 0:
+            weights.append(1.0 / err210**2)
+        else:
+            weights.append(None)
+
     if not values:
         return 0.0, math.nan
 
-    # If both have valid uncertainties use weighted average
-    if len(values) == 2 and all(w is not None for w in weights):
-        w1, w2 = weights
-        A = (values[0] * w1 + values[1] * w2) / (w1 + w2)
-        sigma = math.sqrt(1.0 / (w1 + w2))
+    valid = [(v, w) for v, w in zip(values, weights) if w is not None]
+
+    if len(valid) >= 2:
+        num = sum(v * w for v, w in valid)
+        denom = sum(w for _, w in valid)
+        A = num / denom
+        sigma = math.sqrt(1.0 / denom)
         return A, sigma
 
-    if len(values) == 2 and sum(w is not None for w in weights) == 1:
-        # Identify the isotope with a valid uncertainty
-        for idx, w in enumerate(weights):
-            if w is not None:
-                return values[idx], math.sqrt(1.0 / w)
+    if len(valid) == 1:
+        v, w = valid[0]
+        return v, math.sqrt(1.0 / w)
 
-    # Only one valid value or missing errors
     A = values[0]
     sigma = math.sqrt(1.0 / weights[0]) if weights[0] is not None else math.nan
     return A, sigma
