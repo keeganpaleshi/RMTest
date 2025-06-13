@@ -5,6 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from plot_utils import plot_time_series, plot_spectrum
+from constants import PO210
 
 
 def basic_config():
@@ -259,6 +260,39 @@ def test_plot_time_series_po210_no_model(tmp_path, monkeypatch):
     )
 
     assert "Model Po210" not in labels
+
+
+def test_plot_time_series_default_half_life_po210(tmp_path, monkeypatch):
+    times = np.array([1000.1, 1001.2])
+    energies = np.array([5.3, 5.25])
+    cfg = basic_config()
+    cfg.update({"window_Po210": [5.2, 5.4], "eff_Po210": [1.0]})
+
+    captured = {}
+
+    def fake_plot(x, y, *args, **kwargs):
+        if kwargs.get("label") == "Model Po210":
+            captured["y"] = np.array(y)
+        return type("obj", (), {})()
+
+    monkeypatch.setattr("plot_utils.plt.plot", fake_plot)
+    monkeypatch.setattr("plot_utils.plt.step", fake_plot)
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    plot_time_series(
+        times,
+        energies,
+        {"E": 0.1, "B": 0.0, "N0": 0.0},
+        1000.0,
+        1002.0,
+        cfg,
+        str(tmp_path / "ts_p210_default.png"),
+    )
+
+    lam = np.log(2.0) / PO210.half_life_s
+    centers = np.array([0.5, 1.5])
+    expected = 0.1 * (1.0 - np.exp(-lam * centers))
+    assert np.allclose(captured.get("y"), expected, rtol=1e-4)
 
 
 def test_plot_time_series_rate_normalisation(tmp_path, monkeypatch):

@@ -8,6 +8,7 @@ import logging
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
 from fitting import FitResult
+from constants import PO210
 
 
 def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
@@ -1714,6 +1715,68 @@ def test_hl_po210_cli_overrides(tmp_path, monkeypatch):
     cfg_used = captured.get("time_series_Po210.png")
     assert cfg_used is not None
     assert cfg_used["hl_Po210"][0] == 7.0
+
+
+def test_hl_po210_default(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {
+            "do_time_fit": True,
+            "window_Po214": [0.0, 20.0],
+            "window_Po210": [5.2, 5.4],
+            "window_Po218": [0.0, 20.0],
+            "hl_Po214": [1.0, 0.0],
+            "eff_Po214": [1.0, 0.0],
+            "eff_Po210": [1.0, 0.0],
+            "flags": {},
+        },
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+
+    cfg_path = tmp_path / "cfg.json"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0.0], "adc": [8.0], "fchannel": [1]})
+    data_path = tmp_path / "d.csv"
+    df.to_csv(data_path, index=False)
+
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)})
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)})
+
+    captured = {}
+
+    def fake_plot_time_series(*args, **kwargs):
+        captured.update(kwargs)
+        Path(kwargs["out_png"]).touch()
+        return None
+
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0, 0)), 0))
+    monkeypatch.setattr(analyze, "plot_time_series", fake_plot_time_series)
+    monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+
+    analyze.main()
+
+    cfg_used = captured.get("config")
+    assert cfg_used is not None
+    default_hl = cfg_used.get("nuclide_constants", {}).get("Po210", PO210).half_life_s
+    assert default_hl == PO210.half_life_s
 
 
 
