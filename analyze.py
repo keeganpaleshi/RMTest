@@ -238,6 +238,11 @@ def parse_args():
         help="Half-life to use for Po-218 in seconds",
     )
     p.add_argument(
+        "--hl-po210",
+        type=float,
+        help="Half-life to use for Po-210 in seconds",
+    )
+    p.add_argument(
         "--debug",
         action="store_true",
         help="Enable debug logging",
@@ -377,6 +382,14 @@ def main():
         if isinstance(current, list) and len(current) > 1:
             sig = current[1]
         tf["hl_Po218"] = [float(args.hl_po218), sig]
+
+    if args.hl_po210 is not None:
+        tf = cfg.setdefault("time_fit", {})
+        sig = 0.0
+        current = tf.get("hl_Po210")
+        if isinstance(current, list) and len(current) > 1:
+            sig = current[1]
+        tf["hl_Po210"] = [float(args.hl_po210), sig]
 
 
     if args.time_bin_mode:
