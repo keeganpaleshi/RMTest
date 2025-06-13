@@ -186,10 +186,10 @@ def parse_args():
         nargs=2,
         metavar=("TSTART", "TEND"),
         help=(
-            "Optional baseline-run interval overriding `baseline.range` in "
-            "config.json. Provide two values (either ISO strings or epoch "
-            "floats). If set, those events are extracted (same energy cuts) and "
-            "listed in `baseline` of the summary."
+            "Extract baseline events in the given time range. "
+            "Providing this option replaces `baseline.range` from config.json. "
+            "Give two values (ISO strings or epoch floats). If set, those events "
+            "are extracted (same energy cuts) and listed in `baseline` of the summary."
         ),
     )
     p.add_argument(
@@ -256,8 +256,8 @@ def parse_args():
         "--noise-cutoff",
         type=int,
         help=(
-            "ADC threshold for the noise cut. Overrides "
-            "`calibration.noise_cutoff` in config.json"
+            "ADC threshold for the noise cut. "
+            "CLI value overrides `calibration.noise_cutoff` in the configuration"
         ),
     )
     p.add_argument(
