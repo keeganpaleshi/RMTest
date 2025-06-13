@@ -90,6 +90,13 @@ def test_plot_spectrum_save_formats(tmp_path):
     assert out_png.with_suffix('.pdf').exists()
 
 
+def test_plot_spectrum_po210_xlim(tmp_path):
+    energies = np.linspace(0, 10, 100)
+    cfg = {"window_Po210": [5.0, 5.5]}
+    ax = plot_spectrum(energies, config=cfg, out_png=str(tmp_path / "spec2.png"))
+    assert ax.get_xlim() == (5.0, 5.5)
+
+
 def test_plot_time_series_custom_half_life(tmp_path, monkeypatch):
     times = np.array([1000.1, 1000.2, 1001.1, 1001.8])
     energies = np.array([7.6, 7.7, 7.8, 7.7])

@@ -337,6 +337,14 @@ def plot_spectrum(
     hist_color = palette.get("hist", "gray")
     ax_main.bar(centers, hist, width=width, color=hist_color, alpha=0.7, label="Data")
 
+    # If an explicit Po-210 window is provided, focus the x-axis on that region
+    win_p210 = None
+    if config is not None:
+        win_p210 = config.get("window_Po210")
+    if win_p210 is not None:
+        lo, hi = win_p210
+        ax_main.set_xlim(lo, hi)
+
     if fit_vals:
         x = np.linspace(edges[0], edges[-1], 1000)
         sigma_E = fit_vals.get("sigma_E", 1.0)
@@ -401,6 +409,8 @@ def plot_spectrum(
     for fmt in save_fmts:
         fig.savefig(base + f".{fmt}", dpi=300)
     plt.close(fig)
+
+    return ax_main
 
 
 def plot_radon_activity(times, activity, errors, out_png, config=None):
