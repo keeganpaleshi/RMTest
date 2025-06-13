@@ -8,10 +8,11 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import datetime
 from color_schemes import COLOR_SCHEMES
+from constants import PO214, PO218, RN222
 
 # Half-life constants used for the time-series overlay [seconds]
-PO214_HALF_LIFE_S = 1.64e-4  # 164 µs
-PO218_HALF_LIFE_S = 183.0    # ~3.05 minutes
+PO214_HALF_LIFE_S = PO214.half_life_s
+PO218_HALF_LIFE_S = PO218.half_life_s
 
 __all__ = [
     "plot_time_series",
@@ -56,15 +57,19 @@ def plot_time_series(
             return cfg[key]
         return default
 
+    default_const = config.get("nuclide_constants", {})
+    default214 = default_const.get("Po214", PO214).half_life_s
+    default218 = default_const.get("Po218", PO218).half_life_s
+
     po214_hl = (
         float(hl_Po214)
         if hl_Po214 is not None
-        else float(config.get("hl_Po214", [PO214_HALF_LIFE_S])[0])
+        else float(config.get("hl_Po214", [default214])[0])
     )
     po218_hl = (
         float(hl_Po218)
         if hl_Po218 is not None
-        else float(config.get("hl_Po218", [PO218_HALF_LIFE_S])[0])
+        else float(config.get("hl_Po218", [default218])[0])
     )
 
     if po214_hl <= 0:
@@ -86,7 +91,13 @@ def plot_time_series(
         "Po210": {
             "window": _cfg_get(config, "window_Po210"),
             "eff": float(_cfg_get(config, "eff_Po210", [1.0])[0]),
-            "half_life": float(_cfg_get(config, "hl_Po210", [328320])[0]),
+            "half_life": float(
+                _cfg_get(
+                    config,
+                    "hl_Po210",
+                    [default_const.get("Rn222", RN222).half_life_s],
+                )[0]
+            ),
         },
     }
     iso_list = [iso for iso, p in iso_params.items() if p["window"] is not None]
@@ -326,6 +337,14 @@ def plot_spectrum(
     hist_color = palette.get("hist", "gray")
     ax_main.bar(centers, hist, width=width, color=hist_color, alpha=0.7, label="Data")
 
+    # If an explicit Po-210 window is provided, focus the x-axis on that region
+    win_p210 = None
+    if config is not None:
+        win_p210 = config.get("window_Po210")
+    if win_p210 is not None:
+        lo, hi = win_p210
+        ax_main.set_xlim(lo, hi)
+
     if fit_vals:
         x = np.linspace(edges[0], edges[-1], 1000)
         sigma_E = fit_vals.get("sigma_E", 1.0)
@@ -390,6 +409,8 @@ def plot_spectrum(
     for fmt in save_fmts:
         fig.savefig(base + f".{fmt}", dpi=300)
     plt.close(fig)
+
+    return ax_main
 
 
 def plot_radon_activity(times, activity, errors, out_png, config=None):
