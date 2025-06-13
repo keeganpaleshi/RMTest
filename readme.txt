@@ -33,7 +33,7 @@ python analyze.py --config config.json --input merged_data.csv \
     [--analysis-end-time ISO --spike-end-time ISO] \
     [--spike-period START END] [--run-period START END] \
     [--radon-interval START END] \
-    [--hl-po214 SEC] [--hl-po218 SEC] \
+    [--hl-po214 SEC] [--hl-po218 SEC] [--hl-po210 SEC] \
     [--settle-s SEC] [--debug] [--seed SEED] \
     [--ambient-file amb.txt (time conc)] [--ambient-concentration 0.1] \
     [--burst-mode rate] \
@@ -239,7 +239,7 @@ initial settling period in the decay fit, `--seed` to set the random
 seed used by the analysis, `--hierarchical-summary PATH` to produce a
 Bayesian combination across runs and `--debug` to increase log verbosity.
 The half-lives used in the decay fit can also be changed with
-`--hl-po214` and `--hl-po218`.
+`--hl-po214`, `--hl-po218` and `--hl-po210`.
 
 When the spectrum is binned in raw ADC channels (`"spectral_binning_mode": "adc"`),
 the bin edges are internally converted to energy using the calibration
@@ -369,7 +369,7 @@ Example snippet:
 ```
 
 These half-life values may also be set on the command line with
-`--hl-po214` and `--hl-po218`.
+`--hl-po214`, `--hl-po218` and `--hl-po210`.
 
 ### Baseline Runs
 
