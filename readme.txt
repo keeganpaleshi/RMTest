@@ -112,7 +112,8 @@ deviates by more than this amount.
 ADC values at or below this threshold are removed before any fits.  The
 default is `400`.  Set it to `null` to skip the cut entirely.  The
 `analyze.py` pipeline applies this filter right after loading the event
-CSV.
+CSV.  The command-line option `--noise-cutoff` overrides the configuration
+value.
 
 Example snippet:
 
@@ -396,6 +397,9 @@ Example snippet:
     "sample_volume_l": 5.0
 }
 ```
+
+Passing `--baseline_range START END` on the command line overrides the
+`baseline.range` entry in the configuration.
 
 Command line usage:
 

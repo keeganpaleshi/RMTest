@@ -130,7 +130,12 @@ def window_prob(E, sigma, lo, hi):
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Full Radon Monitor Analysis Pipeline")
+    p = argparse.ArgumentParser(
+        description=(
+            "Full Radon Monitor Analysis Pipeline. "
+            "Command-line options override values in config.json."
+        )
+    )
     p.add_argument(
         "--config", "-c", required=True, help="Path to JSON configuration file"
     )
@@ -154,7 +159,8 @@ def parse_args():
             "Optional baseline-run interval. "
             "Provide two values (either ISO strings or epoch floats). "
             "If set, those events are extracted (same energy cuts) and "
-            "listed in `baseline` of the summary."
+            "listed in `baseline` of the summary. "
+            "Overrides baseline.range in config.json."
         ),
     )
     p.add_argument(
@@ -186,36 +192,45 @@ def parse_args():
     )
     p.add_argument(
         "--analysis-end-time",
-        help="Ignore events occurring after this ISO timestamp",
+        help="Ignore events occurring after this ISO timestamp (overrides analysis.analysis_end_time)",
     )
     p.add_argument(
         "--spike-end-time",
-        help="Discard events before this ISO timestamp",
+        help="Discard events before this ISO timestamp (overrides analysis.spike_end_time)",
     )
     p.add_argument(
         "--spike-period",
         nargs=2,
         action="append",
         metavar=("START", "END"),
-        help="Discard events between START and END (can be given multiple times)",
+        help=(
+            "Discard events between START and END (can be given multiple times) "
+            "(overrides analysis.spike_periods)"
+        ),
     )
     p.add_argument(
         "--run-period",
         nargs=2,
         action="append",
         metavar=("START", "END"),
-        help="Keep events between START and END (can be given multiple times)",
+        help=(
+            "Keep events between START and END (can be given multiple times) "
+            "(overrides analysis.run_periods)"
+        ),
     )
     p.add_argument(
         "--radon-interval",
         nargs=2,
         metavar=("START", "END"),
-        help="Time interval to evaluate radon delta",
+        help="Time interval to evaluate radon delta (overrides analysis.radon_interval)",
     )
     p.add_argument(
         "--slope",
         type=float,
-        help="Apply a linear ADC drift correction with the given slope",
+        help=(
+            "Apply a linear ADC drift correction with the given slope "
+            "(overrides systematics.adc_drift_rate)"
+        ),
     )
     p.add_argument(
         "--noise-cutoff",
@@ -230,22 +245,22 @@ def parse_args():
     p.add_argument(
         "--hl-po214",
         type=float,
-        help="Half-life to use for Po-214 in seconds",
+        help="Half-life to use for Po-214 in seconds (overrides time_fit.hl_Po214)",
     )
     p.add_argument(
         "--hl-po218",
         type=float,
-        help="Half-life to use for Po-218 in seconds",
+        help="Half-life to use for Po-218 in seconds (overrides time_fit.hl_Po218)",
     )
     p.add_argument(
         "--hl-po210",
         type=float,
-        help="Half-life to use for Po-210 in seconds",
+        help="Half-life to use for Po-210 in seconds (overrides time_fit.hl_Po210)",
     )
     p.add_argument(
         "--debug",
         action="store_true",
-        help="Enable debug logging",
+        help="Enable debug logging (overrides pipeline.log_level)",
     )
     p.add_argument(
         "--plot-time-binning-mode",
@@ -285,12 +300,18 @@ def parse_args():
     p.add_argument(
         "--ambient-concentration",
         type=float,
-        help="Ambient radon concentration in Bq per liter for equivalent air plot",
+        help=(
+            "Ambient radon concentration in Bq per liter for equivalent air plot "
+            "(overrides analysis.ambient_concentration)"
+        ),
     )
     p.add_argument(
         "--seed",
         type=int,
-        help="Override random seed used by analysis algorithms",
+        help=(
+            "Override random seed used by analysis algorithms "
+            "(overrides pipeline.random_seed)"
+        ),
     )
     p.add_argument(
         "--palette",
@@ -437,6 +458,11 @@ def main():
         cfg.setdefault("systematics", {})["adc_drift_rate"] = float(args.slope)
 
     if args.noise_cutoff is not None:
+        _log_override(
+            "calibration",
+            "noise_cutoff",
+            int(args.noise_cutoff),
+        )
         cfg.setdefault("calibration", {})["noise_cutoff"] = int(args.noise_cutoff)
 
     if args.debug:
@@ -682,6 +708,7 @@ def main():
     baseline_cfg = cfg.get("baseline", {})
     baseline_range = None
     if args.baseline_range:
+        _log_override("baseline", "range", args.baseline_range)
         baseline_range = args.baseline_range
     elif "range" in baseline_cfg:
         baseline_range = baseline_cfg.get("range")
