@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 import math
 from systematics import scan_systematics, apply_linear_adc_shift
+from fitting import fit_spectrum, FitResult
 
 
 def test_scan_systematics_with_dict_result():
@@ -73,3 +74,52 @@ def test_scan_systematics_fractional_and_absolute():
     assert deltas["mu"] == pytest.approx(2.0)
     expected = math.sqrt(0.2 ** 2 + 2.0 ** 2)
     assert tot == pytest.approx(expected)
+
+
+def test_scan_systematics_on_fitresult():
+    rng = np.random.default_rng(0)
+    energies = np.concatenate([
+        rng.normal(5.3, 0.05, 150),
+        rng.normal(6.0, 0.05, 150),
+        rng.normal(7.7, 0.05, 150),
+    ])
+
+    priors = {
+        "sigma_E": (0.05, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (150, 15),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (150, 15),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (150, 15),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+
+    base = fit_spectrum(energies, priors, bins=30)
+    scan_priors = {
+        k: (base.params[k], base.params.get("d" + k, 0.0))
+        for k in base.params
+        if not k.startswith("d") and k != "fit_valid"
+    }
+    scan_priors["energy_shift"] = (0.0, 1.0)
+    scan_priors["tail_fraction"] = (0.0, 1.0)
+
+    def wrapper(p):
+        shift = p.get("energy_shift", (0.0, 0.0))[0]
+        pri = {k: v for k, v in p.items() if k not in ("energy_shift", "tail_fraction")}
+        for iso in ("Po210", "Po218", "Po214"):
+            key = f"mu_{iso}"
+            if key in pri:
+                mu, sig = pri[key]
+                pri[key] = (mu + shift / 1000.0, sig)
+        out = fit_spectrum(energies, pri, bins=30)
+        out.params["energy_shift"] = shift
+        out.params["tail_fraction"] = p.get("tail_fraction", (0.0,))[0]
+        return out
+
+    deltas, _ = scan_systematics(wrapper, scan_priors, {"sigma_E_frac": 0.2})
+    assert deltas["sigma_E"] != 0.0
+
+    d2, _ = scan_systematics(wrapper, scan_priors, {"energy_shift_keV": 1.0})
+    assert d2["energy_shift"] == pytest.approx(1.0)

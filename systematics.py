@@ -2,6 +2,8 @@ import math
 import numpy as np
 from typing import Callable, Dict, Tuple, List
 
+from fitting import FitResult
+
 
 def apply_linear_adc_shift(adc_values, timestamps, rate, t_ref=None):
     """Apply a linear time-dependent shift to ADC values.
@@ -68,10 +70,15 @@ def scan_systematics(
     """
 
     central = fit_func(priors)
-    is_dict = isinstance(central, dict)
+    is_fit_result = isinstance(central, FitResult)
+    is_dict = is_fit_result or isinstance(central, dict)
     if not is_dict and not isinstance(central, (int, float)):
         raise RuntimeError(
-            "scan_systematics: fit_func must return dict or scalar")
+            "scan_systematics: fit_func must return dict, scalar or FitResult")
+    if is_fit_result:
+        central_dict = central.params
+    else:
+        central_dict = central
 
     deltas = {}
     for full_key, val in sigma_dict.items():
@@ -88,9 +95,9 @@ def scan_systematics(
             delta = val
 
         if is_dict:
-            if key not in central:
+            if key not in central_dict:
                 raise RuntimeError(f"Central fit missing parameter '{key}'")
-            v0 = central[key]
+            v0 = central_dict[key]
         else:
             v0 = central
 
@@ -101,12 +108,22 @@ def scan_systematics(
         mu, sig = p_plus[key]
         p_plus[key] = (mu + delta, sig)
         res_plus = fit_func(p_plus)
-        v_plus = res_plus[key] if is_dict else res_plus
+        if is_fit_result:
+            v_plus = res_plus.params[key]
+        elif is_dict:
+            v_plus = res_plus[key]
+        else:
+            v_plus = res_plus
 
         p_minus = priors.copy()
         p_minus[key] = (mu - delta, sig)
         res_minus = fit_func(p_minus)
-        v_minus = res_minus[key] if is_dict else res_minus
+        if is_fit_result:
+            v_minus = res_minus.params[key]
+        elif is_dict:
+            v_minus = res_minus[key]
+        else:
+            v_minus = res_minus
 
         deltas[key] = max(abs(v_plus - v0), abs(v_minus - v0))
 

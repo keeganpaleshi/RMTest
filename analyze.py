@@ -804,6 +804,7 @@ def main():
     # ────────────────────────────────────────────────────────────
     spectrum_results = {}
     spec_plot_data = None
+    priors_spec_scan = {}
     if cfg.get("spectral_fit", {}).get("do_spectral_fit", False):
         # Decide binning: new 'binning' dict or legacy keys
         bin_cfg = cfg["spectral_fit"].get("binning")
@@ -964,6 +965,18 @@ def main():
             "bin_edges": bin_edges,
         }
 
+        # Prepare priors for potential systematics scanning
+        priors_spec_scan = {}
+        if isinstance(spec_fit_out, FitResult):
+            for k, v in spec_fit_out.params.items():
+                if k == "fit_valid" or k.startswith("d"):
+                    continue
+                err = spec_fit_out.params.get(f"d{k}", 0.0)
+                priors_spec_scan[k] = (v, err)
+            # Additional nuisance parameters used by scan_systematics
+            priors_spec_scan["energy_shift"] = (0.0, 1.0)
+            priors_spec_scan["tail_fraction"] = (0.0, 1.0)
+
     # ────────────────────────────────────────────────────────────
     # 6. Time‐series decay fits for Po‐218 and Po‐214
     # ────────────────────────────────────────────────────────────
@@ -1123,6 +1136,30 @@ def main():
             if name in sys_cfg:
                 sigma_dict[name] = sys_cfg[name]
 
+        # --- Spectrum systematics -------------------------------------
+        if priors_spec_scan:
+            def spec_fit_wrapper(p_mod):
+                shift = p_mod.get("energy_shift", (0.0, 0.0))[0]
+                tail = p_mod.get("tail_fraction", (0.0, 0.0))[0]
+                pri = {k: v for k, v in p_mod.items() if k not in ("energy_shift", "tail_fraction")}
+                for iso_name in ("Po210", "Po218", "Po214"):
+                    key = f"mu_{iso_name}"
+                    if key in pri:
+                        mu, sig = pri[key]
+                        pri[key] = (mu + shift / 1000.0, sig)
+                out = fit_spectrum(events["energy_MeV"].values, pri, flags=spec_flags)
+                if isinstance(out, FitResult):
+                    out.params["energy_shift"] = shift
+                    out.params["tail_fraction"] = tail
+                return out
+
+            try:
+                deltas, total_unc = scan_systematics(spec_fit_wrapper, priors_spec_scan, sigma_dict)
+                systematics_results["spectrum"] = {"deltas": deltas, "total_unc": total_unc}
+            except Exception as e:
+                print(f"WARNING: Spectral systematics scan -> {e}")
+
+        # --- Time-series systematics ---------------------------------
         for iso, fit_out in time_fit_results.items():
             if not fit_out:
                 continue
