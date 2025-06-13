@@ -1613,6 +1613,7 @@ def test_hl_po210_cli_overrides(tmp_path, monkeypatch):
         "time_fit": {
             "do_time_fit": True,
             "window_Po214": [0.0, 20.0],
+            "window_Po210": [5.0, 6.0],
             "window_Po218": [0.0, 20.0],
             "window_Po210": [5.2, 5.4],
             "hl_Po214": [1.0, 0.0],
@@ -1635,18 +1636,20 @@ def test_hl_po210_cli_overrides(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)})
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)})
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0, 0)), 0))
-    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
 
+    # Combined stub for plot_time_series to fill both `received` and `captured`
+    received = {}
     captured = {}
-
-    def fake_plot_time_series(*args, **kwargs):
-        key = Path(kwargs["out_png"]).name
-        captured[key] = kwargs["config"]
+    def fake_plot_time_series_combined(*args, **kwargs):
+        received.update(kwargs)
+        fname = Path(kwargs["out_png"]).name
+        captured[fname] = kwargs["config"]
         Path(kwargs["out_png"]).touch()
         return None
 
-    monkeypatch.setattr(analyze, "plot_time_series", fake_plot_time_series)
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0, 0)), 0))
+    monkeypatch.setattr(analyze, "plot_time_series", fake_plot_time_series_combined)
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
 
@@ -1665,8 +1668,10 @@ def test_hl_po210_cli_overrides(tmp_path, monkeypatch):
 
     analyze.main()
 
+    assert received["config"]["hl_Po210"][0] == 7.0
     cfg_used = captured.get("time_series_Po210.png")
     assert cfg_used is not None
     assert cfg_used["hl_Po210"][0] == 7.0
+
 
 
