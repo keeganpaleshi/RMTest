@@ -1,6 +1,6 @@
 import math
 import numpy as np
-from typing import Callable, Dict, Tuple, List
+from typing import Callable, Dict, Tuple
 
 
 def apply_linear_adc_shift(adc_values, timestamps, rate, t_ref=None):
@@ -41,28 +41,52 @@ def apply_linear_adc_shift(adc_values, timestamps, rate, t_ref=None):
 def scan_systematics(
     fit_func: Callable,
     priors: Dict[str, Tuple[float, float]],
-    sigma_dict: Dict[str, float],
-    keys: List[str],
+    shifts: Dict[str, float],
 ) -> Tuple[Dict[str, float], float]:
-    """Scan parameter level systematics as per the imported implementation."""
+    """Evaluate systematic uncertainties from fractional or absolute shifts.
+
+    Parameters
+    ----------
+    fit_func : callable
+        Function returning either a scalar or a mapping of fit parameters.
+    priors : dict
+        Mapping of parameter name to (mean, sigma).
+    shifts : dict
+        Keys ending in ``_frac`` are interpreted as fractional adjustments to
+        the corresponding parameter.  Keys ending in ``_keV`` are absolute
+        shifts in keV and are converted to MeV.  All other keys are absolute
+        shifts in the same units as the priors.
+    """
+
     central = fit_func(priors)
     is_dict = isinstance(central, dict)
     if not is_dict and not isinstance(central, (int, float)):
-        raise RuntimeError(
-            "scan_systematics: fit_func must return dict or scalar")
+        raise RuntimeError("scan_systematics: fit_func must return dict or scalar")
 
     deltas = {}
-    for key in keys:
-        if is_dict:
-            if key not in central:
-                raise RuntimeError(f"Central fit missing parameter '{key}'")
-            v0 = central[key]
+    for raw_key, value in shifts.items():
+        if raw_key == "tail_fraction":
+            key = "tail"
+            if key not in priors:
+                raise RuntimeError("No prior for 'tail'")
+            delta = priors[key][0] * float(value)
+        elif raw_key.endswith("_frac"):
+            key = raw_key[:-5]
+            if key not in priors:
+                raise RuntimeError(f"No prior for '{key}'")
+            delta = priors[key][0] * float(value)
+        elif raw_key.endswith("_keV"):
+            key = raw_key[:-4]
+            if key not in priors:
+                raise RuntimeError(f"No prior for '{key}'")
+            delta = float(value) / 1000.0
         else:
-            v0 = central
+            key = raw_key
+            if key not in priors:
+                raise RuntimeError(f"No prior for '{key}'")
+            delta = float(value)
 
-        if key not in sigma_dict:
-            raise RuntimeError(f"No sigma_dict entry for '{key}'")
-        delta = sigma_dict[key]
+        central_val = central[key] if is_dict else central
 
         p_plus = priors.copy()
         mu, sig = p_plus[key]
@@ -75,7 +99,7 @@ def scan_systematics(
         res_minus = fit_func(p_minus)
         v_minus = res_minus[key] if is_dict else res_minus
 
-        deltas[key] = max(abs(v_plus - v0), abs(v_minus - v0))
+        deltas[key] = max(abs(v_plus - central_val), abs(v_minus - central_val))
 
     # Combine all systematic shifts in quadrature using only the values
     total_unc = math.sqrt(sum(v ** 2 for v in deltas.values()))
