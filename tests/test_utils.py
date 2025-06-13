@@ -4,7 +4,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from utils import cps_to_cpd, cps_to_bq
+from utils import cps_to_cpd, cps_to_bq, find_adc_bin_peaks
 
 
 def test_cps_to_cpd():
@@ -28,3 +28,11 @@ def test_cps_to_bq_zero_volume():
 def test_cps_to_bq_negative_volume():
     with pytest.raises(ValueError):
         cps_to_bq(1.0, volume_liters=-1.0)
+
+
+def test_find_adc_bin_peaks_basic():
+    adc = [10, 10, 20, 20, 20, 30]
+    expected = {"p1": 10, "p2": 20}
+    result = find_adc_bin_peaks(adc, expected, window=2)
+    assert result["p1"] == pytest.approx(10.5)
+    assert result["p2"] == pytest.approx(20.5)

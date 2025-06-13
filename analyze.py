@@ -84,7 +84,7 @@ from plot_utils import (
 )
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
-from utils import find_adc_peaks, cps_to_bq
+from utils import find_adc_bin_peaks, cps_to_bq
 
 
 def _fit_params(obj):
@@ -848,8 +848,8 @@ def main():
 
         expected_peaks = cfg["spectral_fit"]["expected_peaks"]
 
-        # `find_adc_peaks` will return a dict: e.g. { "Po210": adc_centroid, … }
-        adc_peaks = find_adc_peaks(
+        # `find_adc_bin_peaks` will return a dict: e.g. { "Po210": adc_centroid, … }
+        adc_peaks = find_adc_bin_peaks(
             events["adc"].values,
             expected=expected_peaks,
             window=cfg["spectral_fit"].get("peak_search_width_adc", 50),
