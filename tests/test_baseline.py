@@ -204,7 +204,7 @@ def test_n0_prior_from_baseline(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(baseline_noise, "estimate_baseline_noise", lambda *a, **k: (None, {}))
 
-    def fake_scan_systematics(fit_func, priors, sigma_dict, keys):
+    def fake_scan_systematics(fit_func, priors, sigma_dict):
         captured["priors"] = priors
         try:
             fit_func(priors)

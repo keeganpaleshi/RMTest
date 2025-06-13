@@ -1108,8 +1108,11 @@ def main():
     # ────────────────────────────────────────────────────────────
     systematics_results = {}
     if cfg.get("systematics", {}).get("enable", False):
-        sigma_dict = cfg["systematics"].get("sigma_shifts", {})
-        keys = cfg["systematics"].get("scan_keys", [])
+        sys_cfg = cfg.get("systematics", {})
+        sigma_dict = {}
+        for name in ("sigma_E_frac", "tail_fraction", "energy_shift_keV"):
+            if name in sys_cfg:
+                sigma_dict[name] = sys_cfg[name]
 
         for iso, fit_out in time_fit_results.items():
             if not fit_out:
@@ -1169,7 +1172,7 @@ def main():
 
             try:
                 deltas, total_unc = scan_systematics(
-                    fit_wrapper, priors_time_all.get(iso, {}), sigma_dict, keys
+                    fit_wrapper, priors_time_all.get(iso, {}), sigma_dict
                 )
                 systematics_results[iso] = {"deltas": deltas, "total_unc": total_unc}
             except Exception as e:

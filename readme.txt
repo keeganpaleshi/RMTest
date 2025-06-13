@@ -303,6 +303,12 @@ is non-zero `analyze.py` applies the shift using
 `apply_linear_adc_shift` and stores the value in `summary.json` under
 `adc_drift_rate`.
 
+`sigma_E_frac`, `tail_fraction` and `energy_shift_keV` provide the
+magnitude of systematic shifts applied during the scan.  The first two
+are interpreted fractionally relative to the current parameter values,
+while `energy_shift_keV` is an absolute shift.  Each entry is optional
+and only affects the scan when present.
+
 `plot_time_style` chooses how the histogram is drawn in the time-series
 plot.  Use `"steps"` (default) for a stepped histogram or `"lines"` to
 connect bin centers with straight lines.  The line style is useful when
