@@ -9,6 +9,73 @@ from constants import load_nuclide_overrides
 
 import numpy as np
 from utils import to_native
+from jsonschema import validate as _jsonschema_validate
+
+
+class DuplicateKeyError(ValueError):
+    """Raised when a duplicate key is encountered while loading JSON."""
+
+
+def _no_duplicates_object_pairs_hook(pairs):
+    obj = {}
+    for key, value in pairs:
+        if key in obj:
+            raise DuplicateKeyError(f"Duplicate key '{key}' in configuration")
+        obj[key] = value
+    return obj
+
+
+CONFIG_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "pipeline": {
+            "type": "object",
+            "properties": {"log_level": {"type": "string"}},
+            "required": ["log_level"],
+        },
+        "spectral_fit": {
+            "type": "object",
+            "properties": {"expected_peaks": {"type": "object"}},
+            "required": ["expected_peaks"],
+        },
+        "time_fit": {
+            "type": "object",
+            "properties": {"do_time_fit": {"type": "boolean"}},
+            "required": ["do_time_fit"],
+        },
+        "systematics": {
+            "type": "object",
+            "properties": {"enable": {"type": "boolean"}},
+            "required": ["enable"],
+        },
+        "plotting": {
+            "type": "object",
+            "properties": {
+                "plot_save_formats": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                }
+            },
+            "required": ["plot_save_formats"],
+        },
+        "nuclides": {
+            "type": "object",
+            "patternProperties": {
+                "^.*$": {
+                    "type": "object",
+                    "properties": {
+                        "half_life_s": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                        }
+                    },
+                    "required": ["half_life_s"],
+                }
+            },
+        },
+    },
+    "required": ["pipeline", "spectral_fit", "time_fit", "systematics", "plotting"],
+}
 
 
 def extract_time_series_events(events, cfg):
@@ -52,14 +119,18 @@ def load_config(config_path):
     """
     Load and validate JSON configuration.
     Returns a dict.
-    Raises FileNotFoundError or json.JSONDecodeError on failure.
+    Raises FileNotFoundError, json.JSONDecodeError or DuplicateKeyError on failure.
+    Validation errors from ``jsonschema`` propagate as ``jsonschema.ValidationError``.
     """
     path = Path(config_path)
     if not path.is_file():
         raise FileNotFoundError(f"Config file not found: {config_path}")
 
     with open(path, "r", encoding="utf-8") as f:
-        cfg = json.load(f)
+        cfg = json.load(f, object_pairs_hook=_no_duplicates_object_pairs_hook)
+
+    # Validate the config structure and numeric ranges
+    _jsonschema_validate(instance=cfg, schema=CONFIG_SCHEMA)
 
     cfg["nuclide_constants"] = load_nuclide_overrides(cfg)
 

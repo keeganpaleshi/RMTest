@@ -16,7 +16,9 @@ from io_utils import (
     write_summary,
     copy_config,
     apply_burst_filter,
+    DuplicateKeyError,
 )
+from jsonschema import ValidationError
 
 
 def test_load_config(tmp_path):
@@ -72,7 +74,7 @@ def test_load_config_missing_key(tmp_path):
     p = tmp_path / "cfg.json"
     with open(p, "w") as f:
         json.dump(cfg, f)
-    with pytest.raises(KeyError):
+    with pytest.raises(ValidationError):
         load_config(p)
 
 
@@ -86,7 +88,38 @@ def test_load_config_missing_section(tmp_path):
     p = tmp_path / "cfg.json"
     with open(p, "w") as f:
         json.dump(cfg, f)
-    with pytest.raises(KeyError):
+    with pytest.raises(ValidationError):
+        load_config(p)
+
+
+def test_load_config_duplicate_keys(tmp_path):
+    cfg_json = (
+        '{"pipeline": {"log_level": "INFO"},'
+        ' "pipeline": {"log_level": "DEBUG"},'
+        ' "spectral_fit": {"expected_peaks": {"Po210": 1}},'
+        ' "time_fit": {"do_time_fit": true},'
+        ' "systematics": {"enable": false},'
+        ' "plotting": {"plot_save_formats": ["png"]}}'
+    )
+    p = tmp_path / "dup.json"
+    p.write_text(cfg_json)
+    with pytest.raises(DuplicateKeyError):
+        load_config(p)
+
+
+def test_load_config_invalid_half_life(tmp_path):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "spectral_fit": {"expected_peaks": {"Po210": 1}},
+        "time_fit": {"do_time_fit": True},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+        "nuclides": {"Po214": {"half_life_s": -5.0}},
+    }
+    p = tmp_path / "cfg.json"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+    with pytest.raises(ValidationError):
         load_config(p)
 
 
