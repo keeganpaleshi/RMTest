@@ -8,6 +8,7 @@ import logging
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
 from fitting import FitResult
+from constants import PO210
 
 
 def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
@@ -472,6 +473,8 @@ def test_po210_time_series_plot_generated(tmp_path, monkeypatch):
 
     def fake_plot(*args, **kwargs):
         outputs.append(Path(kwargs["out_png"]).name)
+        hl = kwargs["config"].get("hl_Po210", [PO210.half_life_s])[0]
+        assert hl == PO210.half_life_s
         Path(kwargs["out_png"]).touch()
         return None
 
