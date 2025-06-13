@@ -1614,6 +1614,8 @@ def test_hl_po210_cli_overrides(tmp_path, monkeypatch):
             "do_time_fit": True,
             "window_Po214": [0.0, 20.0],
             "window_Po210": [5.0, 6.0],
+            "window_Po218": [0.0, 20.0],
+            "window_Po210": [5.2, 5.4],
             "hl_Po214": [1.0, 0.0],
             "hl_Po210": [2.0, 0.0],
             "eff_Po214": [1.0, 0.0],
@@ -1634,24 +1636,22 @@ def test_hl_po210_cli_overrides(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)})
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)})
-    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
-    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
 
-    calls = []
+    # Combined stub for plot_time_series to fill both `received` and `captured`
     received = {}
-
-    def fake_fit(ts_dict, t_start, t_end, config):
-        iso = list(ts_dict.keys())[0]
-        calls.append((iso, config))
-        return FitResult({}, np.zeros((0, 0)), 0)
-
-    def fake_plot_ts(*args, **kwargs):
+    captured = {}
+    def fake_plot_time_series_combined(*args, **kwargs):
         received.update(kwargs)
+        fname = Path(kwargs["out_png"]).name
+        captured[fname] = kwargs["config"]
         Path(kwargs["out_png"]).touch()
         return None
 
-    monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
-    monkeypatch.setattr(analyze, "plot_time_series", fake_plot_ts)
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0, 0)), 0))
+    monkeypatch.setattr(analyze, "plot_time_series", fake_plot_time_series_combined)
+    monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
 
     args = [
         "analyze.py",
@@ -1669,5 +1669,9 @@ def test_hl_po210_cli_overrides(tmp_path, monkeypatch):
     analyze.main()
 
     assert received["config"]["hl_Po210"][0] == 7.0
+    cfg_used = captured.get("time_series_Po210.png")
+    assert cfg_used is not None
+    assert cfg_used["hl_Po210"][0] == 7.0
+
 
 
