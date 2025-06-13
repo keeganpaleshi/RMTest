@@ -171,7 +171,7 @@ def test_n0_prior_from_baseline(tmp_path, monkeypatch):
             "eff_Po214": [1.0, 0.0],
             "flags": {},
         },
-        "systematics": {"enable": True, "sigma_shifts": {}, "scan_keys": []},
+        "systematics": {"enable": True, "scan_keys": []},
         "plotting": {"plot_save_formats": ["png"]},
     }
     cfg_path = tmp_path / "cfg.json"

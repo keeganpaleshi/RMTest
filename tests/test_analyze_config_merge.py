@@ -296,7 +296,7 @@ def test_systematics_json_cli(tmp_path, monkeypatch):
     data = tmp_path / "d.csv"
     df.to_csv(data, index=False)
 
-    sys_cfg = {"enable": True, "sigma_shifts": {}, "scan_keys": []}
+    sys_cfg = {"enable": True, "scan_keys": []}
     sys_path = tmp_path / "sys.json"
     with open(sys_path, "w") as f:
         json.dump(sys_cfg, f)
