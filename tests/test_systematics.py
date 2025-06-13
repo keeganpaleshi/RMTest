@@ -4,6 +4,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import numpy as np
 import pytest
+import math
 from systematics import scan_systematics, apply_linear_adc_shift
 
 
@@ -15,13 +16,12 @@ def test_scan_systematics_with_dict_result():
     }
 
     sigma_dict = {"p1": 0.5, "p2": 0.25}
-    keys = ["p1", "p2"]
 
     def dummy_fit(p):
         # Simple deterministic function returning parameter means plus 1
         return {k: v[0] + 1 for k, v in p.items()}
 
-    deltas, total_unc = scan_systematics(dummy_fit, priors, sigma_dict, keys)
+    deltas, total_unc = scan_systematics(dummy_fit, priors, sigma_dict)
     assert deltas["p1"] == pytest.approx(0.5)
     assert deltas["p2"] == pytest.approx(0.25)
     # Total uncertainty should be sqrt(0.5^2 + 0.25^2)
@@ -56,6 +56,20 @@ def test_scan_systematics_with_adc_drift():
 
     priors = {"drift": (0.0, 0.0)}
     sig = {"drift": 1.0}
-    deltas, tot = scan_systematics(fit_func, priors, sig, ["drift"])
+    deltas, tot = scan_systematics(fit_func, priors, sig)
     assert deltas["drift"] == pytest.approx(1.0)
     assert tot == pytest.approx(1.0)
+
+
+def test_scan_systematics_fractional_and_absolute():
+    priors = {"sigma_E": (2.0, 0.1), "mu": (5.0, 0.1)}
+
+    def fit_func(p):
+        return {k: v[0] for k, v in p.items()}
+
+    shifts = {"sigma_E_frac": 0.1, "mu_keV": 2.0}
+    deltas, tot = scan_systematics(fit_func, priors, shifts)
+    assert deltas["sigma_E"] == pytest.approx(0.2)
+    assert deltas["mu"] == pytest.approx(2.0)
+    expected = math.sqrt(0.2 ** 2 + 2.0 ** 2)
+    assert tot == pytest.approx(expected)

@@ -42,9 +42,31 @@ def scan_systematics(
     fit_func: Callable,
     priors: Dict[str, Tuple[float, float]],
     sigma_dict: Dict[str, float],
-    keys: List[str],
 ) -> Tuple[Dict[str, float], float]:
-    """Scan parameter level systematics as per the imported implementation."""
+    """Scan parameter level systematics.
+
+    Parameters
+    ----------
+    fit_func : callable
+        Function that performs the fit and returns either a mapping of
+        parameters or a scalar.
+    priors : dict
+        Mapping of parameter name to ``(mean, sigma)`` tuples.
+    sigma_dict : dict
+        Dictionary of parameter shift magnitudes.  Keys may be suffixed
+        with ``_frac`` to indicate a fractional shift or ``_keV`` for an
+        absolute shift in the same units as the parameter.  Keys without a
+        suffix are interpreted as absolute shifts.
+
+    Returns
+    -------
+    dict
+        Mapping of parameter names to absolute deviations induced by the
+        shifts.
+    float
+        Total systematic uncertainty combined in quadrature.
+    """
+
     central = fit_func(priors)
     is_dict = isinstance(central, dict)
     if not is_dict and not isinstance(central, (int, float)):
@@ -52,7 +74,19 @@ def scan_systematics(
             "scan_systematics: fit_func must return dict or scalar")
 
     deltas = {}
-    for key in keys:
+    for full_key, val in sigma_dict.items():
+        if full_key.endswith("_frac"):
+            key = full_key[:-5]
+            if key not in priors:
+                raise RuntimeError(f"No prior entry for '{key}'")
+            delta = val * priors[key][0]
+        elif full_key.endswith("_keV"):
+            key = full_key[:-4]
+            delta = val
+        else:
+            key = full_key
+            delta = val
+
         if is_dict:
             if key not in central:
                 raise RuntimeError(f"Central fit missing parameter '{key}'")
@@ -60,9 +94,8 @@ def scan_systematics(
         else:
             v0 = central
 
-        if key not in sigma_dict:
-            raise RuntimeError(f"No sigma_dict entry for '{key}'")
-        delta = sigma_dict[key]
+        if key not in priors:
+            raise RuntimeError(f"No prior entry for '{key}'")
 
         p_plus = priors.copy()
         mu, sig = p_plus[key]
@@ -77,6 +110,5 @@ def scan_systematics(
 
         deltas[key] = max(abs(v_plus - v0), abs(v_minus - v0))
 
-    # Combine all systematic shifts in quadrature using only the values
     total_unc = math.sqrt(sum(v ** 2 for v in deltas.values()))
     return deltas, total_unc
