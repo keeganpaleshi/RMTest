@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import datetime
 from color_schemes import COLOR_SCHEMES
-from constants import PO214, PO218, PO210, RN222
+from constants import PO214, PO218, PO210
 
 # Half-life constants used for the time-series overlay [seconds]
 PO214_HALF_LIFE_S = PO214.half_life_s
