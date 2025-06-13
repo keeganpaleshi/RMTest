@@ -292,9 +292,6 @@ Example snippet:
 `dump_time_series_json` under `plotting` saves a `*_ts.json` file
 containing the binned time-series data when set to `true`.
 
-`scan_keys` in the `systematics` section selects which fit parameters
-are varied during the systematic uncertainty scan.  By default no
-parameters are scanned.
 
 `adc_drift_rate` under `systematics` applies a linear time-dependent
 shift to the raw ADC values before calibration.  The value is in ADC
