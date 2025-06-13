@@ -129,6 +129,24 @@ def window_prob(E, sigma, lo, hi):
     return prob
 
 
+_spike_eff_cache = {}
+
+
+def get_spike_efficiency(spike_cfg):
+    """Return spike efficiency using :func:`calc_spike_efficiency` with caching."""
+
+    key = (
+        spike_cfg.get("counts"),
+        spike_cfg.get("activity_bq"),
+        spike_cfg.get("live_time_s"),
+    )
+    if key not in _spike_eff_cache:
+        from efficiency import calc_spike_efficiency
+
+        _spike_eff_cache[key] = calc_spike_efficiency(*key)
+    return _spike_eff_cache[key]
+
+
 def parse_args():
     p = argparse.ArgumentParser(description="Full Radon Monitor Analysis Pipeline")
     p.add_argument(
@@ -1120,7 +1138,6 @@ def main():
     eff_cfg = cfg.get("efficiency", {})
     if eff_cfg:
         from efficiency import (
-            calc_spike_efficiency,
             calc_assay_efficiency,
             calc_decay_efficiency,
             blue_combine,
@@ -1134,9 +1151,7 @@ def main():
             scfg_list = [scfg_raw] if isinstance(scfg_raw, dict) else list(scfg_raw)
             for idx, scfg in enumerate(scfg_list, start=1):
                 try:
-                    val = calc_spike_efficiency(
-                        scfg["counts"], scfg["activity_bq"], scfg["live_time_s"]
-                    )
+                    val = get_spike_efficiency(scfg)
                     err = float(scfg.get("error", 0.0))
                     key = "spike" if isinstance(scfg_raw, dict) else f"spike_{idx}"
                     sources[key] = {"value": val, "error": err}
