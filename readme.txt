@@ -37,7 +37,7 @@ python analyze.py --config config.json --input merged_data.csv \
     [--settle-s SEC] [--debug] [--seed SEED] \
     [--ambient-file amb.txt (time conc)] [--ambient-concentration 0.1] \
     [--burst-mode rate] \
-    [--time-bin-mode fixed --time-bin-width 3600] [--dump-ts-json] \
+    [--plot-time-binning-mode fixed --plot-time-bin-width 3600] [--dump-ts-json] \
     [--hierarchical-summary OUT.json]
 ```
 
@@ -225,7 +225,7 @@ Example snippet:
 histogram bins to use when the automatic Freedman&ndash;Diaconis rule
 fails, typically due to zero IQR.  The default is `1`.
 
-The CLI options `--time-bin-mode` and `--time-bin-width` override
+The CLI options `--plot-time-binning-mode` and `--plot-time-bin-width` override
 `plot_time_binning_mode` and `plot_time_bin_width_s` in the configuration
 to control the time-series histogram. Passing `--dump-ts-json` writes the
 histogram counts to a `*_ts.json` file alongside the plot.

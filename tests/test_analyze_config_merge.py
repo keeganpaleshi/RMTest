@@ -381,9 +381,9 @@ def test_time_bin_cli(tmp_path, monkeypatch):
         str(data_path),
         "--output_dir",
         str(tmp_path),
-        "--time-bin-mode",
+        "--plot-time-binning-mode",
         "fixed",
-        "--time-bin-width",
+        "--plot-time-bin-width",
         "5",
         "--dump-ts-json",
     ]
@@ -393,6 +393,48 @@ def test_time_bin_cli(tmp_path, monkeypatch):
     assert captured["config"]["plot_time_binning_mode"] == "fixed"
     assert captured["config"]["plot_time_bin_width_s"] == 5.0
     assert captured["config"]["dump_time_series_json"] is True
+
+
+def test_time_bin_override_logs(tmp_path, monkeypatch, caplog):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {"do_time_fit": False},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"], "plot_time_binning_mode": "auto"},
+    }
+    cfg_path = tmp_path / "cfg.json"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    data_path = tmp_path / "d.csv"
+    df.to_csv(data_path, index=False)
+
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0)})
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0)})
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+        "--plot-time-binning-mode",
+        "fd",
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+    with caplog.at_level(logging.INFO):
+        analyze.main()
+
+    assert "plotting.plot_time_binning_mode" in caplog.text
 
 
 def test_po210_time_series_plot_generated(tmp_path, monkeypatch):

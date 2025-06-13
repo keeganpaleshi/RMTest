@@ -248,14 +248,28 @@ def parse_args():
         help="Enable debug logging",
     )
     p.add_argument(
-        "--time-bin-mode",
+        "--plot-time-binning-mode",
+        dest="time_bin_mode",
         choices=["auto", "fd", "fixed"],
         help="Time-series binning mode (overrides plotting.plot_time_binning_mode)",
     )
     p.add_argument(
-        "--time-bin-width",
+        "--time-bin-mode",
+        dest="time_bin_mode",
+        choices=["auto", "fd", "fixed"],
+        help=argparse.SUPPRESS,
+    )
+    p.add_argument(
+        "--plot-time-bin-width",
+        dest="time_bin_width",
         type=float,
         help="Fixed time bin width in seconds (overrides plotting.plot_time_bin_width_s)",
+    )
+    p.add_argument(
+        "--time-bin-width",
+        dest="time_bin_width",
+        type=float,
+        help=argparse.SUPPRESS,
     )
     p.add_argument(
         "--dump-ts-json",
@@ -392,9 +406,22 @@ def main():
         tf["hl_Po210"] = [float(args.hl_po210), sig]
 
 
+    def _log_override(section, key, new_val):
+        prev = cfg.get(section, {}).get(key)
+        if prev is not None and prev != new_val:
+            logging.info(
+                f"Overriding {section}.{key}={prev!r} with {new_val!r} from CLI"
+            )
+
     if args.time_bin_mode:
+        _log_override("plotting", "plot_time_binning_mode", args.time_bin_mode)
         cfg.setdefault("plotting", {})["plot_time_binning_mode"] = args.time_bin_mode
     if args.time_bin_width is not None:
+        _log_override(
+            "plotting",
+            "plot_time_bin_width_s",
+            float(args.time_bin_width),
+        )
         cfg.setdefault("plotting", {})["plot_time_bin_width_s"] = float(args.time_bin_width)
     if args.dump_ts_json:
         cfg.setdefault("plotting", {})["dump_time_series_json"] = True
