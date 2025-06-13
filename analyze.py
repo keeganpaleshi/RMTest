@@ -130,7 +130,12 @@ def window_prob(E, sigma, lo, hi):
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Full Radon Monitor Analysis Pipeline")
+    p = argparse.ArgumentParser(
+        description=(
+            "Full Radon Monitor Analysis Pipeline. "
+            "Command-line options override values in config.json where applicable."
+        )
+    )
     p.add_argument(
         "--config", "-c", required=True, help="Path to JSON configuration file"
     )
@@ -151,10 +156,10 @@ def parse_args():
         nargs=2,
         metavar=("TSTART", "TEND"),
         help=(
-            "Optional baseline-run interval. "
-            "Provide two values (either ISO strings or epoch floats). "
-            "If set, those events are extracted (same energy cuts) and "
-            "listed in `baseline` of the summary."
+            "Optional baseline-run interval overriding `baseline.range` in "
+            "config.json. Provide two values (either ISO strings or epoch "
+            "floats). If set, those events are extracted (same energy cuts) "
+            "and listed in `baseline` of the summary."
         ),
     )
     p.add_argument(
@@ -186,41 +191,62 @@ def parse_args():
     )
     p.add_argument(
         "--analysis-end-time",
-        help="Ignore events occurring after this ISO timestamp",
+        help=(
+            "Ignore events occurring after this ISO timestamp "
+            "(overrides analysis.analysis_end_time)"
+        ),
     )
     p.add_argument(
         "--spike-end-time",
-        help="Discard events before this ISO timestamp",
+        help=(
+            "Discard events before this ISO timestamp "
+            "(overrides analysis.spike_end_time)"
+        ),
     )
     p.add_argument(
         "--spike-period",
         nargs=2,
         action="append",
         metavar=("START", "END"),
-        help="Discard events between START and END (can be given multiple times)",
+        help=(
+            "Discard events between START and END (can be given multiple times). "
+            "Overrides analysis.spike_periods"
+        ),
     )
     p.add_argument(
         "--run-period",
         nargs=2,
         action="append",
         metavar=("START", "END"),
-        help="Keep events between START and END (can be given multiple times)",
+        help=(
+            "Keep events between START and END (can be given multiple times). "
+            "Overrides analysis.run_periods"
+        ),
     )
     p.add_argument(
         "--radon-interval",
         nargs=2,
         metavar=("START", "END"),
-        help="Time interval to evaluate radon delta",
+        help=(
+            "Time interval to evaluate radon delta (overrides "
+            "analysis.radon_interval in config.json)"
+        ),
     )
     p.add_argument(
         "--slope",
         type=float,
-        help="Apply a linear ADC drift correction with the given slope",
+        help=(
+            "Apply a linear ADC drift correction with the given slope "
+            "(overrides systematics.adc_drift_rate in config.json)"
+        ),
     )
     p.add_argument(
         "--noise-cutoff",
         type=int,
-        help="ADC threshold for the noise cut (overrides calibration.noise_cutoff)",
+        help=(
+            "ADC threshold for the noise cut (overrides "
+            "calibration.noise_cutoff in config.json)"
+        ),
     )
     p.add_argument(
         "--settle-s",
@@ -245,7 +271,7 @@ def parse_args():
     p.add_argument(
         "--debug",
         action="store_true",
-        help="Enable debug logging",
+        help="Enable debug logging (overrides pipeline.log_level)",
     )
     p.add_argument(
         "--plot-time-binning-mode",
@@ -285,12 +311,18 @@ def parse_args():
     p.add_argument(
         "--ambient-concentration",
         type=float,
-        help="Ambient radon concentration in Bq per liter for equivalent air plot",
+        help=(
+            "Ambient radon concentration in Bq per liter for equivalent air plot "
+            "(overrides analysis.ambient_concentration)"
+        ),
     )
     p.add_argument(
         "--seed",
         type=int,
-        help="Override random seed used by analysis algorithms",
+        help=(
+            "Override random seed used by analysis algorithms "
+            "(overrides pipeline.random_seed)"
+        ),
     )
     p.add_argument(
         "--palette",
@@ -342,6 +374,14 @@ def main():
         sys.exit(1)
 
     # Apply optional overrides from command-line arguments
+
+    def _log_override(section, key, new_val):
+        prev = cfg.get(section, {}).get(key)
+        if prev is not None and prev != new_val:
+            logging.info(
+                f"Overriding {section}.{key}={prev!r} with {new_val!r} from CLI"
+            )
+
     if args.efficiency_json:
         try:
             with open(args.efficiency_json, "r", encoding="utf-8") as f:
@@ -359,26 +399,37 @@ def main():
             sys.exit(1)
 
     if args.seed is not None:
+        _log_override("pipeline", "random_seed", int(args.seed))
         cfg.setdefault("pipeline", {})["random_seed"] = int(args.seed)
 
     if args.ambient_concentration is not None:
+        _log_override(
+            "analysis",
+            "ambient_concentration",
+            float(args.ambient_concentration),
+        )
         cfg.setdefault("analysis", {})["ambient_concentration"] = float(
             args.ambient_concentration
         )
 
     if args.analysis_end_time is not None:
+        _log_override("analysis", "analysis_end_time", args.analysis_end_time)
         cfg.setdefault("analysis", {})["analysis_end_time"] = args.analysis_end_time
 
     if args.spike_end_time is not None:
+        _log_override("analysis", "spike_end_time", args.spike_end_time)
         cfg.setdefault("analysis", {})["spike_end_time"] = args.spike_end_time
 
     if args.spike_period:
+        _log_override("analysis", "spike_periods", args.spike_period)
         cfg.setdefault("analysis", {})["spike_periods"] = args.spike_period
 
     if args.run_period:
+        _log_override("analysis", "run_periods", args.run_period)
         cfg.setdefault("analysis", {})["run_periods"] = args.run_period
 
     if args.radon_interval:
+        _log_override("analysis", "radon_interval", args.radon_interval)
         cfg.setdefault("analysis", {})["radon_interval"] = args.radon_interval
 
     if args.hl_po214 is not None:
@@ -406,13 +457,6 @@ def main():
         tf["hl_Po210"] = [float(args.hl_po210), sig]
 
 
-    def _log_override(section, key, new_val):
-        prev = cfg.get(section, {}).get(key)
-        if prev is not None and prev != new_val:
-            logging.info(
-                f"Overriding {section}.{key}={prev!r} with {new_val!r} from CLI"
-            )
-
     if args.time_bin_mode:
         _log_override("plotting", "plot_time_binning_mode", args.time_bin_mode)
         cfg.setdefault("plotting", {})["plot_time_binning_mode"] = args.time_bin_mode
@@ -434,9 +478,11 @@ def main():
             eff_sec["error"] = float(args.spike_count_err)
 
     if args.slope is not None:
+        _log_override("systematics", "adc_drift_rate", float(args.slope))
         cfg.setdefault("systematics", {})["adc_drift_rate"] = float(args.slope)
 
     if args.noise_cutoff is not None:
+        _log_override("calibration", "noise_cutoff", int(args.noise_cutoff))
         cfg.setdefault("calibration", {})["noise_cutoff"] = int(args.noise_cutoff)
 
     if args.debug:
@@ -682,6 +728,7 @@ def main():
     baseline_cfg = cfg.get("baseline", {})
     baseline_range = None
     if args.baseline_range:
+        _log_override("baseline", "range", args.baseline_range)
         baseline_range = args.baseline_range
     elif "range" in baseline_cfg:
         baseline_range = baseline_cfg.get("range")
