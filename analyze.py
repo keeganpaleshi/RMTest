@@ -508,6 +508,13 @@ def main():
             logging.info(f"Noise cut removed {n_removed_noise} events")
 
     # Optional burst filter to remove high-rate clusters
+    total_span = events["timestamp"].max() - events["timestamp"].min()
+    rate_cps = len(events) / total_span if total_span > 0 else 0.0
+    if args.burst_mode is None:
+        current_mode = cfg.get("burst_filter", {}).get("burst_mode", "rate")
+        if current_mode == "rate" and rate_cps < 0.1:
+            cfg.setdefault("burst_filter", {})["burst_mode"] = "none"
+
     burst_mode = (
         args.burst_mode
         if args.burst_mode is not None
