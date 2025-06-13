@@ -176,6 +176,26 @@ def test_radon_activity_curve():
     assert np.allclose(err, np.sqrt(var))
 
 
+def test_radon_activity_curve_with_covariance():
+    times = [0.0, 1.0]
+    E = 5.0
+    dE = 0.5
+    N0 = 2.0
+    dN0 = 0.2
+    cov = -0.01
+    hl = 10.0
+    act, err = radon_activity_curve(times, E, dE, N0, dN0, hl, cov)
+    lam = math.log(2.0) / hl
+    import numpy as np
+    exp_term = np.exp(-lam * np.asarray(times))
+    var = (
+        ((1 - exp_term) * dE) ** 2
+        + ((lam * exp_term) * dN0) ** 2
+        + 2 * (1 - exp_term) * (lam * exp_term) * cov
+    )
+    assert np.allclose(err, np.sqrt(var))
+
+
 def test_radon_delta():
     start = 0.0
     end = 2.0
@@ -191,6 +211,30 @@ def test_radon_delta():
     exp2 = math.exp(-lam * end)
     expected = E * (exp1 - exp2) + lam * N0 * (exp2 - exp1)
     var = ((exp1 - exp2) * dE) ** 2 + ((lam * (exp2 - exp1)) * dN0) ** 2
+    assert delta == pytest.approx(expected)
+    assert sigma == pytest.approx(math.sqrt(var))
+
+
+def test_radon_delta_with_covariance():
+    start = 0.0
+    end = 2.0
+    E = 5.0
+    dE = 0.5
+    N0 = 2.0
+    dN0 = 0.2
+    cov = 0.01
+    hl = 10.0
+    delta, sigma = radon_delta(start, end, E, dE, N0, dN0, hl, cov)
+
+    lam = math.log(2.0) / hl
+    exp1 = math.exp(-lam * start)
+    exp2 = math.exp(-lam * end)
+    expected = E * (exp1 - exp2) + lam * N0 * (exp2 - exp1)
+    var = (
+        ((exp1 - exp2) * dE) ** 2
+        + ((lam * (exp2 - exp1)) * dN0) ** 2
+        + 2 * (exp1 - exp2) * (lam * (exp2 - exp1)) * cov
+    )
     assert delta == pytest.approx(expected)
     assert sigma == pytest.approx(math.sqrt(var))
 
