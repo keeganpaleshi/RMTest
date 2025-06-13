@@ -42,17 +42,28 @@ def scan_systematics(
     fit_func: Callable,
     priors: Dict[str, Tuple[float, float]],
     sigma_dict: Dict[str, float],
-    keys: List[str],
 ) -> Tuple[Dict[str, float], float]:
-    """Scan parameter level systematics as per the imported implementation."""
+    """Scan parameter-level systematics specified by ``sigma_dict``.
+
+    Keys ending with ``"_frac"`` are treated as fractional shifts of the
+    corresponding parameter.  Keys ending with ``"_keV"`` or without a suffix
+    are interpreted as absolute shifts.
+    """
+
     central = fit_func(priors)
     is_dict = isinstance(central, dict)
     if not is_dict and not isinstance(central, (int, float)):
-        raise RuntimeError(
-            "scan_systematics: fit_func must return dict or scalar")
+        raise RuntimeError("scan_systematics: fit_func must return dict or scalar")
 
     deltas = {}
-    for key in keys:
+    for full_key, spec in sigma_dict.items():
+        if full_key.endswith("_frac"):
+            key = full_key[:-5]
+        elif full_key.endswith("_keV"):
+            key = full_key[:-4]
+        else:
+            key = full_key
+
         if is_dict:
             if key not in central:
                 raise RuntimeError(f"Central fit missing parameter '{key}'")
@@ -60,9 +71,13 @@ def scan_systematics(
         else:
             v0 = central
 
-        if key not in sigma_dict:
-            raise RuntimeError(f"No sigma_dict entry for '{key}'")
-        delta = sigma_dict[key]
+        if full_key.endswith("_frac"):
+            delta = spec * v0
+        else:
+            delta = spec
+
+        if key not in priors:
+            raise RuntimeError(f"No prior for '{key}'")
 
         p_plus = priors.copy()
         mu, sig = p_plus[key]
@@ -77,6 +92,5 @@ def scan_systematics(
 
         deltas[key] = max(abs(v_plus - v0), abs(v_minus - v0))
 
-    # Combine all systematic shifts in quadrature using only the values
-    total_unc = math.sqrt(sum(v ** 2 for v in deltas.values()))
+    total_unc = math.sqrt(sum(v**2 for v in deltas.values()))
     return deltas, total_unc

@@ -108,6 +108,9 @@
             "efficiency_Po214_shift_pct": 0.10,
             "efficiency_Po218_shift_pct": 0.10
         },
+        "sigma_E_frac": 0.0,
+        "tail_fraction": 0.0,
+        "energy_shift_keV": 0.0,
         "scan_keys": [],
         "adc_drift_rate": 0.0
     },

@@ -13,7 +13,11 @@ from fitting import FitResult
 def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},
-        "baseline": {"range": [0, 10], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
+        "baseline": {
+            "range": [0, 10],
+            "monitor_volume_l": 605.0,
+            "sample_volume_l": 0.0,
+        },
         "calibration": {},
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
@@ -30,19 +34,30 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({
-        "fUniqueID": [1, 2, 3],
-        "fBits": [0, 0, 0],
-        "timestamp": [1, 2, 20],
-        "adc": [8, 8, 8],
-        "fchannel": [1, 1, 1],
-    })
+    df = pd.DataFrame(
+        {
+            "fUniqueID": [1, 2, 3],
+            "fBits": [0, 0, 0],
+            "timestamp": [1, 2, 20],
+            "adc": [8, 8, 8],
+            "fchannel": [1, 1, 1],
+        }
+    )
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
-    cal_mock = {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0), "peaks": {"Po210": {"centroid_adc": 10}}}
-    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
-    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
+    cal_mock = {
+        "a": (1.0, 0.0),
+        "c": (0.0, 0.0),
+        "sigma_E": (1.0, 0.0),
+        "peaks": {"Po210": {"centroid_adc": 10}},
+    }
+    monkeypatch.setattr(
+        analyze, "derive_calibration_constants", lambda *a, **k: cal_mock
+    )
+    monkeypatch.setattr(
+        analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock
+    )
     captured = {}
 
     def fake_fit_time_series(times_dict, t_start, t_end, cfg):
@@ -51,10 +66,14 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit_time_series)
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
-    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(
+        analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch()
+    )
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
-    monkeypatch.setattr(baseline_noise, "estimate_baseline_noise", lambda *a, **k: (5.0, {}))
+    monkeypatch.setattr(
+        baseline_noise, "estimate_baseline_noise", lambda *a, **k: (5.0, {})
+    )
 
     def fake_write(out_dir, summary, timestamp=None):
         captured["summary"] = summary
@@ -67,9 +86,12 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
 
     args = [
         "analyze.py",
-        "--config", str(cfg_path),
-        "--input", str(data_path),
-        "--output_dir", str(tmp_path),
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
     analyze.main()
@@ -91,7 +113,11 @@ def test_baseline_scaling_factor(tmp_path, monkeypatch):
     """Baseline subtraction scales by the monitor dilution factor."""
     cfg = {
         "pipeline": {"log_level": "INFO"},
-        "baseline": {"range": [0, 10], "monitor_volume_l": 605.0, "sample_volume_l": 605.0},
+        "baseline": {
+            "range": [0, 10],
+            "monitor_volume_l": 605.0,
+            "sample_volume_l": 605.0,
+        },
         "calibration": {},
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
@@ -108,25 +134,44 @@ def test_baseline_scaling_factor(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({
-        "fUniqueID": [1, 2, 3],
-        "fBits": [0, 0, 0],
-        "timestamp": [1, 2, 20],
-        "adc": [8, 8, 8],
-        "fchannel": [1, 1, 1],
-    })
+    df = pd.DataFrame(
+        {
+            "fUniqueID": [1, 2, 3],
+            "fBits": [0, 0, 0],
+            "timestamp": [1, 2, 20],
+            "adc": [8, 8, 8],
+            "fchannel": [1, 1, 1],
+        }
+    )
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
-    cal_mock = {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0), "peaks": {"Po210": {"centroid_adc": 10}}}
-    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
-    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({"E_Po214": 1.0}, np.zeros((1,1)), 0))
+    cal_mock = {
+        "a": (1.0, 0.0),
+        "c": (0.0, 0.0),
+        "sigma_E": (1.0, 0.0),
+        "peaks": {"Po210": {"centroid_adc": 10}},
+    }
+    monkeypatch.setattr(
+        analyze, "derive_calibration_constants", lambda *a, **k: cal_mock
+    )
+    monkeypatch.setattr(
+        analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock
+    )
+    monkeypatch.setattr(
+        analyze,
+        "fit_time_series",
+        lambda *a, **k: FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0),
+    )
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
-    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(
+        analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch()
+    )
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
-    monkeypatch.setattr(baseline_noise, "estimate_baseline_noise", lambda *a, **k: (None, {}))
+    monkeypatch.setattr(
+        baseline_noise, "estimate_baseline_noise", lambda *a, **k: (None, {})
+    )
 
     captured = {}
 
@@ -141,9 +186,12 @@ def test_baseline_scaling_factor(tmp_path, monkeypatch):
 
     args = [
         "analyze.py",
-        "--config", str(cfg_path),
-        "--input", str(data_path),
-        "--output_dir", str(tmp_path),
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
 
@@ -161,7 +209,11 @@ def test_n0_prior_from_baseline(tmp_path, monkeypatch):
     """Baseline counts convert to an N0 prior in activity units."""
     cfg = {
         "pipeline": {"log_level": "INFO"},
-        "baseline": {"range": [0, 10], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
+        "baseline": {
+            "range": [0, 10],
+            "monitor_volume_l": 605.0,
+            "sample_volume_l": 0.0,
+        },
         "calibration": {},
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
@@ -178,19 +230,30 @@ def test_n0_prior_from_baseline(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({
-        "fUniqueID": [1, 2, 3],
-        "fBits": [0, 0, 0],
-        "timestamp": [1, 2, 20],
-        "adc": [8, 8, 8],
-        "fchannel": [1, 1, 1],
-    })
+    df = pd.DataFrame(
+        {
+            "fUniqueID": [1, 2, 3],
+            "fBits": [0, 0, 0],
+            "timestamp": [1, 2, 20],
+            "adc": [8, 8, 8],
+            "fchannel": [1, 1, 1],
+        }
+    )
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
-    cal_mock = {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0), "peaks": {"Po210": {"centroid_adc": 10}}}
-    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
-    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
+    cal_mock = {
+        "a": (1.0, 0.0),
+        "c": (0.0, 0.0),
+        "sigma_E": (1.0, 0.0),
+        "peaks": {"Po210": {"centroid_adc": 10}},
+    }
+    monkeypatch.setattr(
+        analyze, "derive_calibration_constants", lambda *a, **k: cal_mock
+    )
+    monkeypatch.setattr(
+        analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock
+    )
 
     captured = {}
 
@@ -199,12 +262,16 @@ def test_n0_prior_from_baseline(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit_time_series)
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
-    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(
+        analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch()
+    )
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
-    monkeypatch.setattr(baseline_noise, "estimate_baseline_noise", lambda *a, **k: (None, {}))
+    monkeypatch.setattr(
+        baseline_noise, "estimate_baseline_noise", lambda *a, **k: (None, {})
+    )
 
-    def fake_scan_systematics(fit_func, priors, sigma_dict, keys):
+    def fake_scan_systematics(fit_func, priors, sigma_dict):
         captured["priors"] = priors
         try:
             fit_func(priors)
@@ -238,4 +305,3 @@ def test_n0_prior_from_baseline(tmp_path, monkeypatch):
 
     n0_prior = captured.get("priors", {}).get("N0", (None,))[0]
     assert n0_prior == pytest.approx(0.2, rel=1e-3)
-

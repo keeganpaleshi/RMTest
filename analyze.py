@@ -114,9 +114,9 @@ def window_prob(E, sigma, lo, hi):
     zero_mask = sigma == 0
 
     if np.any(zero_mask):
-        prob[zero_mask] = (
-            (E[zero_mask] >= lo_val) & (E[zero_mask] <= hi_val)
-        ).astype(float)
+        prob[zero_mask] = ((E[zero_mask] >= lo_val) & (E[zero_mask] <= hi_val)).astype(
+            float
+        )
 
     if np.any(~zero_mask):
         nz = ~zero_mask
@@ -264,9 +264,7 @@ def parse_args():
     )
     p.add_argument(
         "--ambient-file",
-        help=(
-            "Two-column text file of timestamp and ambient concentration in Bq/L"
-        ),
+        help=("Two-column text file of timestamp and ambient concentration in Bq/L"),
     )
     p.add_argument(
         "--ambient-concentration",
@@ -297,10 +295,9 @@ def main():
     cli_args = sys.argv[:]
     cli_sha256 = hashlib.sha256(" ".join(cli_args).encode("utf-8")).hexdigest()
     try:
-        commit = (
-            subprocess.check_output(["git", "rev-parse", "HEAD"], encoding="utf-8")
-            .strip()
-        )
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], encoding="utf-8"
+        ).strip()
     except Exception:
         commit = "unknown"
 
@@ -333,7 +330,9 @@ def main():
             with open(args.efficiency_json, "r", encoding="utf-8") as f:
                 cfg["efficiency"] = json.load(f)
         except Exception as e:
-            print(f"ERROR: Could not load efficiency JSON '{args.efficiency_json}': {e}")
+            print(
+                f"ERROR: Could not load efficiency JSON '{args.efficiency_json}': {e}"
+            )
             sys.exit(1)
 
     if args.systematics_json:
@@ -341,7 +340,9 @@ def main():
             with open(args.systematics_json, "r", encoding="utf-8") as f:
                 cfg["systematics"] = json.load(f)
         except Exception as e:
-            print(f"ERROR: Could not load systematics JSON '{args.systematics_json}': {e}")
+            print(
+                f"ERROR: Could not load systematics JSON '{args.systematics_json}': {e}"
+            )
             sys.exit(1)
 
     if args.seed is not None:
@@ -391,11 +392,12 @@ def main():
             sig = current[1]
         tf["hl_Po210"] = [float(args.hl_po210), sig]
 
-
     if args.time_bin_mode:
         cfg.setdefault("plotting", {})["plot_time_binning_mode"] = args.time_bin_mode
     if args.time_bin_width is not None:
-        cfg.setdefault("plotting", {})["plot_time_bin_width_s"] = float(args.time_bin_width)
+        cfg.setdefault("plotting", {})["plot_time_bin_width_s"] = float(
+            args.time_bin_width
+        )
     if args.dump_ts_json:
         cfg.setdefault("plotting", {})["dump_time_series_json"] = True
 
@@ -471,9 +473,7 @@ def main():
         try:
             thr_val = int(noise_thr)
         except (ValueError, TypeError):
-            logging.warning(
-                f"Invalid noise_cutoff '{noise_thr}' - skipping noise cut"
-            )
+            logging.warning(f"Invalid noise_cutoff '{noise_thr}' - skipping noise cut")
         else:
             before = len(events)
             events = events[events["adc"] > thr_val].reset_index(drop=True)
@@ -524,9 +524,7 @@ def main():
         try:
             t_spike_end = _to_epoch(spike_end_cfg)
         except Exception:
-            logging.warning(
-                f"Invalid spike_end_time '{spike_end_cfg}' - ignoring"
-            )
+            logging.warning(f"Invalid spike_end_time '{spike_end_cfg}' - ignoring")
             t_spike_end = None
 
     spike_periods_cfg = cfg.get("analysis", {}).get("spike_periods", [])
@@ -583,7 +581,9 @@ def main():
     if run_periods:
         keep_mask = np.zeros(len(events), dtype=bool)
         for start_ts, end_ts in run_periods:
-            keep_mask |= (events["timestamp"] >= start_ts) & (events["timestamp"] < end_ts)
+            keep_mask |= (events["timestamp"] >= start_ts) & (
+                events["timestamp"] < end_ts
+            )
         events = events[keep_mask].reset_index(drop=True)
         if t_end_cfg is None and len(events) > 0:
             t_end_global = events["timestamp"].max()
@@ -594,8 +594,10 @@ def main():
 
     # Optional ADC drift correction before calibration
     # Applied once using either the CLI value or the config default.
-    drift_rate = float(args.slope) if args.slope is not None else float(
-        cfg.get("systematics", {}).get("adc_drift_rate", 0.0)
+    drift_rate = (
+        float(args.slope)
+        if args.slope is not None
+        else float(cfg.get("systematics", {}).get("adc_drift_rate", 0.0))
     )
 
     if drift_rate != 0.0:
@@ -609,7 +611,6 @@ def main():
         except Exception as e:
             print(f"WARNING: Could not apply ADC drift correction -> {e}")
 
-
     # ────────────────────────────────────────────────────────────
     # 3. Energy calibration
     # ────────────────────────────────────────────────────────────
@@ -620,7 +621,9 @@ def main():
             # Auto‐cal using Freedman‐Diaconis histogram + peak detection
             cal_params = derive_calibration_constants_auto(
                 adc_vals,
-                noise_cutoff=cfg["calibration"].get("noise_cutoff", DEFAULT_NOISE_CUTOFF),
+                noise_cutoff=cfg["calibration"].get(
+                    "noise_cutoff", DEFAULT_NOISE_CUTOFF
+                ),
                 hist_bins=cfg["calibration"].get("hist_bins", 2000),
                 peak_search_radius=cfg["calibration"].get("peak_search_radius", 200),
                 nominal_adc=cfg["calibration"].get("nominal_adc"),
@@ -639,7 +642,7 @@ def main():
 
     # Apply linear calibration -> new column “energy_MeV” and its uncertainty
     events["energy_MeV"] = events["adc"] * a + c
-    events["denergy_MeV"] = np.sqrt((events["adc"] * a_sig) ** 2 + c_sig ** 2)
+    events["denergy_MeV"] = np.sqrt((events["adc"] * a_sig) ** 2 + c_sig**2)
 
     # ────────────────────────────────────────────────────────────
     # 4. Baseline run (optional)
@@ -669,9 +672,7 @@ def main():
         t_start_base = to_epoch(baseline_range[0])
         t_end_base = to_epoch(baseline_range[1])
         if t_end_base <= t_start_base:
-            raise ValueError(
-                "baseline_range end time must be greater than start time"
-            )
+            raise ValueError("baseline_range end time must be greater than start time")
         mask_base = (events["timestamp"] >= t_start_base) & (
             events["timestamp"] < t_end_base
         )
@@ -689,11 +690,7 @@ def main():
         try:
             from baseline_noise import estimate_baseline_noise
 
-            peak_adc = (
-                cal_params.get("peaks", {})
-                .get("Po210", {})
-                .get("centroid_adc")
-            )
+            peak_adc = cal_params.get("peaks", {}).get("Po210", {}).get("centroid_adc")
             if peak_adc is not None:
                 noise_level, _ = estimate_baseline_noise(
                     base_events["adc"].values,
@@ -705,12 +702,9 @@ def main():
         if noise_level is not None:
             baseline_info["noise_level"] = float(noise_level)
 
-
-
         # Remove baseline events from the main dataset before any fits.
         # This is done once here to avoid accidentally discarding data twice
         # which previously left an empty DataFrame for the time fits.
-
 
     # After creating ``base_events``, drop them from the dataset
     if baseline_range:
@@ -720,16 +714,10 @@ def main():
         if t_end_cfg is None:
             t_end_global = events["timestamp"].max()
 
-
-
-
         # Baseline events were already removed above. Avoid reapplying the mask
         # here since it may be misaligned after ``events`` has been
         # reindexed, which can inadvertently drop all remaining rows on
         # newer pandas versions.
-
-
-
 
     baseline_counts = {}
     # ────────────────────────────────────────────────────────────
@@ -782,7 +770,9 @@ def main():
         # Find approximate ADC centroids for Po‐210, Po‐218, Po‐214
 
         if "expected_peaks" not in cfg.get("spectral_fit", {}):
-            raise KeyError("'spectral_fit.expected_peaks' must be provided in the configuration")
+            raise KeyError(
+                "'spectral_fit.expected_peaks' must be provided in the configuration"
+            )
 
         expected_peaks = cfg["spectral_fit"]["expected_peaks"]
 
@@ -914,7 +904,9 @@ def main():
                 continue
 
             lo, hi = win_range
-            probs = window_prob(events["energy_MeV"].values, events["denergy_MeV"].values, lo, hi)
+            probs = window_prob(
+                events["energy_MeV"].values, events["denergy_MeV"].values, lo, hi
+            )
             iso_mask = probs > 0
             iso_events = events[iso_mask].copy()
             iso_events["weight"] = probs[iso_mask]
@@ -1046,8 +1038,11 @@ def main():
     # ────────────────────────────────────────────────────────────
     systematics_results = {}
     if cfg.get("systematics", {}).get("enable", False):
-        sigma_dict = cfg["systematics"].get("sigma_shifts", {})
-        keys = cfg["systematics"].get("scan_keys", [])
+        sys_cfg = cfg["systematics"]
+        sigma_dict = dict(sys_cfg.get("sigma_shifts", {}))
+        for k in ("sigma_E_frac", "tail_fraction", "energy_shift_keV"):
+            if k in sys_cfg:
+                sigma_dict[k] = sys_cfg[k]
 
         for iso, fit_out in time_fit_results.items():
             if not fit_out:
@@ -1107,7 +1102,7 @@ def main():
 
             try:
                 deltas, total_unc = scan_systematics(
-                    fit_wrapper, priors_time_all.get(iso, {}), sigma_dict, keys
+                    fit_wrapper, priors_time_all.get(iso, {}), sigma_dict
                 )
                 systematics_results[iso] = {"deltas": deltas, "total_unc": total_unc}
             except Exception as e:
@@ -1275,7 +1270,9 @@ def main():
             dE = fit.get("dE_Po214", 0.0)
             N0 = fit.get("N0_Po214", 0.0)
             dN0 = fit.get("dN0_Po214", 0.0)
-            default_rn = cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+            default_rn = (
+                cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+            )
             hl = cfg.get("time_fit", {}).get("hl_Po214", [default_rn])[0]
             delta214, err_delta214 = radon_delta(
                 t_start_rel,
@@ -1294,7 +1291,9 @@ def main():
             dE = fit.get("dE_Po218", 0.0)
             N0 = fit.get("N0_Po218", 0.0)
             dN0 = fit.get("dN0_Po218", 0.0)
-            default_rn = cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+            default_rn = (
+                cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+            )
             hl = cfg.get("time_fit", {}).get("hl_Po218", [default_rn])[0]
             delta218, err_delta218 = radon_delta(
                 t_start_rel,
@@ -1363,7 +1362,9 @@ def main():
             "spike_periods": spike_periods_cfg,
             "run_periods": run_periods_cfg,
             "radon_interval": radon_interval_cfg,
-            "ambient_concentration": cfg.get("analysis", {}).get("ambient_concentration"),
+            "ambient_concentration": cfg.get("analysis", {}).get(
+                "ambient_concentration"
+            ),
         },
     }
 
@@ -1421,9 +1422,11 @@ def main():
     # Additional visualizations
     if efficiency_results.get("sources"):
         try:
-            errs_arr = np.array([s.get("error", 0.0) for s in efficiency_results["sources"].values()])
+            errs_arr = np.array(
+                [s.get("error", 0.0) for s in efficiency_results["sources"].values()]
+            )
             if errs_arr.size > 0:
-                cov = np.diag(errs_arr ** 2)
+                cov = np.diag(errs_arr**2)
                 cov_heatmap(
                     cov,
                     Path(out_dir) / "eff_cov.png",
@@ -1451,7 +1454,9 @@ def main():
             dE = fit.get("dE_Po214", 0.0)
             N0 = fit.get("N0_Po214", 0.0)
             dN0 = fit.get("dN0_Po214", 0.0)
-            default_rn = cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+            default_rn = (
+                cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+            )
             hl = cfg.get("time_fit", {}).get("hl_Po214", [default_rn])[0]
             A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl)
             plot_radon_activity(
@@ -1469,7 +1474,9 @@ def main():
             dE = fit.get("dE_Po218", 0.0)
             N0 = fit.get("N0_Po218", 0.0)
             dN0 = fit.get("dN0_Po218", 0.0)
-            default_rn = cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+            default_rn = (
+                cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+            )
             hl = cfg.get("time_fit", {}).get("hl_Po218", [default_rn])[0]
             A218, dA218 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl)
 
@@ -1517,9 +1524,13 @@ def main():
                 dE214 = fit.get("dE_Po214", 0.0)
                 N0214 = fit.get("N0_Po214", 0.0)
                 dN0214 = fit.get("dN0_Po214", 0.0)
-                default_rn = cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+                default_rn = (
+                    cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+                )
                 hl214 = cfg.get("time_fit", {}).get("hl_Po214", [default_rn])[0]
-                A214_tr, _ = radon_activity_curve(rel_trend, E214, dE214, N0214, dN0214, hl214)
+                A214_tr, _ = radon_activity_curve(
+                    rel_trend, E214, dE214, N0214, dN0214, hl214
+                )
             A218_tr = None
             if "Po218" in time_fit_results:
                 fit = _fit_params(time_fit_results["Po218"])
@@ -1527,9 +1538,13 @@ def main():
                 dE218 = fit.get("dE_Po218", 0.0)
                 N0218 = fit.get("N0_Po218", 0.0)
                 dN0218 = fit.get("dN0_Po218", 0.0)
-                default_rn = cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+                default_rn = (
+                    cfg.get("nuclide_constants", {}).get("Rn222", RN222).half_life_s
+                )
                 hl218 = cfg.get("time_fit", {}).get("hl_Po218", [default_rn])[0]
-                A218_tr, _ = radon_activity_curve(rel_trend, E218, dE218, N0218, dN0218, hl218)
+                A218_tr, _ = radon_activity_curve(
+                    rel_trend, E218, dE218, N0218, dN0218, hl218
+                )
             trend = np.zeros_like(times_trend)
             for i in range(times_trend.size):
                 r214 = A214_tr[i] if A214_tr is not None else None
@@ -1550,7 +1565,9 @@ def main():
                 dat = np.loadtxt(args.ambient_file, usecols=(0, 1))
                 ambient_interp = np.interp(times, dat[:, 0], dat[:, 1])
             except Exception as e:
-                print(f"WARNING: Could not read ambient file '{args.ambient_file}': {e}")
+                print(
+                    f"WARNING: Could not read ambient file '{args.ambient_file}': {e}"
+                )
 
         if ambient_interp is not None:
             vol_arr = activity_arr / ambient_interp
