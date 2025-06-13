@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 import sys
 import logging
+import jsonschema
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -281,4 +282,37 @@ def test_apply_burst_filter_single_searchsorted(monkeypatch):
     monkeypatch.setattr(np, "searchsorted", wrapped)
     apply_burst_filter(df, cfg, mode="micro")
     assert calls["n"] == 1
+
+
+def test_load_config_duplicate_keys(tmp_path):
+    txt = (
+        "{"
+        "\n  \"pipeline\": {\"log_level\": \"INFO\"},"
+        "\n  \"pipeline\": {\"log_level\": \"DEBUG\"},"
+        "\n  \"spectral_fit\": {\"expected_peaks\": {\"Po210\": 1}},"
+        "\n  \"time_fit\": {\"do_time_fit\": true},"
+        "\n  \"systematics\": {\"enable\": false},"
+        "\n  \"plotting\": {\"plot_save_formats\": [\"png\"]}"
+        "\n}"
+    )
+    p = tmp_path / "dup.json"
+    with open(p, "w") as f:
+        f.write(txt)
+    with pytest.raises(ValueError, match="Duplicate key"):
+        load_config(p)
+
+
+def test_load_config_invalid_half_life(tmp_path):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "spectral_fit": {"expected_peaks": {"Po210": 1}},
+        "time_fit": {"do_time_fit": True, "hl_po214": -1.0},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    p = tmp_path / "cfg.json"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+    with pytest.raises(jsonschema.exceptions.ValidationError):
+        load_config(p)
 

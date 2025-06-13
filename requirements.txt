@@ -5,3 +5,4 @@ pytest>=6.0
 pandas>=1.2
 iminuit>=2.0
 pymc
+jsonschema>=4.0

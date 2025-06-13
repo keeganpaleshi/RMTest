@@ -9,6 +9,7 @@ from constants import load_nuclide_overrides
 
 import numpy as np
 from utils import to_native
+import jsonschema
 
 
 def extract_time_series_events(events, cfg):
@@ -41,6 +42,59 @@ def extract_time_series_events(events, cfg):
 logger = logging.getLogger(__name__)
 
 
+CONFIG_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "pipeline": {
+            "type": "object",
+            "properties": {"log_level": {"type": "string"}},
+            "required": ["log_level"],
+        },
+        "spectral_fit": {
+            "type": "object",
+            "properties": {"expected_peaks": {"type": "object"}},
+            "required": ["expected_peaks"],
+        },
+        "time_fit": {
+            "type": "object",
+            "properties": {
+                "do_time_fit": {"type": "boolean"},
+                "hl_po214": {"type": "number", "exclusiveMinimum": 0},
+                "hl_po218": {"type": "number", "exclusiveMinimum": 0},
+                "hl_po210": {"type": "number", "exclusiveMinimum": 0},
+            },
+            "required": ["do_time_fit"],
+        },
+        "systematics": {
+            "type": "object",
+            "properties": {"enable": {"type": "boolean"}},
+            "required": ["enable"],
+        },
+        "plotting": {
+            "type": "object",
+            "properties": {"plot_save_formats": {"type": "array"}},
+            "required": ["plot_save_formats"],
+        },
+    },
+    "required": [
+        "pipeline",
+        "spectral_fit",
+        "time_fit",
+        "systematics",
+        "plotting",
+    ],
+}
+
+
+def _no_duplicates_object_pairs_hook(pairs):
+    obj = {}
+    for k, v in pairs:
+        if k in obj:
+            raise ValueError(f"Duplicate key '{k}' in configuration")
+        obj[k] = v
+    return obj
+
+
 def ensure_dir(path):
     """Create directory if it does not exist."""
     p = Path(path)
@@ -59,7 +113,14 @@ def load_config(config_path):
         raise FileNotFoundError(f"Config file not found: {config_path}")
 
     with open(path, "r", encoding="utf-8") as f:
-        cfg = json.load(f)
+        cfg = json.load(f, object_pairs_hook=_no_duplicates_object_pairs_hook)
+
+    try:
+        jsonschema.validate(cfg, CONFIG_SCHEMA)
+    except jsonschema.exceptions.ValidationError as e:
+        if e.validator == "required":
+            raise KeyError(e.message)
+        raise
 
     cfg["nuclide_constants"] = load_nuclide_overrides(cfg)
 
