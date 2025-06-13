@@ -169,9 +169,9 @@ def parse_args():
         nargs=2,
         metavar=("TSTART", "TEND"),
         help=(
-            "Optional baseline-run interval. "
-            "Provide two values (either ISO strings or epoch floats). "
-            "If set, those events are extracted (same energy cuts) and "
+            "Optional baseline-run interval overriding `baseline.range` in "
+            "config.json. Provide two values (either ISO strings or epoch "
+            "floats). If set, those events are extracted (same energy cuts) and "
             "listed in `baseline` of the summary."
         ),
     )
@@ -238,7 +238,10 @@ def parse_args():
     p.add_argument(
         "--noise-cutoff",
         type=int,
-        help="ADC threshold for the noise cut (overrides calibration.noise_cutoff)",
+        help=(
+            "ADC threshold for the noise cut. Overrides "
+            "`calibration.noise_cutoff` in config.json"
+        ),
     )
     p.add_argument(
         "--settle-s",
@@ -455,6 +458,11 @@ def main():
         cfg.setdefault("systematics", {})["adc_drift_rate"] = float(args.slope)
 
     if args.noise_cutoff is not None:
+        _log_override(
+            "calibration",
+            "noise_cutoff",
+            int(args.noise_cutoff),
+        )
         cfg.setdefault("calibration", {})["noise_cutoff"] = int(args.noise_cutoff)
 
     if args.debug:
@@ -700,6 +708,8 @@ def main():
     baseline_cfg = cfg.get("baseline", {})
     baseline_range = None
     if args.baseline_range:
+        if "range" in baseline_cfg:
+            _log_override("baseline", "range", args.baseline_range)
         baseline_range = args.baseline_range
     elif "range" in baseline_cfg:
         baseline_range = baseline_cfg.get("range")
