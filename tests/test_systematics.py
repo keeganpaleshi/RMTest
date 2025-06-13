@@ -5,6 +5,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 import pytest
 import math
+import json
+import pandas as pd
+import analyze
+from fitting import FitResult
 from systematics import scan_systematics, apply_linear_adc_shift
 
 
@@ -73,3 +77,82 @@ def test_scan_systematics_fractional_and_absolute():
     assert deltas["mu"] == pytest.approx(2.0)
     expected = math.sqrt(0.2 ** 2 + 2.0 ** 2)
     assert tot == pytest.approx(expected)
+
+
+def test_analyze_systematics_skip_unknown(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {
+            "do_time_fit": True,
+            "window_Po214": [7.0, 8.0],
+            "hl_Po214": [1.0, 0.0],
+            "eff_Po214": [1.0, 0.0],
+            "flags": {},
+        },
+        "systematics": {
+            "enable": True,
+            "sigma_E_frac": 0.1,
+            "tail_fraction": 0.2,
+            "energy_shift_keV": 1.0,
+        },
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    cfg_path = tmp_path / "cfg.json"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    df = pd.DataFrame({
+        "fUniqueID": [1],
+        "fBits": [0],
+        "timestamp": [0.0],
+        "adc": [10],
+        "fchannel": [1],
+    })
+    data_path = tmp_path / "d.csv"
+    df.to_csv(data_path, index=False)
+
+    monkeypatch.setattr(
+        analyze,
+        "derive_calibration_constants",
+        lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)},
+    )
+    monkeypatch.setattr(
+        analyze,
+        "derive_calibration_constants_auto",
+        lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)},
+    )
+
+    monkeypatch.setattr(
+        analyze,
+        "fit_time_series",
+        lambda *a, **k: FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0),
+    )
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
+
+    captured = {}
+
+    def fake_scan(fit_func, priors, sigma_dict):
+        captured["sigma"] = dict(sigma_dict)
+        return {}, 0.0
+
+    monkeypatch.setattr(analyze, "scan_systematics", fake_scan)
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+
+    analyze.main()
+
+    assert captured.get("sigma") == {}

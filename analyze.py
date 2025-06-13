@@ -1131,14 +1131,17 @@ def main():
     systematics_results = {}
     if cfg.get("systematics", {}).get("enable", False):
         sys_cfg = cfg.get("systematics", {})
-        sigma_dict = {}
-        for name in ("sigma_E_frac", "tail_fraction", "energy_shift_keV"):
-            if name in sys_cfg:
-                sigma_dict[name] = sys_cfg[name]
 
         for iso, fit_out in time_fit_results.items():
             if not fit_out:
                 continue
+
+            sigma_dict = {}
+            for name in ("sigma_E_frac", "tail_fraction", "energy_shift_keV"):
+                if name in sys_cfg:
+                    base = name.replace("_frac", "").replace("_keV", "")
+                    if base in priors_time_all.get(iso, {}):
+                        sigma_dict[name] = sys_cfg[name]
 
             # Build a wrapper to re‐run fit_time_series with modified priors
             def fit_wrapper(priors_mod):
