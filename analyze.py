@@ -978,13 +978,13 @@ def main():
         }
 
     # ────────────────────────────────────────────────────────────
-    # 6. Time‐series decay fits for Po‐218 and Po‐214
+    # 6. Time‐series decay fits for Po‐218, Po‐214 and Po‐210
     # ────────────────────────────────────────────────────────────
     time_fit_results = {}
     priors_time_all = {}
     time_plot_data = {}
     if cfg.get("time_fit", {}).get("do_time_fit", False):
-        for iso in ("Po218", "Po214"):
+        for iso in ("Po218", "Po214", "Po210"):
             win_key = f"window_{iso}"
 
             # Missing energy window for this isotope -> skip gracefully
@@ -1015,9 +1015,8 @@ def main():
 
         # Half-life prior (user must supply [T₁/₂, σ(T₁/₂)] in seconds)
         hl_key = f"hl_{iso}"
-        if hl_key in cfg["time_fit"]:
-            T12, T12sig = cfg["time_fit"][hl_key]
-            priors_time["tau"] = (T12 / np.log(2), T12sig / np.log(2))
+        T12, T12sig = cfg["time_fit"].get(hl_key, [PO210.half_life_s, 0.0])
+        priors_time["tau"] = (T12 / np.log(2), T12sig / np.log(2))
 
         # Background‐rate prior
         if f"bkg_{iso}" in cfg["time_fit"]:
@@ -1062,11 +1061,14 @@ def main():
             iso_events = iso_events[iso_events["timestamp"] >= cut]
         times_dict = {iso: iso_events["timestamp"].values}
         weights_map = {iso: iso_events["weight"].values}
+        default_const = cfg.get("nuclide_constants", {})
+        default_hl = default_const.get(iso, PO210).half_life_s
+        half_life = cfg["time_fit"].get(f"hl_{iso}", [default_hl])[0]
         fit_cfg = {
             "isotopes": {
                 iso: {
-                    "half_life_s": cfg["time_fit"][f"hl_{iso}"][0],
-                    "efficiency": cfg["time_fit"][f"eff_{iso}"][0],
+                    "half_life_s": half_life,
+                    "efficiency": cfg["time_fit"].get(f"eff_{iso}", [1.0])[0],
                 }
             },
             "fit_background": not cfg["time_fit"]["flags"].get(
@@ -1109,9 +1111,9 @@ def main():
             "events_energy": iso_events["energy_MeV"].values,
         }
 
-    # Also extract Po-210 events for plotting if a window is provided
+    # Also extract Po-210 events for plotting when not fitted
     win_p210 = cfg.get("time_fit", {}).get("window_Po210")
-    if win_p210 is not None:
+    if win_p210 is not None and "Po210" not in time_plot_data:
         lo, hi = win_p210
         mask210 = (
             (events["energy_MeV"] >= lo)
@@ -1160,10 +1162,13 @@ def main():
                 filtered_df = events[mask]
                 times_dict = {iso: filtered_df["timestamp"].values}
                 weights_local = {iso: probs[mask]}
+                default_const = cfg.get("nuclide_constants", {})
+                default_hl = default_const.get(iso, PO210).half_life_s
+                half_life = cfg["time_fit"].get(f"hl_{iso}", [default_hl])[0]
                 cfg_fit = {
                     "isotopes": {
                         iso: {
-                            "half_life_s": cfg["time_fit"][f"hl_{iso}"][0],
+                            "half_life_s": half_life,
                             "efficiency": priors_mod["eff"][0],
                         }
                     },
