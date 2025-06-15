@@ -247,7 +247,7 @@ The half-lives used in the decay fit can also be changed with
 
 When the spectrum is binned in raw ADC channels (`"spectral_binning_mode": "adc"`),
 the bin edges are internally converted to energy using the calibration
-slope_MeV_per_ch (MeV/channel) and intercept before plotting.  This ensures `spectrum.png`
+slope and intercept before plotting.  This ensures `spectrum.png`
 reflects the calibrated energy scale regardless of binning mode.
 
 The `spectral_fit` section provides priors for the unbinned likelihood
@@ -512,8 +512,8 @@ Example usage:
 from hierarchical import fit_hierarchical_runs
 
 run_results = [
-    {"half_life": 160.5, "dhalf_life": 1.2, "slope_MeV_per_ch": 0.001, "dslope": 0.0005},
-    {"half_life": 162.1, "dhalf_life": 1.0, "slope_MeV_per_ch": 0.0011, "dslope": 0.0004},
+    {"half_life": 160.5, "dhalf_life": 1.2, "slope": 0.001, "dslope": 0.0005},
+    {"half_life": 162.1, "dhalf_life": 1.0, "slope": 0.0011, "dslope": 0.0004},
 ]
 
 summary = fit_hierarchical_runs(run_results)
