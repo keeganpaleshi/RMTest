@@ -565,7 +565,7 @@ def main():
 
     # Optional burst filter to remove high-rate clusters
     total_span = events["timestamp"].max() - events["timestamp"].min()
-    rate_cps = len(events) / total_span if total_span > 0 else 0.0
+    rate_cps = len(events) / max(total_span, 1e-9)
     if args.burst_mode is None:
         current_mode = cfg.get("burst_filter", {}).get("burst_mode", "rate")
         if current_mode == "rate" and rate_cps < 0.1:
@@ -769,6 +769,8 @@ def main():
             events["timestamp"] < t_end_base
         )
         base_events = events[mask_base].copy()
+        if len(base_events) == 0:
+            raise ValueError("baseline_range yielded zero events")
         baseline_live_time = float(t_end_base - t_start_base)
         baseline_info = {
             "start": t_start_base,

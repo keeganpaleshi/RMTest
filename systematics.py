@@ -23,19 +23,16 @@ def apply_linear_adc_shift(adc_values, timestamps, rate, t_ref=None):
         Array of shifted ADC values.
     """
 
-    adc_arr = [float(v) for v in adc_values]
-    time_arr = [float(t) for t in timestamps]
+    adc_arr = np.asarray(adc_values, dtype=float)
+    time_arr = np.asarray(timestamps, dtype=float)
 
-    if len(adc_arr) != len(time_arr):
+    if adc_arr.shape != time_arr.shape:
         raise ValueError("adc_values and timestamps must have the same shape")
 
     if t_ref is None:
-        t_ref = float(time_arr[0]) if len(time_arr) else 0.0
+        t_ref = float(time_arr[0]) if time_arr.size else 0.0
 
-    return np.array(
-        [a + rate * (t - t_ref) for a, t in zip(adc_arr, time_arr)],
-        dtype=float,
-    )
+    return adc_arr + rate * (time_arr - t_ref)
 
 
 def scan_systematics(
