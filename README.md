@@ -2,6 +2,8 @@
 
 This repository provides a complete pipeline to analyze electrostatic radon monitor data.
 
+**Note:** All time quantities are expressed in seconds and all energies are given in MeV throughout the documentation and code.
+
 ## Structure
 
 - `analyze.py`: Main entry point to run the full analysis.
@@ -225,9 +227,9 @@ Example snippet:
 }
 ```
 
-`time_bins_fallback` under the `plotting` section sets the number of
-histogram bins to use when the automatic Freedman&ndash;Diaconis rule
-fails, typically due to zero IQR.  The default is `1`.
+`time_bins_fallback` under the `plotting` section sets the number of histogram
+bins to use when the automatic [Freedman–Diaconis rule](https://en.wikipedia.org/wiki/Freedman%E2%80%93Diaconis_rule) fails,
+typically due to zero IQR.  The default is `1`.
 
 The CLI options `--plot-time-binning-mode` and `--plot-time-bin-width` override
 `plot_time_binning_mode` and `plot_time_bin_width_s` in the configuration
@@ -253,8 +255,7 @@ reflects the calibrated energy scale regardless of binning mode.
 The `spectral_fit` section provides priors for the unbinned likelihood
 fit.  Important keys include:
 
-- `fd_hist_bins` – number of histogram bins to use when the automatic
-  Freedman–Diaconis rule fails.
+- `fd_hist_bins` – number of histogram bins to use when the automatic [Freedman–Diaconis rule](https://en.wikipedia.org/wiki/Freedman%E2%80%93Diaconis_rule) fails.
 - `mu_sigma` – uncertainty applied to peak centroids.
 - `amp_prior_scale` – scales the width of the peak amplitude priors.
 - `bkg_mode` – `"auto"` estimates the linear continuum from the spectrum
