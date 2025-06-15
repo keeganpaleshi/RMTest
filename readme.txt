@@ -70,9 +70,10 @@ The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--j
  - `equivalent_air.png` – equivalent air volume plot when `--ambient-file` or
    `--ambient-concentration` is provided.
 
-The `time_fit` routine still fits only Po‑214 and Po‑218.
-When `window_Po210` is provided the Po‑210 events are extracted and a
-time‑series histogram is produced without a decay fit.
+The `time_fit` routine fits Po‑214 and Po‑218 by default and also Po‑210
+when `window_Po210` is provided.  Po‑210 fit results are written to
+`summary.json` and shown in the time‑series plot but are **not** used for
+the radon‑activity prediction.
 
 The time‐series model multiplies the decay rate by the detection efficiency
 internally.  Therefore the fitted `E_Po214` and `E_Po218` values correspond to
@@ -317,8 +318,8 @@ when invoking `plot_time_series`.  When set to `true` the analysis does
 not clear the other window, allowing Po‑214 and Po‑218 to be plotted
 together on a single overlay.
 Specifying `window_Po210` (and optional `eff_Po210`) adds a Po‑210
-histogram to the time-series plots. The model curve appears only when
-fit results for Po‑210 are available.
+histogram to the time-series plots. The decay model is drawn when the
+time‑series fit for Po‑210 succeeds.
 
 `palette` under `plotting` selects the color scheme used for all plots.
 Available options are `"default"`, `"colorblind"` and `"grayscale"`.
@@ -437,7 +438,8 @@ python utils.py 0.5 --to bq --volume_liters 10
 ## Radon Activity Output
 
 After the decay fits a weighted average of the Po‑218 and Po‑214 rates is
-converted to an instantaneous radon activity.  The result is written to
+converted to an instantaneous radon activity.  Po‑210 is ignored in this
+calculation since it may not be in equilibrium.  The result is written to
 `summary.json` under `radon_results` together with the corresponding
 concentration (per liter) and the total amount of radon contained in the
 sample volume.  The file `radon_activity.png` visualises this
