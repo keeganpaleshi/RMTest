@@ -231,7 +231,9 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
     # 8) Build result dict:
     calib_dict = {
+
         "slope_MeV_per_ch": a,  # linear calibration slope [MeV/ADC]
+
         "intercept": c,
         "sigma_E": float(sigma_E),
         "peaks": peak_fits,
