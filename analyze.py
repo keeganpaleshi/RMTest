@@ -839,8 +839,15 @@ def main():
             n = E_all.size
             if (iqr > 0) and (n > 0):
                 fd_width = 2 * iqr / (n ** (1 / 3))
-                emin, emax = E_all.min(), E_all.max()
-                nbins = max(1, int(np.ceil((emax - emin) / fd_width)))
+                # fd_width is measured in MeV since energies are in MeV
+                nbins = max(
+                    1,
+                    int(
+                        np.ceil(
+                            (E_all.max() - E_all.min()) / float(fd_width)
+                        )
+                    ),
+                )
             else:
                 nbins = default_bins
 
