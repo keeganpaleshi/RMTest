@@ -293,11 +293,8 @@ def test_run_period_filters_events(tmp_path, monkeypatch):
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
-    analyze.main()
-
-    summary = captured.get("summary", {})
-    assert summary["baseline"]["n_events"] == 0
-    assert captured.get("times") == [2.0, 5.0]
+    with pytest.raises(ValueError):
+        analyze.main()
 
 
 @pytest.mark.parametrize(

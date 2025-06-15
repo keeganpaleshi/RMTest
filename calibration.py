@@ -41,10 +41,9 @@ def emg_left(x, mu, sigma, tau):
 
 
 def gaussian(x, mu, sigma):
-    """Standard Gaussian PDF (unit area)."""
-    return np.exp(-0.5 * ((x - mu) / sigma) ** 2) / (
-        sigma * np.sqrt(2 * np.pi)
-    )
+    """Standard Gaussian PDF (unit area) using safe exponentiation."""
+    arg = -0.5 * ((np.asarray(x, dtype=float) - mu) / sigma) ** 2
+    return _safe_exp(arg) / (sigma * np.sqrt(2 * np.pi))
 
 
 def two_point_calibration(adc_centroids, energies):
