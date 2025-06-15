@@ -1209,6 +1209,7 @@ def main():
     # 7b. Optional efficiency calculations
     # ────────────────────────────────────────────────────────────
     efficiency_results = {}
+    weights = None
     eff_cfg = cfg.get("efficiency", {})
     if eff_cfg:
         from efficiency import (
@@ -1465,6 +1466,9 @@ def main():
             ),
         },
     }
+
+    if weights is not None:
+        summary["efficiency"]["blue_weights"] = list(weights)
 
     out_dir = write_summary(args.output_dir, summary, args.job_id or now_str)
     copy_config(out_dir, args.config)
