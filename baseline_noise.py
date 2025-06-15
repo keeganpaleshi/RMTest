@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.optimize import curve_fit
+
 from constants import CURVE_FIT_MAX_EVALS
 
 __all__ = ["estimate_baseline_noise"]

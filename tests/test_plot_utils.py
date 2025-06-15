@@ -1,11 +1,12 @@
-import numpy as np
 import sys
 from pathlib import Path
+
+import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from constants import PO210
-from plot_utils import plot_time_series, plot_spectrum
+from plot_utils import plot_spectrum, plot_time_series
 
 
 def basic_config():
@@ -56,16 +57,19 @@ def test_plot_time_series_auto_fd(tmp_path):
     times = 1000.0 + np.linspace(0, 5, 100)
     energies = np.full(100, 7.7)
     cfg = basic_config()
-    cfg.update({
-        "plot_time_binning_mode": "AUTO",
-        "dump_time_series_json": True,
-    })
+    cfg.update(
+        {
+            "plot_time_binning_mode": "AUTO",
+            "dump_time_series_json": True,
+        }
+    )
     out_png = tmp_path / "ts_auto.png"
     plot_time_series(times, energies, None, 1000.0, 1005.0, cfg, str(out_png))
     js = out_png.with_name("ts_auto_ts.json")
     assert out_png.exists() and js.exists()
 
     import json
+
     with open(js) as f:
         data = json.load(f)
 
@@ -88,7 +92,7 @@ def test_plot_spectrum_save_formats(tmp_path):
     out_png = tmp_path / "spec.png"
     plot_spectrum(energies, config=cfg, out_png=str(out_png))
     assert out_png.exists()
-    assert out_png.with_suffix('.pdf').exists()
+    assert out_png.with_suffix(".pdf").exists()
 
 
 def test_plot_spectrum_po210_xlim(tmp_path):
@@ -136,11 +140,13 @@ def test_plot_time_series_custom_half_life_po218(tmp_path, monkeypatch):
     times = np.array([1000.1, 1001.1, 1002.1])
     energies = np.array([5.9, 6.0, 5.8])
     cfg = basic_config()
-    cfg.update({
-        "window_Po218": [5.8, 6.3],
-        "eff_Po218": [1.0],
-        "hl_Po218": [4.0],
-    })
+    cfg.update(
+        {
+            "window_Po218": [5.8, 6.3],
+            "eff_Po218": [1.0],
+            "hl_Po218": [4.0],
+        }
+    )
 
     captured = {}
 
@@ -296,9 +302,7 @@ def test_plot_time_series_po210_default_half_life(tmp_path, monkeypatch):
 
 
 def test_plot_time_series_rate_normalisation(tmp_path, monkeypatch):
-    times = np.array(
-        [1000.5, 1001.0, 1002.1, 1002.9, 1004.0]
-    )
+    times = np.array([1000.5, 1001.0, 1002.1, 1002.9, 1004.0])
     energies = np.full_like(times, 7.7)
     cfg = basic_config()
     cfg.update(
@@ -364,7 +368,6 @@ def test_plot_equivalent_air_output(tmp_path):
     assert out_png.exists()
 
 
-
 def test_plot_radon_activity_array(tmp_path):
     times = np.array([0.0, 0.5, 1.0])
     activity = np.array([0.5, 1.0, 1.5])
@@ -388,6 +391,7 @@ def test_plot_equivalent_air_array(tmp_path):
 
     plot_equivalent_air(times, volumes, errors, 5.0, str(out_png))
 
+
 def test_plot_equivalent_air_no_conc(tmp_path):
     times = [0.0, 1.0, 2.0]
     volumes = [1.0, 2.0, 3.0]
@@ -398,15 +402,14 @@ def test_plot_equivalent_air_no_conc(tmp_path):
 
     plot_equivalent_air(times, volumes, errors, None, str(out_png))
 
-
     assert out_png.exists()
-
 
 
 def test_plot_radon_activity_time_variation(tmp_path, monkeypatch):
     times = np.array([0.0, 1.0, 2.0, 3.0])
 
     from radon_activity import radon_activity_curve
+
     activity, errors = radon_activity_curve(times, 1.0, 0.1, 2.0, 0.2, 5.0)
 
     captured = {}
@@ -424,6 +427,7 @@ def test_plot_radon_activity_time_variation(tmp_path, monkeypatch):
 
     assert "y" in captured
     assert not np.allclose(captured["y"], captured["y"][0])
+
 
 def test_plot_radon_activity_small_array(tmp_path):
     times = np.array([0.0, 0.2, 0.4])
@@ -476,7 +480,9 @@ def test_plot_modeled_radon_activity_variation(tmp_path, monkeypatch):
 
     from plot_utils import plot_modeled_radon_activity
 
-    plot_modeled_radon_activity(times, 1.0, 0.1, 2.0, 0.2, 5.0, str(tmp_path / "var.png"))
+    plot_modeled_radon_activity(
+        times, 1.0, 0.1, 2.0, 0.2, 5.0, str(tmp_path / "var.png")
+    )
 
     assert "y" in captured
     assert not np.allclose(captured["y"], captured["y"][0])
@@ -496,10 +502,14 @@ def test_plot_modeled_radon_activity_time_change(tmp_path, monkeypatch):
 
     from plot_utils import plot_modeled_radon_activity
 
-    plot_modeled_radon_activity(times, 0.5, 0.05, 1.0, 0.1, 3.0, str(tmp_path / "tc.png"))
+    plot_modeled_radon_activity(
+        times, 0.5, 0.05, 1.0, 0.1, 3.0, str(tmp_path / "tc.png")
+    )
 
     assert "y" in captured
     assert not np.allclose(captured["y"], captured["y"][0])
+
+
 def test_plot_radon_activity_multiple_formats(tmp_path):
     times = np.array([0.0, 1.0, 2.0])
     activity = np.array([1.0, 1.1, 1.2])
@@ -508,10 +518,16 @@ def test_plot_radon_activity_multiple_formats(tmp_path):
 
     from plot_utils import plot_radon_activity
 
-    plot_radon_activity(times, activity, errors, str(out_png), config={"plot_save_formats": ["png", "pdf"]})
+    plot_radon_activity(
+        times,
+        activity,
+        errors,
+        str(out_png),
+        config={"plot_save_formats": ["png", "pdf"]},
+    )
 
     assert out_png.exists()
-    assert out_png.with_suffix('.pdf').exists()
+    assert out_png.with_suffix(".pdf").exists()
 
 
 def test_plot_equivalent_air_multiple_formats(tmp_path):
@@ -522,10 +538,17 @@ def test_plot_equivalent_air_multiple_formats(tmp_path):
 
     from plot_utils import plot_equivalent_air
 
-    plot_equivalent_air(times, volumes, errors, 1.0, str(out_png), config={"plot_save_formats": ["png", "pdf"]})
+    plot_equivalent_air(
+        times,
+        volumes,
+        errors,
+        1.0,
+        str(out_png),
+        config={"plot_save_formats": ["png", "pdf"]},
+    )
 
     assert out_png.exists()
-    assert out_png.with_suffix('.pdf').exists()
+    assert out_png.with_suffix(".pdf").exists()
 
 
 def test_plot_radon_activity_default_extension(tmp_path):
@@ -539,7 +562,7 @@ def test_plot_radon_activity_default_extension(tmp_path):
 
     plot_radon_activity(times, activity, errors, str(out_png))
 
-    assert out_png.with_suffix('.png').exists()
+    assert out_png.with_suffix(".png").exists()
 
 
 def test_plot_equivalent_air_default_extension(tmp_path):
@@ -553,7 +576,7 @@ def test_plot_equivalent_air_default_extension(tmp_path):
 
     plot_equivalent_air(times, volumes, errors, 1.0, str(out_png))
 
-    assert out_png.with_suffix('.png').exists()
+    assert out_png.with_suffix(".png").exists()
 
 
 def test_plot_time_series_bare_filename(tmp_path, monkeypatch):
@@ -645,4 +668,3 @@ def test_plot_equivalent_air_po214(tmp_path):
     plot_equivalent_air(times, volumes, errors, 5.0, str(out_png))
 
     assert out_png.exists()
-

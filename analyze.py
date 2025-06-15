@@ -47,44 +47,41 @@ To run (without baseline) for a single merged CSV:
 
 
 import argparse
-import sys
-import logging
-import random
-from datetime import datetime, timezone
-import subprocess
 import hashlib
 import json
+import logging
+import random
+import subprocess
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from scipy.stats import norm
 
+from calibration import derive_calibration_constants, derive_calibration_constants_auto
+from constants import DEFAULT_NOISE_CUTOFF, PO210
+from fitting import FitResult, fit_spectrum, fit_time_series
 from hierarchical import fit_hierarchical_runs
 
 # ‣ Import our supporting modules (all must live in the same folder).
 from io_utils import (
-    load_config,
+    apply_burst_filter,
     copy_config,
+    load_config,
     load_events,
     write_summary,
-    apply_burst_filter,
 )
-from calibration import derive_calibration_constants, derive_calibration_constants_auto
-
-from fitting import fit_spectrum, fit_time_series, FitResult
-
-from constants import DEFAULT_NOISE_CUTOFF, PO210
-
 from plot_utils import (
+    plot_equivalent_air,
+    plot_radon_activity,
     plot_spectrum,
     plot_time_series,
-    plot_radon_activity,
-    plot_equivalent_air,
 )
-from systematics import scan_systematics, apply_linear_adc_shift
+from systematics import apply_linear_adc_shift, scan_systematics
+from utils import cps_to_bq, find_adc_bin_peaks
 from visualize import cov_heatmap, efficiency_bar
-from utils import find_adc_bin_peaks, cps_to_bq
 
 
 def _fit_params(obj):
@@ -255,7 +252,6 @@ def parse_args():
         help=(
             "ADC threshold for the noise cut. Providing this option overrides "
             "`calibration.noise_cutoff` in config.json"
-
         ),
     )
     p.add_argument(
@@ -1213,9 +1209,9 @@ def main():
     eff_cfg = cfg.get("efficiency", {})
     if eff_cfg:
         from efficiency import (
+            blue_combine,
             calc_assay_efficiency,
             calc_decay_efficiency,
-            blue_combine,
         )
 
         sources = {}

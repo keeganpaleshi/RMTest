@@ -1,16 +1,19 @@
 import sys
 from pathlib import Path
+
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import math
+
+import numpy as np
+
 from radon_activity import (
     compute_radon_activity,
     compute_total_radon,
     radon_activity_curve,
     radon_delta,
 )
-import math
-import numpy as np
 
 
 def test_compute_radon_activity_weighted():

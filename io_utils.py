@@ -1,15 +1,16 @@
 # io_utils.py
-from pathlib import Path
-import shutil
 import json
 import logging
+import shutil
 from datetime import datetime
-import pandas as pd
-from constants import load_nuclide_overrides
+from pathlib import Path
 
-import numpy as np
-from utils import to_native
 import jsonschema
+import numpy as np
+import pandas as pd
+
+from constants import load_nuclide_overrides
+from utils import to_native
 
 
 def extract_time_series_events(events, cfg):
@@ -38,6 +39,7 @@ def extract_time_series_events(events, cfg):
         mask = (events["energy_MeV"] >= lo) & (events["energy_MeV"] <= hi)
         out[iso] = events.loc[mask, "timestamp"].values.astype(float)
     return out
+
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +80,12 @@ CONFIG_SCHEMA = {
         "baseline": {
             "type": "object",
             "properties": {
-                "range": {"type": "array", "items": {"type": ["string", "number"]}, "minItems": 2, "maxItems": 2},
+                "range": {
+                    "type": "array",
+                    "items": {"type": ["string", "number"]},
+                    "minItems": 2,
+                    "maxItems": 2,
+                },
                 "monitor_volume_l": {"type": "number", "minimum": 0},
                 "sample_volume_l": {"type": "number", "minimum": 0},
             },
@@ -120,13 +127,28 @@ CONFIG_SCHEMA = {
                 "spike_end_time": {"type": ["string", "number", "null"]},
                 "spike_periods": {
                     "type": ["array", "null"],
-                    "items": {"type": "array", "items": {"type": ["string", "number"]}, "minItems": 2, "maxItems": 2},
+                    "items": {
+                        "type": "array",
+                        "items": {"type": ["string", "number"]},
+                        "minItems": 2,
+                        "maxItems": 2,
+                    },
                 },
                 "run_periods": {
                     "type": "array",
-                    "items": {"type": "array", "items": {"type": ["string", "number"]}, "minItems": 2, "maxItems": 2},
+                    "items": {
+                        "type": "array",
+                        "items": {"type": ["string", "number"]},
+                        "minItems": 2,
+                        "maxItems": 2,
+                    },
                 },
-                "radon_interval": {"type": "array", "items": {"type": ["string", "number"]}, "minItems": 2, "maxItems": 2},
+                "radon_interval": {
+                    "type": "array",
+                    "items": {"type": ["string", "number"]},
+                    "minItems": 2,
+                    "maxItems": 2,
+                },
                 "ambient_concentration": {"type": ["number", "null"]},
             },
         },
@@ -222,9 +244,7 @@ def load_events(csv_path):
     # Sort by timestamp
     df = df.sort_values("timestamp").reset_index(drop=True)
 
-    logger.info(
-        f"Loaded {len(df)} events from {csv_path} ({discarded} discarded)."
-    )
+    logger.info(f"Loaded {len(df)} events from {csv_path} ({discarded} discarded).")
     return df
 
 
@@ -292,7 +312,12 @@ def apply_burst_filter(df, cfg, mode="rate"):
         roll = bcfg.get("rolling_median_window")
         mult = bcfg.get("burst_multiplier")
 
-        if win is not None and roll is not None and mult is not None and len(out_df) > 0:
+        if (
+            win is not None
+            and roll is not None
+            and mult is not None
+            and len(out_df) > 0
+        ):
             t0 = out_df["timestamp"].min()
             bins = ((out_df["timestamp"] - t0) // float(win)).astype(int)
 
@@ -300,11 +325,7 @@ def apply_burst_filter(df, cfg, mode="rate"):
             full_index = range(counts.index.min(), counts.index.max() + 1)
             counts_full = counts.reindex(full_index, fill_value=0)
 
-            med = (
-                counts_full
-                .rolling(int(roll), center=True, min_periods=1)
-                .median()
-            )
+            med = counts_full.rolling(int(roll), center=True, min_periods=1).median()
 
             threshold = mult * med
             burst_bins = counts_full[counts_full > threshold].index
@@ -380,11 +401,7 @@ def copy_config(output_dir, config_path):
     if (output_path / "summary.json").is_file():
         dest_folder = output_path
     else:
-        subfolders = [
-            d
-            for d in output_path.iterdir()
-            if d.is_dir()
-        ]
+        subfolders = [d for d in output_path.iterdir() if d.is_dir()]
         if not subfolders:
             raise RuntimeError(
                 f"No subfolders found in {output_dir} to copy config into."

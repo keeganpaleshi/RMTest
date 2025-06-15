@@ -1,10 +1,11 @@
-import numpy as np
-import pytest
 import sys
 from pathlib import Path
 
+import numpy as np
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from calibration import two_point_calibration, apply_calibration, emg_left, gaussian
+from calibration import apply_calibration, emg_left, gaussian, two_point_calibration
 
 
 def test_two_point_calibration():
@@ -87,11 +88,13 @@ def test_derive_calibration_constants_peak_search_radius():
 def test_calibration_uses_known_energies_from_config():
     """Custom energies in config should override defaults."""
     rng = np.random.default_rng(1)
-    adc = np.concatenate([
-        rng.normal(1000, 2, 300),
-        rng.normal(1500, 2, 300),
-        rng.normal(2000, 2, 300),
-    ])
+    adc = np.concatenate(
+        [
+            rng.normal(1000, 2, 300),
+            rng.normal(1500, 2, 300),
+            rng.normal(2000, 2, 300),
+        ]
+    )
 
     cfg = {
         "calibration": {
@@ -123,11 +126,13 @@ def test_calibration_sanity_check_triggers_error():
     """Misidentified peaks should cause calibrate_run to raise."""
     rng = np.random.default_rng(2)
     # True peaks: 800 (Po210), 1000 (Po218), 1200 (Po214)
-    adc = np.concatenate([
-        rng.normal(800, 2, 300),
-        rng.normal(1000, 2, 300),
-        rng.normal(1200, 2, 300),
-    ])
+    adc = np.concatenate(
+        [
+            rng.normal(800, 2, 300),
+            rng.normal(1000, 2, 300),
+            rng.normal(1200, 2, 300),
+        ]
+    )
 
     cfg = {
         "calibration": {

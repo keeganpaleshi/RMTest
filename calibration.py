@@ -1,8 +1,9 @@
 import numpy as np
-from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
+from scipy.signal import find_peaks
 from scipy.stats import exponnorm
-from constants import _TAU_MIN, EXP_OVERFLOW_DOUBLE, DEFAULT_NOISE_CUTOFF
+
+from constants import _TAU_MIN, DEFAULT_NOISE_CUTOFF, EXP_OVERFLOW_DOUBLE
 
 # Limit for stable exponentiation when evaluating the EMG tail. Values
 # beyond ~700 in magnitude overflow in IEEE-754 doubles.  Match the
@@ -161,9 +162,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
                 [0, mu0 - window, 1e-3, _TAU_MIN],  # lower bounds
                 [np.inf, mu0 + window, 50.0, 200.0],  # upper bounds (tunable)
             )
-            popt, pcov = curve_fit(
-                model_emg, x_slice, y_slice, p0=p0, bounds=bounds
-            )
+            popt, pcov = curve_fit(model_emg, x_slice, y_slice, p0=p0, bounds=bounds)
             A_fit, mu_fit, sigma_fit, tau_fit = popt
             peak_fits[iso] = {
                 "centroid_adc": float(mu_fit),
@@ -179,9 +178,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
             p0 = [amp0, mu0, sigma0]
             bounds = ([0, mu0 - window, 1e-3], [np.inf, mu0 + window, 50.0])
-            popt, pcov = curve_fit(
-                model_gauss, x_slice, y_slice, p0=p0, bounds=bounds
-            )
+            popt, pcov = curve_fit(model_gauss, x_slice, y_slice, p0=p0, bounds=bounds)
             A_fit, mu_fit, sigma_fit = popt
             peak_fits[iso] = {
                 "centroid_adc": float(mu_fit),
@@ -211,9 +208,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
     # 6) Convert fitted centroids to energy for sanity checks
     for iso, info in peak_fits.items():
-        info["centroid_mev"] = float(
-            apply_calibration(info["centroid_adc"], a, c)
-        )
+        info["centroid_mev"] = float(apply_calibration(info["centroid_adc"], a, c))
 
     # Sanity check that fitted energies match expectations within tolerance
     tol = float(config.get("calibration", {}).get("sanity_tolerance_mev", 0.5))

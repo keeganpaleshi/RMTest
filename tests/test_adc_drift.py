@@ -1,12 +1,14 @@
 import json
 import sys
 from pathlib import Path
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import analyze
 import numpy as np
+
+import analyze
 from fitting import FitResult
 
 
@@ -23,13 +25,15 @@ def _write_basic(tmp_path, drift_rate):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({
-        "fUniqueID": [1, 2, 3],
-        "fBits": [0, 0, 0],
-        "timestamp": [0.0, 1.0, 2.0],
-        "adc": [10, 10, 10],
-        "fchannel": [1, 1, 1],
-    })
+    df = pd.DataFrame(
+        {
+            "fUniqueID": [1, 2, 3],
+            "fBits": [0, 0, 0],
+            "timestamp": [0.0, 1.0, 2.0],
+            "adc": [10, 10, 10],
+            "fchannel": [1, 1, 1],
+        }
+    )
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
     return cfg_path, data_path
@@ -51,9 +55,13 @@ def test_adc_drift_applied(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "apply_linear_adc_shift", fake_shift)
     monkeypatch.setattr(analyze, "derive_calibration_constants", fake_cal)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", fake_cal)
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(
+        analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0, 0)), 0)
+    )
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
-    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(
+        analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch()
+    )
 
     def fake_write(out_dir, summary, timestamp=None):
         captured["summary"] = summary
@@ -97,9 +105,13 @@ def test_adc_drift_zero_noop(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "apply_linear_adc_shift", fake_shift)
     monkeypatch.setattr(analyze, "derive_calibration_constants", fake_cal)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", fake_cal)
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(
+        analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0, 0)), 0)
+    )
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
-    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(
+        analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch()
+    )
 
     def fake_write(out_dir, summary, timestamp=None):
         captured["summary"] = summary

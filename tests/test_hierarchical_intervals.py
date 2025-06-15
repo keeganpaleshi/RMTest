@@ -38,7 +38,9 @@ def test_credible_intervals_from_summaries(tmp_path):
             }
         )
 
-    res = fit_hierarchical_runs(run_results, draws=50, tune=50, chains=1, random_seed=42)
+    res = fit_hierarchical_runs(
+        run_results, draws=50, tune=50, chains=1, random_seed=42
+    )
 
     for key in ("half_life", "slope", "intercept"):
         assert key in res

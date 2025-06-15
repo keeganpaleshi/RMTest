@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from fitting import fit_time_series, fit_spectrum, _TAU_MIN
+from fitting import _TAU_MIN, fit_spectrum, fit_time_series
 
 
 def simulate_decay(E_true, eff, T, n_events=1000):
@@ -55,7 +55,9 @@ def test_fit_time_series_time_window_config():
     mask = (energies >= w[0]) & (energies <= w[1])
     times_dict = {"Po214": times[mask]}
     cfg_full = {
-        "isotopes": {"Po214": {"half_life_s": cfg["time_fit"]["hl_Po214"][0], "efficiency": 1.0}},
+        "isotopes": {
+            "Po214": {"half_life_s": cfg["time_fit"]["hl_Po214"][0], "efficiency": 1.0}
+        },
         "fit_background": True,
         "fit_initial": True,
     }
@@ -74,7 +76,12 @@ def test_fit_time_series_time_window_config():
     mask2 = (energies >= w2[0]) & (energies <= w2[1])
     times_dict2 = {"Po214": times[mask2]}
     cfg_n = {
-        "isotopes": {"Po214": {"half_life_s": cfg_narrow["time_fit"]["hl_Po214"][0], "efficiency": 1.0}},
+        "isotopes": {
+            "Po214": {
+                "half_life_s": cfg_narrow["time_fit"]["hl_Po214"][0],
+                "efficiency": 1.0,
+            }
+        },
         "fit_background": True,
         "fit_initial": True,
     }
@@ -88,11 +95,13 @@ def test_fit_time_series_time_window_config():
 def test_fit_spectrum_use_emg_flag():
     """Adding a tau prior when use_emg is True should not break the fit."""
     rng = np.random.default_rng(0)
-    energies = np.concatenate([
-        rng.normal(5.3, 0.05, 200),
-        rng.normal(6.0, 0.05, 200),
-        rng.normal(7.7, 0.05, 200),
-    ])
+    energies = np.concatenate(
+        [
+            rng.normal(5.3, 0.05, 200),
+            rng.normal(6.0, 0.05, 200),
+            rng.normal(7.7, 0.05, 200),
+        ]
+    )
 
     base_priors = {
         "sigma_E": (0.05, 0.01),
@@ -123,11 +132,13 @@ def test_fit_spectrum_use_emg_flag():
 def test_fit_spectrum_fixed_parameter_bounds():
     """Fixing a parameter should not trigger a bound error."""
     rng = np.random.default_rng(1)
-    energies = np.concatenate([
-        rng.normal(5.3, 0.05, 100),
-        rng.normal(6.0, 0.05, 100),
-        rng.normal(7.7, 0.05, 100),
-    ])
+    energies = np.concatenate(
+        [
+            rng.normal(5.3, 0.05, 100),
+            rng.normal(6.0, 0.05, 100),
+            rng.normal(7.7, 0.05, 100),
+        ]
+    )
 
     priors = {
         "sigma_E": (0.05, 0.01),
@@ -148,11 +159,13 @@ def test_fit_spectrum_fixed_parameter_bounds():
 def test_fit_spectrum_custom_bins_and_edges():
     """Providing custom binning should not break the fit."""
     rng = np.random.default_rng(2)
-    energies = np.concatenate([
-        rng.normal(5.3, 0.05, 150),
-        rng.normal(6.0, 0.05, 150),
-        rng.normal(7.7, 0.05, 150),
-    ])
+    energies = np.concatenate(
+        [
+            rng.normal(5.3, 0.05, 150),
+            rng.normal(6.0, 0.05, 150),
+            rng.normal(7.7, 0.05, 150),
+        ]
+    )
 
     priors = {
         "sigma_E": (0.05, 0.01),
@@ -179,11 +192,13 @@ def test_fit_spectrum_custom_bins_and_edges():
 def test_fit_spectrum_custom_bounds():
     """User-provided parameter bounds should constrain the fit."""
     rng = np.random.default_rng(3)
-    energies = np.concatenate([
-        rng.normal(5.3, 0.05, 150),
-        rng.normal(6.0, 0.05, 150),
-        rng.normal(7.7, 0.05, 150),
-    ])
+    energies = np.concatenate(
+        [
+            rng.normal(5.3, 0.05, 150),
+            rng.normal(6.0, 0.05, 150),
+            rng.normal(7.7, 0.05, 150),
+        ]
+    )
 
     priors = {
         "sigma_E": (0.05, 0.01),
@@ -205,11 +220,13 @@ def test_fit_spectrum_custom_bounds():
 def test_fit_spectrum_bounds_clip():
     """Starting value outside the bound should be clipped before fitting."""
     rng = np.random.default_rng(4)
-    energies = np.concatenate([
-        rng.normal(5.3, 0.05, 120),
-        rng.normal(6.0, 0.05, 120),
-        rng.normal(7.7, 0.05, 120),
-    ])
+    energies = np.concatenate(
+        [
+            rng.normal(5.3, 0.05, 120),
+            rng.normal(6.0, 0.05, 120),
+            rng.normal(7.7, 0.05, 120),
+        ]
+    )
 
     priors = {
         "sigma_E": (0.05, 0.01),
@@ -235,11 +252,13 @@ def test_fit_spectrum_bounds_clip():
 def test_fit_spectrum_tau_lower_bound():
     """Tau prior near zero should be clipped to the minimum allowed value."""
     rng = np.random.default_rng(6)
-    energies = np.concatenate([
-        rng.normal(5.3, 0.05, 100),
-        rng.normal(6.0, 0.05, 100),
-        rng.normal(7.7, 0.05, 100),
-    ])
+    energies = np.concatenate(
+        [
+            rng.normal(5.3, 0.05, 100),
+            rng.normal(6.0, 0.05, 100),
+            rng.normal(7.7, 0.05, 100),
+        ]
+    )
 
     priors = {
         "sigma_E": (0.05, 0.01),
@@ -261,11 +280,13 @@ def test_fit_spectrum_tau_lower_bound():
 def test_fit_spectrum_covariance_checks(monkeypatch):
     """fit_valid should reflect covariance positive definiteness."""
     rng = np.random.default_rng(5)
-    energies = np.concatenate([
-        rng.normal(5.3, 0.05, 200),
-        rng.normal(6.0, 0.05, 200),
-        rng.normal(7.7, 0.05, 200),
-    ])
+    energies = np.concatenate(
+        [
+            rng.normal(5.3, 0.05, 200),
+            rng.normal(6.0, 0.05, 200),
+            rng.normal(7.7, 0.05, 200),
+        ]
+    )
 
     priors = {
         "sigma_E": (0.05, 0.01),

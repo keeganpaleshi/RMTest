@@ -1,14 +1,15 @@
 import sys
 from pathlib import Path
+
 import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from efficiency import (
-    calc_spike_efficiency,
+    blue_combine,
     calc_assay_efficiency,
     calc_decay_efficiency,
-    blue_combine,
+    calc_spike_efficiency,
 )
 
 
@@ -55,4 +56,3 @@ def test_blue_combine_correlated():
     exp_val = (Vinv @ ones / (ones @ Vinv @ ones)) @ vals
     assert combined == pytest.approx(exp_val)
     assert sigma == pytest.approx(exp_sigma)
-

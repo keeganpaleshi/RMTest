@@ -75,6 +75,7 @@ def load_half_life_overrides(cfg: dict | None) -> dict[str, float]:
     consts = load_nuclide_overrides(cfg)
     return {name: nc.half_life_s for name, nc in consts.items()}
 
+
 __all__ = [
     "_TAU_MIN",
     "EXP_OVERFLOW_DOUBLE",

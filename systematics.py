@@ -1,6 +1,7 @@
 import math
+from typing import Callable, Dict, List, Tuple
+
 import numpy as np
-from typing import Callable, Dict, Tuple, List
 
 
 def apply_linear_adc_shift(adc_values, timestamps, rate, t_ref=None):
@@ -67,8 +68,7 @@ def scan_systematics(
     central = fit_func(priors)
     is_dict = isinstance(central, dict)
     if not is_dict and not isinstance(central, (int, float)):
-        raise RuntimeError(
-            "scan_systematics: fit_func must return dict or scalar")
+        raise RuntimeError("scan_systematics: fit_func must return dict or scalar")
 
     deltas = {}
     for full_key, val in sigma_dict.items():
@@ -107,5 +107,5 @@ def scan_systematics(
 
         deltas[key] = max(abs(v_plus - v0), abs(v_minus - v0))
 
-    total_unc = math.sqrt(sum(v ** 2 for v in deltas.values()))
+    total_unc = math.sqrt(sum(v**2 for v in deltas.values()))
     return deltas, total_unc

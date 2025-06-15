@@ -1,15 +1,18 @@
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import numpy as np
-import pytest
-import math
 import json
+import math
+
+import numpy as np
 import pandas as pd
+import pytest
+
 import analyze
 from fitting import FitResult
-from systematics import scan_systematics, apply_linear_adc_shift
+from systematics import apply_linear_adc_shift, scan_systematics
 
 
 def test_scan_systematics_with_dict_result():
@@ -75,7 +78,7 @@ def test_scan_systematics_fractional_and_absolute():
     deltas, tot = scan_systematics(fit_func, priors, shifts)
     assert deltas["sigma_E"] == pytest.approx(0.2)
     assert deltas["mu"] == pytest.approx(2.0)
-    expected = math.sqrt(0.2 ** 2 + 2.0 ** 2)
+    expected = math.sqrt(0.2**2 + 2.0**2)
     assert tot == pytest.approx(expected)
 
 
@@ -103,13 +106,15 @@ def test_analyze_systematics_skip_unknown(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({
-        "fUniqueID": [1],
-        "fBits": [0],
-        "timestamp": [0.0],
-        "adc": [10],
-        "fchannel": [1],
-    })
+    df = pd.DataFrame(
+        {
+            "fUniqueID": [1],
+            "fBits": [0],
+            "timestamp": [0.0],
+            "adc": [10],
+            "fchannel": [1],
+        }
+    )
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -130,7 +135,9 @@ def test_analyze_systematics_skip_unknown(tmp_path, monkeypatch):
         lambda *a, **k: FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0),
     )
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
-    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(
+        analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch()
+    )
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
 

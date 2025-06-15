@@ -1,8 +1,9 @@
 import json
 import sys
 from pathlib import Path
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
@@ -13,7 +14,11 @@ from fitting import FitResult
 def test_cli_baseline_range_overrides_config(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},
-        "baseline": {"range": [0, 5], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
+        "baseline": {
+            "range": [0, 5],
+            "monitor_volume_l": 605.0,
+            "sample_volume_l": 0.0,
+        },
         "calibration": {},
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
@@ -42,15 +47,30 @@ def test_cli_baseline_range_overrides_config(tmp_path, monkeypatch):
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
-    cal_mock = {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0), "peaks": {"Po210": {"centroid_adc": 10}}}
-    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
-    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
+    cal_mock = {
+        "a": (1.0, 0.0),
+        "c": (0.0, 0.0),
+        "sigma_E": (1.0, 0.0),
+        "peaks": {"Po210": {"centroid_adc": 10}},
+    }
+    monkeypatch.setattr(
+        analyze, "derive_calibration_constants", lambda *a, **k: cal_mock
+    )
+    monkeypatch.setattr(
+        analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock
+    )
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
-    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(
+        analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch()
+    )
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
-    monkeypatch.setattr(analyze, "apply_burst_filter", lambda df, cfg, mode="rate": (df, 0))
-    monkeypatch.setattr(baseline_noise, "estimate_baseline_noise", lambda *a, **k: (None, {}))
+    monkeypatch.setattr(
+        analyze, "apply_burst_filter", lambda df, cfg, mode="rate": (df, 0)
+    )
+    monkeypatch.setattr(
+        baseline_noise, "estimate_baseline_noise", lambda *a, **k: (None, {})
+    )
 
     captured = {}
 
@@ -71,10 +91,15 @@ def test_cli_baseline_range_overrides_config(tmp_path, monkeypatch):
 
     args = [
         "analyze.py",
-        "--config", str(cfg_path),
-        "--input", str(data_path),
-        "--output_dir", str(tmp_path),
-        "--baseline_range", "1", "2",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+        "--baseline_range",
+        "1",
+        "2",
     ]
     monkeypatch.setattr(sys, "argv", args)
     analyze.main()

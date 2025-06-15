@@ -3,12 +3,14 @@
 # -----------------------------------------------------
 
 import os
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 from datetime import datetime
+
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+import numpy as np
+
 from color_schemes import COLOR_SCHEMES
-from constants import PO214, PO218, PO210
+from constants import PO210, PO214, PO218
 
 # Half-life constants used for the time-series overlay [seconds]
 PO214_HALF_LIFE_S = PO214.half_life_s
@@ -125,8 +127,7 @@ def plot_time_series(
                 n_bins = int(config.get("time_bins_fallback", 1))
             else:
                 bin_width = 2 * iqr / (len(data) ** (1.0 / 3.0))
-                n_bins = max(
-                    1, int(np.ceil((data.max() - data.min()) / bin_width)))
+                n_bins = max(1, int(np.ceil((data.max() - data.min()) / bin_width)))
     else:
         # fixed-width bins (integer-second data) – use floor so the
         # very last partial bin is dropped and every remaining bin has
@@ -311,7 +312,11 @@ def plot_spectrum(
         Plotting configuration dictionary.
     """
     show_res = bool(fit_vals)
-    if bin_edges is None and config is not None and "plot_spectrum_binsize_adc" in config:
+    if (
+        bin_edges is None
+        and config is not None
+        and "plot_spectrum_binsize_adc" in config
+    ):
         step = float(config["plot_spectrum_binsize_adc"])
         e_min, e_max = energies.min(), energies.max()
         bin_edges = np.arange(e_min, e_max + step, step)
@@ -325,8 +330,7 @@ def plot_spectrum(
 
     if show_res:
         fig, (ax_main, ax_res) = plt.subplots(
-            2, 1, sharex=True, figsize=(8, 6),
-            gridspec_kw={"height_ratios": [3, 1]}
+            2, 1, sharex=True, figsize=(8, 6), gridspec_kw={"height_ratios": [3, 1]}
         )
     else:
         fig, ax_main = plt.subplots(figsize=(8, 6))
@@ -355,7 +359,11 @@ def plot_spectrum(
             if mu_key in fit_vals and amp_key in fit_vals:
                 mu = fit_vals[mu_key]
                 amp = fit_vals[amp_key]
-                y += amp / (sigma_E * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu) / sigma_E) ** 2)
+                y += (
+                    amp
+                    / (sigma_E * np.sqrt(2 * np.pi))
+                    * np.exp(-0.5 * ((x - mu) / sigma_E) ** 2)
+                )
         palette_name = str(config.get("palette", "default")) if config else "default"
         palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
         fit_color = palette.get("fit", "red")
@@ -369,9 +377,11 @@ def plot_spectrum(
                 if mu_key in fit_vals and amp_key in fit_vals:
                     mu = fit_vals[mu_key]
                     amp = fit_vals[amp_key]
-                    y_cent += amp / (
-                        sigma_E * np.sqrt(2 * np.pi)
-                    ) * np.exp(-0.5 * ((centers - mu) / sigma_E) ** 2)
+                    y_cent += (
+                        amp
+                        / (sigma_E * np.sqrt(2 * np.pi))
+                        * np.exp(-0.5 * ((centers - mu) / sigma_E) ** 2)
+                    )
             model_counts = y_cent * width
             residuals = hist - model_counts
             ax_res.bar(

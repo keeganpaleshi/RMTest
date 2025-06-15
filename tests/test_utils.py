@@ -1,10 +1,11 @@
 import sys
 from pathlib import Path
+
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from utils import cps_to_cpd, cps_to_bq, find_adc_bin_peaks
+from utils import cps_to_bq, cps_to_cpd, find_adc_bin_peaks
 
 
 def test_cps_to_cpd():

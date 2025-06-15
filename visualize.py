@@ -1,6 +1,8 @@
 import os
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
+
 from color_schemes import COLOR_SCHEMES
 
 __all__ = ["cov_heatmap", "efficiency_bar"]
@@ -25,7 +27,15 @@ def cov_heatmap(cov_matrix, out_png, labels=None):
     plt.yticks(range(n), labels)
     for i in range(n):
         for j in range(n):
-            plt.text(j, i, f"{corr[i,j]:.2f}", ha="center", va="center", color="white" if abs(corr[i,j])>0.5 else "black", fontsize=8)
+            plt.text(
+                j,
+                i,
+                f"{corr[i,j]:.2f}",
+                ha="center",
+                va="center",
+                color="white" if abs(corr[i, j]) > 0.5 else "black",
+                fontsize=8,
+            )
     plt.tight_layout()
     os.makedirs(os.path.dirname(out_png), exist_ok=True)
     plt.savefig(out_png, dpi=300)
@@ -58,7 +68,14 @@ def efficiency_bar(eff_dict, out_png, config=None):
 
     if weights is not None:
         for i, w in enumerate(weights):
-            plt.text(i, values[i] + errors[i], f"{w:.2f}", ha="center", va="bottom", fontsize=8)
+            plt.text(
+                i,
+                values[i] + errors[i],
+                f"{w:.2f}",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )
     plt.tight_layout()
     os.makedirs(os.path.dirname(out_png), exist_ok=True)
     plt.savefig(out_png, dpi=300)

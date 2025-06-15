@@ -1,6 +1,7 @@
 import json
 import sys
 from pathlib import Path
+
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -11,7 +12,6 @@ def test_noise_cutoff_cli_overrides(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},
         "calibration": {"noise_cutoff": 100},
-
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
@@ -27,7 +27,6 @@ def test_noise_cutoff_cli_overrides(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-
     df = pd.DataFrame(
         {
             "fUniqueID": [1, 2],
@@ -38,18 +37,25 @@ def test_noise_cutoff_cli_overrides(tmp_path, monkeypatch):
         }
     )
 
-
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
     cal_mock = {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0), "peaks": {}}
-    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
-    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
+    monkeypatch.setattr(
+        analyze, "derive_calibration_constants", lambda *a, **k: cal_mock
+    )
+    monkeypatch.setattr(
+        analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock
+    )
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
-    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(
+        analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch()
+    )
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
-    monkeypatch.setattr(analyze, "apply_burst_filter", lambda df, cfg, mode="rate": (df, 0))
+    monkeypatch.setattr(
+        analyze, "apply_burst_filter", lambda df, cfg, mode="rate": (df, 0)
+    )
 
     captured = {}
 
@@ -70,11 +76,14 @@ def test_noise_cutoff_cli_overrides(tmp_path, monkeypatch):
 
     args = [
         "analyze.py",
-
-        "--config", str(cfg_path),
-        "--input", str(data_path),
-        "--output_dir", str(tmp_path),
-        "--noise-cutoff", "5",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+        "--noise-cutoff",
+        "5",
     ]
     monkeypatch.setattr(sys, "argv", args)
     analyze.main()

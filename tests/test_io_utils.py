@@ -1,9 +1,10 @@
-import os
 import json
+import logging
+import os
+import sys
 import tempfile
 from pathlib import Path
-import sys
-import logging
+
 import jsonschema
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -11,12 +12,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 import pandas as pd
 import pytest
+
 from io_utils import (
+    apply_burst_filter,
+    copy_config,
     load_config,
     load_events,
     write_summary,
-    copy_config,
-    apply_burst_filter,
 )
 
 
@@ -138,7 +140,11 @@ def test_write_summary_and_copy_config(tmp_path):
 
 def test_write_summary_with_nullable_integers(tmp_path):
     series = pd.Series([1, pd.NA], dtype="Int64")
-    summary = {"present": series.iloc[0], "missing": series.iloc[1], "list": series.tolist()}
+    summary = {
+        "present": series.iloc[0],
+        "missing": series.iloc[1],
+        "list": series.tolist(),
+    }
     outdir = tmp_path / "out2"
     ts = "19700101T000001Z"
     results = write_summary(outdir, summary, ts)
@@ -175,7 +181,13 @@ def test_apply_burst_filter_no_removal():
             "fchannel": [1] * 100,
         }
     )
-    cfg = {"burst_filter": {"burst_window_size_s": 10, "rolling_median_window": 3, "burst_multiplier": 3}}
+    cfg = {
+        "burst_filter": {
+            "burst_window_size_s": 10,
+            "rolling_median_window": 3,
+            "burst_multiplier": 3,
+        }
+    }
     filtered, removed = apply_burst_filter(df, cfg)
     assert len(filtered) == 100
     assert removed == 0
@@ -194,7 +206,13 @@ def test_apply_burst_filter_with_burst():
             "fchannel": [1] * len(times),
         }
     )
-    cfg = {"burst_filter": {"burst_window_size_s": 10, "rolling_median_window": 3, "burst_multiplier": 3}}
+    cfg = {
+        "burst_filter": {
+            "burst_window_size_s": 10,
+            "rolling_median_window": 3,
+            "burst_multiplier": 3,
+        }
+    }
     filtered, removed = apply_burst_filter(df, cfg)
     assert removed == 60
     assert len(filtered) == len(times) - 60
@@ -279,12 +297,12 @@ def test_apply_burst_filter_single_searchsorted(monkeypatch):
 def test_load_config_duplicate_keys(tmp_path):
     txt = (
         "{"
-        "\n  \"pipeline\": {\"log_level\": \"INFO\"},"
-        "\n  \"pipeline\": {\"log_level\": \"DEBUG\"},"
-        "\n  \"spectral_fit\": {\"expected_peaks\": {\"Po210\": 1}},"
-        "\n  \"time_fit\": {\"do_time_fit\": true},"
-        "\n  \"systematics\": {\"enable\": false},"
-        "\n  \"plotting\": {\"plot_save_formats\": [\"png\"]}"
+        '\n  "pipeline": {"log_level": "INFO"},'
+        '\n  "pipeline": {"log_level": "DEBUG"},'
+        '\n  "spectral_fit": {"expected_peaks": {"Po210": 1}},'
+        '\n  "time_fit": {"do_time_fit": true},'
+        '\n  "systematics": {"enable": false},'
+        '\n  "plotting": {"plot_save_formats": ["png"]}'
         "\n}"
     )
     p = tmp_path / "dup.json"
@@ -339,4 +357,3 @@ def test_load_config_invalid_burst_filter(tmp_path):
         json.dump(cfg, f)
     with pytest.raises(jsonschema.exceptions.ValidationError):
         load_config(p)
-

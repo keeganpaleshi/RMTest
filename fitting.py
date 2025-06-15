@@ -8,8 +8,9 @@ from dataclasses import dataclass
 import numpy as np
 from iminuit import Minuit
 from scipy.optimize import curve_fit
+
 from calibration import emg_left, gaussian
-from constants import _TAU_MIN, EXP_OVERFLOW_DOUBLE, CURVE_FIT_MAX_EVALS
+from constants import _TAU_MIN, CURVE_FIT_MAX_EVALS, EXP_OVERFLOW_DOUBLE
 
 # Prevent overflow in exp calculations. Values beyond ~700 in magnitude
 # lead to inf/0 under IEEE-754 doubles.  Clip the exponent to a safe range
@@ -20,9 +21,11 @@ _EXP_LIMIT = EXP_OVERFLOW_DOUBLE
 # divide-by-zero overflow when evaluating the EMG component. The
 # value itself lives in :mod:`constants` as ``_TAU_MIN``.
 
+
 def _safe_exp(x):
     """Return ``exp(x)`` with the input clipped to ``[-_EXP_LIMIT, _EXP_LIMIT]``."""
     return np.exp(np.clip(x, -_EXP_LIMIT, _EXP_LIMIT))
+
 
 __all__ = ["fit_time_series", "fit_decay", "fit_spectrum"]
 
@@ -337,12 +340,7 @@ def _neg_log_likelihood_time(
             # r_iso(t_rel) = eff * [ E*(1 - exp(-lam*t_rel)) + lam*N0*exp(-lam*t_rel) ] + B
             exp_term = _safe_exp(-lam * t_rel)
             rate_vals = (
-                eff
-                * (
-                    E_iso * (1.0 - exp_term)
-                    + lam * N0_iso * exp_term
-                )
-                + B_iso
+                eff * (E_iso * (1.0 - exp_term) + lam * N0_iso * exp_term) + B_iso
             )
             # If any rate_vals   0, penalize heavily:
             if np.any(rate_vals <= 0):
@@ -387,7 +385,14 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None):
     if weights is None:
         weights_dict = {iso: None for iso in iso_list}
     else:
-        weights_dict = {iso: np.asarray(weights.get(iso), dtype=float) if weights.get(iso) is not None else None for iso in iso_list}
+        weights_dict = {
+            iso: (
+                np.asarray(weights.get(iso), dtype=float)
+                if weights.get(iso) is not None
+                else None
+            )
+            for iso in iso_list
+        }
 
     # 1) Build maps: lam_map, eff_map, fix_b_map, fix_n0_map
     lam_map, eff_map = {}, {}
@@ -423,8 +428,7 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None):
             Ntot = float(np.sum(w_arr))
         T_rel = t_end - t_start
         eff = eff_map[iso]
-        guess_E = max((Ntot / (T_rel * eff))
-                      if (T_rel > 0 and eff > 0) else 0.0, 1e-6)
+        guess_E = max((Ntot / (T_rel * eff)) if (T_rel > 0 and eff > 0) else 0.0, 1e-6)
         initial_guesses.append(guess_E)
         limits[f"E_{iso}"] = (0.0, None)
         idx += 1

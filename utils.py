@@ -1,9 +1,10 @@
 # utils.py
 
+import math
+from dataclasses import asdict, is_dataclass
+
 import numpy as np
 from scipy.signal import find_peaks
-import math
-from dataclasses import is_dataclass, asdict
 
 __all__ = ["to_native", "find_adc_bin_peaks", "cps_to_cpd", "cps_to_bq"]
 
@@ -88,13 +89,17 @@ def find_adc_bin_peaks(adc_values, expected, window=50, prominence=0.0, width=No
         mask = (centers >= lo) & (centers <= hi)
         if np.any(mask):
             idx_candidates = np.where(mask)[0]
-            candidate_peak_indices = [idx for idx in idx_candidates if idx in peak_indices]
+            candidate_peak_indices = [
+                idx for idx in idx_candidates if idx in peak_indices
+            ]
             if not candidate_peak_indices:
                 # Default to candidate bin with the highest histogram count
                 best_idx = idx_candidates[np.argmax(hist[idx_candidates])]
             else:
                 # Choose among detected peaks with the highest count
-                best_idx = candidate_peak_indices[np.argmax(hist[candidate_peak_indices])]
+                best_idx = candidate_peak_indices[
+                    np.argmax(hist[candidate_peak_indices])
+                ]
 
             results[name] = float(centers[best_idx])
         else:

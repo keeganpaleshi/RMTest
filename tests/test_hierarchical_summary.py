@@ -22,13 +22,15 @@ def test_hierarchical_summary(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({
-        "fUniqueID": [1],
-        "fBits": [0],
-        "timestamp": [0],
-        "adc": [1000],
-        "fchannel": [1],
-    })
+    df = pd.DataFrame(
+        {
+            "fUniqueID": [1],
+            "fBits": [0],
+            "timestamp": [0],
+            "adc": [1000],
+            "fchannel": [1],
+        }
+    )
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
@@ -37,17 +39,32 @@ def test_hierarchical_summary(tmp_path, monkeypatch):
         d = tmp_path / f"old{i}"
         d.mkdir()
         with open(d / "summary.json", "w") as f:
-            json.dump({
-                "half_life": 10.0 + i,
-                "dhalf_life": 1.0,
-                "calibration": {"a": [1.0, 0.1], "c": [0.0, 0.1]},
-            }, f)
+            json.dump(
+                {
+                    "half_life": 10.0 + i,
+                    "dhalf_life": 1.0,
+                    "calibration": {"a": [1.0, 0.1], "c": [0.0, 0.1]},
+                },
+                f,
+            )
 
-    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0)})
-    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0)})
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, None, 0))
+    monkeypatch.setattr(
+        analyze,
+        "derive_calibration_constants",
+        lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)},
+    )
+    monkeypatch.setattr(
+        analyze,
+        "derive_calibration_constants_auto",
+        lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)},
+    )
+    monkeypatch.setattr(
+        analyze, "fit_time_series", lambda *a, **k: FitResult({}, None, 0)
+    )
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
-    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(
+        analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch()
+    )
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
 
@@ -63,11 +80,14 @@ def test_hierarchical_summary(tmp_path, monkeypatch):
         d = Path(out_dir) / "new"
         d.mkdir(parents=True, exist_ok=True)
         with open(d / "summary.json", "w") as f:
-            json.dump({
-                "half_life": 12.0,
-                "dhalf_life": 1.0,
-                "calibration": {"a": [1.2, 0.1], "c": [0.2, 0.1]},
-            }, f)
+            json.dump(
+                {
+                    "half_life": 12.0,
+                    "dhalf_life": 1.0,
+                    "calibration": {"a": [1.2, 0.1], "c": [0.2, 0.1]},
+                },
+                f,
+            )
         return str(d)
 
     monkeypatch.setattr(analyze, "write_summary", fake_write)
@@ -76,10 +96,14 @@ def test_hierarchical_summary(tmp_path, monkeypatch):
     out_json = tmp_path / "hier.json"
     args = [
         "analyze.py",
-        "--config", str(cfg_path),
-        "--input", str(data_path),
-        "--output_dir", str(tmp_path),
-        "--hierarchical-summary", str(out_json),
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+        "--hierarchical-summary",
+        str(out_json),
     ]
     monkeypatch.setattr(sys, "argv", args)
 
