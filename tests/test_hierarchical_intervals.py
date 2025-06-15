@@ -31,7 +31,7 @@ def test_credible_intervals_from_summaries(tmp_path):
             {
                 "half_life": dat.get("half_life"),
                 "dhalf_life": dat.get("dhalf_life"),
-                "slope": cal.get("a", [None, None])[0],
+                "slope_MeV_per_ch": cal.get("a", [None, None])[0],
                 "dslope": cal.get("a", [None, None])[1],
                 "intercept": cal.get("c", [None, None])[0],
                 "dintercept": cal.get("c", [None, None])[1],
@@ -40,7 +40,7 @@ def test_credible_intervals_from_summaries(tmp_path):
 
     res = fit_hierarchical_runs(run_results, draws=50, tune=50, chains=1, random_seed=42)
 
-    for key in ("half_life", "slope", "intercept"):
+    for key in ("half_life", "slope_MeV_per_ch", "intercept"):
         assert key in res
         assert "hdi" in res[key]
         hdi = res[key]["hdi"]

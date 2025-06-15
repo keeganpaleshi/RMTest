@@ -11,7 +11,7 @@ def fit_hierarchical_runs(run_results, draws=2000, tune=1000, chains=2, random_s
     ----------
     run_results : list of dict
         Each entry must contain ``"half_life"`` and ``"dhalf_life"``. Optional
-        keys ``"slope"``, ``"dslope"``, ``"intercept"`` and ``"dintercept"`` add
+        keys ``"slope_MeV_per_ch"``, ``"dslope"``, ``"intercept"`` and ``"dintercept"`` add
         calibration parameters to the model.
     draws : int, optional
         Number of MCMC draws after tuning (default 2000).
@@ -26,7 +26,7 @@ def fit_hierarchical_runs(run_results, draws=2000, tune=1000, chains=2, random_s
     -------
     dict
         Posterior means, standard deviations and 95% HDIs for the global
-        parameters ``half_life``, ``slope`` and ``intercept``.
+        parameters ``half_life``, ``slope_MeV_per_ch`` and ``intercept``.
     """
 
     n = len(run_results)
@@ -36,9 +36,9 @@ def fit_hierarchical_runs(run_results, draws=2000, tune=1000, chains=2, random_s
     hl_obs = np.array([r["half_life"] for r in run_results], dtype=float)
     hl_err = np.array([max(r.get("dhalf_life", np.nan), 1e-6) for r in run_results], dtype=float)
 
-    use_slope = all("slope" in r and "dslope" in r for r in run_results)
+    use_slope = all("slope_MeV_per_ch" in r and "dslope" in r for r in run_results)
     if use_slope:
-        slope_obs = np.array([r["slope"] for r in run_results], dtype=float)
+        slope_obs = np.array([r["slope_MeV_per_ch"] for r in run_results], dtype=float)
         slope_err = np.array([max(r.get("dslope", np.nan), 1e-6) for r in run_results], dtype=float)
 
     use_intercept = all("intercept" in r and "dintercept" in r for r in run_results)
@@ -78,7 +78,7 @@ def fit_hierarchical_runs(run_results, draws=2000, tune=1000, chains=2, random_s
     }
 
     if use_slope:
-        out["slope"] = {
+        out["slope_MeV_per_ch"] = {
             "mean": float(summ.loc["mu_a", "mean"]),
             "sd": float(summ.loc["mu_a", "sd"]),
             "hdi": [float(summ.loc["mu_a", "hdi_2.5%"]), float(summ.loc["mu_a", "hdi_97.5%"])],

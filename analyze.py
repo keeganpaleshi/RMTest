@@ -1745,7 +1745,7 @@ def main():
                         {
                             "half_life": hl,
                             "dhalf_life": dhl,
-                            "slope": slope,
+                            "slope_MeV_per_ch": slope,
                             "dslope": dslope,
                             "intercept": intercept,
                             "dintercept": dintercept,
