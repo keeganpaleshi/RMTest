@@ -93,9 +93,9 @@ def test_plot_spectrum_save_formats(tmp_path):
 
 def test_plot_spectrum_po210_xlim(tmp_path):
     energies = np.linspace(0, 10, 100)
-    cfg = {"window_Po210": [5.0, 5.5]}
+    cfg = {"window_Po210": [5.2, 5.4]}
     ax = plot_spectrum(energies, config=cfg, out_png=str(tmp_path / "spec2.png"))
-    assert ax.get_xlim() == (5.0, 5.5)
+    assert ax.get_xlim() == (5.2, 5.4)
 
 
 def test_plot_time_series_custom_half_life(tmp_path, monkeypatch):
