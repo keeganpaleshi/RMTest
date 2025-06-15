@@ -45,6 +45,8 @@ def estimate_baseline_noise(adc_values, peak_adc=None, nbins=50, model="constant
 
     if model == "constant":
         A = float(np.mean(hist))
+        if A > 1e300:
+            A = 1e300
         return A, {"A": A}
 
     if model == "exponential":
@@ -54,9 +56,14 @@ def estimate_baseline_noise(adc_values, peak_adc=None, nbins=50, model="constant
                 _exponential, centers, hist, p0=p0, maxfev=CURVE_FIT_MAX_EVALS
             )
             A, k = popt
-            return float(A), {"A": float(A), "k": float(k)}
+            A = float(A)
+            if A > 1e300:
+                A = 1e300
+            return A, {"A": A, "k": float(k)}
         except Exception:
             A = float(np.mean(hist))
+            if A > 1e300:
+                A = 1e300
             return A, {"A": A}
 
     raise ValueError("Unsupported model: %s" % model)
