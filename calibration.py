@@ -231,7 +231,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
     # 8) Build result dict:
     calib_dict = {
-        "slope": a,
+        "slope_MeV_per_ch": a,
         "intercept": c,
         "sigma_E": float(sigma_E),
         "peaks": peak_fits,
@@ -243,7 +243,7 @@ def derive_calibration_constants(adc_values, config):
     """Wrapper returning calibration constants in legacy format."""
     res = calibrate_run(adc_values, config)
     out = {
-        "a": (float(res["slope"]), 0.0),
+        "a": (float(res["slope_MeV_per_ch"]), 0.0),
         "c": (float(res["intercept"]), 0.0),
         "sigma_E": (float(res["sigma_E"]), 0.0),
         "peaks": res.get("peaks", {}),
@@ -309,7 +309,7 @@ def derive_calibration_constants_auto(
     # Run calibration with custom histogram binning and convert to legacy format
     res = calibrate_run(adc_arr, config, hist_bins=hist_bins)
     out = {
-        "a": (float(res["slope"]), 0.0),
+        "a": (float(res["slope_MeV_per_ch"]), 0.0),
         "c": (float(res["intercept"]), 0.0),
         "sigma_E": (float(res["sigma_E"]), 0.0),
         "peaks": res.get("peaks", {}),
