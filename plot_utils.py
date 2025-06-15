@@ -125,8 +125,12 @@ def plot_time_series(
                 n_bins = int(config.get("time_bins_fallback", 1))
             else:
                 bin_width = 2 * iqr / (len(data) ** (1.0 / 3.0))
-                n_bins = max(
-                    1, int(np.ceil((data.max() - data.min()) / bin_width)))
+                if isinstance(bin_width, np.timedelta64):
+                    bin_width = bin_width / np.timedelta64(1, "s")
+                    data_range = (data.max() - data.min()) / np.timedelta64(1, "s")
+                else:
+                    data_range = data.max() - data.min()
+                n_bins = max(1, int(np.ceil(data_range / float(bin_width))))
     else:
         # fixed-width bins (integer-second data) – use floor so the
         # very last partial bin is dropped and every remaining bin has
