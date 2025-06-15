@@ -74,7 +74,7 @@ from calibration import derive_calibration_constants, derive_calibration_constan
 
 from fitting import fit_spectrum, fit_time_series, FitResult
 
-from constants import DEFAULT_NOISE_CUTOFF, PO210
+from constants import DEFAULT_NOISE_CUTOFF, PO210, PO214, PO218
 
 from plot_utils import (
     plot_spectrum,
@@ -978,13 +978,13 @@ def main():
         }
 
     # ────────────────────────────────────────────────────────────
-    # 6. Time‐series decay fits for Po‐218 and Po‐214
+    # 6. Time‐series decay fits for Po‐218, Po‐214, and Po‐210
     # ────────────────────────────────────────────────────────────
     time_fit_results = {}
     priors_time_all = {}
     time_plot_data = {}
     if cfg.get("time_fit", {}).get("do_time_fit", False):
-        for iso in ("Po218", "Po214"):
+        for iso in ("Po218", "Po214", "Po210"):
             win_key = f"window_{iso}"
 
             # Missing energy window for this isotope -> skip gracefully
@@ -1004,114 +1004,123 @@ def main():
             iso_events["weight"] = probs[iso_mask]
             if iso_events.empty:
                 print(f"WARNING: No events found for {iso} in [{lo}, {hi}] MeV.")
-                continue
-
-        # Build priors for time fit
-        priors_time = {}
-
-        # Efficiency prior per isotope
-        eff_val = cfg["time_fit"].get(f"eff_{iso}", [1.0, 0.0])
-        priors_time["eff"] = tuple(eff_val)
-
-        # Half-life prior (user must supply [T₁/₂, σ(T₁/₂)] in seconds)
-        hl_key = f"hl_{iso}"
-        if hl_key in cfg["time_fit"]:
-            T12, T12sig = cfg["time_fit"][hl_key]
-            priors_time["tau"] = (T12 / np.log(2), T12sig / np.log(2))
-
-        # Background‐rate prior
-        if f"bkg_{iso}" in cfg["time_fit"]:
-            priors_time["B0"] = tuple(cfg["time_fit"][f"bkg_{iso}"])
-
-        # Initial N₀ from baseline (if provided)
-        if baseline_range:
-            # Count baseline events in this energy window
-            probs_base = window_prob(
-                base_events["energy_MeV"].values,
-                base_events["denergy_MeV"].values,
-                lo,
-                hi,
-            )
-            n0_count = float(np.sum(probs_base))
-            baseline_counts[iso] = n0_count
-
-            eff = cfg["time_fit"].get(f"eff_{iso}", [1.0])[0]
-            if baseline_live_time > 0 and eff > 0:
-                n0_activity = n0_count / (baseline_live_time * eff)
-                n0_sigma = np.sqrt(n0_count) / (baseline_live_time * eff)
-            else:
-                n0_activity = 0.0
-                n0_sigma = 1.0
-
-            priors_time["N0"] = (
-                n0_activity,
-                cfg["time_fit"].get(f"sig_N0_{iso}", n0_sigma),
-            )
-        else:
-            priors_time["N0"] = (
-                0.0,
-                cfg["time_fit"].get(f"sig_N0_{iso}", 1.0),
-            )
-
-        # Store priors for use in systematics scanning
-        priors_time_all[iso] = priors_time
-
-        # Build configuration for fit_time_series
-        if args.settle_s is not None:
-            cut = t0_global + float(args.settle_s)
-            iso_events = iso_events[iso_events["timestamp"] >= cut]
-        times_dict = {iso: iso_events["timestamp"].values}
-        weights_map = {iso: iso_events["weight"].values}
-        fit_cfg = {
-            "isotopes": {
-                iso: {
-                    "half_life_s": cfg["time_fit"][f"hl_{iso}"][0],
-                    "efficiency": cfg["time_fit"][f"eff_{iso}"][0],
+                time_plot_data[iso] = {
+                    "events_times": np.array([], dtype=float),
+                    "events_energy": np.array([], dtype=float),
                 }
-            },
-            "fit_background": not cfg["time_fit"]["flags"].get(
-                "fix_background_b", False
-            ),
-            "fit_initial": not cfg["time_fit"]["flags"].get(f"fix_N0_{iso}", False),
-            "background_guess": cfg["time_fit"].get("background_guess", 0.0),
-            "n0_guess_fraction": cfg["time_fit"].get("n0_guess_fraction", 0.1),
-        }
 
-        # Run time-series fit
-        decay_out = None  # fresh variable each iteration
-        try:
-            t_start_fit = t0_global
+            # Build priors for time fit
+            priors_time = {}
+
+            # Efficiency prior per isotope
+            eff_val = cfg["time_fit"].get(f"eff_{iso}", [1.0, 0.0])
+            priors_time["eff"] = tuple(eff_val)
+
+            # Half-life prior (user must supply [T₁/₂, σ(T₁/₂)] in seconds)
+            hl_key = f"hl_{iso}"
+            if hl_key in cfg["time_fit"]:
+                T12, T12sig = cfg["time_fit"][hl_key]
+                priors_time["tau"] = (T12 / np.log(2), T12sig / np.log(2))
+
+            # Background‐rate prior
+            if f"bkg_{iso}" in cfg["time_fit"]:
+                priors_time["B0"] = tuple(cfg["time_fit"][f"bkg_{iso}"])
+
+            # Initial N₀ from baseline (if provided)
+            if baseline_range:
+                # Count baseline events in this energy window
+                probs_base = window_prob(
+                    base_events["energy_MeV"].values,
+                    base_events["denergy_MeV"].values,
+                    lo,
+                    hi,
+                )
+                n0_count = float(np.sum(probs_base))
+                baseline_counts[iso] = n0_count
+
+                eff = cfg["time_fit"].get(f"eff_{iso}", [1.0])[0]
+                if baseline_live_time > 0 and eff > 0:
+                    n0_activity = n0_count / (baseline_live_time * eff)
+                    n0_sigma = np.sqrt(n0_count) / (baseline_live_time * eff)
+                else:
+                    n0_activity = 0.0
+                    n0_sigma = 1.0
+
+                priors_time["N0"] = (
+                    n0_activity,
+                    cfg["time_fit"].get(f"sig_N0_{iso}", n0_sigma),
+                )
+            else:
+                priors_time["N0"] = (
+                    0.0,
+                    cfg["time_fit"].get(f"sig_N0_{iso}", 1.0),
+                )
+
+            # Store priors for use in systematics scanning
+            priors_time_all[iso] = priors_time
+
+            # Build configuration for fit_time_series
             if args.settle_s is not None:
-                t_start_fit = t0_global + float(args.settle_s)
+                cut = t0_global + float(args.settle_s)
+                iso_events = iso_events[iso_events["timestamp"] >= cut]
+            times_dict = {iso: iso_events["timestamp"].values}
+            weights_map = {iso: iso_events["weight"].values}
+            # Determine half-life and efficiency, falling back to defaults
+            default_map = {"Po218": PO218.half_life_s, "Po214": PO214.half_life_s, "Po210": PO210.half_life_s}
+            hl_val = cfg["time_fit"].get(f"hl_{iso}", [default_map[iso]])[0]
+            eff_val = cfg["time_fit"].get(f"eff_{iso}", [1.0])[0]
+
+            fit_cfg = {
+                "isotopes": {
+                    iso: {
+                        "half_life_s": hl_val,
+                        "efficiency": eff_val,
+                    }
+                },
+                "fit_background": not cfg["time_fit"]["flags"].get(
+                    "fix_background_b", False
+                ),
+                "fit_initial": not cfg["time_fit"]["flags"].get(f"fix_N0_{iso}", False),
+                "background_guess": cfg["time_fit"].get("background_guess", 0.0),
+                "n0_guess_fraction": cfg["time_fit"].get("n0_guess_fraction", 0.1),
+            }
+
+            # Run time-series fit
+            decay_out = None  # fresh variable each iteration
             try:
-                decay_out = fit_time_series(
-                    times_dict,
-                    t_start_fit,
-                    t_end_global,
-                    fit_cfg,
-                    weights=weights_map,
-                )
-            except TypeError:
-                decay_out = fit_time_series(
-                    times_dict,
-                    t_start_fit,
-                    t_end_global,
-                    fit_cfg,
-                )
-            time_fit_results[iso] = decay_out
-        except Exception as e:
-            print(f"WARNING: Decay‐curve fit for {iso} failed -> {e}")
-            time_fit_results[iso] = {}
+                t_start_fit = t0_global
+                if args.settle_s is not None:
+                    t_start_fit = t0_global + float(args.settle_s)
+                try:
+                    decay_out = fit_time_series(
+                        times_dict,
+                        t_start_fit,
+                        t_end_global,
+                        fit_cfg,
+                        weights=weights_map,
+                    )
+                except TypeError:
+                    decay_out = fit_time_series(
+                        times_dict,
+                        t_start_fit,
+                        t_end_global,
+                        fit_cfg,
+                    )
+                time_fit_results[iso] = decay_out
+            except Exception as e:
+                print(f"WARNING: Decay‐curve fit for {iso} failed -> {e}")
+                time_fit_results[iso] = {}
 
-        # Store inputs for plotting later
-        time_plot_data[iso] = {
-            "events_times": iso_events["timestamp"].values,
-            "events_energy": iso_events["energy_MeV"].values,
-        }
+            # Store inputs for plotting later
+            time_plot_data[iso] = {
+                "events_times": iso_events["timestamp"].values,
+                "events_energy": iso_events["energy_MeV"].values,
+            }
 
-    # Also extract Po-210 events for plotting if a window is provided
+    # Also extract Po-210 events for plotting if a window is provided and it
+    # was not part of the time-series fit above
     win_p210 = cfg.get("time_fit", {}).get("window_Po210")
-    if win_p210 is not None:
+    if "Po210" not in time_fit_results and win_p210 is not None:
         lo, hi = win_p210
         mask210 = (
             (events["energy_MeV"] >= lo)
