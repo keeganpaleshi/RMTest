@@ -20,6 +20,10 @@ DEFAULT_NOMINAL_ADC = {
     "Po214": 1800,
 }
 
+# Default ADC centroids used when the configuration does not
+# specify ``spectral_fit.expected_peaks``.
+DEFAULT_ADC_CENTROIDS = DEFAULT_NOMINAL_ADC.copy()
+
 from dataclasses import dataclass
 
 
@@ -89,6 +93,7 @@ __all__ = [
     "DEFAULT_NOISE_CUTOFF",
     "CURVE_FIT_MAX_EVALS",
     "DEFAULT_NOMINAL_ADC",
+    "DEFAULT_ADC_CENTROIDS",
     "NuclideConst",
     "PO214",
     "PO218",
