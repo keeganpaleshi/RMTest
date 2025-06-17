@@ -90,4 +90,4 @@ def test_baseline_range_cli_overrides_config(tmp_path, monkeypatch):
     assert summary["baseline"]["start"] == 10.0
     assert summary["baseline"]["end"] == 20.0
     assert summary["baseline"]["n_events"] == 1
-    assert captured.get("cfg", {}).get("baseline", {}).get("range") == ["10", "20"]
+    assert captured.get("cfg", {}).get("baseline", {}).get("range") == [10.0, 20.0]
