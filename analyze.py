@@ -279,6 +279,11 @@ def parse_args():
         help="Enable debug logging. Providing this option overrides `pipeline.log_level` in config.json",
     )
     p.add_argument(
+        "--strict",
+        action="store_true",
+        help="Fail if covariance is not positive definite during fits",
+    )
+    p.add_argument(
         "--plot-time-binning-mode",
         dest="time_bin_mode",
         choices=["auto", "fd", "fixed"],
@@ -951,6 +956,7 @@ def main():
                 "energies": events["energy_MeV"].values,
                 "priors": priors_spec,
                 "flags": spec_flags,
+                "strict": args.strict,
             }
             if cfg["spectral_fit"].get("use_plot_bins_for_fit", False):
                 fit_kwargs.update({"bins": bins, "bin_edges": bin_edges})
@@ -1094,14 +1100,24 @@ def main():
                     t_end_global,
                     fit_cfg,
                     weights=weights_map,
+                    strict=args.strict,
                 )
             except TypeError:
-                decay_out = fit_time_series(
-                    times_dict,
-                    t_start_fit,
-                    t_end_global,
-                    fit_cfg,
-                )
+                try:
+                    decay_out = fit_time_series(
+                        times_dict,
+                        t_start_fit,
+                        t_end_global,
+                        fit_cfg,
+                        strict=args.strict,
+                    )
+                except TypeError:
+                    decay_out = fit_time_series(
+                        times_dict,
+                        t_start_fit,
+                        t_end_global,
+                        fit_cfg,
+                    )
             time_fit_results[iso] = decay_out
         except Exception as e:
             print(f"WARNING: Decay‐curve fit for {iso} failed -> {e}")
@@ -1187,14 +1203,24 @@ def main():
                         t_end_global,
                         cfg_fit,
                         weights=weights_local,
+                        strict=args.strict,
                     )
                 except TypeError:
-                    out = fit_time_series(
-                        times_dict,
-                        t0_global,
-                        t_end_global,
-                        cfg_fit,
-                    )
+                    try:
+                        out = fit_time_series(
+                            times_dict,
+                            t0_global,
+                            t_end_global,
+                            cfg_fit,
+                            strict=args.strict,
+                        )
+                    except TypeError:
+                        out = fit_time_series(
+                            times_dict,
+                            t0_global,
+                            t_end_global,
+                            cfg_fit,
+                        )
                 # Return only the parameter dictionary so scan_systematics
                 # works with a simple mapping.
                 return out.params

@@ -301,6 +301,9 @@ def test_fit_spectrum_covariance_checks(monkeypatch):
     out_bad = fit_spectrum(energies, priors)
     assert not out_bad.params["fit_valid"]
 
+    with pytest.raises(RuntimeError):
+        fit_spectrum(energies, priors, strict=True)
+
 
 def test_fit_time_series_covariance_checks(monkeypatch):
     """Minuit covariance validity should propagate to fit_valid."""
@@ -338,6 +341,9 @@ def test_fit_time_series_covariance_checks(monkeypatch):
     monkeypatch.setattr(linalg, "cholesky", cholesky_fail)
     res_bad = fit_time_series(times_dict, 0.0, T, cfg)
     assert not res_bad.params["fit_valid"]
+
+    with pytest.raises(RuntimeError):
+        fit_time_series(times_dict, 0.0, T, cfg, strict=True)
 
 
 def test_fit_time_series_half_life_zero_raises():

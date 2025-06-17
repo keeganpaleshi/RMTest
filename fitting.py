@@ -85,7 +85,16 @@ def fit_decay(times, priors, t0=0.0, t_end=None, flags=None):
     }
 
 
-def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None, bounds=None):
+def fit_spectrum(
+    energies,
+    priors,
+    flags=None,
+    bins=None,
+    bin_edges=None,
+    bounds=None,
+    *,
+    strict=False,
+):
     """Fit three Gaussian peaks with a linear background to the spectrum.
 
     Parameters
@@ -109,6 +118,9 @@ def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None, bounds
         Mapping of parameter name to ``(lower, upper)`` tuples overriding the
         default ±5σ range derived from the priors.  ``None`` values disable a
         limit on that side.
+    strict : bool, optional
+        If ``True`` raise :class:`RuntimeError` when the covariance matrix is
+        not positive definite instead of attempting to fix it.
 
     Returns
     -------
@@ -235,7 +247,10 @@ def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None, bounds
         fit_valid = False
 
     if not fit_valid:
-        logging.warning("fit_spectrum: covariance matrix not positive definite")
+        msg = "fit_spectrum: covariance matrix not positive definite"
+        if strict:
+            raise RuntimeError(msg)
+        logging.warning(msg)
         # Add a small diagonal jitter to attempt stabilising the matrix
         jitter = 1e-12 * np.mean(np.diag(pcov))
         if not np.isfinite(jitter) or jitter <= 0:
@@ -357,7 +372,7 @@ def _neg_log_likelihood_time(
     return nll
 
 
-def fit_time_series(times_dict, t_start, t_end, config, weights=None):
+def fit_time_series(times_dict, t_start, t_end, config, weights=None, *, strict=False):
     """
     times_dict: mapping of isotope -> array of timestamps in seconds.
     weights : dict or None
@@ -370,6 +385,9 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None):
           "fit_initial": bool
           "background_guess": float  (initial guess for B_iso)
           "initial_guess":    float  (initial guess for N0_iso)
+    strict : bool, optional
+        If ``True`` raise :class:`RuntimeError` when the covariance matrix is
+        not positive definite instead of attempting to fix it.
     Returns: dict with best fit values & 1  uncertainties, e.g.:
         {
           "E_Po214": 12.3,  "dE_Po214": 1.4,
@@ -502,7 +520,10 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None):
     except np.linalg.LinAlgError:
         fit_valid = False
     if not fit_valid:
-        logging.warning("fit_time_series: covariance matrix not positive definite")
+        msg = "fit_time_series: covariance matrix not positive definite"
+        if strict:
+            raise RuntimeError(msg)
+        logging.warning(msg)
         jitter = 1e-12 * np.mean(np.diag(cov))
         if not np.isfinite(jitter) or jitter <= 0:
             jitter = 1e-12
