@@ -731,10 +731,14 @@ def main():
     a, a_sig = cal_params["a"]
     c, c_sig = cal_params["c"]
     sigE_mean, sigE_sigma = cal_params["sigma_E"]
+    cov_mat = np.asarray(cal_params.get("ac_covariance", [[0.0, 0.0], [0.0, 0.0]]), dtype=float)
+    cov_ac = float(cov_mat[0, 1])
 
     # Apply linear calibration -> new column “energy_MeV” and its uncertainty
     events["energy_MeV"] = events["adc"] * a + c
-    events["denergy_MeV"] = np.sqrt((events["adc"] * a_sig) ** 2 + c_sig**2)
+    events["denergy_MeV"] = np.sqrt(
+        (events["adc"] * a_sig) ** 2 + c_sig ** 2 + 2 * events["adc"] * cov_ac
+    )
 
     # ────────────────────────────────────────────────────────────
     # 4. Baseline run (optional)
