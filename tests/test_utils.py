@@ -4,7 +4,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from utils import cps_to_cpd, cps_to_bq, find_adc_bin_peaks
+from utils import cps_to_cpd, cps_to_bq, find_adc_bin_peaks, parse_time
 
 
 def test_cps_to_cpd():
@@ -36,3 +36,11 @@ def test_find_adc_bin_peaks_basic():
     result = find_adc_bin_peaks(adc, expected, window=2)
     assert result["p1"] == pytest.approx(10.5)
     assert result["p2"] == pytest.approx(20.5)
+
+
+def test_parse_time_int():
+    assert parse_time(42) == pytest.approx(42.0)
+
+
+def test_parse_time_float():
+    assert parse_time(42.5) == pytest.approx(42.5)

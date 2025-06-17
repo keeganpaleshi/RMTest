@@ -130,13 +130,11 @@ def cps_to_bq(rate_cps, volume_liters=None):
 
 def parse_time(s: str) -> int:
     """Parse a timestamp string or integer into Unix epoch seconds."""
-    try:
-        return int(s)
-    except ValueError:
-        pass
+    if isinstance(s, (int, float)):
+        return float(s)
 
     try:
-        dt = date_parser.parse(s, dayfirst=False)
+        dt = date_parser.isoparse(s)
     except (ValueError, OverflowError) as e:
         raise argparse.ArgumentTypeError(f"could not parse time: {s!r}") from e
 
