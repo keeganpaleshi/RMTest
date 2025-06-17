@@ -954,6 +954,8 @@ def main():
             }
             if cfg["spectral_fit"].get("use_plot_bins_for_fit", False):
                 fit_kwargs.update({"bins": bins, "bin_edges": bin_edges})
+            if cfg["spectral_fit"].get("unbinned_likelihood", False):
+                fit_kwargs["unbinned"] = True
             bounds_cfg = cfg["spectral_fit"].get("mu_bounds", {})
             if bounds_cfg:
                 bounds_map = {}
