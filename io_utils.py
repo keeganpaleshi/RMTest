@@ -190,8 +190,8 @@ def load_events(csv_path):
     Read event CSV into a DataFrame with columns:
        ['fUniqueID','fBits','timestamp','adc','fchannel']
     Column aliases like ``time`` or ``adc_ch`` are automatically renamed to
-    their canonical form.  Ensures ``timestamp`` and ``adc`` are integers,
-    sorts the result by ``timestamp`` and returns the DataFrame.
+    their canonical form.  Ensures ``timestamp`` is float seconds and ``adc`` is
+    an integer, sorts the result by ``timestamp`` and returns the DataFrame.
     """
     path = Path(csv_path)
     if not path.is_file():
@@ -217,6 +217,10 @@ def load_events(csv_path):
     if missing:
         raise KeyError(f"Input CSV is missing required columns: {missing}")
 
+    # Convert columns to numeric
+    df["timestamp"] = pd.to_numeric(df["timestamp"], errors="coerce")
+    df["adc"] = pd.to_numeric(df["adc"], errors="coerce")
+
     # Drop rows with non-finite timestamp or adc values
     start_len = len(df)
     mask = np.isfinite(df["timestamp"]) & np.isfinite(df["adc"])
@@ -228,7 +232,7 @@ def load_events(csv_path):
     discarded = start_len - len(df)
 
     # Convert types
-    df["timestamp"] = df["timestamp"].astype(int)
+    df["timestamp"] = df["timestamp"].astype(float)
     df["adc"] = df["adc"].astype(int)
 
     # Sort by timestamp
