@@ -103,7 +103,7 @@ def fit_spectrum(
     priors : dict
         Parameter priors of the form {name: (mu, sigma)}.
     flags : dict, optional
-        Flags such as ``{"fix_sigma_E": True}`` to fix parameters. Fixed
+        Flags such as ``{"fix_sigma0": True}`` to fix parameters. Fixed
         parameters are implemented by constraining the optimizer to a tiny
         interval (``±1e-12``) around the provided mean value.
     bins : int or sequence, optional
@@ -170,7 +170,7 @@ def fit_spectrum(
         "Po214": "tau_Po214" in priors,
     }
 
-    param_order = ["sigma_E"]
+    param_order = ["sigma0", "F"]
     for iso in ("Po210", "Po218", "Po214"):
         param_order.extend([f"mu_{iso}", f"S_{iso}"])
         if use_emg[iso]:
@@ -202,6 +202,8 @@ def fit_spectrum(
                 hi = min(hi, user_hi)
         if name.startswith("tau_"):
             lo = max(lo, _TAU_MIN)
+        if name in ("sigma0", "F"):
+            lo = max(lo, 0.0)
         bounds_lo.append(lo)
         bounds_hi.append(hi)
 
@@ -209,7 +211,9 @@ def fit_spectrum(
 
     def _model_density(x, *params):
         idx = 0
-        sigma_E = params[idx]
+        sigma0 = params[idx]
+        idx += 1
+        F_val = params[idx]
         idx += 1
         y = np.zeros_like(x)
         for iso in iso_list:
@@ -220,12 +224,14 @@ def fit_spectrum(
             if use_emg[iso]:
                 tau = params[idx]
                 idx += 1
+                sigma = np.sqrt(sigma0 ** 2 + F_val * x)
                 with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
-                    y_emg = emg_left(x, mu, sigma_E, tau)
+                    y_emg = emg_left(x, mu, sigma, tau)
                 y_emg = np.nan_to_num(y_emg, nan=0.0, posinf=0.0, neginf=0.0)
                 y += S * y_emg
             else:
-                y += S * gaussian(x, mu, sigma_E)
+                sigma = np.sqrt(sigma0 ** 2 + F_val * x)
+                y += S * gaussian(x, mu, sigma)
         b0 = params[idx]
         b1 = params[idx + 1]
         return y + b0 + b1 * x
@@ -247,7 +253,7 @@ def fit_spectrum(
             rate = _model_density(e, *params)
             if np.any(rate <= 0) or not np.isfinite(rate).all():
                 return 1e50
-            idx = 1
+            idx = 2
             S_sum = 0.0
             for iso in iso_list:
                 idx += 1  # mu
