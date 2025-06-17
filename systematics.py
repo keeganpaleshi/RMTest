@@ -3,8 +3,15 @@ import numpy as np
 from typing import Callable, Dict, Tuple, List
 
 
-def apply_linear_adc_shift(adc_values, timestamps, rate, t_ref=None):
-    """Apply a linear time-dependent shift to ADC values.
+def apply_linear_adc_shift(
+    adc_values,
+    timestamps,
+    rate,
+    t_ref=None,
+    mode: str = "linear",
+    params: dict | None = None,
+):
+    """Apply a time-dependent shift to ADC values.
 
     Parameters
     ----------
@@ -13,9 +20,19 @@ def apply_linear_adc_shift(adc_values, timestamps, rate, t_ref=None):
     timestamps : array-like
         Event timestamps in seconds.
     rate : float
-        ADC shift per second.  Positive values shift later events upward.
+        ADC shift per second when ``mode`` is ``"linear"``.  Ignored otherwise.
     t_ref : float, optional
         Reference time for zero shift.  Defaults to the first timestamp.
+    mode : {"linear", "quadratic", "piecewise"}, optional
+        Type of time dependence.  ``"linear"`` reproduces the original
+        behaviour.  ``"quadratic"`` uses coefficients from ``params`` and
+        ``"piecewise"`` performs linear interpolation between points given in
+        ``params``.
+    params : dict, optional
+        Additional parameters required for ``"quadratic"`` and ``"piecewise"``
+        modes.  For ``"quadratic"`` provide ``{"a": A, "b": B}`` such that the
+        shift is ``A*(t - t_ref)**2 + B*(t - t_ref)``.  For ``"piecewise"``
+        provide ``{"times": [...], "shifts": [...]}`` arrays of equal length.
 
     Returns
     -------
@@ -32,7 +49,27 @@ def apply_linear_adc_shift(adc_values, timestamps, rate, t_ref=None):
     if t_ref is None:
         t_ref = float(time_arr[0]) if time_arr.size else 0.0
 
-    return adc_arr + rate * (time_arr - t_ref)
+    dt = time_arr - t_ref
+
+    if mode == "linear":
+        shift = rate * dt
+    elif mode == "quadratic":
+        p = params or {}
+        a = float(p.get("a", 0.0))
+        b = float(p.get("b", rate))
+        shift = a * dt ** 2 + b * dt
+    elif mode == "piecewise":
+        if not params or "times" not in params or "shifts" not in params:
+            raise ValueError("piecewise mode requires 'times' and 'shifts'")
+        times = np.asarray(params["times"], dtype=float)
+        shifts = np.asarray(params["shifts"], dtype=float)
+        if times.shape != shifts.shape:
+            raise ValueError("times and shifts must have the same shape")
+        shift = np.interp(time_arr, times, shifts)
+    else:
+        raise ValueError(f"Unsupported mode: {mode}")
+
+    return adc_arr + shift
 
 
 def scan_systematics(

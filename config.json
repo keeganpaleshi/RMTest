@@ -102,7 +102,9 @@
         "sigma_E_frac": 0.10,
         "tail_fraction": 0.05,
         "energy_shift_keV": 1.0,
-        "adc_drift_rate": 0.0
+        "adc_drift_rate": 0.0,
+        "adc_drift_mode": "linear",
+        "adc_drift_params": null
     },
     "plotting": {
         "plot_spectrum_binsize_adc": 1,
