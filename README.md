@@ -409,7 +409,9 @@ isotope windows. The counts for each isotope are converted into a decay
 rate in Bq by dividing by the baseline live time and the corresponding
 detection efficiency.  Each rate is scaled by the dilution factor
 `monitor_volume_l / (monitor_volume_l + sample_volume_l)` before being
-subtracted from the fitted radon decay rate of the assay. The command-line
+subtracted from the fitted radon decay rate of the assay. The multiplicative
+scale factors for Po-214, Po-218, Po-210 and electronic noise are stored in
+`summary.json` under `baseline.scales`. The command-line
 option `--baseline_range` overrides `baseline.range` from the
 configuration when provided. When you specify this option the
 configuration's interval is ignored in favour of the CLI value.
