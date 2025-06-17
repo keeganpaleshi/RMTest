@@ -60,7 +60,9 @@ def compute_radon_activity(
     float
         Weighted average radon activity in Bq.
     float
-        Propagated 1-sigma uncertainty.
+        Propagated 1-sigma uncertainty.  If two rates are given but both
+        uncertainties are missing or invalid, the function returns the simple
+        average of the rates and ``math.nan`` for the uncertainty.
     """
     if eff218 < 0:
         raise ValueError("eff218 must be non-negative")
@@ -93,15 +95,20 @@ def compute_radon_activity(
     if not values:
         return 0.0, math.nan
 
-    # If both have valid uncertainties use weighted average
-    if len(values) == 2 and all(w is not None for w in weights):
-        w1, w2 = weights
-        A = (values[0] * w1 + values[1] * w2) / (w1 + w2)
-        sigma = math.sqrt(1.0 / (w1 + w2))
-        return A, sigma
-
+    # Two rates available
     if len(values) == 2:
-        # Unweighted average when any uncertainty is missing or invalid
+        if all(w is not None for w in weights):
+            # Weighted average when both uncertainties are valid
+            w1, w2 = weights
+            A = (values[0] * w1 + values[1] * w2) / (w1 + w2)
+            sigma = math.sqrt(1.0 / (w1 + w2))
+            return A, sigma
+
+        if all(w is None for w in weights):
+            # No uncertainty information at all
+            return 0.5 * (values[0] + values[1]), math.nan
+
+        # Unweighted average when only one uncertainty is valid
         A = (values[0] + values[1]) / 2.0
         return A, math.nan
 
