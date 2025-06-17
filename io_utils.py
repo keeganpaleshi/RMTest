@@ -53,7 +53,6 @@ CONFIG_SCHEMA = {
         "spectral_fit": {
             "type": "object",
             "properties": {"expected_peaks": {"type": "object"}},
-            "required": ["expected_peaks"],
         },
         "time_fit": {
             "type": "object",

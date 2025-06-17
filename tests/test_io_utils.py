@@ -65,8 +65,8 @@ def test_load_config_missing_key(tmp_path):
     p = tmp_path / "cfg.json"
     with open(p, "w") as f:
         json.dump(cfg, f)
-    with pytest.raises(KeyError):
-        load_config(p)
+    cfg_loaded = load_config(p)
+    assert "spectral_fit" in cfg_loaded
 
 
 def test_load_config_missing_section(tmp_path):

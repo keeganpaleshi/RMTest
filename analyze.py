@@ -74,7 +74,7 @@ from calibration import derive_calibration_constants, derive_calibration_constan
 
 from fitting import fit_spectrum, fit_time_series, FitResult
 
-from constants import DEFAULT_NOISE_CUTOFF, PO210
+from constants import DEFAULT_NOISE_CUTOFF, PO210, DEFAULT_ADC_CENTROIDS
 
 from plot_utils import (
     plot_spectrum,
@@ -921,12 +921,9 @@ def main():
 
         # Find approximate ADC centroids for Po‐210, Po‐218, Po‐214
 
-        if "expected_peaks" not in cfg.get("spectral_fit", {}):
-            raise KeyError(
-                "'spectral_fit.expected_peaks' must be provided in the configuration"
-            )
-
-        expected_peaks = cfg["spectral_fit"]["expected_peaks"]
+        expected_peaks = cfg.get("spectral_fit", {}).get("expected_peaks")
+        if expected_peaks is None:
+            expected_peaks = DEFAULT_ADC_CENTROIDS
 
         # `find_adc_bin_peaks` will return a dict: e.g. { "Po210": adc_centroid, … }
         adc_peaks = find_adc_bin_peaks(
