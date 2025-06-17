@@ -756,6 +756,7 @@ def main():
     # 4. Baseline run (optional)
     # ────────────────────────────────────────────────────────────
     baseline_info = {}
+    baseline_counts = {}
     baseline_cfg = cfg.get("baseline", {})
     baseline_range = None
     if args.baseline_range:
@@ -820,6 +821,20 @@ def main():
         if noise_level is not None:
             baseline_info["noise_level"] = float(noise_level)
 
+        # Record Po-210 and optional noise counts in baseline_counts
+        win_p210 = cfg.get("time_fit", {}).get("window_Po210")
+        if win_p210 is not None:
+            lo_p210, hi_p210 = win_p210
+            probs_p210 = window_prob(
+                base_events["energy_MeV"].values,
+                base_events["denergy_MeV"].values,
+                lo_p210,
+                hi_p210,
+            )
+            baseline_counts["Po210"] = float(np.sum(probs_p210))
+        if "mask_noise" in locals():
+            baseline_counts["noise"] = int(np.sum(mask_noise))
+
         # Remove baseline events from the main dataset before any fits.
         # This is done once here to avoid accidentally discarding data twice
         # which previously left an empty DataFrame for the time fits.
@@ -837,7 +852,6 @@ def main():
         # reindexed, which can inadvertently drop all remaining rows on
         # newer pandas versions.
 
-    baseline_counts = {}
     # ────────────────────────────────────────────────────────────
     # 5. Spectral fit (optional)
     # ────────────────────────────────────────────────────────────
@@ -1322,28 +1336,40 @@ def main():
     # Baseline subtraction
     # ────────────────────────────────────────────────────────────
     baseline_rates = {}
+    baseline_unc = {}
     if baseline_live_time > 0:
         for iso, count in baseline_counts.items():
             eff = cfg["time_fit"].get(f"eff_{iso}", [1.0])[0]
             if eff > 0:
                 rate = count / (baseline_live_time * eff)
+                err = np.sqrt(count) / (baseline_live_time * eff)
             else:
                 rate = 0.0
+                err = 0.0
             baseline_rates[iso] = rate  # Bq
+            baseline_unc[iso] = err
 
     dilution_factor = 0.0
     if monitor_vol + sample_vol > 0:
         dilution_factor = monitor_vol / (monitor_vol + sample_vol)
 
+    scale = {"Po214": dilution_factor, "Po218": dilution_factor, "Po210": 1.0, "noise": 1.0}
+
     for iso, rate in baseline_rates.items():
         fit = time_fit_results.get(iso)
         params = _fit_params(fit)
         if params and (f"E_{iso}" in params):
-            params["E_corrected"] = params[f"E_{iso}"] - rate * dilution_factor
+            s = scale.get(iso, 1.0)
+            params["E_corrected"] = params[f"E_{iso}"] - s * rate
+            err_fit = params.get(f"dE_{iso}", 0.0)
+            err_base = baseline_unc.get(iso, 0.0)
+            params["dE_corrected"] = float(np.hypot(err_fit, s * err_base))
 
     if baseline_rates:
         baseline_info["rate_Bq"] = baseline_rates
+        baseline_info["rate_unc_Bq"] = baseline_unc
         baseline_info["dilution_factor"] = dilution_factor
+        baseline_info["scales"] = scale
 
     # ────────────────────────────────────────────────────────────
     # Radon activity extrapolation
@@ -1359,14 +1385,14 @@ def main():
     if "Po214" in time_fit_results:
         fit_dict = _fit_params(time_fit_results["Po214"])
         rate214 = fit_dict.get("E_corrected", fit_dict.get("E_Po214"))
-        err214 = fit_dict.get("dE_Po214")
+        err214 = fit_dict.get("dE_corrected", fit_dict.get("dE_Po214"))
 
     rate218 = None
     err218 = None
     if "Po218" in time_fit_results:
         fit_dict = _fit_params(time_fit_results["Po218"])
         rate218 = fit_dict.get("E_corrected", fit_dict.get("E_Po218"))
-        err218 = fit_dict.get("dE_Po218")
+        err218 = fit_dict.get("dE_corrected", fit_dict.get("dE_Po218"))
 
     A_radon, dA_radon = compute_radon_activity(
         rate218, err218, eff_Po218, rate214, err214, eff_Po214
@@ -1402,7 +1428,7 @@ def main():
             fit_result = time_fit_results["Po214"]
             fit = _fit_params(fit_result)
             E = fit.get("E_corrected", fit.get("E_Po214"))
-            dE = fit.get("dE_Po214", 0.0)
+            dE = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
             N0 = fit.get("N0_Po214", 0.0)
             dN0 = fit.get("dN0_Po214", 0.0)
             default_const = cfg.get("nuclide_constants", {})
@@ -1425,7 +1451,7 @@ def main():
             fit_result = time_fit_results["Po218"]
             fit = _fit_params(fit_result)
             E = fit.get("E_corrected", fit.get("E_Po218"))
-            dE = fit.get("dE_Po218", 0.0)
+            dE = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
             N0 = fit.get("N0_Po218", 0.0)
             dN0 = fit.get("dN0_Po218", 0.0)
             default_const = cfg.get("nuclide_constants", {})
@@ -1600,7 +1626,7 @@ def main():
             fit_result = time_fit_results["Po214"]
             fit = _fit_params(fit_result)
             E = fit.get("E_corrected", fit.get("E_Po214"))
-            dE = fit.get("dE_Po214", 0.0)
+            dE = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
             N0 = fit.get("N0_Po214", 0.0)
             dN0 = fit.get("dN0_Po214", 0.0)
             default_const = cfg.get("nuclide_constants", {})
@@ -1621,7 +1647,7 @@ def main():
             fit_result = time_fit_results["Po218"]
             fit = _fit_params(fit_result)
             E = fit.get("E_corrected", fit.get("E_Po218"))
-            dE = fit.get("dE_Po218", 0.0)
+            dE = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
             N0 = fit.get("N0_Po218", 0.0)
             dN0 = fit.get("dN0_Po218", 0.0)
             default_const = cfg.get("nuclide_constants", {})
@@ -1672,7 +1698,7 @@ def main():
                 fit_result = time_fit_results["Po214"]
                 fit = _fit_params(fit_result)
                 E214 = fit.get("E_corrected", fit.get("E_Po214"))
-                dE214 = fit.get("dE_Po214", 0.0)
+                dE214 = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
                 N0214 = fit.get("N0_Po214", 0.0)
                 dN0214 = fit.get("dN0_Po214", 0.0)
                 default_const = cfg.get("nuclide_constants", {})
@@ -1687,7 +1713,7 @@ def main():
                 fit_result = time_fit_results["Po218"]
                 fit = _fit_params(fit_result)
                 E218 = fit.get("E_corrected", fit.get("E_Po218"))
-                dE218 = fit.get("dE_Po218", 0.0)
+                dE218 = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
                 N0218 = fit.get("N0_Po218", 0.0)
                 dN0218 = fit.get("dN0_Po218", 0.0)
                 default_const = cfg.get("nuclide_constants", {})
