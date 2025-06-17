@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from constants import PO210
-from plot_utils import plot_time_series, plot_spectrum
+from plot_utils import plot_time_series, plot_spectrum, extract_time_series
 
 
 def basic_config():
@@ -687,4 +687,20 @@ def test_plot_equivalent_air_po214(tmp_path):
     plot_equivalent_air(times, volumes, errors, 5.0, str(out_png))
 
     assert out_png.exists()
+
+
+def test_extract_time_series_counts():
+    times = np.array([1000.1, 1000.8, 1001.1, 1001.5, 1001.9])
+    energies = np.full_like(times, 5.3)
+    counts, edges = extract_time_series(times, energies, (5.2, 5.4), 1000.0, 1002.0)
+    assert edges.tolist() == [0.0, 1.0, 2.0]
+    assert counts.tolist() == [2, 3]
+
+
+def test_extract_time_series_none_window():
+    times = np.array([1000.5, 1001.5])
+    energies = np.array([5.3, 5.3])
+    counts, edges = extract_time_series(times, energies, None, 1000.0, 1002.0)
+    assert counts.size == 0 and edges.size == 0
+
 

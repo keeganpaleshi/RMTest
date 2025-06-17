@@ -15,6 +15,7 @@ PO214_HALF_LIFE_S = PO214.half_life_s
 PO218_HALF_LIFE_S = PO218.half_life_s
 
 __all__ = [
+    "extract_time_series",
     "plot_time_series",
     "plot_spectrum",
     "plot_radon_activity",
@@ -22,6 +23,54 @@ __all__ = [
     "plot_modeled_radon_activity",
     "plot_radon_trend",
 ]
+
+
+def extract_time_series(timestamps, energies, window, t_start, t_end, bin_width_s=1.0):
+    """Return histogram counts for events within an energy window.
+
+    Parameters
+    ----------
+    timestamps : array-like
+        Absolute event times in seconds.
+    energies : array-like
+        Event energies in MeV.
+    window : tuple(float, float) or None
+        Inclusive energy range. If ``None`` an empty array is returned.
+    t_start, t_end : float
+        Start and end times for the histogram.
+    bin_width_s : float, optional
+        Width of each time bin in seconds.
+
+    Returns
+    -------
+    counts : np.ndarray
+        Counts in each time bin.
+    edges : np.ndarray
+        Bin edges relative to ``t_start``.
+    """
+
+    if window is None:
+        return np.array([]), np.array([])
+
+    lo, hi = window
+    timestamps = np.asarray(timestamps, dtype=float)
+    energies = np.asarray(energies, dtype=float)
+
+    mask = (
+        (energies >= lo)
+        & (energies <= hi)
+        & (timestamps >= float(t_start))
+        & (timestamps <= float(t_end))
+    )
+
+    rel_times = timestamps[mask] - float(t_start)
+
+    n_bins = int(np.floor((float(t_end) - float(t_start)) / float(bin_width_s)))
+    if n_bins < 1:
+        n_bins = 1
+    edges = np.arange(0, (n_bins + 1) * float(bin_width_s), float(bin_width_s))
+    counts, _ = np.histogram(rel_times, bins=edges)
+    return counts, edges
 
 
 def plot_time_series(
