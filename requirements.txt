@@ -6,3 +6,4 @@ pandas>=1.2
 iminuit>=2.0
 pymc
 jsonschema>=4.0
+python-dateutil>=2.8.0
