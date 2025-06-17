@@ -44,10 +44,15 @@ logger = logging.getLogger(__name__)
 
 CONFIG_SCHEMA = {
     "type": "object",
+    "additionalProperties": False,
     "properties": {
         "pipeline": {
             "type": "object",
-            "properties": {"log_level": {"type": "string"}},
+            "additionalProperties": False,
+            "properties": {
+                "log_level": {"type": "string"},
+                "random_seed": {"type": ["integer", "null"]},
+            },
             "required": ["log_level"],
         },
         "spectral_fit": {
@@ -76,6 +81,7 @@ CONFIG_SCHEMA = {
         },
         "baseline": {
             "type": "object",
+            "additionalProperties": False,
             "properties": {
                 "range": {"type": "array", "items": {"type": ["string", "number"]}, "minItems": 2, "maxItems": 2},
                 "monitor_volume_l": {"type": "number", "minimum": 0},
@@ -85,6 +91,7 @@ CONFIG_SCHEMA = {
         },
         "burst_filter": {
             "type": "object",
+            "additionalProperties": False,
             "properties": {
                 "burst_mode": {"type": "string"},
                 "burst_window_size_s": {"type": "number", "minimum": 0},
@@ -114,6 +121,7 @@ CONFIG_SCHEMA = {
         },
         "analysis": {
             "type": "object",
+            "additionalProperties": False,
             "properties": {
                 "analysis_start_time": {"type": ["string", "number", "null"]},
                 "analysis_end_time": {"type": ["string", "number", "null"]},
@@ -131,6 +139,7 @@ CONFIG_SCHEMA = {
                 "settle_s": {"type": ["number", "null"], "minimum": 0},
             },
         },
+        "efficiency": {"type": "object"},
     },
     "required": [
         "pipeline",
