@@ -760,9 +760,9 @@ def main():
 
     # Apply linear calibration -> new column “energy_MeV” and its uncertainty
     events["energy_MeV"] = events["adc"] * a + c
-    events["denergy_MeV"] = np.sqrt(
-        (events["adc"] * a_sig) ** 2 + c_sig ** 2 + 2 * events["adc"] * cov_ac
-    )
+
+    var_energy = (events["adc"] * a_sig) ** 2 + c_sig ** 2 + 2 * events["adc"] * cov_ac
+    events["denergy_MeV"] = np.sqrt(np.clip(var_energy, 0, None))
 
     # ────────────────────────────────────────────────────────────
     # 4. Baseline run (optional)
