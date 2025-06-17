@@ -121,6 +121,41 @@ def test_load_events_drop_bad_rows(tmp_path, caplog):
     assert "3 discarded" in caplog.text
 
 
+def test_load_events_column_aliases(tmp_path):
+    df = pd.DataFrame(
+        {
+            "fUniqueID": [1],
+            "fBits": [0],
+            "time": [1000],
+            "adc_ch": [1250],
+            "fchannel": [1],
+        }
+    )
+    p = tmp_path / "alias.csv"
+    df.to_csv(p, index=False)
+    loaded = load_events(p)
+    assert list(loaded["timestamp"])[0] == 1000
+    assert list(loaded["adc"])[0] == 1250
+    assert "time" not in loaded.columns
+    assert "adc_ch" not in loaded.columns
+
+
+def test_load_events_missing_column(tmp_path):
+    df = pd.DataFrame(
+        {
+            "fUniqueID": [1],
+            "fBits": [0],
+            "timestamp": [1000],
+            # ADC column intentionally missing
+            "fchannel": [1],
+        }
+    )
+    p = tmp_path / "missing.csv"
+    df.to_csv(p, index=False)
+    with pytest.raises(KeyError):
+        load_events(p)
+
+
 def test_write_summary_and_copy_config(tmp_path):
     summary = {"a": 1, "b": 2}
     outdir = tmp_path / "out"
