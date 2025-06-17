@@ -22,36 +22,21 @@ from io_utils import (
 
 def test_load_config(tmp_path):
     cfg = {
-        "adc": {
-            "min_channel": 0,
-            "max_channel": 1000,
-            "peak_detection": {"height": 1, "distance": 1, "prominence": 1},
-        },
-        "efficiency": {"eff_po214": 0.4, "eff_po218": 0.8, "eff_override_all": 0.0},
-        "burst_filter": {"window_seconds": 60, "threshold_factor": 10},
-        "time_series": {"time_bin_seconds": 3600},
-        "fit_options": {
-            "fit_po214_only": True,
-            "fit_po218_po214": False,
-            "fix_B": False,
-            "fix_N0": False,
-            "baseline_range": None,
-            "cl_level": 0.95,
-        },
-        "systematics": {"enable": False},
         "pipeline": {"log_level": "INFO"},
         "spectral_fit": {
             "expected_peaks": {"Po210": 1250, "Po218": 1400, "Po214": 1800}
         },
         "time_fit": {"do_time_fit": True},
+        "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
+        "burst_filter": {"burst_mode": "rate"},
     }
     p = tmp_path / "cfg.json"
     with open(p, "w") as f:
         json.dump(cfg, f)
     loaded = load_config(p)
-    assert loaded["adc"]["min_channel"] == 0
-    assert loaded["efficiency"]["eff_po214"] == 0.4
+    assert loaded["pipeline"]["log_level"] == "INFO"
+    assert loaded["burst_filter"]["burst_mode"] == "rate"
 
 
 def test_load_config_missing_key(tmp_path):
@@ -333,6 +318,22 @@ def test_load_config_invalid_burst_filter(tmp_path):
         "time_fit": {"do_time_fit": True},
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
+    }
+    p = tmp_path / "cfg.json"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+    with pytest.raises(jsonschema.exceptions.ValidationError):
+        load_config(p)
+
+
+def test_load_config_unknown_key(tmp_path):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "spectral_fit": {},
+        "time_fit": {"do_time_fit": True},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+        "burts_filter": {},
     }
     p = tmp_path / "cfg.json"
     with open(p, "w") as f:
