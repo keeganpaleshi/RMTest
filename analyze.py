@@ -781,10 +781,16 @@ def main():
 
             peak_adc = cal_params.get("peaks", {}).get("Po210", {}).get("centroid_adc")
             if peak_adc is not None:
-                noise_level, _ = estimate_baseline_noise(
+                result = estimate_baseline_noise(
                     base_events["adc"].values,
                     peak_adc=peak_adc,
+                    return_mask=True,
                 )
+                if isinstance(result, tuple) and len(result) == 3:
+                    noise_level, _, mask_noise = result
+                    baseline_info["n_noise_events"] = int(np.sum(mask_noise))
+                else:
+                    noise_level, _ = result
         except Exception as e:
             print(f"WARNING: Baseline noise estimation failed -> {e}")
 

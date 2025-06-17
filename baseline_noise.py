@@ -14,7 +14,9 @@ def _exponential(x, A, k):
     return A * np.exp(-k * x)
 
 
-def estimate_baseline_noise(adc_values, peak_adc=None, nbins=50, model="constant"):
+def estimate_baseline_noise(
+    adc_values, peak_adc=None, nbins=50, model="constant", return_mask=False
+):
     """Estimate electronic noise level from baseline ADC values.
 
     Parameters
@@ -34,11 +36,18 @@ def estimate_baseline_noise(adc_values, peak_adc=None, nbins=50, model="constant
         Fitted noise level (constant or amplitude of exponential).
     params : dict
         Additional fitted parameters.
+    mask : ndarray of bool, optional
+        Boolean mask selecting the ADC values used for the fit. Only returned
+        when ``return_mask`` is ``True``.
     """
-    adc = np.asarray(adc_values, dtype=float)
+    adc_arr = np.asarray(adc_values, dtype=float)
+    mask = np.ones_like(adc_arr, dtype=bool)
     if peak_adc is not None:
-        adc = adc[adc < peak_adc]
+        mask &= adc_arr < peak_adc
+    adc = adc_arr[mask]
     if adc.size == 0:
+        if return_mask:
+            return 0.0, {}, mask
         return 0.0, {}
 
     hist, edges = np.histogram(adc, bins=nbins)
@@ -47,6 +56,8 @@ def estimate_baseline_noise(adc_values, peak_adc=None, nbins=50, model="constant
     if model == "constant":
         A = float(np.mean(hist))
         A = min(A, 1e300)
+        if return_mask:
+            return A, {"A": A}, mask
         return A, {"A": A}
 
     if model == "exponential":
@@ -57,10 +68,13 @@ def estimate_baseline_noise(adc_values, peak_adc=None, nbins=50, model="constant
             )
             A, k = popt
             A = min(float(A), 1e300)
+            if return_mask:
+                return A, {"A": A, "k": float(k)}, mask
             return A, {"A": A, "k": float(k)}
         except Exception:
             A = float(np.mean(hist))
             A = min(A, 1e300)
+            if return_mask:
+                return A, {"A": A}, mask
             return A, {"A": A}
-
     raise ValueError("Unsupported model: %s" % model)
