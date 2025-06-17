@@ -431,6 +431,10 @@ def main():
         _log_override("analysis", "radon_interval", args.radon_interval)
         cfg.setdefault("analysis", {})["radon_interval"] = args.radon_interval
 
+    if args.settle_s is not None:
+        _log_override("analysis", "settle_s", float(args.settle_s))
+        cfg.setdefault("analysis", {})["settle_s"] = float(args.settle_s)
+
     if args.hl_po214 is not None:
         tf = cfg.setdefault("time_fit", {})
         sig = 0.0
@@ -1465,6 +1469,7 @@ def main():
             "ambient_concentration": cfg.get("analysis", {}).get(
                 "ambient_concentration"
             ),
+            "settle_s": cfg.get("analysis", {}).get("settle_s"),
         },
     }
 

@@ -128,6 +128,7 @@ CONFIG_SCHEMA = {
                 },
                 "radon_interval": {"type": "array", "items": {"type": ["string", "number"]}, "minItems": 2, "maxItems": 2},
                 "ambient_concentration": {"type": ["number", "null"]},
+                "settle_s": {"type": ["number", "null"], "minimum": 0},
             },
         },
     },
