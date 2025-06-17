@@ -66,5 +66,6 @@ def test_summary_includes_git_and_cli(tmp_path, monkeypatch):
     summary = captured.get("summary")
     assert summary is not None
     assert "git_commit" in summary
+    assert "requirements_sha256" in summary
     assert "cli_sha256" in summary
     assert "cli_args" in summary
