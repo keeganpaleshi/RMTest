@@ -6,6 +6,7 @@
 from typing import Sequence, Tuple, Optional
 import numpy as np
 import math
+import warnings
 
 __all__ = [
     "calc_spike_efficiency",
@@ -15,7 +16,9 @@ __all__ = [
 ]
 
 
-def calc_spike_efficiency(counts: float, activity_bq: float, live_time_s: float) -> float:
+def calc_spike_efficiency(
+    counts: float, activity_bq: float, live_time_s: float
+) -> float:
     """Compute spike efficiency from counts and known activity.
 
     Parameters
@@ -104,6 +107,10 @@ def blue_combine(
         Combined 1-sigma uncertainty.
     numpy.ndarray
         Weights applied to the input values.
+
+    Notes
+    -----
+    If any resulting weight is negative, a ``UserWarning`` is emitted.
     """
     vals = np.asarray(values, dtype=float)
     errs = np.asarray(errors, dtype=float)
@@ -113,7 +120,7 @@ def blue_combine(
         raise ValueError("no values provided")
 
     if corr is None:
-        cov = np.diag(errs ** 2)
+        cov = np.diag(errs**2)
     else:
         c = np.asarray(corr, dtype=float)
         if c.shape != (vals.size, vals.size):
@@ -124,7 +131,8 @@ def blue_combine(
     ones = np.ones(vals.size)
     norm = float(ones @ Vinv @ ones)
     weights = (Vinv @ ones) / norm
+    if np.any(weights < 0):
+        warnings.warn("negative BLUE weights encountered")
     estimate = float(weights @ vals)
     variance = 1.0 / norm
     return estimate, math.sqrt(variance), weights
-
