@@ -1355,13 +1355,19 @@ def main():
     if monitor_vol + sample_vol > 0:
         dilution_factor = monitor_vol / (monitor_vol + sample_vol)
 
-    scale = {"Po214": dilution_factor, "Po218": dilution_factor, "Po210": 1.0, "noise": 1.0}
+    scales = {
+        "Po214": dilution_factor,
+        "Po218": dilution_factor,
+        "Po210": 1.0,
+        "noise": 1.0,
+    }
+    baseline_info["scales"] = scales
 
     for iso, rate in baseline_rates.items():
         fit = time_fit_results.get(iso)
         params = _fit_params(fit)
         if params and (f"E_{iso}" in params):
-            s = scale.get(iso, 1.0)
+            s = scales.get(iso, 1.0)
             params["E_corrected"] = params[f"E_{iso}"] - s * rate
             err_fit = params.get(f"dE_{iso}", 0.0)
             err_base = baseline_unc.get(iso, 0.0)
@@ -1371,7 +1377,6 @@ def main():
         baseline_info["rate_Bq"] = baseline_rates
         baseline_info["rate_unc_Bq"] = baseline_unc
         baseline_info["dilution_factor"] = dilution_factor
-        baseline_info["scales"] = scale
 
     # ────────────────────────────────────────────────────────────
     # Radon activity extrapolation
