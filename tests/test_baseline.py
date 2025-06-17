@@ -80,6 +80,7 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     assert summary["baseline"]["n_events"] == 2
     assert summary["baseline"]["dilution_factor"] == pytest.approx(1.0)
     assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(0.8)
+    assert summary["time_fit"]["Po214"]["dE_corrected"] == pytest.approx(np.sqrt(2)/10.0)
     assert summary["baseline"].get("noise_level") == 5.0
     times = list(captured.get("times", []))
     assert times == [20]
@@ -155,6 +156,7 @@ def test_baseline_scaling_factor(tmp_path, monkeypatch):
     assert rate == pytest.approx(0.2, rel=1e-3)
     assert dilution == pytest.approx(0.5)
     assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(0.9)
+    assert summary["time_fit"]["Po214"]["dE_corrected"] == pytest.approx(np.sqrt(2)/10.0 * 0.5)
 
 
 def test_n0_prior_from_baseline(tmp_path, monkeypatch):
@@ -305,4 +307,5 @@ def test_isotopes_to_subtract_control(tmp_path, monkeypatch):
     summary = captured["summary"]
     assert "rate_Bq" not in summary.get("baseline", {})
     assert "E_corrected" not in summary["time_fit"]["Po214"]
+    assert "dE_corrected" not in summary["time_fit"]["Po214"]
 
