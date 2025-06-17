@@ -54,7 +54,8 @@ The input file must be a comma-separated table with these columns:
 - `fchannel` – acquisition channel
 
 Columns beyond these are ignored. See `example_input.csv` for a
-sample layout.
+sample layout which also includes typical auxiliary fields such as
+`baseline_adc`, `spike_flag` and `valid`.
 
 ## Output
 
