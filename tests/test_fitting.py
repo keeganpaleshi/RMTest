@@ -95,7 +95,8 @@ def test_fit_spectrum_use_emg_flag():
     ])
 
     base_priors = {
-        "sigma_E": (0.05, 0.01),
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
         "mu_Po210": (5.3, 0.1),
         "S_Po210": (200, 20),
         "mu_Po218": (6.0, 0.1),
@@ -130,7 +131,8 @@ def test_fit_spectrum_fixed_parameter_bounds():
     ])
 
     priors = {
-        "sigma_E": (0.05, 0.01),
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
         "mu_Po210": (5.3, 0.0),
         "S_Po210": (100, 10),
         "mu_Po218": (6.0, 0.1),
@@ -155,7 +157,8 @@ def test_fit_spectrum_custom_bins_and_edges():
     ])
 
     priors = {
-        "sigma_E": (0.05, 0.01),
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
         "mu_Po210": (5.3, 0.1),
         "S_Po210": (150, 15),
         "mu_Po218": (6.0, 0.1),
@@ -168,12 +171,14 @@ def test_fit_spectrum_custom_bins_and_edges():
 
     # Using integer number of bins
     out_bins = fit_spectrum(energies, priors, bins=30)
-    assert "sigma_E" in out_bins.params
+    assert "sigma0" in out_bins.params
+    assert "F" in out_bins.params
 
     # Using explicit bin edges
     edges = np.linspace(5.0, 8.0, 25)
     out_edges = fit_spectrum(energies, priors, bin_edges=edges)
-    assert "sigma_E" in out_edges.params
+    assert "sigma0" in out_edges.params
+    assert "F" in out_edges.params
 
 
 def test_fit_spectrum_custom_bounds():
@@ -186,7 +191,8 @@ def test_fit_spectrum_custom_bounds():
     ])
 
     priors = {
-        "sigma_E": (0.05, 0.01),
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
         "mu_Po210": (5.3, 0.1),
         "S_Po210": (150, 15),
         "mu_Po218": (6.0, 0.1),
@@ -212,7 +218,8 @@ def test_fit_spectrum_bounds_clip():
     ])
 
     priors = {
-        "sigma_E": (0.05, 0.01),
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
         "mu_Po210": (5.3, 0.1),
         "S_Po210": (120, 12),
         "mu_Po218": (5.5, 0.1),  # outside the provided bound
@@ -242,7 +249,8 @@ def test_fit_spectrum_tau_lower_bound():
     ])
 
     priors = {
-        "sigma_E": (0.05, 0.01),
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
         "mu_Po210": (5.3, 0.1),
         "S_Po210": (100, 10),
         "mu_Po218": (6.0, 0.1),
@@ -267,7 +275,8 @@ def test_fit_spectrum_unbinned_runs():
     ])
 
     priors = {
-        "sigma_E": (0.05, 0.01),
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
         "mu_Po210": (5.3, 0.1),
         "S_Po210": (150, 15),
         "mu_Po218": (6.0, 0.1),
@@ -279,7 +288,8 @@ def test_fit_spectrum_unbinned_runs():
     }
 
     out = fit_spectrum(energies, priors, unbinned=True)
-    assert "sigma_E" in out.params
+    assert "sigma0" in out.params
+    assert "F" in out.params
 
 
 def test_fit_spectrum_unbinned_consistent():
@@ -291,7 +301,8 @@ def test_fit_spectrum_unbinned_consistent():
     ])
 
     priors = {
-        "sigma_E": (0.05, 0.01),
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
         "mu_Po210": (5.3, 0.1),
         "S_Po210": (200, 20),
         "mu_Po218": (6.0, 0.1),
@@ -318,7 +329,8 @@ def test_fit_spectrum_covariance_checks(monkeypatch):
     ])
 
     priors = {
-        "sigma_E": (0.05, 0.01),
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
         "mu_Po210": (5.3, 0.1),
         "S_Po210": (200, 20),
         "mu_Po218": (6.0, 0.1),
