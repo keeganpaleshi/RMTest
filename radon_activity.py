@@ -100,11 +100,10 @@ def compute_radon_activity(
         sigma = math.sqrt(1.0 / (w1 + w2))
         return A, sigma
 
-    if len(values) == 2 and sum(w is not None for w in weights) == 1:
-        # Identify the isotope with a valid uncertainty
-        for idx, w in enumerate(weights):
-            if w is not None:
-                return values[idx], math.sqrt(1.0 / w)
+    if len(values) == 2:
+        # Unweighted average when any uncertainty is missing or invalid
+        A = (values[0] + values[1]) / 2.0
+        return A, math.nan
 
     # Only one valid value or missing errors
     A = values[0]
