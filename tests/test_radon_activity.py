@@ -172,11 +172,11 @@ def test_compute_radon_activity_unweighted_one_error_missing():
     assert s == pytest.approx(0.25)
 
 
-def test_compute_radon_activity_unweighted_both_errors_missing():
-    """Average both rates when no uncertainties are provided."""
+def test_compute_radon_activity_both_missing_errors():
+    """Average both rates with NaN uncertainty when no errors are given."""
     a, s = compute_radon_activity(5.0, None, 1.0, 7.0, None, 1.0)
     assert a == pytest.approx(6.0)
-    assert s == pytest.approx(0.0)
+    assert math.isnan(s)
 
 
 def test_compute_total_radon_negative_sample_volume():
