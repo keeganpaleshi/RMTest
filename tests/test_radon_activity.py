@@ -179,6 +179,13 @@ def test_compute_radon_activity_unweighted_both_errors_missing():
     assert math.isnan(s)
 
 
+def test_compute_radon_activity_both_missing_errors():
+    """Explicit check when both uncertainties are ``None``."""
+    a, s = compute_radon_activity(5.0, None, 1.0, 7.0, None, 1.0)
+    assert a == pytest.approx(6.0)
+    assert math.isnan(s)
+
+
 def test_compute_total_radon_negative_sample_volume():
     with pytest.raises(ValueError):
         compute_total_radon(5.0, 0.5, 10.0, -1.0)
