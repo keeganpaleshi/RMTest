@@ -4,7 +4,14 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from calibration import two_point_calibration, apply_calibration, emg_left, gaussian
+from calibration import (
+    two_point_calibration,
+    apply_calibration,
+    emg_left,
+    gaussian,
+    DEFAULT_KNOWN_ENERGIES,
+    derive_calibration_constants,
+)
 
 
 def test_two_point_calibration():
@@ -72,8 +79,6 @@ def test_derive_calibration_constants_peak_search_radius():
     cfg_ok = {"calibration": dict(base_cfg["calibration"])}
     cfg_ok["calibration"]["peak_search_radius"] = 5
 
-    from calibration import derive_calibration_constants
-
     out = derive_calibration_constants(adc, cfg_ok)
     assert set(out["peaks"].keys()) == {"Po210", "Po218", "Po214"}
 
@@ -107,8 +112,6 @@ def test_calibration_uses_known_energies_from_config():
             "sanity_tolerance_mev": 1.0,
         }
     }
-
-    from calibration import derive_calibration_constants
 
     out = derive_calibration_constants(adc, cfg)
 
@@ -144,7 +147,46 @@ def test_calibration_sanity_check_triggers_error():
         }
     }
 
-    from calibration import derive_calibration_constants
-
     with pytest.raises(RuntimeError):
         derive_calibration_constants(adc, cfg)
+
+
+def test_calibrate_run_quadratic_option():
+    """calibrate_run should support optional quadratic calibration."""
+    rng = np.random.default_rng(3)
+    adc = np.concatenate([
+        rng.normal(1000, 2, 300),
+        rng.normal(1500, 2, 300),
+        rng.normal(2000, 2, 300),
+    ])
+
+    cfg = {
+        "calibration": {
+            "peak_prominence": 5,
+            "peak_width": 1,
+            "nominal_adc": {"Po210": 1000, "Po218": 1500, "Po214": 2000},
+            "fit_window_adc": 20,
+            "use_emg": False,
+            "init_sigma_adc": 2.0,
+            "init_tau_adc": 0.0,
+            "peak_search_radius": 5,
+            "quadratic": True,
+            "sanity_tolerance_mev": 1.0,
+        }
+    }
+
+    out = derive_calibration_constants(adc, cfg)
+
+    a, _ = out["a"]
+    a2, _ = out["a2"]
+    c, _ = out["c"]
+
+    adc_test = np.array([1000, 1500, 2000])
+    energies = apply_calibration(adc_test, a, c, quadratic_coeff=a2)
+    expected = np.array([
+        DEFAULT_KNOWN_ENERGIES["Po210"],
+        DEFAULT_KNOWN_ENERGIES["Po218"],
+        DEFAULT_KNOWN_ENERGIES["Po214"],
+    ])
+
+    assert np.allclose(energies, expected, rtol=1e-3)
