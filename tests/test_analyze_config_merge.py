@@ -1973,10 +1973,14 @@ def test_time_fields_written_back(tmp_path, monkeypatch):
 
     def fake_load(path):
         cfg_local = orig_load(path)
-        captured["cfg"] = cfg_local
         return cfg_local
 
     monkeypatch.setattr(analyze, "load_config", fake_load)
+
+    def fake_copy(outdir, cfg_in):
+        captured["cfg"] = cfg_in
+
+    monkeypatch.setattr(analyze, "copy_config", fake_copy)
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)})
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)})

@@ -55,7 +55,8 @@ The input file must be a comma-separated table with these columns:
 
 Columns beyond these are ignored. See `example_input.csv` for a
 sample layout which also includes typical auxiliary fields such as
-`baseline_adc`, `spike_flag`, `valid`, `temperature` and `run_id`.
+`baseline_adc`, `spike_flag`, `valid`, `temperature`, `run_id`,
+`pressure` and `humidity`.
 
 ## Output
 
@@ -63,6 +64,8 @@ The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--j
 
 - `summary.json` – calibration and fit summary.
 - `config_used.json` – copy of the configuration used.
+  Any timestamps overridden on the command line are written
+  back to this file in Unix seconds.
 - `spectrum.png` – spectrum plot with fitted peaks.
 - `time_series_Po214.png` and `time_series_Po218.png` – decay time-series plots.
 - `time_series_Po210.png` when `window_Po210` is set.
@@ -490,6 +493,9 @@ which will be combined.  When the configuration file provides an
 
 `analyze.py` stores the calculated values and their BLUE combination in
 `summary.json` under the `efficiency` key.
+
+The helper `blue_combine.py` exposes a small wrapper so the combination
+can be used independently via ``from blue_combine import BLUE``.
 
 The option `--efficiency-json PATH` may be supplied on the command line to
 load the efficiency section from a separate file instead of embedding it

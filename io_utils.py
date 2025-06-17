@@ -365,8 +365,8 @@ def copy_config(output_dir, config_path):
     ----------
     output_dir : Path or str
         Directory containing the summary JSON.
-    config_path : Path or str
-        Configuration file to copy.
+    config_path : Path, str or dict
+        Configuration file to copy or configuration dictionary.
 
     Returns
     -------
@@ -377,7 +377,6 @@ def copy_config(output_dir, config_path):
     # If ``summary.json`` exists directly under ``output_dir`` we assume the
     # caller provided the timestamped folder path.
     output_path = Path(output_dir)
-    config_path = Path(config_path)
 
     if (output_path / "summary.json").is_file():
         dest_folder = output_path
@@ -396,6 +395,12 @@ def copy_config(output_dir, config_path):
         dest_folder = output_path / timestamped
 
     dest_path = dest_folder / "config_used.json"
-    shutil.copyfile(config_path, dest_path)
-    logger.info(f"Copied config {config_path} -> {dest_path}")
+    if isinstance(config_path, (str, Path)):
+        shutil.copyfile(Path(config_path), dest_path)
+        logger.info(f"Copied config {config_path} -> {dest_path}")
+    else:
+        sanitized = to_native(config_path)
+        with open(dest_path, "w", encoding="utf-8") as f:
+            json.dump(sanitized, f, indent=4)
+        logger.info(f"Wrote config to {dest_path}")
     return dest_path

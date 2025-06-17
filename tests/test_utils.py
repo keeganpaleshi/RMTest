@@ -44,3 +44,11 @@ def test_parse_time_int():
 
 def test_parse_time_float():
     assert parse_time(42.5) == pytest.approx(42.5)
+
+
+def test_parse_time_numeric_str():
+    assert parse_time("42") == pytest.approx(42.0)
+
+
+def test_parse_time_numeric_str_float():
+    assert parse_time("42.5") == pytest.approx(42.5)

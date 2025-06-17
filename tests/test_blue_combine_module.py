@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from blue_combine import blue_combine
+from blue_combine import blue_combine, BLUE, Measurements
 
 
 def test_blue_combine_module_runs():
@@ -17,3 +17,12 @@ def test_blue_combine_module_runs():
     assert combined == pytest.approx(expected)
     assert sigma == pytest.approx(expected_sigma)
     assert len(weights) == 2
+
+
+def test_blue_combine_wrapper_dataclass():
+    m = Measurements(values=[1.0, 2.0], errors=[0.1, 0.2])
+    combined, sigma, _ = BLUE(m)
+    expected = np.average(m.values, weights=1 / np.array(m.errors) ** 2)
+    exp_sigma = (1 / np.sum(1 / np.array(m.errors) ** 2)) ** 0.5
+    assert combined == pytest.approx(expected)
+    assert sigma == pytest.approx(exp_sigma)
