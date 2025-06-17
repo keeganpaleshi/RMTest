@@ -55,6 +55,7 @@ import subprocess
 import hashlib
 import json
 from pathlib import Path
+import math
 
 import numpy as np
 import pandas as pd
@@ -1364,8 +1365,15 @@ def main():
             s = scale.get(iso, 1.0)
             params["E_corrected"] = params[f"E_{iso}"] - s * rate
             err_fit = params.get(f"dE_{iso}", 0.0)
-            err_base = baseline_unc.get(iso, 0.0)
-            params["dE_corrected"] = float(np.hypot(err_fit, s * err_base))
+            count = baseline_counts.get(iso, 0.0)
+            eff = cfg["time_fit"].get(f"eff_{iso}", [1.0])[0]
+            if baseline_live_time > 0 and eff > 0:
+                sigma_rate = math.sqrt(count) / (baseline_live_time * eff)
+            else:
+                sigma_rate = 0.0
+            params["dE_corrected"] = float(
+                math.hypot(err_fit, sigma_rate * s)
+            )
 
     if baseline_rates:
         baseline_info["rate_Bq"] = baseline_rates
