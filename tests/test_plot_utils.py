@@ -168,6 +168,48 @@ def test_plot_time_series_custom_half_life_po218(tmp_path, monkeypatch):
     assert np.allclose(captured.get("y"), expected, rtol=1e-4)
 
 
+def test_plot_time_series_time_fit_half_lives(tmp_path, monkeypatch):
+    times = np.array([1000.1, 1000.9, 1001.1, 1001.9])
+    energies = np.array([7.6, 5.9, 7.8, 6.0])
+    cfg = basic_config()
+    cfg.update({
+        "window_Po218": [5.8, 6.3],
+        "eff_Po218": [1.0],
+        "time_fit": {"hl_Po214": [2.0], "hl_Po218": [4.0]},
+    })
+
+    captured = {}
+
+    def fake_plot(x, y, *args, **kwargs):
+        lbl = kwargs.get("label")
+        if lbl == "Model Po214":
+            captured["Po214"] = np.array(y)
+        elif lbl == "Model Po218":
+            captured["Po218"] = np.array(y)
+        return type("obj", (), {})()
+
+    monkeypatch.setattr("plot_utils.plt.plot", fake_plot)
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    plot_time_series(
+        times,
+        energies,
+        {"E": 0.1, "B": 0.0, "N0": 0.0},
+        1000.0,
+        1003.0,
+        cfg,
+        str(tmp_path / "ts_nested.png"),
+    )
+
+    centers = np.array([0.5, 1.5, 2.5])
+    lam214 = np.log(2.0) / 2.0
+    lam218 = np.log(2.0) / 4.0
+    exp214 = 0.1 * (1.0 - np.exp(-lam214 * centers))
+    exp218 = 0.1 * (1.0 - np.exp(-lam218 * centers))
+    assert np.allclose(captured.get("Po214"), exp214, rtol=1e-4)
+    assert np.allclose(captured.get("Po218"), exp218, rtol=1e-4)
+
+
 def test_plot_time_series_invalid_half_life_po214(tmp_path):
     cfg = basic_config()
     cfg["hl_Po214"] = [0.0]
