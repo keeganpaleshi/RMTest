@@ -723,11 +723,13 @@ def main():
     # Save “a, c, sigma_E” so we can reconstruct energies
     a, a_sig = cal_params["a"]
     c, c_sig = cal_params["c"]
+    cov_ac = cal_params.get("cov_ac", 0.0)
     sigE_mean, sigE_sigma = cal_params["sigma_E"]
 
     # Apply linear calibration -> new column “energy_MeV” and its uncertainty
     events["energy_MeV"] = events["adc"] * a + c
-    events["denergy_MeV"] = np.sqrt((events["adc"] * a_sig) ** 2 + c_sig**2)
+    var_E = (events["adc"] * a_sig) ** 2 + c_sig**2 + 2.0 * events["adc"] * cov_ac
+    events["denergy_MeV"] = np.sqrt(np.maximum(var_E, 0.0))
 
     # ────────────────────────────────────────────────────────────
     # 4. Baseline run (optional)
