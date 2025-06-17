@@ -98,7 +98,9 @@ The time-series fit checks whether the covariance matrix returned by
 Minuit is positive definite.  If not, a tiny diagonal jitter is added
 before repeating the check.  When even the jittered matrix fails this
 test the result still contains the fitted values but ``fit_valid`` is set
-to ``False``.
+to ``False``.  Passing ``strict=True`` (or ``--strict-covariance`` on the
+command line) instead raises a ``RuntimeError`` as soon as the matrix is
+found to be non-positive definite.
 
 ## Configuration
 

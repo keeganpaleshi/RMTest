@@ -45,7 +45,7 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
     captured = {}
 
-    def fake_fit_time_series(times_dict, t_start, t_end, cfg):
+    def fake_fit_time_series(times_dict, t_start, t_end, cfg, **kwargs):
         captured["times"] = times_dict.get("Po214")
         return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
 
@@ -194,7 +194,7 @@ def test_n0_prior_from_baseline(tmp_path, monkeypatch):
 
     captured = {}
 
-    def fake_fit_time_series(times_dict, t_start, t_end, cfg):
+    def fake_fit_time_series(times_dict, t_start, t_end, cfg, **kwargs):
         return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit_time_series)

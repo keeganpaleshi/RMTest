@@ -55,7 +55,7 @@ def test_analyze_noise_cutoff(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "plot_time_series", fake_plot_time_series)
 
-    def fake_fit_time_series(times_dict, t_start, t_end, cfg, weights=None):
+    def fake_fit_time_series(times_dict, t_start, t_end, cfg, weights=None, **kwargs):
         captured["fit_times"] = list(times_dict.get("Po214", []))
         return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
 
