@@ -375,15 +375,11 @@ def copy_config(output_dir, config_path):
     """
     Copy the used config JSON into the timestamped results folder.
 
-    ``output_dir`` can either be the parent directory passed to
-    :func:`write_summary` or the timestamped directory returned by it.
-    In both cases the configuration file will be copied alongside the
-    generated ``summary.json``.
-
     Parameters
     ----------
     output_dir : Path or str
-        Directory containing the summary JSON.
+        Path to the directory returned by :func:`write_summary`.  This
+        directory must contain ``summary.json``.
     config_path : Path, str or dict
         Configuration file to copy or configuration dictionary.
 
@@ -393,25 +389,14 @@ def copy_config(output_dir, config_path):
         Destination of the copied config.
     """
 
-    # If ``summary.json`` exists directly under ``output_dir`` we assume the
-    # caller provided the timestamped folder path.
     output_path = Path(output_dir)
 
-    if (output_path / "summary.json").is_file():
-        dest_folder = output_path
-    else:
-        subfolders = [
-            d
-            for d in output_path.iterdir()
-            if d.is_dir()
-        ]
-        if not subfolders:
-            raise RuntimeError(
-                f"No subfolders found in {output_dir} to copy config into."
-            )
-        # Pick the most recent (lexicographically largest) folder
-        timestamped = sorted(subfolders)[-1]
-        dest_folder = output_path / timestamped
+    if not (output_path / "summary.json").is_file():
+        raise RuntimeError(
+            f"{output_dir} does not contain summary.json; provide the timestamped results folder."
+        )
+
+    dest_folder = output_path
 
     dest_path = dest_folder / "config_used.json"
     if isinstance(config_path, (str, Path)):

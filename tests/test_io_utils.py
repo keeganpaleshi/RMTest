@@ -152,7 +152,7 @@ def test_write_summary_and_copy_config(tmp_path):
     cp = tmp_path / "cfg.json"
     with open(cp, "w") as f:
         json.dump(cfg, f)
-    dest = copy_config(outdir, cp)
+    dest = copy_config(results, cp)
     assert Path(dest).exists()
 
 
