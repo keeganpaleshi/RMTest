@@ -106,8 +106,7 @@ found to be non-positive definite.
 
 `nominal_adc` under the `calibration` section sets the expected raw ADC
 centroids for Po‑210, Po‑218 and Po‑214 when using automatic calibration.
-If omitted, defaults of `{"Po210": 1250, "Po218": 1400, "Po214": 1800}`
-are used.
+If omitted, the values from `constants.DEFAULT_ADC_CENTROIDS` are used.
 
 `sanity_tolerance_mev` in the same section specifies how close the fitted
 peak energies must be to their known values.  The default of `0.5` MeV
@@ -277,8 +276,8 @@ fit.  Important keys include:
   search are clamped to this range before the fit starts.
 
 - `expected_peaks` – approximate ADC centroids used to locate the
-  Po‑210, Po‑218 and Po‑214 peaks before fitting. The default is
-  `{"Po210": 1250, "Po218": 1400, "Po214": 1800}`.
+  Po‑210, Po‑218 and Po‑214 peaks before fitting. If omitted, the
+  values from `constants.DEFAULT_ADC_CENTROIDS` are used.
 - `unbinned_likelihood` – when `true` use an extended unbinned likelihood
   instead of the default χ² fit to histogrammed data.
 - `emg_left` evaluations are wrapped in `np.errstate` and passed through
