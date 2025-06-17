@@ -38,9 +38,15 @@ def compute_radon_activity(
     Returns
     -------
     float
-        Weighted average radon activity in Bq.
+        Average radon activity in Bq.  If both isotopes have valid
+        uncertainties a weighted mean is used.  When one or more
+        uncertainties are missing, all available rates contribute with
+        equal weight.
     float
-        Propagated 1-sigma uncertainty.
+        Propagated 1-sigma uncertainty.  When rates are combined with an
+        unweighted mean the uncertainty is computed as ``sqrt(err218**2 +
+        err214**2) / N`` where ``N`` is the number of rates included and
+        missing uncertainties contribute ``0`` to the sum.
     """
     if eff218 < 0:
         raise ValueError("eff218 must be non-negative")
@@ -67,20 +73,23 @@ def compute_radon_activity(
     if not values:
         return 0.0, math.nan
 
-    # If both have valid uncertainties use weighted average
-    if len(values) == 2 and all(w is not None for w in weights):
-        w1, w2 = weights
-        A = (values[0] * w1 + values[1] * w2) / (w1 + w2)
-        sigma = math.sqrt(1.0 / (w1 + w2))
+    N = len(values)
+
+    # Weighted mean when all uncertainties are valid
+    if N >= 2 and all(w is not None for w in weights):
+        tot_w = sum(weights)
+        A = sum(v * w for v, w in zip(values, weights)) / tot_w
+        sigma = math.sqrt(1.0 / tot_w)
         return A, sigma
 
-    if len(values) == 2 and sum(w is not None for w in weights) == 1:
-        # Identify the isotope with a valid uncertainty
-        for idx, w in enumerate(weights):
-            if w is not None:
-                return values[idx], math.sqrt(1.0 / w)
+    if N >= 2:
+        # At least two rates present but one or more uncertainties are missing
+        A = sum(values) / N
+        err_sq = sum((1.0 / w) if w is not None else 0.0 for w in weights)
+        sigma = math.sqrt(err_sq) / N
+        return A, sigma
 
-    # Only one valid value or missing errors
+    # Only one rate contributes
     A = values[0]
     sigma = math.sqrt(1.0 / weights[0]) if weights[0] is not None else math.nan
     return A, sigma
