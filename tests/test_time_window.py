@@ -90,6 +90,12 @@ def test_time_window_filters_events(tmp_path, monkeypatch):
 
     summary = captured.get("summary", {})
     assert summary["baseline"]["n_events"] == 1
+    assert summary["baseline"]["scales"] == {
+        "Po214": pytest.approx(1.0),
+        "Po218": pytest.approx(1.0),
+        "Po210": pytest.approx(1.0),
+        "noise": pytest.approx(1.0),
+    }
     assert captured.get("times") == [6.0]
 
 
@@ -218,6 +224,12 @@ def test_time_window_filters_events_config(tmp_path, monkeypatch):
 
     summary = captured.get("summary", {})
     assert summary["baseline"]["n_events"] == 1
+    assert summary["baseline"]["scales"] == {
+        "Po214": pytest.approx(1.0),
+        "Po218": pytest.approx(1.0),
+        "Po210": pytest.approx(1.0),
+        "noise": pytest.approx(1.0),
+    }
     assert captured.get("times") == [6.0]
 
 
@@ -381,5 +393,11 @@ def test_baseline_range_iso_strings(tmp_path, monkeypatch, start, end):
 
     summary = captured.get("summary", {})
     assert summary["baseline"]["n_events"] == 1
+    assert summary["baseline"]["scales"] == {
+        "Po214": pytest.approx(1.0),
+        "Po218": pytest.approx(1.0),
+        "Po210": pytest.approx(1.0),
+        "noise": pytest.approx(1.0),
+    }
     assert captured.get("times") == [6.0]
 
