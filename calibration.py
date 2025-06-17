@@ -225,17 +225,39 @@ def calibrate_run(adc_values, config, hist_bins=None):
                 f"outside ±{tol} MeV of expected {energies[iso]}"
             )
 
-    # 7) Convert σADC -> σE (MeV) by σE = a * σADC.  For simplicity, we ignore error propagation of slope/intercept here.
-    # use Po-214 width as representative
-    sigma_E = abs(a) * (peak_fits["Po214"]["sigma_adc"])
+    # 7) Propagate centroid uncertainties to (slope, intercept)
+    var_mu210 = float(peak_fits["Po210"]["covariance"][1][1])
+    var_mu214 = float(peak_fits["Po214"]["covariance"][1][1])
+    delta_E = E214 - E210
+    delta_adc = adc214 - adc210
 
-    # 8) Build result dict:
+    d_a_d_x1 = -delta_E / delta_adc ** 2
+    d_a_d_x2 = delta_E / delta_adc ** 2
+
+    var_a = d_a_d_x1 ** 2 * var_mu210 + d_a_d_x2 ** 2 * var_mu214
+
+    d_c_d_x1 = -a - adc210 * d_a_d_x1
+    d_c_d_x2 = -adc210 * d_a_d_x2
+
+    var_c = d_c_d_x1 ** 2 * var_mu210 + d_c_d_x2 ** 2 * var_mu214
+    cov_ac = d_a_d_x1 * d_c_d_x1 * var_mu210 + d_a_d_x2 * d_c_d_x2 * var_mu214
+
+    # 8) Convert σADC -> σE (MeV) and propagate uncertainties
+    sigma_adc = peak_fits["Po214"]["sigma_adc"]
+    var_sigma_adc = float(peak_fits["Po214"]["covariance"][2][2])
+    sigma_E = abs(a) * sigma_adc
+    var_sigma_E = (sigma_adc ** 2) * var_a + (abs(a) ** 2) * var_sigma_adc
+
+    # 9) Build result dict including covariance information
     calib_dict = {
-
         "slope_MeV_per_ch": a,  # linear calibration slope [MeV/ADC]
-
         "intercept": c,
         "sigma_E": float(sigma_E),
+        "slope_intercept_covariance": [
+            [float(var_a), float(cov_ac)],
+            [float(cov_ac), float(var_c)],
+        ],
+        "sigma_E_variance": float(var_sigma_E),
         "peaks": peak_fits,
     }
     return calib_dict
@@ -244,10 +266,16 @@ def calibrate_run(adc_values, config, hist_bins=None):
 def derive_calibration_constants(adc_values, config):
     """Wrapper returning calibration constants in legacy format."""
     res = calibrate_run(adc_values, config)
+    cov = np.asarray(res.get("slope_intercept_covariance", [[0.0, 0.0], [0.0, 0.0]]), dtype=float)
+    sig_a = float(np.sqrt(cov[0, 0]))
+    sig_c = float(np.sqrt(cov[1, 1]))
+    cov_ac = float(cov[0, 1])
+    sig_sigma_E = float(np.sqrt(res.get("sigma_E_variance", 0.0)))
     out = {
-        "a": (float(res["slope_MeV_per_ch"]), 0.0),
-        "c": (float(res["intercept"]), 0.0),
-        "sigma_E": (float(res["sigma_E"]), 0.0),
+        "a": (float(res["slope_MeV_per_ch"]), sig_a),
+        "c": (float(res["intercept"]), sig_c),
+        "sigma_E": (float(res["sigma_E"]), sig_sigma_E),
+        "cov_ac": cov_ac,
         "peaks": res.get("peaks", {}),
     }
     return out
@@ -310,10 +338,16 @@ def derive_calibration_constants_auto(
 
     # Run calibration with custom histogram binning and convert to legacy format
     res = calibrate_run(adc_arr, config, hist_bins=hist_bins)
+    cov = np.asarray(res.get("slope_intercept_covariance", [[0.0, 0.0], [0.0, 0.0]]), dtype=float)
+    sig_a = float(np.sqrt(cov[0, 0]))
+    sig_c = float(np.sqrt(cov[1, 1]))
+    cov_ac = float(cov[0, 1])
+    sig_sigma_E = float(np.sqrt(res.get("sigma_E_variance", 0.0)))
     out = {
-        "a": (float(res["slope_MeV_per_ch"]), 0.0),
-        "c": (float(res["intercept"]), 0.0),
-        "sigma_E": (float(res["sigma_E"]), 0.0),
+        "a": (float(res["slope_MeV_per_ch"]), sig_a),
+        "c": (float(res["intercept"]), sig_c),
+        "sigma_E": (float(res["sigma_E"]), sig_sigma_E),
+        "cov_ac": cov_ac,
         "peaks": res.get("peaks", {}),
     }
     return out
