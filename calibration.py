@@ -61,10 +61,24 @@ def two_point_calibration(adc_centroids, energies):
     return float(a), float(c)
 
 
-def apply_calibration(adc_values, slope, intercept):
-    """Convert ADC values to energy using slope and intercept."""
+def apply_calibration(adc_values, slope, intercept, quadratic_coeff=0.0):
+    """Convert ADC values to energy using calibration coefficients.
+
+    Parameters
+    ----------
+    adc_values : array-like
+        Raw ADC values to convert.
+    slope : float
+        Linear calibration coefficient ``a`` in ``E = a*ADC + c``.
+    intercept : float
+        Calibration intercept ``c``.
+    quadratic_coeff : float, optional
+        Quadratic coefficient ``a2`` when using ``E = a2*ADC**2 + a*ADC + c``.
+        Defaults to ``0.0`` for the legacy linear behaviour.
+    """
+
     adc_arr = np.asarray(adc_values, dtype=float)
-    return slope * adc_arr + intercept
+    return quadratic_coeff * adc_arr ** 2 + slope * adc_arr + intercept
 
 
 def calibrate_run(adc_values, config, hist_bins=None):
@@ -191,9 +205,10 @@ def calibrate_run(adc_values, config, hist_bins=None):
                 "covariance": pcov.tolist(),
             }
 
-    # 5) Two-point linear calibration using Po-210 & Po-214:
+    # 5) Calibration coefficients
     adc210 = peak_fits["Po210"]["centroid_adc"]
     adc214 = peak_fits["Po214"]["centroid_adc"]
+    adc218 = peak_fits["Po218"]["centroid_adc"]
 
     cfg_energies = config.get("calibration", {}).get("known_energies")
     energies = (
@@ -207,12 +222,27 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
     E210 = energies["Po210"]
     E214 = energies["Po214"]
-    a, c = two_point_calibration([adc210, adc214], [E210, E214])
+    E218 = energies["Po218"]
+
+    quadratic = bool(config.get("calibration", {}).get("quadratic", False))
+
+    if quadratic:
+        # Solve for quadratic coefficients a2, a, c using all three peaks
+        A = np.array([
+            [adc210 ** 2, adc210, 1.0],
+            [adc218 ** 2, adc218, 1.0],
+            [adc214 ** 2, adc214, 1.0],
+        ])
+        y = np.array([E210, E218, E214], dtype=float)
+        a2, a, c = np.linalg.solve(A, y)
+    else:
+        a, c = two_point_calibration([adc210, adc214], [E210, E214])
+        a2 = 0.0
 
     # 6) Convert fitted centroids to energy for sanity checks
     for iso, info in peak_fits.items():
         info["centroid_mev"] = float(
-            apply_calibration(info["centroid_adc"], a, c)
+            apply_calibration(info["centroid_adc"], a, c, quadratic_coeff=a2)
         )
 
     # Sanity check that fitted energies match expectations within tolerance
@@ -225,15 +255,15 @@ def calibrate_run(adc_values, config, hist_bins=None):
                 f"outside ±{tol} MeV of expected {energies[iso]}"
             )
 
-    # 7) Convert σADC -> σE (MeV) by σE = a * σADC.  For simplicity, we ignore error propagation of slope/intercept here.
-    # use Po-214 width as representative
-    sigma_E = abs(a) * (peak_fits["Po214"]["sigma_adc"])
+    # 7) Convert σADC -> σE (MeV) using local derivative at the Po-214 peak.
+    slope_local = 2 * a2 * adc214 + a
+    sigma_E = abs(slope_local) * (peak_fits["Po214"]["sigma_adc"])
 
     # 8) Build result dict:
     calib_dict = {
 
         "slope_MeV_per_ch": a,  # linear calibration slope [MeV/ADC]
-
+        "quadratic_MeV_per_ch2": a2,
         "intercept": c,
         "sigma_E": float(sigma_E),
         "peaks": peak_fits,
@@ -246,6 +276,7 @@ def derive_calibration_constants(adc_values, config):
     res = calibrate_run(adc_values, config)
     out = {
         "a": (float(res["slope_MeV_per_ch"]), 0.0),
+        "a2": (float(res.get("quadratic_MeV_per_ch2", 0.0)), 0.0),
         "c": (float(res["intercept"]), 0.0),
         "sigma_E": (float(res["sigma_E"]), 0.0),
         "peaks": res.get("peaks", {}),
@@ -312,6 +343,7 @@ def derive_calibration_constants_auto(
     res = calibrate_run(adc_arr, config, hist_bins=hist_bins)
     out = {
         "a": (float(res["slope_MeV_per_ch"]), 0.0),
+        "a2": (float(res.get("quadratic_MeV_per_ch2", 0.0)), 0.0),
         "c": (float(res["intercept"]), 0.0),
         "sigma_E": (float(res["sigma_E"]), 0.0),
         "peaks": res.get("peaks", {}),
