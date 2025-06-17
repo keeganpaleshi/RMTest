@@ -465,6 +465,10 @@ def main():
     if args.dump_ts_json:
         cfg.setdefault("plotting", {})["dump_time_series_json"] = True
 
+    if args.burst_mode is not None:
+        _log_override("burst_filter", "burst_mode", args.burst_mode)
+        cfg.setdefault("burst_filter", {})["burst_mode"] = args.burst_mode
+
     if args.spike_count is not None or args.spike_count_err is not None:
         eff_sec = cfg.setdefault("efficiency", {}).setdefault("spike", {})
         if args.spike_count is not None:
@@ -1441,7 +1445,10 @@ def main():
         "baseline": baseline_info,
         "radon_results": radon_results,
         "noise_cut": {"removed_events": int(n_removed_noise)},
-        "burst_filter": {"removed_events": int(n_removed_burst)},
+        "burst_filter": {
+            "removed_events": int(n_removed_burst),
+            "burst_mode": cfg.get("burst_filter", {}).get("burst_mode", burst_mode),
+        },
         "adc_drift_rate": drift_rate,
         "efficiency": efficiency_results,
         "random_seed": seed_used,
