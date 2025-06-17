@@ -189,9 +189,9 @@ def load_events(csv_path):
     """
     Read event CSV into a DataFrame with columns:
        ['fUniqueID','fBits','timestamp','adc','fchannel']
-    - Ensures timestamp is int, adc is int.
-    - Sort ascending by timestamp.
-    - Returns DataFrame.
+    Column aliases like ``time`` or ``adc_ch`` are automatically renamed to
+    their canonical form.  Ensures ``timestamp`` and ``adc`` are integers,
+    sorts the result by ``timestamp`` and returns the DataFrame.
     """
     path = Path(csv_path)
     if not path.is_file():
@@ -200,7 +200,18 @@ def load_events(csv_path):
     # Read CSV; assume no header comments, first row is header
     df = pd.read_csv(path)
 
-    # Check required columns
+    # Allow some common alternate column names
+    rename = {
+        "time": "timestamp",
+        "adc_ch": "adc",
+        "adc_channel": "adc",
+        "channel": "fchannel",
+        "unique_id": "fUniqueID",
+        "bits": "fBits",
+    }
+    df = df.rename(columns=rename, errors="ignore")
+
+    # Check required columns after renaming
     required_cols = ["fUniqueID", "fBits", "timestamp", "adc", "fchannel"]
     missing = [c for c in required_cols if c not in df.columns]
     if missing:
