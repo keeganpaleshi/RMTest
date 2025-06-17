@@ -274,11 +274,6 @@ def parse_args():
         help="Half-life to use for Po-218 in seconds. Providing this option overrides `time_fit.hl_Po218` in config.json",
     )
     p.add_argument(
-        "--hl-po210",
-        type=float,
-        help="Half-life to use for Po-210 in seconds. Providing this option overrides `time_fit.hl_Po210` in config.json",
-    )
-    p.add_argument(
         "--debug",
         action="store_true",
         help="Enable debug logging. Providing this option overrides `pipeline.log_level` in config.json",
@@ -454,14 +449,6 @@ def main():
         _log_override("time_fit", "hl_Po218", [float(args.hl_po218), sig])
         tf["hl_Po218"] = [float(args.hl_po218), sig]
 
-    if args.hl_po210 is not None:
-        tf = cfg.setdefault("time_fit", {})
-        sig = 0.0
-        current = tf.get("hl_Po210")
-        if isinstance(current, list) and len(current) > 1:
-            sig = current[1]
-        _log_override("time_fit", "hl_Po210", [float(args.hl_po210), sig])
-        tf["hl_Po210"] = [float(args.hl_po210), sig]
 
     if args.time_bin_mode:
         _log_override("plotting", "plot_time_binning_mode", args.time_bin_mode)

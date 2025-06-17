@@ -35,7 +35,7 @@ python analyze.py --config config.json --input merged_data.csv \
     [--analysis-end-time ISO --spike-end-time ISO] \
     [--spike-period START END] [--run-period START END] \
     [--radon-interval START END] \
-    [--hl-po214 SEC] [--hl-po218 SEC] [--hl-po210 SEC] \
+    [--hl-po214 SEC] [--hl-po218 SEC] \
     [--settle-s SEC] [--debug] [--seed SEED] \
     [--ambient-file amb.txt (time conc)] [--ambient-concentration 0.1] \
     [--burst-mode rate] \
@@ -74,7 +74,8 @@ The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--j
 
 The `time_fit` routine still fits only Po‑214 and Po‑218.
 When `window_Po210` is provided the Po‑210 events are extracted and a
-time‑series histogram is produced without a decay fit.
+time‑series histogram is produced without a decay fit. The `hl_Po210`
+value controls only the model curve drawn in this plot.
 
 The time‐series model multiplies the decay rate by the detection efficiency
 internally.  Therefore the fitted `E_Po214` and `E_Po218` values correspond to
@@ -245,7 +246,7 @@ initial settling period in the decay fit, `--seed` to set the random
 seed used by the analysis, `--hierarchical-summary PATH` to produce a
 Bayesian combination across runs and `--debug` to increase log verbosity.
 The half-lives used in the decay fit can also be changed with
-`--hl-po214`, `--hl-po218` and `--hl-po210`.
+`--hl-po214` and `--hl-po218`.
 
 When the spectrum is binned in raw ADC channels (`"spectral_binning_mode": "adc"`),
 the bin edges are internally converted to energy using the calibration
@@ -377,7 +378,7 @@ Example snippet:
 ```
 
 These half-life values may also be set on the command line with
-`--hl-po214`, `--hl-po218` and `--hl-po210`.
+`--hl-po214` and `--hl-po218`.
 
 ### Baseline Runs
 
