@@ -129,6 +129,9 @@ def test_analysis_start_time_applied(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit_time_series)
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(analyze, "plot_radon_activity", lambda *a, **k: Path(a[2]).touch())
+    monkeypatch.setattr(analyze, "plot_equivalent_air", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "plot_radon_trend", lambda *a, **k: Path(a[2]).touch(), raising=False)
     monkeypatch.setattr(analyze, "apply_burst_filter", lambda df, cfg, mode="rate": (df, 0))
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
@@ -1931,6 +1934,80 @@ def test_hl_po210_default_used(tmp_path, monkeypatch):
     analyze.main()
 
     assert "hl_Po210" not in received["config"]
+
+
+def test_time_fields_written_back(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "baseline": {"range": ["0", "1"], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
+        "analysis": {
+            "analysis_end_time": "1970-01-01T00:00:05Z",
+            "spike_end_time": "1970-01-01T00:00:00Z",
+            "spike_periods": [["1970-01-01T00:00:02Z", "1970-01-01T00:00:03Z"]],
+            "run_periods": [["1970-01-01T00:00:00Z", "1970-01-01T00:00:10Z"]],
+            "radon_interval": ["1970-01-01T00:00:03Z", "1970-01-01T00:00:05Z"],
+        },
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {"do_time_fit": False},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+
+    cfg_path = tmp_path / "cfg.json"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    df = pd.DataFrame({
+        "fUniqueID": [1, 2, 3],
+        "fBits": [0, 0, 0],
+        "timestamp": [0.5, 2.5, 4.5],
+        "adc": [8.0, 8.0, 8.0],
+        "fchannel": [1, 1, 1],
+    })
+    data_path = tmp_path / "d.csv"
+    df.to_csv(data_path, index=False)
+
+    captured = {}
+    orig_load = analyze.load_config
+
+    def fake_load(path):
+        cfg_local = orig_load(path)
+        captured["cfg"] = cfg_local
+        return cfg_local
+
+    monkeypatch.setattr(analyze, "load_config", fake_load)
+
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)})
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)})
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0, 0)), 0))
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "apply_burst_filter", lambda df, cfg, mode="rate": (df, 0))
+    monkeypatch.setattr(analyze, "scan_systematics", lambda *a, **k: ({}, 0.0))
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+
+    analyze.main()
+
+    used = captured.get("cfg", {})
+    assert used["analysis"]["analysis_end_time"] == 5.0
+    assert used["analysis"]["spike_end_time"] == 0.0
+    assert used["analysis"]["spike_periods"] == [[2.0, 3.0]]
+    assert used["analysis"]["run_periods"] == [[0.0, 10.0]]
+    assert used["analysis"]["radon_interval"] == [3.0, 5.0]
+    assert used["baseline"]["range"] == [0.0, 1.0]
 
 
 

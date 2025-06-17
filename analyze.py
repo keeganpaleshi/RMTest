@@ -609,6 +609,7 @@ def main():
     if t_end_cfg is not None:
         try:
             t_end_global = _to_epoch(t_end_cfg)
+            cfg.setdefault("analysis", {})["analysis_end_time"] = t_end_global
         except Exception:
             logging.warning(
                 f"Invalid analysis_end_time '{t_end_cfg}' - using last event"
@@ -620,6 +621,7 @@ def main():
     if spike_end_cfg is not None:
         try:
             t_spike_end = _to_epoch(spike_end_cfg)
+            cfg.setdefault("analysis", {})["spike_end_time"] = t_spike_end
         except Exception:
             logging.warning(f"Invalid spike_end_time '{spike_end_cfg}' - ignoring")
             t_spike_end = None
@@ -638,6 +640,10 @@ def main():
             spike_periods.append((start_ts, end_ts))
         except Exception as e:
             logging.warning(f"Invalid spike_period {period} -> {e}")
+    if spike_periods:
+        cfg.setdefault("analysis", {})["spike_periods"] = [
+            [s, e] for s, e in spike_periods
+        ]
 
     run_periods_cfg = cfg.get("analysis", {}).get("run_periods", [])
     if run_periods_cfg is None:
@@ -653,6 +659,10 @@ def main():
             run_periods.append((start_ts, end_ts))
         except Exception as e:
             logging.warning(f"Invalid run_period {period} -> {e}")
+    if run_periods:
+        cfg.setdefault("analysis", {})["run_periods"] = [
+            [s, e] for s, e in run_periods
+        ]
 
     radon_interval_cfg = cfg.get("analysis", {}).get("radon_interval")
     radon_interval = None
@@ -664,6 +674,7 @@ def main():
             if end_r_ts <= start_r_ts:
                 raise ValueError("end <= start")
             radon_interval = (start_r_ts, end_r_ts)
+            cfg.setdefault("analysis", {})["radon_interval"] = [start_r_ts, end_r_ts]
         except Exception as e:
             logging.warning(f"Invalid radon_interval {radon_interval_cfg} -> {e}")
             radon_interval = None
@@ -792,6 +803,7 @@ def main():
         if len(base_events) == 0:
             raise ValueError("baseline_range yielded zero events")
         baseline_live_time = float(t_end_base - t_start_base)
+        cfg.setdefault("baseline", {})["range"] = [t_start_base, t_end_base]
         baseline_info = {
             "start": t_start_base,
             "end": t_end_base,
