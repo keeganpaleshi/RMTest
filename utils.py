@@ -4,8 +4,11 @@ import numpy as np
 from scipy.signal import find_peaks
 import math
 from dataclasses import is_dataclass, asdict
+import argparse
+from datetime import datetime, timezone
+from dateutil import parser as date_parser
 
-__all__ = ["to_native", "find_adc_bin_peaks", "cps_to_cpd", "cps_to_bq"]
+__all__ = ["to_native", "find_adc_bin_peaks", "cps_to_cpd", "cps_to_bq", "parse_time"]
 
 try:
     import pandas as pd
@@ -125,9 +128,25 @@ def cps_to_bq(rate_cps, volume_liters=None):
     return float(rate_cps) / volume_m3
 
 
-if __name__ == "__main__":
-    import argparse
+def parse_time(s: str) -> int:
+    """Parse a timestamp string or integer into Unix epoch seconds."""
+    try:
+        return int(s)
+    except ValueError:
+        pass
 
+    try:
+        dt = date_parser.parse(s, dayfirst=False)
+    except (ValueError, OverflowError) as e:
+        raise argparse.ArgumentTypeError(f"could not parse time: {s!r}") from e
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    return int(dt.timestamp())
+
+
+if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Utility conversions")
     p.add_argument("rate_cps", type=float, help="Count rate in cps")
     p.add_argument("--to", choices=["cpd", "bq"], required=True)
