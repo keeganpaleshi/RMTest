@@ -85,8 +85,16 @@ def fit_decay(times, priors, t0=0.0, t_end=None, flags=None):
     }
 
 
-def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None, bounds=None):
-    """Fit three Gaussian peaks with a linear background to the spectrum.
+def fit_spectrum(
+    energies,
+    priors,
+    flags=None,
+    bins=None,
+    bin_edges=None,
+    bounds=None,
+    unbinned=False,
+):
+    """Fit the radon spectrum using either χ² histogram or unbinned likelihood.
 
     Parameters
     ----------
@@ -109,6 +117,9 @@ def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None, bounds
         Mapping of parameter name to ``(lower, upper)`` tuples overriding the
         default ±5σ range derived from the priors.  ``None`` values disable a
         limit on that side.
+    unbinned : bool, optional
+        When ``True`` use an extended unbinned likelihood fit instead of the
+        default χ² fit to a histogrammed spectrum.
 
     Returns
     -------
@@ -123,19 +134,21 @@ def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None, bounds
     if e.size == 0:
         raise RuntimeError("No energies provided to fit_spectrum")
 
-    # Histogram according to provided binning parameters
+    # Determine bin edges for width/normalisation even in unbinned mode
     if bin_edges is not None:
-        hist, edges = np.histogram(e, bins=np.asarray(bin_edges))
+        edges = np.asarray(bin_edges)
     elif bins is not None:
-        hist, edges = np.histogram(e, bins=bins)
+        edges = np.histogram_bin_edges(e, bins=bins)
     else:
-        # Default: Freedman-Diaconis rule
-        hist, edges = np.histogram(e, bins="fd")
-    centers = 0.5 * (edges[:-1] + edges[1:])
+        edges = np.histogram_bin_edges(e, bins="fd")
+
     width = edges[1] - edges[0]
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    if not unbinned:
+        hist, _ = np.histogram(e, bins=edges)
 
     # Guard against NaNs/Infs arising from unstable histogramming or EMG evals
-    if not np.isfinite(hist).all():
+    if not unbinned and not np.isfinite(hist).all():
         raise RuntimeError(
             "fit_spectrum: histogram contains non-finite values; "
             "check input energies and binning parameters"
@@ -194,7 +207,7 @@ def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None, bounds
 
     iso_list = ["Po210", "Po218", "Po214"]
 
-    def model(x, *params):
+    def _model_density(x, *params):
         idx = 0
         sigma_E = params[idx]
         idx += 1
@@ -215,17 +228,85 @@ def fit_spectrum(energies, priors, flags=None, bins=None, bin_edges=None, bounds
                 y += S * gaussian(x, mu, sigma_E)
         b0 = params[idx]
         b1 = params[idx + 1]
-        y = y + b0 + b1 * x
-        return y * width
+        return y + b0 + b1 * x
 
-    popt, pcov = curve_fit(
-        model,
-        centers,
-        hist,
-        p0=p0,
-        bounds=(bounds_lo, bounds_hi),
-        maxfev=CURVE_FIT_MAX_EVALS,
-    )
+    def _model_binned(x, *params):
+        return _model_density(x, *params) * width
+
+    if not unbinned:
+        popt, pcov = curve_fit(
+            _model_binned,
+            centers,
+            hist,
+            p0=p0,
+            bounds=(bounds_lo, bounds_hi),
+            maxfev=CURVE_FIT_MAX_EVALS,
+        )
+    else:
+        def _nll(*params):
+            rate = _model_density(e, *params)
+            if np.any(rate <= 0) or not np.isfinite(rate).all():
+                return 1e50
+            idx = 1
+            S_sum = 0.0
+            for iso in iso_list:
+                idx += 1  # mu
+                S_sum += params[idx]
+                idx += 1
+                if use_emg[iso]:
+                    idx += 1
+            b0 = params[idx]
+            b1 = params[idx + 1]
+            E_lo = edges[0]
+            E_hi = edges[-1]
+            bkg_int = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
+            expected = S_sum + bkg_int
+            return expected - np.sum(np.log(rate))
+
+        m = Minuit(_nll, *p0, name=param_order)
+        m.errordef = Minuit.LIKELIHOOD
+        for name, lo, hi in zip(param_order, bounds_lo, bounds_hi):
+            m.limits[name] = (lo, hi)
+        m.migrad()
+        if not m.valid:
+            m.simplex()
+            m.migrad()
+        ndf = e.size - len(param_order)
+        out = {}
+        if not m.valid:
+            out["fit_valid"] = False
+            for pname in param_order:
+                out[pname] = float(m.values[pname])
+                err = float(m.errors[pname]) if pname in m.errors else np.nan
+                out["d" + pname] = err
+            cov = np.zeros((len(param_order), len(param_order)))
+            return FitResult(out, cov, int(ndf))
+
+        m.hesse()
+        cov = np.array(m.covariance)
+        perr = np.sqrt(np.diag(cov))
+        try:
+            eigvals = np.linalg.eigvals(cov)
+            fit_valid = bool(np.all(eigvals > 0))
+        except np.linalg.LinAlgError:
+            fit_valid = False
+        if not fit_valid:
+            logging.warning("fit_spectrum: covariance matrix not positive definite")
+            jitter = 1e-12 * np.mean(np.diag(cov))
+            if not np.isfinite(jitter) or jitter <= 0:
+                jitter = 1e-12
+            cov = cov + jitter * np.eye(cov.shape[0])
+            try:
+                np.linalg.cholesky(cov)
+                fit_valid = True
+                perr = np.sqrt(np.diag(cov))
+            except np.linalg.LinAlgError:
+                pass
+        out["fit_valid"] = fit_valid
+        for i, pname in enumerate(param_order):
+            out[pname] = float(m.values[pname])
+            out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
+        return FitResult(out, cov, int(ndf))
 
     perr = np.sqrt(np.diag(pcov))
     try:

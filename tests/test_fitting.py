@@ -258,6 +258,56 @@ def test_fit_spectrum_tau_lower_bound():
     assert result.params["tau_Po218"] >= _TAU_MIN
 
 
+def test_fit_spectrum_unbinned_runs():
+    rng = np.random.default_rng(7)
+    energies = np.concatenate([
+        rng.normal(5.3, 0.05, 150),
+        rng.normal(6.0, 0.05, 150),
+        rng.normal(7.7, 0.05, 150),
+    ])
+
+    priors = {
+        "sigma_E": (0.05, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (150, 15),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (150, 15),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (150, 15),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+
+    out = fit_spectrum(energies, priors, unbinned=True)
+    assert "sigma_E" in out.params
+
+
+def test_fit_spectrum_unbinned_consistent():
+    rng = np.random.default_rng(8)
+    energies = np.concatenate([
+        rng.normal(5.3, 0.05, 200),
+        rng.normal(6.0, 0.05, 200),
+        rng.normal(7.7, 0.05, 200),
+    ])
+
+    priors = {
+        "sigma_E": (0.05, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (200, 20),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (200, 20),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (200, 20),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+
+    out_hist = fit_spectrum(energies, priors)
+    out_unbinned = fit_spectrum(energies, priors, unbinned=True)
+    diff = abs(out_hist.params["mu_Po210"] - out_unbinned.params["mu_Po210"])
+    assert diff < 0.2
+
+
 def test_fit_spectrum_covariance_checks(monkeypatch):
     """fit_valid should reflect covariance positive definiteness."""
     rng = np.random.default_rng(5)
