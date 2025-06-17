@@ -133,15 +133,23 @@ def parse_time(s: str) -> int:
     if isinstance(s, (int, float)):
         return float(s)
 
-    try:
-        dt = date_parser.isoparse(s)
-    except (ValueError, OverflowError) as e:
-        raise argparse.ArgumentTypeError(f"could not parse time: {s!r}") from e
+    if isinstance(s, str):
+        try:
+            return float(s)
+        except ValueError:
+            pass
 
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        try:
+            dt = date_parser.isoparse(s)
+        except (ValueError, OverflowError) as e:
+            raise argparse.ArgumentTypeError(f"could not parse time: {s!r}") from e
 
-    return int(dt.timestamp())
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+
+        return int(dt.timestamp())
+
+    raise argparse.ArgumentTypeError(f"could not parse time: {s!r}")
 
 
 if __name__ == "__main__":
