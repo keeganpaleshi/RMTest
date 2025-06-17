@@ -81,6 +81,7 @@ CONFIG_SCHEMA = {
                 "range": {"type": "array", "items": {"type": ["string", "number"]}, "minItems": 2, "maxItems": 2},
                 "monitor_volume_l": {"type": "number", "minimum": 0},
                 "sample_volume_l": {"type": "number", "minimum": 0},
+                "isotopes_to_subtract": {"type": "array", "items": {"type": "string"}},
             },
         },
         "burst_filter": {

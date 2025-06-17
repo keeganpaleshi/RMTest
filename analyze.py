@@ -757,6 +757,7 @@ def main():
     # ────────────────────────────────────────────────────────────
     baseline_info = {}
     baseline_cfg = cfg.get("baseline", {})
+    isotopes_to_subtract = baseline_cfg.get("isotopes_to_subtract", ["Po214", "Po218"])
     baseline_range = None
     if args.baseline_range:
         _log_override("baseline", "range", args.baseline_range)
@@ -1070,7 +1071,8 @@ def main():
                 hi,
             )
             n0_count = float(np.sum(probs_base))
-            baseline_counts[iso] = n0_count
+            if iso in isotopes_to_subtract:
+                baseline_counts[iso] = n0_count
 
             eff = cfg["time_fit"].get(f"eff_{iso}", [1.0])[0]
             if baseline_live_time > 0 and eff > 0:
