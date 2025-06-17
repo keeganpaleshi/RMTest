@@ -6,6 +6,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.ticker as mticker
 from datetime import datetime
 from color_schemes import COLOR_SCHEMES
 from constants import PO214, PO218, PO210
@@ -479,7 +480,7 @@ def plot_radon_activity(times, activity, errors, out_png, config=None):
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("radon_activity", "tab:purple")
     plt.errorbar(times_dt, activity, yerr=errors, fmt="o-", color=color)
-    plt.xlabel("Time")
+    plt.xlabel("Time (UTC)")
     plt.ylabel("Radon Activity (Bq)")
     plt.title("Extrapolated Radon Activity vs. Time")
 
@@ -491,6 +492,27 @@ def plot_radon_activity(times, activity, errors, out_png, config=None):
         formatter = mdates.AutoDateFormatter(locator)
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
+
+    base_dt = times_dt[0]
+
+    def _to_seconds(x):
+        return (x - base_dt) * 86400.0
+
+    def _to_dates(x):
+        return base_dt + x / 86400.0
+
+    secax = ax.secondary_xaxis("top", functions=(_to_seconds, _to_dates))
+
+    def _sec_formatter(x, pos=None):
+        h = x / 3600.0
+        if h >= 1:
+            if abs(h - round(h)) < 1e-6:
+                return f"{int(x)} s ({int(h)} h)"
+            return f"{int(x)} s ({h:g} h)"
+        return f"{int(x)} s"
+
+    secax.xaxis.set_major_formatter(mticker.FuncFormatter(_sec_formatter))
+    secax.set_xlabel("Elapsed Time (s)")
     plt.gcf().autofmt_xdate()
     plt.tight_layout()
     dirpath = os.path.dirname(out_png) or "."

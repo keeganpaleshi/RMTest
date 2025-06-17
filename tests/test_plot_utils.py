@@ -704,3 +704,35 @@ def test_extract_time_series_none_window():
     assert counts.size == 0 and edges.size == 0
 
 
+def test_plot_radon_activity_axis_labels(tmp_path, monkeypatch):
+    times = [0.0, 1.0, 2.0]
+    activity = [1.0, 2.0, 3.0]
+    errors = [0.1, 0.2, 0.3]
+    out_png = tmp_path / "radon_lbl.png"
+
+    import matplotlib.pyplot as plt
+    import matplotlib.axes
+
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+    monkeypatch.setattr("plot_utils.plt.close", lambda *a, **k: None)
+
+    captured = {}
+    orig_sec = matplotlib.axes.Axes.secondary_xaxis
+
+    def wrapper(self, *args, **kwargs):
+        sec = orig_sec(self, *args, **kwargs)
+        captured["axis"] = sec
+        return sec
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "secondary_xaxis", wrapper)
+
+    from plot_utils import plot_radon_activity
+
+    plot_radon_activity(times, activity, errors, str(out_png))
+
+    ax = plt.gca()
+    assert ax.get_xlabel() == "Time (UTC)"
+    assert "axis" in captured
+    assert captured["axis"].get_xlabel() == "Elapsed Time (s)"
+
+
