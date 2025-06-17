@@ -122,7 +122,7 @@ def test_analysis_start_time_applied(tmp_path, monkeypatch):
 
     captured = {}
 
-    def fake_fit_time_series(times_dict, t_start, t_end, config):
+    def fake_fit_time_series(times_dict, t_start, t_end, config, **kwargs):
         captured["t_start"] = t_start
         return FitResult({}, np.zeros((0, 0)), 0)
 
@@ -861,7 +861,7 @@ def test_settle_s_cli(tmp_path, monkeypatch):
 
     captured = {}
 
-    def fake_fit(ts_dict, t_start, t_end, config):
+    def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
         captured["times"] = ts_dict["Po214"].tolist()
         return FitResult({}, np.zeros((0, 0)), 0)
 
@@ -973,7 +973,7 @@ def test_analysis_end_time_cli(tmp_path, monkeypatch):
 
     captured = {}
 
-    def fake_fit(ts_dict, t_start, t_end, config):
+    def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
         captured["times"] = ts_dict["Po214"].tolist()
         return FitResult({}, np.zeros((0, 0)), 0)
 
@@ -1032,7 +1032,7 @@ def test_spike_end_time_cli(tmp_path, monkeypatch):
 
     captured = {}
 
-    def fake_fit(ts_dict, t_start, t_end, config):
+    def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
         captured["times"] = ts_dict["Po214"].tolist()
         return FitResult({}, np.zeros((0, 0)), 0)
 
@@ -1091,7 +1091,7 @@ def test_spike_period_cli(tmp_path, monkeypatch):
 
     captured = {}
 
-    def fake_fit(ts_dict, t_start, t_end, config):
+    def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
         captured["times"] = ts_dict["Po214"].tolist()
         return FitResult({}, np.zeros((0, 0)), 0)
 
@@ -1852,7 +1852,7 @@ def test_hl_po214_cli_overrides(tmp_path, monkeypatch):
 
     calls = []
 
-    def fake_fit(ts_dict, t_start, t_end, config):
+    def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
         iso = list(ts_dict.keys())[0]
         calls.append((iso, config))
         return FitResult({}, np.zeros((0, 0)), 0)

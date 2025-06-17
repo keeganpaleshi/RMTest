@@ -57,7 +57,7 @@ def test_time_window_filters_events(tmp_path, monkeypatch):
 
     captured = {}
 
-    def fake_fit(ts_dict, t_start, t_end, config):
+    def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
         captured["times"] = ts_dict.get("Po214", []).tolist()
         return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
 
@@ -189,7 +189,7 @@ def test_time_window_filters_events_config(tmp_path, monkeypatch):
 
     captured = {}
 
-    def fake_fit(ts_dict, t_start, t_end, config):
+    def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
         captured["times"] = ts_dict.get("Po214", []).tolist()
         return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
 
@@ -268,7 +268,7 @@ def test_run_period_filters_events(tmp_path, monkeypatch):
 
     captured = {}
 
-    def fake_fit(ts_dict, t_start, t_end, config):
+    def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
         captured["times"] = ts_dict.get("Po214", []).tolist()
         return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
 
@@ -352,7 +352,7 @@ def test_baseline_range_iso_strings(tmp_path, monkeypatch, start, end):
 
     captured = {}
 
-    def fake_fit(ts_dict, t_start, t_end, config):
+    def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
         captured["times"] = ts_dict.get("Po214", []).tolist()
         return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
 

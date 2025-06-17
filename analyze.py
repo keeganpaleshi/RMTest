@@ -326,6 +326,11 @@ def parse_args():
         help="Color palette for plots. Providing this option overrides `plotting.palette` in config.json",
     )
     p.add_argument(
+        "--strict-covariance",
+        action="store_true",
+        help="Fail if fit covariance matrices are not positive definite",
+    )
+    p.add_argument(
         "--hierarchical-summary",
         metavar="OUTFILE",
         help=(
@@ -980,6 +985,8 @@ def main():
                 fit_kwargs.update({"bins": bins, "bin_edges": bin_edges})
             if cfg["spectral_fit"].get("unbinned_likelihood", False):
                 fit_kwargs["unbinned"] = True
+            if args.strict_covariance:
+                fit_kwargs["strict"] = True
             bounds_cfg = cfg["spectral_fit"].get("mu_bounds", {})
             if bounds_cfg:
                 bounds_map = {}
@@ -1120,6 +1127,7 @@ def main():
                     t_end_global,
                     fit_cfg,
                     weights=weights_map,
+                    strict=args.strict_covariance,
                 )
             except TypeError:
                 decay_out = fit_time_series(
@@ -1127,6 +1135,7 @@ def main():
                     t_start_fit,
                     t_end_global,
                     fit_cfg,
+                    strict=args.strict_covariance,
                 )
             time_fit_results[iso] = decay_out
         except Exception as e:
@@ -1213,6 +1222,7 @@ def main():
                         t_end_global,
                         cfg_fit,
                         weights=weights_local,
+                        strict=args.strict_covariance,
                     )
                 except TypeError:
                     out = fit_time_series(
@@ -1220,6 +1230,7 @@ def main():
                         t0_global,
                         t_end_global,
                         cfg_fit,
+                        strict=args.strict_covariance,
                     )
                 # Return only the parameter dictionary so scan_systematics
                 # works with a simple mapping.

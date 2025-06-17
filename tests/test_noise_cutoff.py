@@ -51,7 +51,7 @@ def test_noise_cutoff_filters_events(tmp_path, monkeypatch):
 
     captured = {}
 
-    def fake_fit(ts_dict, t_start, t_end, cfg, weights=None):
+    def fake_fit(ts_dict, t_start, t_end, cfg, weights=None, **kwargs):
         captured["times"] = ts_dict.get("Po214", []).tolist()
         return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
 
@@ -119,7 +119,7 @@ def test_invalid_noise_cutoff_skips_cut(tmp_path, monkeypatch, caplog):
 
     captured = {}
 
-    def fake_fit(ts_dict, t_start, t_end, cfg, weights=None):
+    def fake_fit(ts_dict, t_start, t_end, cfg, weights=None, **kwargs):
         captured["times"] = ts_dict.get("Po214", []).tolist()
         return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
 

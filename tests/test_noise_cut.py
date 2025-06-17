@@ -53,7 +53,7 @@ def test_noise_cutoff_cli_overrides(tmp_path, monkeypatch):
 
     captured = {}
 
-    def fake_fit(ts_dict, t_start, t_end, cfg, weights=None):
+    def fake_fit(ts_dict, t_start, t_end, cfg, weights=None, **kwargs):
         captured["times"] = ts_dict.get("Po214", []).tolist()
         return {"E_Po214": 1.0}
 

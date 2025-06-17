@@ -93,6 +93,7 @@ def fit_spectrum(
     bin_edges=None,
     bounds=None,
     unbinned=False,
+    strict=False,
 ):
     """Fit the radon spectrum using either χ² histogram or unbinned likelihood.
 
@@ -120,6 +121,10 @@ def fit_spectrum(
     unbinned : bool, optional
         When ``True`` use an extended unbinned likelihood fit instead of the
         default χ² fit to a histogrammed spectrum.
+    strict : bool, optional
+        When ``True`` raise a :class:`RuntimeError` if the fit covariance
+        matrix is not positive definite.  The default is ``False`` which
+        attempts to stabilise the covariance by adding a tiny jitter.
 
     Returns
     -------
@@ -291,7 +296,13 @@ def fit_spectrum(
         except np.linalg.LinAlgError:
             fit_valid = False
         if not fit_valid:
-            logging.warning("fit_spectrum: covariance matrix not positive definite")
+            if strict:
+                raise RuntimeError(
+                    "fit_spectrum: covariance matrix not positive definite"
+                )
+            logging.warning(
+                "fit_spectrum: covariance matrix not positive definite"
+            )
             jitter = 1e-12 * np.mean(np.diag(cov))
             if not np.isfinite(jitter) or jitter <= 0:
                 jitter = 1e-12
@@ -316,6 +327,10 @@ def fit_spectrum(
         fit_valid = False
 
     if not fit_valid:
+        if strict:
+            raise RuntimeError(
+                "fit_spectrum: covariance matrix not positive definite"
+            )
         logging.warning("fit_spectrum: covariance matrix not positive definite")
         # Add a small diagonal jitter to attempt stabilising the matrix
         jitter = 1e-12 * np.mean(np.diag(pcov))
@@ -445,12 +460,16 @@ def _neg_log_likelihood_time(
     return nll
 
 
-def fit_time_series(times_dict, t_start, t_end, config, weights=None):
+def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=False):
     """
     times_dict: mapping of isotope -> array of timestamps in seconds.
     weights : dict or None
         Optional mapping of isotope -> per-event weights matching
         ``times_dict``.
+    strict : bool, optional
+        When ``True`` raise a :class:`RuntimeError` if the covariance matrix
+        is not positive definite.  The default is ``False`` which attempts to
+        stabilise the matrix by adding a tiny jitter.
     t_start, t_end: floats (absolute UNIX seconds) defining the fit window
     config: JSON dict with these keys:
           "isotopes": { "Po214": {"half_life_s": , "efficiency": ,  }, "Po218": {   } }
@@ -590,7 +609,13 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None):
     except np.linalg.LinAlgError:
         fit_valid = False
     if not fit_valid:
-        logging.warning("fit_time_series: covariance matrix not positive definite")
+        if strict:
+            raise RuntimeError(
+                "fit_time_series: covariance matrix not positive definite"
+            )
+        logging.warning(
+            "fit_time_series: covariance matrix not positive definite"
+        )
         jitter = 1e-12 * np.mean(np.diag(cov))
         if not np.isfinite(jitter) or jitter <= 0:
             jitter = 1e-12
