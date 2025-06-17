@@ -2,7 +2,12 @@ import numpy as np
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 from scipy.stats import exponnorm
-from constants import _TAU_MIN, EXP_OVERFLOW_DOUBLE, DEFAULT_NOISE_CUTOFF
+from constants import (
+    _TAU_MIN,
+    EXP_OVERFLOW_DOUBLE,
+    DEFAULT_NOISE_CUTOFF,
+    DEFAULT_NOMINAL_ADC,
+)
 
 # Limit for stable exponentiation when evaluating the EMG tail. Values
 # beyond ~700 in magnitude overflow in IEEE-754 doubles.  Match the
@@ -363,9 +368,8 @@ def derive_calibration_constants_auto(
     nominal_adc : dict or None
         Optional mapping of isotope -> ADC guess.
         Expected ADC centroids for each isotope.  Keys should be
-        ``"Po210"``, ``"Po218"`` and ``"Po214"``.  If ``None`` a
-        reasonable default of ``{"Po210": 1250, "Po218": 1400, "Po214": 1800}``
-        is used.
+        ``"Po210"``, ``"Po218"`` and ``"Po214"``.  If ``None`` the
+        :data:`constants.DEFAULT_NOMINAL_ADC` values are used.
 
     """
     if len(adc_values) == 0:
@@ -376,7 +380,7 @@ def derive_calibration_constants_auto(
     adc_arr = adc_arr[mask]
 
     if nominal_adc is None:
-        nominal_adc = {"Po210": 1250, "Po218": 1400, "Po214": 1800}
+        nominal_adc = DEFAULT_NOMINAL_ADC
 
     config = {
         "calibration": {
