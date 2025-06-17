@@ -18,8 +18,19 @@ def compute_radon_activity(
     rate214: Optional[float] = None,
     err214: Optional[float] = None,
     eff214: float = 1.0,
+    *,
+    t_since_start: Optional[float] = None,
+    settle_time: float = 0.0,
+    require_equilibrium: bool = True,
 ) -> Tuple[float, float]:
     """Combine Po-218 and Po-214 rates into a radon activity.
+
+    The input decay rates should generally be measured after the
+    short-lived daughters have reached secular equilibrium with radon.
+    Using early-time rates can bias the result unless the discrepancy is
+    intentional.  When ``require_equilibrium`` is ``True`` this function
+    can enforce the condition by comparing ``t_since_start`` with
+    ``settle_time``.
 
     Parameters
     ----------
@@ -31,9 +42,18 @@ def compute_radon_activity(
         Uncertainties on the rates in Bq.
     eff218, eff214 : float
         Detection efficiencies for the two isotopes.  They are only used to
-        determine whether an isotope contributes to the average: a value of zero
-        disables that isotope and negative values raise a ``ValueError``.  The
-        efficiencies are not applied as multiplicative weights.
+        determine whether an isotope contributes to the average: a value of
+        zero disables that isotope and negative values raise a ``ValueError``.
+        The efficiencies are not applied as multiplicative weights.
+    t_since_start : float, optional
+        Time in seconds since counting began. Only checked when
+        ``require_equilibrium`` is ``True``.
+    settle_time : float, optional
+        Minimum time in seconds required for secular equilibrium.
+        Defaults to ``0.0``.
+    require_equilibrium : bool, optional
+        When ``True`` and ``t_since_start`` is provided, raise a
+        ``ValueError`` if it is smaller than ``settle_time``.
 
     Returns
     -------
@@ -46,6 +66,12 @@ def compute_radon_activity(
         raise ValueError("eff218 must be non-negative")
     if eff214 < 0:
         raise ValueError("eff214 must be non-negative")
+    if require_equilibrium and t_since_start is not None:
+        if t_since_start < settle_time:
+            raise ValueError(
+                "rates must be measured after secular equilibrium or set "
+                "require_equilibrium=False"
+            )
 
     values = []
     weights = []

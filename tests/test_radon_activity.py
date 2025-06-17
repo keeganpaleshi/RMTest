@@ -134,6 +134,22 @@ def test_compute_radon_activity_negative_eff214():
         compute_radon_activity(10.0, 1.0, 1.0, 12.0, 2.0, -0.5)
 
 
+def test_compute_radon_activity_equilibrium_check():
+    """Fail when times are before secular equilibrium if required."""
+    with pytest.raises(ValueError):
+        compute_radon_activity(
+            10.0,
+            1.0,
+            1.0,
+            12.0,
+            2.0,
+            1.0,
+            t_since_start=1.0,
+            settle_time=10.0,
+            require_equilibrium=True,
+        )
+
+
 def test_compute_total_radon():
     conc, dconc, tot, dtot = compute_total_radon(5.0, 0.5, 10.0, 20.0)
     assert conc == pytest.approx(0.5)
