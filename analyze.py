@@ -289,7 +289,7 @@ def parse_args():
         "--time-bin-mode",
         dest="time_bin_mode",
         choices=["auto", "fd", "fixed"],
-        help=argparse.SUPPRESS,
+        help="DEPRECATED alias for --plot-time-binning-mode",
     )
     p.add_argument(
         "--plot-time-bin-width",

@@ -238,7 +238,8 @@ Example snippet:
 bins to use when the automatic [Freedman–Diaconis rule](https://en.wikipedia.org/wiki/Freedman%E2%80%93Diaconis_rule) fails,
 typically due to zero IQR.  The default is `1`.
 
-The CLI options `--plot-time-binning-mode` and `--plot-time-bin-width` override
+The CLI options `--plot-time-binning-mode` (deprecated alias
+`--time-bin-mode`) and `--plot-time-bin-width` override
 `plot_time_binning_mode` and `plot_time_bin_width_s` in the configuration
 to control the time-series histogram. Passing `--dump-ts-json` writes the
 histogram counts to a `*_ts.json` file alongside the plot.
