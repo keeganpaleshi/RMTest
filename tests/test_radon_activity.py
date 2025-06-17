@@ -149,6 +149,13 @@ def test_compute_radon_activity_missing_uncertainty_returns_nan():
     assert math.isnan(s)
 
 
+def test_compute_radon_activity_both_missing_errors():
+    """Both rates present but without uncertainties should use mean and NaN."""
+    a, s = compute_radon_activity(5.0, None, 1.0, 7.0, None, 1.0)
+    assert a == pytest.approx(0.5 * (5.0 + 7.0))
+    assert math.isnan(s)
+
+
 def test_compute_total_radon_negative_sample_volume():
     with pytest.raises(ValueError):
         compute_total_radon(5.0, 0.5, 10.0, -1.0)
