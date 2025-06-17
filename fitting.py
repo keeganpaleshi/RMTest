@@ -403,8 +403,15 @@ def _neg_log_likelihood_time(
         B_iso = 0.0 if fix_b_map[iso] else p[f"B_{iso}"]
         N0_iso = 0.0 if fix_n0_map[iso] else p[f"N0_{iso}"]
 
-        # 1) Integral term:
+        # 1) Integral term. When per-event weights are supplied we
+        # scale the integral by the average weight so that a uniform
+        # scaling of all weights cancels between the log and integral
+        # contributions.
         integral = _integral_model(E_iso, N0_iso, B_iso, lam, eff, T_rel)
+        weights = weights_dict.get(iso)
+        if weights is not None and len(weights) > 0:
+            integral *= float(np.mean(weights))
+
         # 2) Sum of log[r(t_i)] for each event t_i in times_dict[iso]:
         times_iso = times_dict.get(iso, np.empty(0))
         weights = weights_dict.get(iso)
