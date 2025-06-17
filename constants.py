@@ -12,6 +12,14 @@ DEFAULT_NOISE_CUTOFF = 400
 # Iteration cap for ``scipy.optimize.curve_fit``
 CURVE_FIT_MAX_EVALS = 10000
 
+# Nominal ADC centroids for the Po-210, Po-218 and Po-214 peaks used
+# when calibration data does not specify otherwise.
+DEFAULT_NOMINAL_ADC = {
+    "Po210": 1250,
+    "Po218": 1400,
+    "Po214": 1800,
+}
+
 from dataclasses import dataclass
 
 
@@ -80,6 +88,7 @@ __all__ = [
     "EXP_OVERFLOW_DOUBLE",
     "DEFAULT_NOISE_CUTOFF",
     "CURVE_FIT_MAX_EVALS",
+    "DEFAULT_NOMINAL_ADC",
     "NuclideConst",
     "PO214",
     "PO218",
