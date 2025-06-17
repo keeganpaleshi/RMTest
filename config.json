@@ -17,7 +17,8 @@
     "baseline": {
         "range": ["1970-01-01T00:00:00Z", "1970-01-01T00:05:00Z"],
         "monitor_volume_l": 605.0,
-        "sample_volume_l": 0.0
+        "sample_volume_l": 0.0,
+        "isotopes_to_subtract": ["Po214", "Po218"]
     },
     "burst_filter": {
         "burst_mode": "rate",

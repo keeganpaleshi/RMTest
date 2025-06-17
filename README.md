@@ -395,16 +395,19 @@ These half-life values may also be set on the command line with
 ### Baseline Runs
 
 A baseline run measures the radon background with an empty monitor before
-an assay. Configuration must define three keys under `baseline`:
+an assay. Configuration must define these keys under `baseline`:
 
 - `baseline.range` – list of two ISO‑8601 timestamps selecting the baseline interval.
 - `monitor_volume_l` – internal volume of the radon monitor in liters.
 - `sample_volume_l` – volume of the assay sample in liters.
+- `isotopes_to_subtract` – list of isotopes whose baseline rates are
+  subtracted from the fitted decay rates. The default is
+  `["Po214", "Po218"]`.
 
-Events collected during the baseline period are counted in the Po‑214 and
-Po‑218 windows. The counts are converted directly into a decay rate in
-Bq by dividing by the baseline live time and detection efficiency.  This
-rate is scaled by the dilution factor
+Events collected during the baseline period are counted in the selected
+isotope windows. The counts for each isotope are converted into a decay
+rate in Bq by dividing by the baseline live time and the corresponding
+detection efficiency.  Each rate is scaled by the dilution factor
 `monitor_volume_l / (monitor_volume_l + sample_volume_l)` before being
 subtracted from the fitted radon decay rate of the assay. The command-line
 option `--baseline_range` overrides `baseline.range` from the
@@ -418,7 +421,8 @@ Example snippet:
 "baseline": {
     "range": ["2023-07-01T00:00:00Z", "2023-07-03T00:00:00Z"],
     "monitor_volume_l": 10.0,
-    "sample_volume_l": 5.0
+    "sample_volume_l": 5.0,
+    "isotopes_to_subtract": ["Po214", "Po218"]
 }
 ```
 
