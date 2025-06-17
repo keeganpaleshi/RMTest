@@ -82,7 +82,8 @@ def test_load_events(tmp_path, caplog):
     df.to_csv(p, index=False)
     with caplog.at_level(logging.INFO):
         loaded = load_events(p)
-    assert np.array_equal(loaded["timestamp"].values, np.array([1000, 1005, 1010]))
+    assert loaded["timestamp"].dtype == float
+    assert np.array_equal(loaded["timestamp"].values, np.array([1000.0, 1005.0, 1010.0]))
     assert np.array_equal(loaded["adc"].values, np.array([1200, 1300, 1250]))
     assert "0 discarded" in caplog.text
 
@@ -102,7 +103,8 @@ def test_load_events_drop_bad_rows(tmp_path, caplog):
     with caplog.at_level(logging.INFO):
         loaded = load_events(p)
     # Expect rows with NaN/inf removed and duplicate dropped
-    assert np.array_equal(loaded["timestamp"].values, np.array([1000, 1005, 1020]))
+    assert loaded["timestamp"].dtype == float
+    assert np.array_equal(loaded["timestamp"].values, np.array([1000.0, 1005.0, 1020.0]))
     assert "3 discarded" in caplog.text
 
 
@@ -119,7 +121,8 @@ def test_load_events_column_aliases(tmp_path):
     p = tmp_path / "alias.csv"
     df.to_csv(p, index=False)
     loaded = load_events(p)
-    assert list(loaded["timestamp"])[0] == 1000
+    assert loaded["timestamp"].dtype == float
+    assert list(loaded["timestamp"])[0] == 1000.0
     assert list(loaded["adc"])[0] == 1250
     assert "time" not in loaded.columns
     assert "adc_ch" not in loaded.columns
