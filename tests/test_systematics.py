@@ -116,7 +116,7 @@ def test_analyze_systematics_skip_unknown(tmp_path, monkeypatch):
         "time_fit": {
             "do_time_fit": True,
             "window_Po214": [7.0, 8.0],
-            "hl_Po214": [1.0, 0.0],
+            "hl_po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
         },

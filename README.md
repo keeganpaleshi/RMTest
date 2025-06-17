@@ -352,12 +352,12 @@ Example snippet:
 ```
 
 `plot_time_series` takes its half-life values from the `time_fit` section.
-When these keys are omitted, `hl_Po214` and `hl_Po218` fall back to their
+When these keys are omitted, `hl_po214` and `hl_po218` fall back to their
 physical half-lives (≈164 µs and ≈183 s). `hl_Po210` defaults to its physical
 half-life (≈138 days). Specify them to use other values. These custom
 half-lives control the decay model drawn over the time-series histogram.
 The same values are used in the `time_fit` routine itself, so changing
-`hl_Po214` or `hl_Po218` affects both the unbinned fit and the overlay in
+`hl_po214` or `hl_po218` affects both the unbinned fit and the overlay in
 `plot_time_series`. For monitoring that spans multiple days you may set
 them to the radon half-life (~3.8 days) to match the slowly varying
 radon activity.
@@ -376,8 +376,8 @@ discard the first seconds of data before the decay fit.
 ### Fitting Long Time Scales
 
 When the data covers months or more, the short half-lives of Po‑218 and
-Po‑214 no longer matter.  The defaults therefore set `hl_Po214` and
-`hl_Po218` to the radon half-life (≈3.8 days) so the fit tracks the slowly
+Po‑214 no longer matter.  The defaults therefore set `hl_po214` and
+`hl_po218` to the radon half-life (≈3.8 days) so the fit tracks the slowly
 varying radon concentration.  The configuration values are in seconds;
 3.8 days corresponds to roughly `3.8 * 86400 ≈ 3.3e5` seconds.
 
@@ -385,8 +385,8 @@ Example snippet:
 
 ```json
 "time_fit": {
-    "hl_Po214": [328320, 0.0],
-    "hl_Po218": [328320, 0.0],
+    "hl_po214": [328320, 0.0],
+    "hl_po218": [328320, 0.0],
     "sig_N0_Po214": 1.0,
     "sig_N0_Po218": 1.0
 }

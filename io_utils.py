@@ -58,9 +58,21 @@ CONFIG_SCHEMA = {
             "type": "object",
             "properties": {
                 "do_time_fit": {"type": "boolean"},
-                "hl_po214": {"type": "number", "exclusiveMinimum": 0},
-                "hl_po218": {"type": "number", "exclusiveMinimum": 0},
-                "hl_po210": {"type": "number", "exclusiveMinimum": 0},
+                "hl_po214": {
+                    "type": "array",
+                    "items": {"type": "number"},
+                    "minItems": 1,
+                },
+                "hl_po218": {
+                    "type": "array",
+                    "items": {"type": "number"},
+                    "minItems": 1,
+                },
+                "hl_po210": {
+                    "type": "array",
+                    "items": {"type": "number"},
+                    "minItems": 1,
+                },
             },
             "required": ["do_time_fit"],
         },
@@ -177,6 +189,15 @@ def load_config(config_path):
         if e.validator == "required":
             raise KeyError(e.message)
         raise
+
+    # Additional check: first element of half-life arrays must be positive
+    tf = cfg.get("time_fit", {})
+    for key in ("hl_po214", "hl_po218", "hl_po210"):
+        val = tf.get(key)
+        if isinstance(val, list) and val and float(val[0]) <= 0:
+            raise jsonschema.exceptions.ValidationError(
+                f"{key}[0] must be > 0"
+            )
 
     cfg["nuclide_constants"] = load_nuclide_overrides(cfg)
 

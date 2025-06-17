@@ -298,7 +298,7 @@ def test_load_config_invalid_half_life(tmp_path):
     cfg = {
         "pipeline": {"log_level": "INFO"},
         "spectral_fit": {"expected_peaks": {"Po210": 1}},
-        "time_fit": {"do_time_fit": True, "hl_po214": -1.0},
+        "time_fit": {"do_time_fit": True, "hl_po214": [-1.0]},
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
