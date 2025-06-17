@@ -346,6 +346,13 @@ def main():
     except Exception:
         commit = "unknown"
 
+    try:
+        req_path = Path(__file__).resolve().parent / "requirements.txt"
+        with open(req_path, "rb") as f:
+            requirements_sha256 = hashlib.sha256(f.read()).hexdigest()
+    except Exception:
+        requirements_sha256 = "unknown"
+
     args = parse_args()
     # Convert CLI paths to Path objects
     args.config = Path(args.config)
@@ -1457,6 +1464,7 @@ def main():
         "efficiency": efficiency_results,
         "random_seed": seed_used,
         "git_commit": commit,
+        "requirements_sha256": requirements_sha256,
         "cli_sha256": cli_sha256,
         "cli_args": cli_args,
         "analysis": {
