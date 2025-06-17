@@ -736,8 +736,8 @@ def main():
     baseline_cfg = cfg.get("baseline", {})
     baseline_range = None
     if args.baseline_range:
-        if "range" in baseline_cfg:
-            _log_override("baseline", "range", args.baseline_range)
+        _log_override("baseline", "range", args.baseline_range)
+        cfg.setdefault("baseline", {})["range"] = args.baseline_range
         baseline_range = args.baseline_range
     elif "range" in baseline_cfg:
         baseline_range = baseline_cfg.get("range")

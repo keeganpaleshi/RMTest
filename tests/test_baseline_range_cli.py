@@ -52,6 +52,15 @@ def test_baseline_range_cli_overrides_config(tmp_path, monkeypatch):
 
     captured = {}
 
+    orig_load_config = analyze.load_config
+
+    def fake_load_config(path):
+        cfg_local = orig_load_config(path)
+        captured["cfg"] = cfg_local
+        return cfg_local
+
+    monkeypatch.setattr(analyze, "load_config", fake_load_config)
+
     def fake_fit(ts_dict, t_start, t_end, cfg):
         captured["times"] = ts_dict.get("Po214", []).tolist()
         return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
@@ -81,3 +90,4 @@ def test_baseline_range_cli_overrides_config(tmp_path, monkeypatch):
     assert summary["baseline"]["start"] == 10.0
     assert summary["baseline"]["end"] == 20.0
     assert summary["baseline"]["n_events"] == 1
+    assert captured.get("cfg", {}).get("baseline", {}).get("range") == ["10", "20"]
