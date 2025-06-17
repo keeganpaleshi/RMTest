@@ -190,3 +190,20 @@ def test_calibrate_run_quadratic_option():
     ])
 
     assert np.allclose(energies, expected, rtol=1e-3)
+
+
+def test_energy_uncertainty_clipping():
+    """Negative covariance should not produce NaNs in uncertainty."""
+    import pandas as pd
+
+    events = pd.DataFrame({"adc": [1.0]})
+    a_sig = 0.001
+    c_sig = 0.02
+    cov_ac = -0.1
+
+    var_energy = (events["adc"] * a_sig) ** 2 + c_sig ** 2 + 2 * events["adc"] * cov_ac
+    assert var_energy.iloc[0] < 0
+
+    events["denergy_MeV"] = np.sqrt(np.clip(var_energy, 0, None))
+
+    assert np.isfinite(events["denergy_MeV"]).all()
