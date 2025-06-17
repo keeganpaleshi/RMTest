@@ -1,5 +1,6 @@
 # utils.py
 
+from typing import Union
 import numpy as np
 from scipy.signal import find_peaks
 import math
@@ -128,15 +129,17 @@ def cps_to_bq(rate_cps, volume_liters=None):
     return float(rate_cps) / volume_m3
 
 
-def parse_time(s: str) -> int:
+def parse_time(s: Union[str, int, float]) -> int:
     """Parse a timestamp string or integer into Unix epoch seconds."""
+    if isinstance(s, (int, float)):
+        return int(float(s))
     try:
         return int(s)
     except ValueError:
         pass
 
     try:
-        dt = date_parser.parse(s, dayfirst=False)
+        dt = date_parser.isoparse(str(s))
     except (ValueError, OverflowError) as e:
         raise argparse.ArgumentTypeError(f"could not parse time: {s!r}") from e
 

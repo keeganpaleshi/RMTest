@@ -52,10 +52,9 @@ The input file must be a comma-separated table with these columns:
 - `timestamp` – event timestamp in seconds
 - `adc` – raw ADC value
 - `fchannel` – acquisition channel
-
 Columns beyond these are ignored. See `example_input.csv` for a
 sample layout which also includes typical auxiliary fields such as
-`baseline_adc`, `spike_flag` and `valid`.
+`baseline_adc`, `spike_flag`, `valid`, `temperature` and `run_id`.
 
 ## Output
 

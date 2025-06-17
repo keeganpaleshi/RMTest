@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Sequence, Optional
 import numpy as np
 
-from efficiency import blue_combine
+from efficiency import blue_combine as _blue_combine
 
 CovarianceMatrix = np.ndarray
 
@@ -17,6 +17,9 @@ class Measurements:
 
 def BLUE(measurements: Measurements):
     """Return BLUE combination of the given measurements."""
-    return blue_combine(measurements.values, measurements.errors, measurements.corr)
+    return _blue_combine(measurements.values, measurements.errors, measurements.corr)
 
-__all__ = ["BLUE", "Measurements", "CovarianceMatrix"]
+# Expose efficiency.blue_combine under the same name for convenience
+blue_combine = _blue_combine
+
+__all__ = ["BLUE", "Measurements", "CovarianceMatrix", "blue_combine"]
