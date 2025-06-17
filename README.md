@@ -305,7 +305,10 @@ shift to the raw ADC values before calibration.  The value is in ADC
 counts per second and defaults to `0.0` (no correction).  When the rate
 is non-zero `analyze.py` applies the shift using
 `apply_linear_adc_shift` and stores the value in `summary.json` under
-`adc_drift_rate`.
+`adc_drift_rate`.  More complex drift corrections can be configured via
+`adc_drift_mode` and `adc_drift_params`.  Supported modes are
+`"linear"`, `"quadratic"` and `"piecewise"`; the last two require
+additional parameters as documented in `systematics.apply_linear_adc_shift`.
 
 `sigma_E_frac`, `tail_fraction` and `energy_shift_keV` provide the
 magnitude of systematic shifts applied during the scan.  The first two

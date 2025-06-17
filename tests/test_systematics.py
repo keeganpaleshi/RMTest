@@ -49,6 +49,35 @@ def test_apply_linear_adc_shift_rate():
     assert np.allclose(out, [0.0, 1.0, 2.0])
 
 
+def test_apply_linear_adc_shift_quadratic():
+    adc = np.zeros(3)
+    t = np.array([0.0, 1.0, 2.0])
+    out = apply_linear_adc_shift(
+        adc,
+        t,
+        0.0,
+        mode="quadratic",
+        params={"a": 0.5, "b": 1.0},
+    )
+    assert isinstance(out, np.ndarray)
+    assert np.allclose(out, [0.0, 1.5, 4.0])
+
+
+def test_apply_linear_adc_shift_piecewise():
+    adc = np.zeros(4)
+    t = np.array([0.0, 1.0, 2.0, 3.0])
+    params = {"times": [0.0, 2.0, 3.0], "shifts": [0.0, 1.0, 1.5]}
+    out = apply_linear_adc_shift(
+        adc,
+        t,
+        0.0,
+        mode="piecewise",
+        params=params,
+    )
+    assert isinstance(out, np.ndarray)
+    assert np.allclose(out, [0.0, 0.5, 1.0, 1.5])
+
+
 def test_scan_systematics_with_adc_drift():
     adc = np.zeros(3)
     t = np.array([0.0, 1.0, 2.0])

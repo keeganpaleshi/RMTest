@@ -686,19 +686,26 @@ def main():
 
     # Optional ADC drift correction before calibration
     # Applied once using either the CLI value or the config default.
+    drift_cfg = cfg.get("systematics", {})
     drift_rate = (
         float(args.slope)
         if args.slope is not None
-        else float(cfg.get("systematics", {}).get("adc_drift_rate", 0.0))
+        else float(drift_cfg.get("adc_drift_rate", 0.0))
     )
+    drift_mode = "linear" if args.slope is not None else drift_cfg.get(
+        "adc_drift_mode", "linear"
+    )
+    drift_params = drift_cfg.get("adc_drift_params")
 
-    if drift_rate != 0.0:
+    if drift_rate != 0.0 or drift_mode != "linear" or drift_params is not None:
         try:
             events["adc"] = apply_linear_adc_shift(
                 events["adc"].values,
                 events["timestamp"].values,
                 float(drift_rate),
                 t_ref=t0_global,
+                mode=drift_mode,
+                params=drift_params,
             )
         except Exception as e:
             print(f"WARNING: Could not apply ADC drift correction -> {e}")
@@ -1469,6 +1476,8 @@ def main():
             "burst_mode": cfg.get("burst_filter", {}).get("burst_mode", burst_mode),
         },
         "adc_drift_rate": drift_rate,
+        "adc_drift_mode": drift_mode,
+        "adc_drift_params": drift_params,
         "efficiency": efficiency_results,
         "random_seed": seed_used,
         "git_commit": commit,
