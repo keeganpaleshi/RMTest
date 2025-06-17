@@ -225,3 +225,44 @@ def test_adc_drift_piecewise_cfg(tmp_path, monkeypatch):
 
     assert captured.get("mode") == "piecewise"
     assert captured.get("params") == {"times": [0.0, 1.0], "shifts": [0.0, 1.0]}
+
+def test_adc_drift_warning_on_failure(tmp_path, monkeypatch, capsys):
+    """ADC drift correction failure should emit a warning but not abort."""
+    cfg_path, data_path = _write_basic(tmp_path, 1.0)
+
+    def bad_shift(*a, **k):
+        raise ValueError("boom")
+
+    def fake_cal(adc_vals, config=None):
+        return {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)}
+
+    monkeypatch.setattr(analyze, "apply_linear_adc_shift", bad_shift)
+    monkeypatch.setattr(analyze, "derive_calibration_constants", fake_cal)
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", fake_cal)
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+
+    captured = {}
+
+    def fake_write(out_dir, summary, timestamp=None):
+        captured["summary"] = summary
+        d = Path(out_dir) / (timestamp or "x")
+        d.mkdir(parents=True, exist_ok=True)
+        return str(d)
+
+    monkeypatch.setattr(analyze, "write_summary", fake_write)
+    monkeypatch.setattr(analyze, "copy_config", lambda *a, **k: None)
+
+    args = [
+        "analyze.py",
+        "--config", str(cfg_path),
+        "--input", str(data_path),
+        "--output_dir", str(tmp_path),
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+    analyze.main()
+    out = capsys.readouterr().out
+
+    assert "Could not apply ADC drift correction" in out
+    assert captured["summary"].get("adc_drift_rate") == 1.0
