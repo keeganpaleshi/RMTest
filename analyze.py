@@ -159,11 +159,12 @@ def get_spike_efficiency(spike_cfg):
         spike_cfg.get("counts"),
         spike_cfg.get("activity_bq"),
         spike_cfg.get("live_time_s"),
+        spike_cfg.get("error"),
     )
     if key not in _spike_eff_cache:
         from efficiency import calc_spike_efficiency
 
-        _spike_eff_cache[key] = calc_spike_efficiency(*key)
+        _spike_eff_cache[key] = calc_spike_efficiency(key[0], key[1], key[2])
     return _spike_eff_cache[key]
 
 
