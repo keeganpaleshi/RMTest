@@ -584,7 +584,18 @@ def main():
         if args.burst_mode is not None
         else cfg.get("burst_filter", {}).get("burst_mode", "rate")
     )
+
+    n_before_burst = len(events)
     events, n_removed_burst = apply_burst_filter(events, cfg, mode=burst_mode)
+    if n_before_burst > 0:
+        frac_removed = n_removed_burst / n_before_burst
+        logging.info(
+            f"Burst filter removed {n_removed_burst} events ({frac_removed:.1%})"
+        )
+        if frac_removed > 0.5:
+            logging.warning(
+                f"More than half of events vetoed by burst filter ({frac_removed:.1%})"
+            )
 
     # Global t₀ reference
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
@@ -1536,7 +1547,7 @@ def main():
         "noise_cut": {"removed_events": int(n_removed_noise)},
         "burst_filter": {
             "removed_events": int(n_removed_burst),
-            "burst_mode": cfg.get("burst_filter", {}).get("burst_mode", burst_mode),
+            "burst_mode": burst_mode,
         },
         "adc_drift_rate": drift_rate,
         "adc_drift_mode": drift_mode,
