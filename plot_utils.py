@@ -114,18 +114,18 @@ def plot_time_series(
     po214_hl = (
         float(hl_Po214)
         if hl_Po214 is not None
-        else float(_cfg_get(config, "hl_Po214", [default214])[0])
+        else float(_cfg_get(config, "hl_po214", [default214])[0])
     )
     po218_hl = (
         float(hl_Po218)
         if hl_Po218 is not None
-        else float(_cfg_get(config, "hl_Po218", [default218])[0])
+        else float(_cfg_get(config, "hl_po218", [default218])[0])
     )
 
     if po214_hl <= 0:
-        raise ValueError("hl_Po214 must be positive")
+        raise ValueError("hl_po214 must be positive")
     if po218_hl <= 0:
-        raise ValueError("hl_Po218 must be positive")
+        raise ValueError("hl_po218 must be positive")
 
     iso_params = {
         "Po214": {
