@@ -60,6 +60,8 @@ import math
 import numpy as np
 import pandas as pd
 from scipy.stats import norm
+from dateutil import parser as date_parser
+from dateutil.tz import UTC
 
 from hierarchical import fit_hierarchical_runs
 
@@ -785,8 +787,24 @@ def main():
     baseline_range = None
     if args.baseline_range:
         _log_override("baseline", "range", args.baseline_range)
-        cfg.setdefault("baseline", {})["range"] = args.baseline_range
-        baseline_range = args.baseline_range
+        start_s, end_s = args.baseline_range
+        try:
+            t0_epoch = float(start_s)
+            t1_epoch = float(end_s)
+        except ValueError:
+            t0_dt = date_parser.parse(start_s)
+            t1_dt = date_parser.parse(end_s)
+            if t0_dt.tzinfo is None:
+                t0_dt = t0_dt.replace(tzinfo=UTC)
+            if t1_dt.tzinfo is None:
+                t1_dt = t1_dt.replace(tzinfo=UTC)
+            t0_epoch = t0_dt.timestamp()
+            t1_epoch = t1_dt.timestamp()
+        logging.info(
+            f"Baseline window (epoch seconds): {t0_epoch} \u2192 {t1_epoch}"
+        )
+        cfg.setdefault("baseline", {})["range"] = [t0_epoch, t1_epoch]
+        baseline_range = [t0_epoch, t1_epoch]
     elif "range" in baseline_cfg:
         baseline_range = baseline_cfg.get("range")
 
