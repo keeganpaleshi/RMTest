@@ -67,7 +67,8 @@ The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--j
   Any timestamps overridden on the command line are written
   back to this file in Unix seconds.
 - `spectrum.png` – spectrum plot with fitted peaks.
-- `time_series_Po214.png` and `time_series_Po218.png` – decay time-series plots.
+- `time_series_Po214.png` and `time_series_Po218.png` – decay time-series plots
+  using the `window_po214` and `window_po218` energy windows.
 - `time_series_Po210.png` when `window_po210` is set.
 - Optional `*_ts.json` files containing binned time series when enabled.
 - `efficiency.png` – bar chart of individual efficiencies and the BLUE result.

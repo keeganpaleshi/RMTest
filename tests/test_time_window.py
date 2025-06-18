@@ -19,7 +19,7 @@ def test_time_window_filters_events(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [7, 9],
+            "window_po214": [7, 9],
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
@@ -151,7 +151,7 @@ def test_time_window_filters_events_config(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [7, 9],
+            "window_po214": [7, 9],
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
@@ -230,7 +230,7 @@ def test_run_period_filters_events(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [7, 9],
+            "window_po214": [7, 9],
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
@@ -317,7 +317,7 @@ def test_baseline_range_iso_strings(tmp_path, monkeypatch, start, end):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [7, 9],
+            "window_po214": [7, 9],
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},

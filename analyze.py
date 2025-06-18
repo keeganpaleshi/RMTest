@@ -1102,7 +1102,7 @@ def main():
     time_plot_data = {}
     if cfg.get("time_fit", {}).get("do_time_fit", False):
         for iso in ("Po218", "Po214"):
-            win_key = f"window_{iso}"
+            win_key = f"window_{iso.lower()}"
 
             # Missing energy window for this isotope -> skip gracefully
             win_range = cfg.get("time_fit", {}).get(win_key)
@@ -1233,7 +1233,7 @@ def main():
         }
 
     # Also extract Po-210 events for plotting if a window is provided
-    win_p210 = cfg.get("time_fit", {}).get("window_Po210")
+    win_p210 = cfg.get("time_fit", {}).get("window_po210")
     if win_p210 is not None:
         lo, hi = win_p210
         mask210 = (
@@ -1268,7 +1268,7 @@ def main():
 
             # Build a wrapper to re‐run fit_time_series with modified priors
             def fit_wrapper(priors_mod):
-                win_range = cfg.get("time_fit", {}).get(f"window_{iso}")
+                win_range = cfg.get("time_fit", {}).get(f"window_{iso.lower()}")
                 if win_range is None:
                     raise ValueError(
                         f"Missing window for {iso} during systematics scan"
@@ -1649,7 +1649,7 @@ def main():
             if not overlay:
                 for other_iso in ("Po214", "Po218", "Po210"):
                     if other_iso != iso:
-                        plot_cfg[f"window_{other_iso}"] = None
+                        plot_cfg[f"window_{other_iso.lower()}"] = None
                 ts_times = pdata["events_times"]
                 ts_energy = pdata["events_energy"]
                 fit_obj = time_fit_results.get(iso)
