@@ -223,6 +223,13 @@ def parse_args():
         help="Uncertainty on spike counts",
     )
     p.add_argument(
+        "--analysis-start-time",
+        help=(
+            "Reference start time of the analysis (ISO string or epoch). "
+            "Overrides `analysis.analysis_start_time` in config.json"
+        ),
+    )
+    p.add_argument(
         "--analysis-end-time",
         help="Ignore events occurring after this ISO timestamp. Providing this option overrides `analysis.analysis_end_time` in config.json",
     )
@@ -453,6 +460,10 @@ def main():
         cfg.setdefault("analysis", {})["ambient_concentration"] = float(
             args.ambient_concentration
         )
+
+    if args.analysis_start_time is not None:
+        _log_override("analysis", "analysis_start_time", args.analysis_start_time)
+        cfg.setdefault("analysis", {})["analysis_start_time"] = args.analysis_start_time
 
     if args.analysis_end_time is not None:
         _log_override("analysis", "analysis_end_time", args.analysis_end_time)
