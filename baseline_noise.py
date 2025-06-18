@@ -50,10 +50,10 @@ def estimate_baseline_noise(
     """
     adc_arr = np.asarray(adc_values, dtype=float)
     mask = np.ones_like(adc_arr, dtype=bool)
-    if peak_adc is not None:
-        mask &= adc_arr < peak_adc
     if pedestal_cut is not None:
         mask &= adc_arr > pedestal_cut
+    if peak_adc is not None:
+        mask &= adc_arr < peak_adc
     adc = adc_arr[mask]
     if adc.size == 0:
         if return_mask:
