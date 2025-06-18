@@ -7,6 +7,7 @@ import logging
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
+import utils
 from fitting import FitResult
 
 
@@ -598,7 +599,7 @@ def test_spike_count_single_call(tmp_path, monkeypatch):
 
     monkeypatch.setattr(efficiency, "calc_spike_efficiency", fake_spike)
 
-    analyze._spike_eff_cache.clear()
+    utils._spike_eff_cache.clear()
 
     args = [
         "analyze.py",
@@ -750,7 +751,7 @@ def test_spike_efficiency_list(tmp_path, monkeypatch):
     monkeypatch.setattr(efficiency, "calc_decay_efficiency", lambda *a, **k: 0.1)
     monkeypatch.setattr(efficiency, "blue_combine", fake_blue)
 
-    analyze._spike_eff_cache.clear()
+    utils._spike_eff_cache.clear()
 
     saved = {}
 

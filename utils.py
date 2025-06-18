@@ -128,6 +128,81 @@ def cps_to_bq(rate_cps, volume_liters=None):
     return float(rate_cps) / volume_m3
 
 
+def _fit_params(obj):
+    """Return fit parameters dictionary from either a FitResult or mapping."""
+    from fitting import FitResult
+
+    if isinstance(obj, FitResult):
+        return obj.params
+    if isinstance(obj, dict):
+        return obj
+    return {}
+
+
+def _cov_entry(fit, p1: str, p2: str) -> float:
+    """Return covariance between two parameters from a FitResult."""
+    from fitting import FitResult
+
+    if isinstance(fit, FitResult) and fit.cov is not None:
+        ordered = [k for k in fit.params.keys() if k != "fit_valid" and not k.startswith("d")]
+        try:
+            i1 = ordered.index(p1)
+            i2 = ordered.index(p2)
+        except ValueError:
+            return 0.0
+        cov = np.asarray(fit.cov, dtype=float)
+        if cov.ndim >= 2 and i1 < cov.shape[0] and i2 < cov.shape[1]:
+            return float(cov[i1, i2])
+    return 0.0
+
+
+def window_prob(E, sigma, lo, hi):
+    """Return probability that each ``E`` lies in [lo, hi]."""
+
+    from scipy.stats import norm
+
+    E = np.asarray(E, dtype=float)
+    sigma = np.asarray(sigma, dtype=float)
+    E, sigma = np.broadcast_arrays(E, sigma)
+    lo_val = float(lo) if np.isscalar(lo) else float(lo)
+    hi_val = float(hi) if np.isscalar(hi) else float(hi)
+
+    prob = np.empty_like(E, dtype=float)
+    zero_mask = sigma == 0
+
+    if np.any(zero_mask):
+        prob[zero_mask] = ((E[zero_mask] >= lo_val) & (E[zero_mask] <= hi_val)).astype(float)
+
+    if np.any(~zero_mask):
+        nz = ~zero_mask
+        prob[nz] = norm.cdf(hi_val, loc=E[nz], scale=sigma[nz]) - norm.cdf(
+            lo_val, loc=E[nz], scale=sigma[nz]
+        )
+
+    if prob.ndim == 0:
+        return float(prob)
+    return prob
+
+
+_spike_eff_cache = {}
+
+
+def get_spike_efficiency(spike_cfg):
+    """Return spike efficiency using :func:`calc_spike_efficiency` with caching."""
+
+    key = (
+        spike_cfg.get("counts"),
+        spike_cfg.get("activity_bq"),
+        spike_cfg.get("live_time_s"),
+        spike_cfg.get("error"),
+    )
+    if key not in _spike_eff_cache:
+        from efficiency import calc_spike_efficiency
+
+        _spike_eff_cache[key] = calc_spike_efficiency(key[0], key[1], key[2])
+    return _spike_eff_cache[key]
+
+
 def parse_time(s: str) -> int:
     """Parse a timestamp string or integer into Unix epoch seconds."""
     if isinstance(s, (int, float)):
