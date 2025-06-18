@@ -863,6 +863,7 @@ def main():
             print(f"WARNING: Baseline noise estimation failed -> {e}")
 
         if noise_level is not None:
+            # Store estimated noise peak amplitude in counts (not ADC units)
             baseline_info["noise_level"] = float(noise_level)
 
         # Record Po-210 and optional noise counts in baseline_counts

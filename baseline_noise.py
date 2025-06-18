@@ -33,7 +33,8 @@ def estimate_baseline_noise(
     Returns
     -------
     noise_level : float
-        Fitted noise level (constant or amplitude of exponential).
+        Estimated amplitude of the noise peak in counts (histogram
+        height). This is a count estimate, not an ADC value.
     params : dict
         Additional fitted parameters.
     mask : ndarray of bool, optional
