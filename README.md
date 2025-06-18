@@ -561,3 +561,14 @@ summary = fit_hierarchical_runs(run_results)
 print(summary)
 ```
 
+
+## Benchmarking Sigma Vectorisation
+
+The script `benchmarks/benchmark_sigma_vectorization.py` generates one million
+synthetic energies and times `fit_spectrum` before and after the sigma
+calculation was vectorised. It asserts that the optimised code runs at least ten
+times faster. Execute the benchmark manually with:
+
+```bash
+python -m benchmarks.benchmark_sigma_vectorization
+```
