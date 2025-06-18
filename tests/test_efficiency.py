@@ -51,6 +51,7 @@ def test_blue_combine_uncorrelated():
     assert combined == pytest.approx(expected)
     assert sigma == pytest.approx(expected_sigma)
     assert len(weights) == 3
+    assert weights.sum() == pytest.approx(1.0)
 
 
 def test_blue_combine_correlated():
@@ -72,5 +73,13 @@ def test_blue_combine_negative_weights_warning():
     errs = np.array([0.1, 0.2])
     corr = np.array([[1.0, 0.99], [0.99, 1.0]])
     with pytest.warns(UserWarning):
-        _, _, weights = blue_combine(vals, errs, corr)
+        _, _, weights = blue_combine(vals, errs, corr, allow_negative=True)
     assert np.any(weights < 0)
+
+
+def test_blue_combine_negative_weights_error():
+    vals = np.array([1.0, 2.0])
+    errs = np.array([0.1, 0.2])
+    corr = np.array([[1.0, 0.99], [0.99, 1.0]])
+    with pytest.raises(ValueError):
+        blue_combine(vals, errs, corr)
