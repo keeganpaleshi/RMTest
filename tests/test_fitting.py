@@ -274,6 +274,62 @@ def test_model_binned_variable_width(monkeypatch):
         func(np.array([0.5, 0.6]), *p0)
 
 
+def test_model_density_vectorised(monkeypatch):
+    """sigma array should be shared between Gaussian and EMG evaluations."""
+    import fitting as fitting_mod
+
+    captured_cf = {}
+    def dummy_curve_fit(func, xdata, ydata, p0=None, bounds=None, maxfev=None):
+        captured_cf["func"] = func
+        captured_cf["xdata"] = xdata
+        captured_cf["p0"] = p0
+        return np.array(p0), np.eye(len(p0))
+
+    captured = {"gauss": None, "emg": None}
+    def fake_gauss(x, mu, sigma):
+        captured["gauss"] = sigma
+        return np.ones_like(x)
+
+    def fake_emg(x, mu, sigma, tau):
+        captured["emg"] = sigma
+        return np.ones_like(x)
+
+    monkeypatch.setattr(fitting_mod, "curve_fit", dummy_curve_fit)
+    monkeypatch.setattr(fitting_mod, "gaussian", fake_gauss)
+    monkeypatch.setattr(fitting_mod, "emg_left", fake_emg)
+
+    edges = np.array([0.0, 1.0, 2.0, 3.0])
+    energies = np.array([0.1, 1.1, 2.1])
+
+    priors = {
+        "sigma0": (0.5, 0.0),
+        "F": (0.2, 0.0),
+        "mu_Po210": (0.5, 0.0),
+        "S_Po210": (1.0, 0.0),
+        "mu_Po218": (1.5, 0.0),
+        "S_Po218": (1.0, 0.0),
+        "tau_Po218": (1.0, 0.0),
+        "mu_Po214": (2.5, 0.0),
+        "S_Po214": (1.0, 0.0),
+        "b0": (0.0, 0.0),
+        "b1": (0.0, 0.0),
+    }
+
+    fit_spectrum(energies, priors, bin_edges=edges)
+
+    func = captured_cf["func"]
+    xdata = captured_cf["xdata"]
+    p0 = captured_cf["p0"]
+
+    captured["gauss"] = None
+    captured["emg"] = None
+    func(xdata, *p0)
+
+    expected_sigma = np.sqrt(priors["sigma0"][0] ** 2 + priors["F"][0] * xdata)
+    assert np.allclose(captured["gauss"], expected_sigma)
+    assert np.allclose(captured["emg"], expected_sigma)
+
+
 def test_fit_spectrum_custom_bounds():
     """User-provided parameter bounds should constrain the fit."""
     rng = np.random.default_rng(3)
