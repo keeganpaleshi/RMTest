@@ -3,6 +3,7 @@ from pathlib import Path
 import shutil
 import json
 import logging
+import warnings
 from datetime import datetime
 import pandas as pd
 from constants import load_nuclide_overrides
@@ -283,6 +284,11 @@ def apply_burst_filter(df, cfg, mode="rate"):
     """
 
     bcfg = cfg.get("burst_filter", {})
+    warnings.filterwarnings(
+        "ignore",
+        message=".*np.find_common_type.*",
+        category=DeprecationWarning,
+    )
 
     if mode == "none" or len(df) == 0:
         return df.copy(), 0
@@ -336,7 +342,10 @@ def apply_burst_filter(df, cfg, mode="rate"):
             )
 
             threshold = mult * med
-            burst_bins = counts_full[counts_full > threshold].index
+            burst_bins = (
+                counts_full.astype(float)[counts_full.astype(float) > threshold]
+                .index.to_numpy(dtype=np.int64)
+            )
             mask = ~bins.isin(burst_bins)
 
             removed_total += int((~mask).sum())

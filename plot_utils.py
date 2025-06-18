@@ -290,7 +290,9 @@ def plot_time_series(
     plt.ylabel("Counts / s" if normalise_rate else "Counts per bin")
     title_isos = " & ".join(iso_list)
     plt.title(f"{title_isos} Time Series Fit")
-    plt.legend(fontsize="small")
+    handles, labels = plt.gca().get_legend_handles_labels()
+    if handles:
+        plt.legend(fontsize="small")
 
     ax = plt.gca()
     locator = mdates.AutoDateLocator()
