@@ -93,8 +93,11 @@ def plot_time_series(
     config:         JSON dict or nested configuration
     out_png:        output path for the PNG file
     hl_Po214, hl_Po218: optional half-life values in seconds. If not
-        provided, these are looked up in ``config`` and default to
+        provided, these are looked up using the configuration keys
+        ``hl_po214`` and ``hl_po218`` under ``time_fit`` and default to
         ``PO214_HALF_LIFE_S`` and ``PO218_HALF_LIFE_S`` respectively.
+        When Po-210 is plotted the overlay uses the ``hl_po210``
+        configuration value.
     """
 
     if fit_results is None:
