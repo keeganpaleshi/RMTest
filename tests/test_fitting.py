@@ -181,6 +181,28 @@ def test_fit_spectrum_custom_bins_and_edges():
     assert "F" in out_edges.params
 
 
+def test_fit_spectrum_non_monotonic_edges_error():
+    rng = np.random.default_rng(20)
+    energies = rng.normal(5.3, 0.05, 50)
+
+    priors = {
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (50, 5),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (50, 5),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (50, 5),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+
+    edges = [5.0, 6.0, 5.5, 7.0]
+    with pytest.raises(ValueError):
+        fit_spectrum(energies, priors, bin_edges=edges)
+
+
 def test_fit_spectrum_custom_bounds():
     """User-provided parameter bounds should constrain the fit."""
     rng = np.random.default_rng(3)

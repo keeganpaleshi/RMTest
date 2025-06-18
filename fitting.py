@@ -130,14 +130,20 @@ def fit_spectrum(
 
     # Determine bin edges for width/normalisation even in unbinned mode
     if bin_edges is not None:
-        edges = np.asarray(bin_edges)
+        edges = np.asarray(bin_edges, dtype=float)
     elif bins is not None:
         edges = np.histogram_bin_edges(e, bins=bins)
     else:
         edges = np.histogram_bin_edges(e, bins="fd")
 
-    width = edges[1] - edges[0]
+    edges = np.asarray(edges, dtype=float)
+    if not np.all(np.diff(edges) > 0):
+        raise ValueError("bin_edges must be strictly increasing")
+
+    width = np.diff(edges)
     centers = 0.5 * (edges[:-1] + edges[1:])
+    if width.size != centers.size:
+        raise RuntimeError("width and center size mismatch")
     if not unbinned:
         hist, _ = np.histogram(e, bins=edges)
 
