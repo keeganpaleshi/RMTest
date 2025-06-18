@@ -1533,7 +1533,7 @@ def main():
             N0 = fit.get("N0_Po214", 0.0)
             dN0 = fit.get("dN0_Po214", 0.0)
             default_const = cfg.get("nuclide_constants", {})
-            default_hl = default_const.get("Po210", PO210).half_life_s
+            default_hl = default_const.get("Po214", PO214).half_life_s
             hl = cfg.get("time_fit", {}).get("hl_po214", [default_hl])[0]
             cov = _cov_entry(fit_result, "E_Po214", "N0_Po214")
             delta214, err_delta214 = radon_delta(
@@ -1556,7 +1556,7 @@ def main():
             N0 = fit.get("N0_Po218", 0.0)
             dN0 = fit.get("dN0_Po218", 0.0)
             default_const = cfg.get("nuclide_constants", {})
-            default_hl = default_const.get("Po210", PO210).half_life_s
+            default_hl = default_const.get("Po218", PO218).half_life_s
             hl = cfg.get("time_fit", {}).get("hl_po218", [default_hl])[0]
             cov = _cov_entry(fit_result, "E_Po218", "N0_Po218")
             delta218, err_delta218 = radon_delta(
@@ -1732,7 +1732,7 @@ def main():
             N0 = fit.get("N0_Po214", 0.0)
             dN0 = fit.get("dN0_Po214", 0.0)
             default_const = cfg.get("nuclide_constants", {})
-            default_hl = default_const.get("Po210", PO210).half_life_s
+            default_hl = default_const.get("Po214", PO214).half_life_s
             hl = cfg.get("time_fit", {}).get("hl_po214", [default_hl])[0]
             cov = _cov_entry(fit_result, "E_Po214", "N0_Po214")
             A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
@@ -1753,7 +1753,7 @@ def main():
             N0 = fit.get("N0_Po218", 0.0)
             dN0 = fit.get("dN0_Po218", 0.0)
             default_const = cfg.get("nuclide_constants", {})
-            default_hl = default_const.get("Po210", PO210).half_life_s
+            default_hl = default_const.get("Po218", PO218).half_life_s
             hl = cfg.get("time_fit", {}).get("hl_po218", [default_hl])[0]
             cov = _cov_entry(fit_result, "E_Po218", "N0_Po218")
             A218, dA218 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
@@ -1804,7 +1804,7 @@ def main():
                 N0214 = fit.get("N0_Po214", 0.0)
                 dN0214 = fit.get("dN0_Po214", 0.0)
                 default_const = cfg.get("nuclide_constants", {})
-                default_hl = default_const.get("Po210", PO210).half_life_s
+                default_hl = default_const.get("Po214", PO214).half_life_s
                 hl214 = cfg.get("time_fit", {}).get("hl_po214", [default_hl])[0]
                 cov214 = _cov_entry(fit_result, "E_Po214", "N0_Po214")
                 A214_tr, _ = radon_activity_curve(
@@ -1819,7 +1819,7 @@ def main():
                 N0218 = fit.get("N0_Po218", 0.0)
                 dN0218 = fit.get("dN0_Po218", 0.0)
                 default_const = cfg.get("nuclide_constants", {})
-                default_hl = default_const.get("Po210", PO210).half_life_s
+                default_hl = default_const.get("Po218", PO218).half_life_s
                 hl218 = cfg.get("time_fit", {}).get("hl_po218", [default_hl])[0]
                 cov218 = _cov_entry(fit_result, "E_Po218", "N0_Po218")
                 A218_tr, _ = radon_activity_curve(

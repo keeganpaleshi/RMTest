@@ -17,9 +17,19 @@ def test_calc_spike_efficiency():
     assert eff == pytest.approx(0.05)
 
 
+def test_calc_spike_efficiency_negative_counts():
+    with pytest.raises(ValueError):
+        calc_spike_efficiency(-1, 10.0, 100.0)
+
+
 def test_calc_assay_efficiency():
     eff = calc_assay_efficiency(0.5, 2.0)
     assert eff == pytest.approx(0.25)
+
+
+def test_calc_assay_efficiency_negative_rate():
+    with pytest.raises(ValueError):
+        calc_assay_efficiency(-0.1, 2.0)
 
 
 def test_calc_decay_efficiency():

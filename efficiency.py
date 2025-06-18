@@ -37,6 +37,8 @@ def calc_spike_efficiency(
     """
     if activity_bq <= 0 or live_time_s <= 0:
         raise ValueError("activity_bq and live_time_s must be positive")
+    if counts < 0:
+        raise ValueError("counts cannot be negative")
     return float(counts) / (float(activity_bq) * float(live_time_s))
 
 
@@ -57,6 +59,8 @@ def calc_assay_efficiency(rate_cps: float, reference_bq: float) -> float:
     """
     if reference_bq <= 0:
         raise ValueError("reference_bq must be positive")
+    if rate_cps < 0:
+        raise ValueError("rate_cps cannot be negative")
     return float(rate_cps) / float(reference_bq)
 
 
