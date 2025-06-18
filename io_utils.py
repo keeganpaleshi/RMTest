@@ -63,9 +63,9 @@ CONFIG_SCHEMA = {
             "type": "object",
             "properties": {
                 "do_time_fit": {"type": "boolean"},
-                "hl_po214": {"type": "number", "exclusiveMinimum": 0},
-                "hl_po218": {"type": "number", "exclusiveMinimum": 0},
-                "hl_po210": {"type": "number", "exclusiveMinimum": 0},
+                "hl_po214": {"type": ["number", "array"], "exclusiveMinimum": 0},
+                "hl_po218": {"type": ["number", "array"], "exclusiveMinimum": 0},
+                "hl_po210": {"type": ["number", "array"], "exclusiveMinimum": 0},
             },
             "required": ["do_time_fit"],
         },
