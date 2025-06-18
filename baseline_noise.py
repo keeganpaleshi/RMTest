@@ -74,16 +74,22 @@ def estimate_baseline_noise(
         p0 = [hist.max(), 0.001]
         try:
             popt, _ = curve_fit(
-                _exponential, centers, hist, p0=p0, maxfev=CURVE_FIT_MAX_EVALS
+                _exponential,
+                centers,
+                hist,
+                p0=p0,
+                bounds=([0.0, -np.inf], [np.inf, np.inf]),
+                maxfev=CURVE_FIT_MAX_EVALS,
             )
             A, k = popt
-            A = min(float(A), 1e300)
+            A = float(A)
+            A = np.clip(A, 0.0, 1e300)
             if return_mask:
                 return A, {"A": A, "k": float(k)}, mask
             return A, {"A": A, "k": float(k)}
         except Exception:
             A = float(np.mean(hist))
-            A = min(A, 1e300)
+            A = np.clip(A, 0.0, 1e300)
             if return_mask:
                 return A, {"A": A}, mask
             return A, {"A": A}

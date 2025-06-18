@@ -27,7 +27,7 @@ def test_exponential_model():
         adc, peak_adc=400, nbins=40, model="exponential", return_mask=True
     )
     assert params.get("k") == pytest.approx(k_true, rel=0.3)
-    assert level > 0
+    assert level >= 0
     assert mask.dtype == bool
     assert mask.shape == adc.shape
     assert not mask.all()
