@@ -117,7 +117,7 @@ def scan_systematics(
             delta = val * priors[key][0]
         elif full_key.endswith("_keV"):
             key = full_key[:-4]
-            delta = val / 1000.0  # convert keV → MeV
+            delta = val * 1e-3  # convert keV to MeV
         else:
             key = full_key
             delta = val
