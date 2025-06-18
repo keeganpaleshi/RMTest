@@ -373,8 +373,8 @@ radon activity.
 `sig_n0_po214` and `sig_n0_po218` set the uncertainty on the prior for the
 initial activity `N0` when no baseline range is provided.  Without a baseline,
 the fit applies a Gaussian prior `(0, sig_n0_{iso.lower()})` so `N0` may vary
-rather than being fixed to zero.  The legacy key `sig_N0_{iso}` is also
-accepted for backward compatibility.  The default width is `1.0` if not
+rather than being fixed to zero.  Use the lower-case `sig_n0_{iso}` keys; the
+legacy `sig_N0_{iso}` form is still accepted for backward compatibility.  The default width is `1.0` if not
 specified in the configuration.
 
 
