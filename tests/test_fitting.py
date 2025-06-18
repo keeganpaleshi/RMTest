@@ -428,3 +428,14 @@ def test_fit_time_series_half_life_negative_raises():
     }
     with pytest.raises(ValueError):
         fit_time_series(times_dict, 0.0, 10.0, cfg)
+
+
+def test_fit_time_series_efficiency_zero_raises():
+    times_dict = {"Po214": np.array([0.0, 1.0])}
+    cfg = {
+        "isotopes": {"Po214": {"half_life_s": 1.0, "efficiency": 0.0}},
+        "fit_background": True,
+        "fit_initial": True,
+    }
+    with pytest.raises(ValueError):
+        fit_time_series(times_dict, 0.0, 10.0, cfg)
