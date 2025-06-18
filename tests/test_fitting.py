@@ -231,6 +231,49 @@ def test_fit_spectrum_background_only_irregular_edges():
     assert np.isclose(result.params["b0"], 10.0, atol=0.1)
 
 
+def test_model_binned_variable_width(monkeypatch):
+    """_model_binned should scale by bin width and error on invalid centers."""
+    import fitting as fitting_mod
+
+    monkeypatch.setattr(fitting_mod, "gaussian", lambda x, mu, sigma: np.ones_like(x))
+    monkeypatch.setattr(fitting_mod, "emg_left", lambda x, mu, sigma, tau: np.ones_like(x))
+
+    edges = np.array([0.0, 1.0, 2.0, 4.0])
+    energies = np.array([0.1, 1.1, 2.1])
+
+    priors = {
+        "sigma0": (0.0, 0.0),
+        "F": (0.0, 0.0),
+        "mu_Po210": (0.5, 0.0),
+        "S_Po210": (0.0, 0.0),
+        "mu_Po218": (1.5, 0.0),
+        "S_Po218": (0.0, 0.0),
+        "mu_Po214": (3.0, 0.0),
+        "S_Po214": (0.0, 0.0),
+        "b0": (1.0, 0.0),
+        "b1": (0.0, 0.0),
+    }
+
+    captured = {}
+
+    def dummy_curve_fit(func, xdata, ydata, p0=None, bounds=None, maxfev=None):
+        captured["func"] = func
+        captured["xdata"] = xdata
+        captured["p0"] = p0
+        return np.array(p0), np.eye(len(p0))
+
+    monkeypatch.setattr(fitting_mod, "curve_fit", dummy_curve_fit)
+    fit_spectrum(energies, priors, bin_edges=edges)
+
+    func = captured["func"]
+    xdata = captured["xdata"]
+    p0 = captured["p0"]
+    assert np.allclose(func(xdata, *p0), np.diff(edges))
+
+    with pytest.raises(KeyError):
+        func(np.array([0.5, 0.6]), *p0)
+
+
 def test_fit_spectrum_custom_bounds():
     """User-provided parameter bounds should constrain the fit."""
     rng = np.random.default_rng(3)

@@ -103,7 +103,9 @@ def fit_spectrum(
     bin_edges : array-like, optional
         Explicit, strictly increasing bin edges for histogramming the
         energies. Non-uniform spacing is supported and takes precedence over
-        ``bins`` when given.
+        ``bins`` when given. Variable-width bins are supported only when the
+        ``x`` values passed to the model correspond exactly to the bin centers
+        defined by ``bin_edges``.
     bounds : dict, optional
         Mapping of parameter name to ``(lower, upper)`` tuples overriding the
         default ±5σ range derived from the priors.  ``None`` values disable a
@@ -141,10 +143,11 @@ def fit_spectrum(
     if not np.all(np.diff(edges) > 0):
         raise ValueError("bin_edges must be strictly increasing")
 
-    width = np.diff(edges)
+    widths = np.diff(edges)
     centers = 0.5 * (edges[:-1] + edges[1:])
-    if width.size != centers.size:
+    if widths.size != centers.size:
         raise RuntimeError("width and center size mismatch")
+    width_map = dict(zip(centers, widths))
     if not unbinned:
         hist, _ = np.histogram(e, bins=edges)
 
@@ -238,7 +241,20 @@ def fit_spectrum(
         return y + b0 + b1 * x
 
     def _model_binned(x, *params):
-        return _model_density(x, *params) * width
+        y = _model_density(x, *params)
+        if np.isscalar(x):
+            try:
+                return y * width_map[x]
+            except KeyError as exc:
+                raise KeyError(f"{x} not found in width_map") from exc
+        x = np.asarray(x)
+        out = np.empty_like(x, dtype=float)
+        for i, xi in enumerate(x):
+            try:
+                out[i] = y[i] * width_map[xi]
+            except KeyError as exc:
+                raise KeyError(f"{xi} not found in width_map") from exc
+        return out
 
     if not unbinned:
         with warnings.catch_warnings():
