@@ -102,7 +102,7 @@ def test_plot_time_series_custom_half_life(tmp_path, monkeypatch):
     times = np.array([1000.1, 1000.2, 1001.1, 1001.8])
     energies = np.array([7.6, 7.7, 7.8, 7.7])
     cfg = basic_config()
-    cfg["hl_Po214"] = [2.0]
+    cfg["hl_po214"] = [2.0]
 
     captured = {}
 
@@ -139,7 +139,7 @@ def test_plot_time_series_custom_half_life_po218(tmp_path, monkeypatch):
     cfg.update({
         "window_po218": [5.8, 6.3],
         "eff_Po218": [1.0],
-        "hl_Po218": [4.0],
+        "hl_po218": [4.0],
     })
 
     captured = {}
@@ -175,7 +175,7 @@ def test_plot_time_series_time_fit_half_lives(tmp_path, monkeypatch):
     cfg.update({
         "window_po218": [5.8, 6.3],
         "eff_Po218": [1.0],
-        "time_fit": {"hl_Po214": [2.0], "hl_Po218": [4.0]},
+        "time_fit": {"hl_po214": [2.0], "hl_po218": [4.0]},
     })
 
     captured = {}
@@ -212,7 +212,7 @@ def test_plot_time_series_time_fit_half_lives(tmp_path, monkeypatch):
 
 def test_plot_time_series_invalid_half_life_po214(tmp_path):
     cfg = basic_config()
-    cfg["hl_Po214"] = [0.0]
+    cfg["hl_po214"] = [0.0]
     with pytest.raises(ValueError):
         plot_time_series(
             np.array([1000.1]),
@@ -227,7 +227,7 @@ def test_plot_time_series_invalid_half_life_po214(tmp_path):
 
 def test_plot_time_series_invalid_half_life_po218(tmp_path):
     cfg = basic_config()
-    cfg.update({"window_po218": [5.8, 6.3], "eff_Po218": [1.0], "hl_Po218": [-2.0]})
+    cfg.update({"window_po218": [5.8, 6.3], "eff_Po218": [1.0], "hl_po218": [-2.0]})
     with pytest.raises(ValueError):
         plot_time_series(
             np.array([1000.1]),
