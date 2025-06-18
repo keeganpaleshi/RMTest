@@ -265,6 +265,10 @@ the bin edges are internally converted to energy using the calibration
 `slope_MeV_per_ch` (MeV per channel) and intercept before plotting.  This ensures `spectrum.png`
 reflects the calibrated energy scale regardless of binning mode.
 
+Custom `bin_edges` arrays may be supplied when calling the spectral fitting or
+plotting routines. The edges can have variable widths but must be strictly
+increasing.
+
 The `spectral_fit` section provides priors for the unbinned likelihood
 fit.  Important keys include:
 
