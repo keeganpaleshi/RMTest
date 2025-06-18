@@ -1167,12 +1167,24 @@ def main():
 
             priors_time["N0"] = (
                 n0_activity,
-                cfg["time_fit"].get(f"sig_N0_{iso.lower()}", n0_sigma),
+                cfg["time_fit"].get(
+                    f"sig_n0_{iso.lower()}",
+                    cfg["time_fit"].get(
+                        f"sig_N0_{iso}",
+                        cfg["time_fit"].get(f"sig_N0_{iso.lower()}", n0_sigma),
+                    ),
+                ),
             )
         else:
             priors_time["N0"] = (
                 0.0,
-                cfg["time_fit"].get(f"sig_N0_{iso.lower()}", 1.0),
+                cfg["time_fit"].get(
+                    f"sig_n0_{iso.lower()}",
+                    cfg["time_fit"].get(
+                        f"sig_N0_{iso}",
+                        cfg["time_fit"].get(f"sig_N0_{iso.lower()}", 1.0),
+                    ),
+                ),
             )
 
         # Store priors for use in systematics scanning
