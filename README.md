@@ -509,9 +509,10 @@ overrides the `systematics` section.
 
 ## Running Tests
 
-Use the provided setup script to install the required packages:
+Install the required packages from `requirements.txt` before running the tests.
+You can do this directly or via the provided helper script:
 ```bash
-scripts/setup_tests.sh
+pip install -r requirements.txt   # or: bash scripts/setup_tests.sh
 pytest -v
 ```
 
