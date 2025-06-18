@@ -89,8 +89,9 @@ def scan_systematics(
     sigma_dict : dict
         Dictionary of parameter shift magnitudes.  Keys may be suffixed
         with ``_frac`` to indicate a fractional shift or ``_keV`` for an
-        absolute shift in the same units as the parameter.  Keys without a
-        suffix are interpreted as absolute shifts.
+        absolute shift supplied in keV.  Values with ``_keV`` are divided
+        by ``1000.0`` to convert to MeV.  Keys without a suffix are
+        interpreted as absolute shifts.
 
     Returns
     -------
@@ -116,7 +117,7 @@ def scan_systematics(
             delta = val * priors[key][0]
         elif full_key.endswith("_keV"):
             key = full_key[:-4]
-            delta = val
+            delta = val / 1000.0  # convert keV → MeV
         else:
             key = full_key
             delta = val

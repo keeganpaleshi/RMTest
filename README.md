@@ -320,8 +320,10 @@ additional parameters as documented in `systematics.apply_linear_adc_shift`.
 `sigma_E_frac`, `tail_fraction` and `energy_shift_keV` provide the
 magnitude of systematic shifts applied during the scan.  The first two
 are interpreted fractionally relative to the current parameter values,
-while `energy_shift_keV` is an absolute shift.  Each entry is optional
-and only affects the scan when present.
+while `energy_shift_keV` gives an absolute shift.  Values for
+`energy_shift_keV` should be specified in keV and are converted to MeV
+automatically.  Each entry is optional and only affects the scan when
+present.
 
 `plot_time_style` chooses how the histogram is drawn in the time-series
 plot.  Use `"steps"` (default) for a stepped histogram or `"lines"` to
