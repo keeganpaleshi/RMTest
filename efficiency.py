@@ -26,7 +26,7 @@ def calc_spike_efficiency(
     counts : float
         Number of counts observed during the spike run.
     activity_bq : float
-        Known spike activity in Bq.
+        Known spike activity in decays/s (Bq).
     live_time_s : float
         Exposure time in seconds.
 
