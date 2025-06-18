@@ -999,6 +999,65 @@ def test_analysis_end_time_cli(tmp_path, monkeypatch):
     assert captured["times"] == [0.0]
 
 
+def test_analysis_start_time_cli(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {
+            "do_time_fit": True,
+            "window_po214": [0.0, 20.0],
+            "hl_po214": [1.0, 0.0],
+            "eff_po214": [1.0, 0.0],
+            "flags": {},
+        },
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    cfg_path = tmp_path / "cfg.json"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    df = pd.DataFrame({
+        "fUniqueID": [1],
+        "fBits": [0],
+        "timestamp": [15.0],
+        "adc": [8.0],
+        "fchannel": [1],
+    })
+    data_path = tmp_path / "d.csv"
+    df.to_csv(data_path, index=False)
+
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0)})
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0)})
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+
+    captured = {}
+
+    def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
+        captured["t_start"] = t_start
+        return FitResult({}, np.zeros((0, 0)), 0)
+
+    monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+        "--analysis-start-time",
+        "1970-01-01T00:00:10Z",
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+    analyze.main()
+
+    assert captured["t_start"] == 10.0
+
+
 def test_spike_end_time_cli(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},
