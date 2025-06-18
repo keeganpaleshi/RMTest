@@ -1648,7 +1648,13 @@ def main(argv=None):
     if weights is not None:
         summary["efficiency"]["blue_weights"] = list(weights)
 
-    out_dir = write_summary(args.output_dir, summary, args.job_id or now_str)
+    try:
+        out_dir = write_summary(args.output_dir, summary, args.job_id or now_str)
+    except FileExistsError:
+        print(
+            f"ERROR: Output directory already exists: {Path(args.output_dir) / (args.job_id or now_str)}"
+        )
+        sys.exit(1)
     copy_config(out_dir, cfg)
 
     # Generate plots now that the output directory exists

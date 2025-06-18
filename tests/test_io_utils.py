@@ -188,6 +188,16 @@ def test_write_summary_with_nan_values(tmp_path):
     assert loaded["list"] == [None, 1.0]
 
 
+def test_write_summary_existing_folder(tmp_path):
+    summary = {"a": 1}
+    outdir = tmp_path / "out_exists"
+    ts = "19700101T000003Z"
+    existing = outdir / ts
+    existing.mkdir(parents=True)
+    with pytest.raises(FileExistsError):
+        write_summary(outdir, summary, ts)
+
+
 def test_apply_burst_filter_no_removal():
     df = pd.DataFrame(
         {

@@ -394,7 +394,7 @@ def write_summary(output_dir, summary_dict, timestamp=None):
         timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     output_path = Path(output_dir)
     results_folder = output_path / timestamp
-    ensure_dir(results_folder)
+    results_folder.mkdir(parents=True, exist_ok=False)
 
     summary_path = results_folder / "summary.json"
 
