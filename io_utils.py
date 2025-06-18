@@ -394,6 +394,8 @@ def write_summary(output_dir, summary_dict, timestamp=None):
         timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     output_path = Path(output_dir)
     results_folder = output_path / timestamp
+    if results_folder.exists():
+        raise FileExistsError(f"Results folder already exists: {results_folder}")
     ensure_dir(results_folder)
 
     summary_path = results_folder / "summary.json"
