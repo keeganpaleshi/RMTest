@@ -1137,9 +1137,6 @@ def main():
         if hl_key in cfg["time_fit"]:
             T12, T12sig = cfg["time_fit"][hl_key]
             priors_time["tau"] = (T12 / np.log(2), T12sig / np.log(2))
-        elif f"hl_{iso}" in cfg["time_fit"]:
-            T12, T12sig = cfg["time_fit"][f"hl_{iso}"]
-            priors_time["tau"] = (T12 / np.log(2), T12sig / np.log(2))
 
         # Background‐rate prior
         if f"bkg_{iso}" in cfg["time_fit"]:
@@ -1191,7 +1188,7 @@ def main():
             "isotopes": {
                 iso: {
                     "half_life_s": cfg["time_fit"].get(
-                        f"hl_{iso.lower()}", cfg["time_fit"].get(f"hl_{iso}", [np.nan])
+                        f"hl_{iso.lower()}", [np.nan]
                     )[0],
                     "efficiency": cfg["time_fit"].get(
                         f"eff_{iso.lower()}", cfg["time_fit"].get(f"eff_{iso}", [1.0])
@@ -1294,7 +1291,7 @@ def main():
                 cfg_fit = {
                     "isotopes": {
                         iso: {
-                            "half_life_s": cfg["time_fit"].get(f"hl_{iso.lower()}", cfg["time_fit"].get(f"hl_{iso}", [np.nan]))[0],
+                            "half_life_s": cfg["time_fit"].get(f"hl_{iso.lower()}", [np.nan])[0],
                             "efficiency": priors_mod["eff"][0],
                         }
                     },
