@@ -16,18 +16,16 @@ import jsonschema
 def extract_time_series_events(events, cfg):
     """Slice events for time-series fits based on isotope windows.
 
-    Configuration keys should use lowercase isotope names, e.g. ``window_po214``.
+    Configuration keys must use lowercase isotope names, e.g. ``window_po214``.
+    Mixed-case keys such as ``window_Po214`` are still accepted for
+    compatibility.
 
     Parameters
     ----------
     events : pandas.DataFrame
         Event data with ``timestamp`` and ``energy_MeV`` columns.
     cfg : dict
-        Configuration containing ``time_fit`` settings. The
-        window definitions should use lowercase keys
-        (``window_po214`` etc.). Mixed-case keys such as
-        ``window_Po214`` are still recognized for backward
-        compatibility.
+        Configuration containing ``time_fit`` settings.
 
     Returns
     -------
