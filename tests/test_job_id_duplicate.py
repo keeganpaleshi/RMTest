@@ -45,7 +45,10 @@ def test_duplicate_job_id_raises(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "apply_burst_filter", lambda df, cfg, mode="rate": (df, 0))
-    monkeypatch.setattr(analyze, "copy_config", lambda *a, **k: None)
+    def fake_copy(path, cfg):
+        Path(path).mkdir(parents=True, exist_ok=False)
+
+    monkeypatch.setattr(analyze, "copy_config", fake_copy)
 
     args = [
         "analyze.py",

@@ -196,7 +196,7 @@ def test_job_id_overrides_results_folder(tmp_path, monkeypatch):
     recorded = {}
 
     def fake_write_summary(out_dir, summary, timestamp=None):
-        recorded["folder"] = Path(out_dir) / timestamp
+        recorded["folder"] = Path(out_dir)
         recorded["folder"].mkdir(parents=True, exist_ok=True)
         return str(recorded["folder"])
 
