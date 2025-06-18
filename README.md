@@ -354,10 +354,11 @@ Example snippet:
 ```
 
 `plot_time_series` takes its half-life values from the `time_fit` section.
+Specify custom values using the keys `hl_po214`, `hl_po218` and `hl_po210`.
 When these keys are omitted, `hl_po214` and `hl_po218` fall back to their
 physical half-lives (≈164 µs and ≈183 s). `hl_po210` defaults to its physical
-half-life (≈138 days). Specify them to use other values. These custom
-half-lives control the decay model drawn over the time-series histogram.
+half-life (≈138 days). These custom half-lives control the decay model drawn
+over the time-series histogram.
 The same values are used in the `time_fit` routine itself, so changing
 `hl_po214` or `hl_po218` affects both the unbinned fit and the overlay in
 `plot_time_series`. For monitoring that spans multiple days you may set
