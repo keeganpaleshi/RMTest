@@ -621,6 +621,11 @@ def main():
                 f"More than half of events vetoed by burst filter ({frac_removed:.1%})"
             )
 
+    # Keep a copy of the data set after noise and burst filtering but before
+    # any time-window selections. This full set is later used to extract
+    # baseline events independent of the analysis time windows.
+    events_full = events.copy()
+
     # Global t₀ reference
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
     if t0_cfg is not None:
@@ -849,10 +854,18 @@ def main():
         t_end_base = to_epoch(baseline_range[1])
         if t_end_base <= t_start_base:
             raise ValueError("baseline_range end time must be greater than start time")
+        mask_base_full = (events_full["timestamp"] >= t_start_base) & (
+            events_full["timestamp"] < t_end_base
+        )
         mask_base = (events["timestamp"] >= t_start_base) & (
             events["timestamp"] < t_end_base
         )
-        base_events = events[mask_base].copy()
+        base_events = events_full[mask_base_full].copy()
+        # Apply calibration to the baseline events
+        if not base_events.empty:
+            base_events["energy_MeV"] = base_events["adc"] * a + c
+            var_base = (base_events["adc"] * a_sig) ** 2 + c_sig ** 2 + 2 * base_events["adc"] * cov_ac
+            base_events["denergy_MeV"] = np.sqrt(np.clip(var_base, 0, None))
         if len(base_events) == 0:
             raise ValueError("baseline_range yielded zero events")
         baseline_live_time = float(t_end_base - t_start_base)
@@ -892,9 +905,8 @@ def main():
         if "mask_noise" in locals():
             baseline_counts["noise"] = int(np.sum(mask_noise))
 
-        # Remove baseline events from the main dataset before any fits.
-        # This is done once here to avoid accidentally discarding data twice
-        # which previously left an empty DataFrame for the time fits.
+        # Remove baseline events from the main dataset before any fits. Use
+        # the same timestamp mask applied to the filtered ``events`` DataFrame.
 
     # After creating ``base_events``, drop them from the dataset
     if baseline_range:
