@@ -104,10 +104,28 @@ def plot_time_series(
         fit_results = {}
 
     def _cfg_get(cfg, key, default=None):
-        if isinstance(cfg, dict) and "time_fit" in cfg and key in cfg["time_fit"]:
-            return cfg["time_fit"][key]
-        if isinstance(cfg, dict) and key in cfg:
-            return cfg[key]
+        """Lookup ``key`` in ``cfg`` case-insensitively.
+
+        The search first checks the ``time_fit`` sub-dictionary, then the
+        top level of ``cfg``.  Keys are matched ignoring case so that both new
+        ``hl_po214`` and legacy ``hl_Po214`` style names are recognised.
+        """
+
+        if not isinstance(cfg, dict):
+            return default
+
+        key_lc = str(key).lower()
+
+        sub = cfg.get("time_fit", {})
+        if isinstance(sub, dict):
+            for k, v in sub.items():
+                if k.lower() == key_lc:
+                    return v
+
+        for k, v in cfg.items():
+            if k.lower() == key_lc:
+                return v
+
         return default
 
     default_const = config.get("nuclide_constants", {})
@@ -117,12 +135,12 @@ def plot_time_series(
     po214_hl = (
         float(hl_Po214)
         if hl_Po214 is not None
-        else float(_cfg_get(config, "hl_Po214", [default214])[0])
+        else float(_cfg_get(config, "hl_po214", [default214])[0])
     )
     po218_hl = (
         float(hl_Po218)
         if hl_Po218 is not None
-        else float(_cfg_get(config, "hl_Po218", [default218])[0])
+        else float(_cfg_get(config, "hl_po218", [default218])[0])
     )
 
     if po214_hl <= 0:
@@ -150,7 +168,7 @@ def plot_time_series(
             "half_life": float(
                 _cfg_get(
                     config,
-                    "hl_Po210",
+                    "hl_po210",
                     [default_const.get("Po210", PO210).half_life_s],
                 )[0]
             ),

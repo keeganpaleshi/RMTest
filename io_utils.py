@@ -25,6 +25,7 @@ def extract_time_series_events(events, cfg):
     cfg : dict
         Configuration containing ``time_fit`` settings. The
         window definitions should use lowercase keys
+
         (``window_po214`` etc.). Mixed-case keys such as
         ``window_po214`` are still recognized for backward
         compatibility.
@@ -40,9 +41,6 @@ def extract_time_series_events(events, cfg):
     for iso in ("Po214", "Po218", "Po210"):
         # Windows are stored using lowercase isotope names
         win = ts_cfg.get(f"window_{iso.lower()}")
-        if win is None:
-            # mixed-case lookup retained for backward compatibility
-            win = ts_cfg.get(f"window_{iso}")
         if win is None:
             continue
         lo, hi = win
