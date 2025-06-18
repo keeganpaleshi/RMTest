@@ -26,7 +26,7 @@ def extract_time_series_events(events, cfg):
         Configuration containing ``time_fit`` settings. The
         window definitions should use lowercase keys
         (``window_po214`` etc.). Mixed-case keys such as
-        ``window_Po214`` are still recognized for backward
+        ``window_po214`` are still recognized for backward
         compatibility.
 
     Returns
