@@ -568,16 +568,8 @@ def main():
         print("No events found in the input CSV. Exiting.")
         sys.exit(0)
 
-    # Ensure “timestamp” handling is centralized in ``load_events()``
-    # Previously this block reconverted the ``timestamp`` column here, but
-    # ``load_events()`` already enforces numeric timestamps.  Removing this
-    # conversion avoids redundant dtype checks.
-    #
-    # if events["timestamp"].dtype == object:
-    #     events["timestamp"] = (
-    #         pd.to_datetime(events["timestamp"], utc=True).astype(np.int64) / 1e9
-    #     )
-    # events["timestamp"] = events["timestamp"].astype(float)
+    # ``load_events()`` enforces that ``events["timestamp"]`` is numeric, so no
+    # additional conversion is performed here.
 
     # ───────────────────────────────────────────────
     # 2a. Pedestal / electronic-noise cut (integer ADC)
