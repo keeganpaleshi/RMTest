@@ -504,6 +504,7 @@ which will be combined.  When the configuration file provides an
     ]
 }
 ```
+Here `activity_bq` is the spike activity expressed in decays per second (Bq).
 
 `analyze.py` stores the calculated values and their BLUE combination in
 `summary.json` under the `efficiency` key.
