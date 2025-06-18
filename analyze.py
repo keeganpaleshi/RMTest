@@ -105,11 +105,11 @@ def _cov_entry(fit: FitResult | dict, p1: str, p2: str) -> float:
         ordered = [
             k for k in fit.params.keys() if k != "fit_valid" and not k.startswith("d")
         ]
-        try:
-            i1 = ordered.index(p1)
-            i2 = ordered.index(p2)
-        except ValueError:
-            return 0.0
+        if p1 not in ordered or p2 not in ordered:
+            missing = p1 if p1 not in ordered else p2
+            raise KeyError(f"Parameter {missing!r} not found in FitResult")
+        i1 = ordered.index(p1)
+        i2 = ordered.index(p2)
         cov = np.asarray(fit.cov, dtype=float)
         if cov.ndim >= 2 and i1 < cov.shape[0] and i2 < cov.shape[1]:
             return float(cov[i1, i2])
