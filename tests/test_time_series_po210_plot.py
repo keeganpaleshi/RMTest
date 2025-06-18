@@ -20,7 +20,7 @@ def test_extract_time_series_po210_count():
             "energy_MeV": [5.1, 5.3, 5.25, 5.5],
         }
     )
-    cfg = {"time_fit": {"window_Po210": [5.2, 5.4]}}
+    cfg = {"time_fit": {"window_po210": [5.2, 5.4]}}
 
     ts = extract_time_series_events(df, cfg)
     assert len(ts.get("Po210", [])) == 2
