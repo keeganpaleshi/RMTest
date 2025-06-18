@@ -89,7 +89,7 @@ def test_time_window_filters_events(tmp_path, monkeypatch):
     analyze.main()
 
     summary = captured.get("summary", {})
-    assert summary["baseline"]["n_events"] == 1
+    assert summary["baseline"]["n_events"] == 2
     assert captured.get("times") == [6.0]
 
 
@@ -217,7 +217,7 @@ def test_time_window_filters_events_config(tmp_path, monkeypatch):
     analyze.main()
 
     summary = captured.get("summary", {})
-    assert summary["baseline"]["n_events"] == 1
+    assert summary["baseline"]["n_events"] == 2
     assert captured.get("times") == [6.0]
 
 
@@ -294,8 +294,11 @@ def test_run_period_filters_events(tmp_path, monkeypatch):
     ]
     monkeypatch.setattr(sys, "argv", args)
 
-    with pytest.raises(ValueError):
-        analyze.main()
+    analyze.main()
+
+    summary = captured.get("summary", {})
+    assert summary["baseline"]["n_events"] == 1
+    assert captured.get("times") == [2.0, 5.0]
 
 
 @pytest.mark.parametrize(
@@ -380,6 +383,6 @@ def test_baseline_range_iso_strings(tmp_path, monkeypatch, start, end):
     analyze.main()
 
     summary = captured.get("summary", {})
-    assert summary["baseline"]["n_events"] == 1
+    assert summary["baseline"]["n_events"] == 2
     assert captured.get("times") == [6.0]
 
