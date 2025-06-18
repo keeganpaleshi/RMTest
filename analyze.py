@@ -600,6 +600,10 @@ def main():
                 f"More than half of events vetoed by burst filter ({frac_removed:.1%})"
             )
 
+    # Save a copy of the dataset before any time-based vetoes so baseline
+    # events can be carved out independently of the spike/run filters.
+    events_pre_veto = events.copy()
+
     # Global t₀ reference
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
     if t0_cfg is not None:
@@ -814,6 +818,7 @@ def main():
     base_events = pd.DataFrame()
     baseline_live_time = 0.0
     mask_base = None
+    mask_base_full = None
 
     if baseline_range:
 
@@ -827,10 +832,14 @@ def main():
         t_end_base = to_epoch(baseline_range[1])
         if t_end_base <= t_start_base:
             raise ValueError("baseline_range end time must be greater than start time")
+        mask_base_full = (events_pre_veto["timestamp"] >= t_start_base) & (
+            events_pre_veto["timestamp"] < t_end_base
+        )
+        base_events = events_pre_veto[mask_base_full].copy()
+        # Mask to drop these events from the filtered dataset later
         mask_base = (events["timestamp"] >= t_start_base) & (
             events["timestamp"] < t_end_base
         )
-        base_events = events[mask_base].copy()
         if len(base_events) == 0:
             raise ValueError("baseline_range yielded zero events")
         baseline_live_time = float(t_end_base - t_start_base)
@@ -841,6 +850,11 @@ def main():
             "n_events": len(base_events),
             "live_time": baseline_live_time,
         }
+
+        # Apply energy calibration to the baseline slice
+        base_events["energy_MeV"] = base_events["adc"] * a + c
+        var_base = (base_events["adc"] * a_sig) ** 2 + c_sig ** 2 + 2 * base_events["adc"] * cov_ac
+        base_events["denergy_MeV"] = np.sqrt(np.clip(var_base, 0, None))
 
         # Estimate electronic noise level from ADC values below Po-210
         noise_level = None
