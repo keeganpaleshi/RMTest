@@ -1,4 +1,5 @@
 import math
+import copy
 import numpy as np
 from typing import Callable, Dict, Tuple, List
 
@@ -102,7 +103,8 @@ def scan_systematics(
         Total systematic uncertainty combined in quadrature.
     """
 
-    central = fit_func(priors)
+    base_priors = copy.deepcopy(priors)
+    central = fit_func(copy.deepcopy(base_priors))
     is_dict = isinstance(central, dict)
     if not is_dict and not isinstance(central, (int, float)):
         raise RuntimeError(
@@ -132,15 +134,16 @@ def scan_systematics(
         if key not in priors:
             raise RuntimeError(f"No prior entry for '{key}'")
 
-        p_plus = priors.copy()
-        mu, sig = p_plus[key]
-        p_plus[key] = (mu + delta, sig)
-        res_plus = fit_func(p_plus)
+        priors_mod = copy.deepcopy(base_priors)
+        mu, sig = priors_mod[key]
+        priors_mod[key] = (mu + delta, sig)
+        res_plus = fit_func(priors_mod)
         v_plus = res_plus[key] if is_dict else res_plus
 
-        p_minus = priors.copy()
-        p_minus[key] = (mu - delta, sig)
-        res_minus = fit_func(p_minus)
+        priors_mod = copy.deepcopy(base_priors)
+        mu, sig = priors_mod[key]
+        priors_mod[key] = (mu - delta, sig)
+        res_minus = fit_func(priors_mod)
         v_minus = res_minus[key] if is_dict else res_minus
 
         deltas[key] = max(abs(v_plus - v0), abs(v_minus - v0))
