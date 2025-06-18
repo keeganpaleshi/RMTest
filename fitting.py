@@ -219,7 +219,12 @@ def fit_spectrum(
         idx += 1
         F_val = params[idx]
         idx += 1
-        y = np.zeros_like(x)
+
+        x_arr = np.asarray(x, dtype=float)
+        sigma_arr = np.sqrt(sigma0 ** 2 + F_val * x_arr)
+
+        y = np.zeros_like(x_arr)
+        emg_cache = {}
         for iso in iso_list:
             mu = params[idx]
             idx += 1
@@ -228,17 +233,23 @@ def fit_spectrum(
             if use_emg[iso]:
                 tau = params[idx]
                 idx += 1
-                sigma = np.sqrt(sigma0 ** 2 + F_val * x)
-                with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
-                    y_emg = emg_left(x, mu, sigma, tau)
-                y_emg = np.nan_to_num(y_emg, nan=0.0, posinf=0.0, neginf=0.0)
+                key = (iso, mu, tau)
+                if key in emg_cache:
+                    y_emg = emg_cache[key]
+                else:
+                    with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+                        y_emg = emg_left(x_arr, mu, sigma_arr, tau)
+                    y_emg = np.nan_to_num(y_emg, nan=0.0, posinf=0.0, neginf=0.0)
+                    emg_cache[key] = y_emg
                 y += S * y_emg
             else:
-                sigma = np.sqrt(sigma0 ** 2 + F_val * x)
-                y += S * gaussian(x, mu, sigma)
+                y += S * gaussian(x_arr, mu, sigma_arr)
         b0 = params[idx]
         b1 = params[idx + 1]
-        return y + b0 + b1 * x
+        out = y + b0 + b1 * x_arr
+        if np.isscalar(x):
+            return float(out)
+        return out
 
     def _model_binned(x, *params):
         y = _model_density(x, *params)
