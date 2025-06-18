@@ -127,6 +127,9 @@ def window_prob(E, sigma, lo, hi):
     E = np.asarray(E, dtype=float)
     sigma = np.asarray(sigma, dtype=float)
     E, sigma = np.broadcast_arrays(E, sigma)
+
+    if np.any(sigma < 0):
+        raise ValueError("negative sigma in window_prob")
     lo_val = float(lo) if np.isscalar(lo) else float(lo)
     hi_val = float(hi) if np.isscalar(hi) else float(hi)
 
