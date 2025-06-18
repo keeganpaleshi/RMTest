@@ -1,16 +1,16 @@
 # Color palettes for plotting
-# Each scheme maps element names to matplotlib color names.
+# Each scheme maps element names to explicit hex color codes.
 
 COLOR_SCHEMES = {
     "default": {
-        "Po214": "tab:red",
-        "Po218": "tab:blue",
-        "Po210": "tab:green",
-        "radon_activity": "tab:purple",
-        "equivalent_air": "tab:green",
-        "efficiency_bar": "tab:blue",
-        "fit": "red",
-        "hist": "gray",
+        "Po214": "#d62728",
+        "Po218": "#1f77b4",
+        "Po210": "#2ca02c",
+        "radon_activity": "#9467bd",
+        "equivalent_air": "#2ca02c",
+        "efficiency_bar": "#1f77b4",
+        "fit": "#ff0000",
+        "hist": "#808080",
     },
     "colorblind": {
         "Po214": "#D55E00",  # orange-red
@@ -20,16 +20,16 @@ COLOR_SCHEMES = {
         "equivalent_air": "#009E73",
         "efficiency_bar": "#0072B2",
         "fit": "#D55E00",
-        "hist": "gray",
+        "hist": "#808080",
     },
     "grayscale": {
-        "Po214": "black",
-        "Po218": "dimgray",
-        "Po210": "gray",
-        "radon_activity": "black",
-        "equivalent_air": "gray",
-        "efficiency_bar": "dimgray",
-        "fit": "black",
-        "hist": "lightgray",
+        "Po214": "#000000",
+        "Po218": "#696969",
+        "Po210": "#808080",
+        "radon_activity": "#000000",
+        "equivalent_air": "#808080",
+        "efficiency_bar": "#696969",
+        "fit": "#000000",
+        "hist": "#d3d3d3",
     },
 }
