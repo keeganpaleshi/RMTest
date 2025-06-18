@@ -92,7 +92,7 @@ def plot_time_series(
     t_start, t_end: floats (absolute UNIX times) for the fit window
     config:         JSON dict or nested configuration
     out_png:        output path for the PNG file
-    hl_Po214, hl_Po218: optional half-life values in seconds. If not
+    hl_po214, hl_po218: optional half-life values in seconds. If not
         provided, these are looked up in ``config`` and default to
         ``PO214_HALF_LIFE_S`` and ``PO218_HALF_LIFE_S`` respectively.
     """
