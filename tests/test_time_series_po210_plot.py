@@ -29,7 +29,7 @@ def test_extract_time_series_po210_count():
 def test_plot_time_series_po210_png(tmp_path, monkeypatch):
     times = np.array([1000.1, 1000.2, 1000.3])
     energies = np.array([5.3, 5.25, 5.3])
-    cfg = {"window_po210": [5.2, 5.4], "eff_Po210": [1.0]}
+    cfg = {"window_po210": [5.2, 5.4], "eff_po210": [1.0]}
 
     labels = []
     orig_plot = plot_utils.plt.plot

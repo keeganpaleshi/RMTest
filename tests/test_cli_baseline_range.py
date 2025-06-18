@@ -19,8 +19,8 @@ def test_cli_baseline_range_overrides_config(tmp_path, monkeypatch):
         "time_fit": {
             "do_time_fit": True,
             "window_po214": [0, 20],
-            "hl_Po214": [1.0, 0.0],
-            "eff_Po214": [1.0, 0.0],
+            "hl_po214": [1.0, 0.0],
+            "eff_po214": [1.0, 0.0],
             "flags": {},
         },
         "systematics": {"enable": False},

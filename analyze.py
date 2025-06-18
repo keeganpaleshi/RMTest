@@ -1127,7 +1127,9 @@ def main():
         priors_time = {}
 
         # Efficiency prior per isotope
-        eff_val = cfg["time_fit"].get(f"eff_{iso}", [1.0, 0.0])
+        eff_val = cfg["time_fit"].get(
+            f"eff_{iso.lower()}", cfg["time_fit"].get(f"eff_{iso}", [1.0, 0.0])
+        )
         priors_time["eff"] = tuple(eff_val)
 
         # Half-life prior (user must supply [T₁/₂, σ(T₁/₂)] in seconds)
@@ -1156,7 +1158,9 @@ def main():
             if iso in isotopes_to_subtract:
                 baseline_counts[iso] = n0_count
 
-            eff = cfg["time_fit"].get(f"eff_{iso}", [1.0])[0]
+            eff = cfg["time_fit"].get(
+                f"eff_{iso.lower()}", cfg["time_fit"].get(f"eff_{iso}", [1.0])
+            )[0]
             if baseline_live_time > 0 and eff > 0:
                 n0_activity = n0_count / (baseline_live_time * eff)
                 n0_sigma = np.sqrt(n0_count) / (baseline_live_time * eff)
@@ -1186,8 +1190,12 @@ def main():
         fit_cfg = {
             "isotopes": {
                 iso: {
-                    "half_life_s": cfg["time_fit"].get(f"hl_{iso.lower()}", cfg["time_fit"].get(f"hl_{iso}", [np.nan]))[0],
-                    "efficiency": cfg["time_fit"][f"eff_{iso}"][0],
+                    "half_life_s": cfg["time_fit"].get(
+                        f"hl_{iso.lower()}", cfg["time_fit"].get(f"hl_{iso}", [np.nan])
+                    )[0],
+                    "efficiency": cfg["time_fit"].get(
+                        f"eff_{iso.lower()}", cfg["time_fit"].get(f"eff_{iso}", [1.0])
+                    )[0],
                 }
             },
             "fit_background": not cfg["time_fit"]["flags"].get(
@@ -1409,7 +1417,9 @@ def main():
     baseline_unc = {}
     if baseline_live_time > 0:
         for iso, count in baseline_counts.items():
-            eff = cfg["time_fit"].get(f"eff_{iso}", [1.0])[0]
+            eff = cfg["time_fit"].get(
+                f"eff_{iso.lower()}", cfg["time_fit"].get(f"eff_{iso}", [1.0])
+            )[0]
             if eff > 0:
                 rate = count / (baseline_live_time * eff)
                 err = np.sqrt(count) / (baseline_live_time * eff)
@@ -1441,7 +1451,9 @@ def main():
             sigma_rate = 0.0
             if baseline_live_time > 0:
                 count = baseline_counts.get(iso, 0.0)
-                eff = cfg["time_fit"].get(f"eff_{iso}", [1.0])[0]
+                eff = cfg["time_fit"].get(
+                    f"eff_{iso.lower()}", cfg["time_fit"].get(f"eff_{iso}", [1.0])
+                )[0]
                 if eff > 0:
                     sigma_rate = math.sqrt(count) / (baseline_live_time * eff)
             params["dE_corrected"] = float(math.hypot(err_fit, sigma_rate * s))
@@ -1457,8 +1469,8 @@ def main():
     from radon_activity import compute_radon_activity, compute_total_radon
 
     radon_results = {}
-    eff_Po214 = cfg.get("time_fit", {}).get("eff_Po214", [1.0])[0]
-    eff_Po218 = cfg.get("time_fit", {}).get("eff_Po218", [1.0])[0]
+    eff_Po214 = cfg.get("time_fit", {}).get("eff_po214", [1.0])[0]
+    eff_Po218 = cfg.get("time_fit", {}).get("eff_po218", [1.0])[0]
 
     rate214 = None
     err214 = None

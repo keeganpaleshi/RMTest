@@ -117,12 +117,12 @@ def plot_time_series(
     po214_hl = (
         float(hl_Po214)
         if hl_Po214 is not None
-        else float(_cfg_get(config, "hl_Po214", [default214])[0])
+        else float(_cfg_get(config, "hl_po214", [default214])[0])
     )
     po218_hl = (
         float(hl_Po218)
         if hl_Po218 is not None
-        else float(_cfg_get(config, "hl_Po218", [default218])[0])
+        else float(_cfg_get(config, "hl_po218", [default218])[0])
     )
 
     if po214_hl <= 0:
@@ -134,23 +134,23 @@ def plot_time_series(
         "Po214": {
             # Energy window for Po-214 events
             "window": _cfg_get(config, "window_po214"),
-            "eff": float(_cfg_get(config, "eff_Po214", [1.0])[0]),
+            "eff": float(_cfg_get(config, "eff_po214", [1.0])[0]),
             "half_life": po214_hl,
         },
         "Po218": {
             # Energy window for Po-218 events
             "window": _cfg_get(config, "window_po218"),
-            "eff": float(_cfg_get(config, "eff_Po218", [1.0])[0]),
+            "eff": float(_cfg_get(config, "eff_po218", [1.0])[0]),
             "half_life": po218_hl,
         },
         "Po210": {
             # Energy window for Po-210 events (optional)
             "window": _cfg_get(config, "window_po210"),
-            "eff": float(_cfg_get(config, "eff_Po210", [1.0])[0]),
+            "eff": float(_cfg_get(config, "eff_po210", [1.0])[0]),
             "half_life": float(
                 _cfg_get(
                     config,
-                    "hl_Po210",
+                    "hl_po210",
                     [default_const.get("Po210", PO210).half_life_s],
                 )[0]
             ),
