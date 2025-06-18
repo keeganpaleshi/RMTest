@@ -144,6 +144,23 @@ def test_load_events_missing_column(tmp_path):
         load_events(p)
 
 
+def test_load_events_string_nan(tmp_path):
+    df = pd.DataFrame(
+        {
+            "fUniqueID": [1, 2],
+            "fBits": [0, 0],
+            "timestamp": [1000, "NaN"],
+            "adc": [1200, 1300],
+            "fchannel": [1, 1],
+        }
+    )
+    p = tmp_path / "string_nan.csv"
+    df.to_csv(p, index=False)
+    loaded = load_events(p)
+    assert len(loaded) == 1
+    assert loaded["timestamp"].iloc[0] == 1000.0
+
+
 def test_write_summary_and_copy_config(tmp_path):
     summary = {"a": 1, "b": 2}
     outdir = tmp_path / "out"
