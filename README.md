@@ -39,7 +39,7 @@ python analyze.py --config config.json --input merged_data.csv \
     [--settle-s SEC] [--debug] [--seed SEED] \
     [--ambient-file amb.txt (time conc)] [--ambient-concentration 0.1] \
     [--burst-mode rate] \
-    [--plot-time-binning-mode fixed --plot-time-bin-width 3600] [--dump-ts-json] \
+    [--plot-time-binning-mode fixed --plot-time-bin-width 3600] [--dump-time-series-json] \
     [--hierarchical-summary OUT.json]
 ```
 
@@ -241,8 +241,9 @@ typically due to zero IQR.  The default is `1`.
 The CLI options `--plot-time-binning-mode` (deprecated alias
 `--time-bin-mode`) and `--plot-time-bin-width` override
 `plot_time_binning_mode` and `plot_time_bin_width_s` in the configuration
-to control the time-series histogram. Passing `--dump-ts-json` writes the
-histogram counts to a `*_ts.json` file alongside the plot.
+to control the time-series histogram. Passing `--dump-time-series-json`
+(alias `--dump-ts-json`) writes the histogram counts to a `*_ts.json`
+file alongside the plot.
 
 Additional convenience flags include `--spike-count` (with optional
 `--spike-count-err`) to override spike efficiency inputs, `--slope` to

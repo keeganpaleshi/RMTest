@@ -310,6 +310,8 @@ def parse_args():
     )
     p.add_argument(
         "--dump-ts-json",
+        "--dump-time-series-json",
+        dest="dump_ts_json",
         action="store_true",
         help="Write *_ts.json files containing binned time-series data",
     )

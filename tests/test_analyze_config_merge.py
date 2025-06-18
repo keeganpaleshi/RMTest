@@ -388,7 +388,7 @@ def test_time_bin_cli(tmp_path, monkeypatch):
         "fixed",
         "--plot-time-bin-width",
         "5",
-        "--dump-ts-json",
+        "--dump-time-series-json",
     ]
     monkeypatch.setattr(sys, "argv", args)
     analyze.main()
