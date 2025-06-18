@@ -169,7 +169,7 @@ filtering.  Events falling outside all provided periods are discarded.
 activity between them.
 
 `ambient_concentration` may also be specified here to record the ambient
-radon concentration in Bq/m³ used for the equivalent air plot.  The
+radon concentration in Bq/L used for the equivalent air plot.  The
 command-line option `--ambient-concentration` overrides this value.  The
 default configuration sets this key to `null`.  The template
 `config.json` therefore includes
