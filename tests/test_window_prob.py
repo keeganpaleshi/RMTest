@@ -23,3 +23,9 @@ def test_window_prob_mixed_sigma():
 def test_window_prob_scalar_zero_sigma():
     assert analyze.window_prob(5.0, 0.0, 4.0, 6.0) == pytest.approx(1.0)
     assert analyze.window_prob(7.0, 0.0, 4.0, 6.0) == pytest.approx(0.0)
+
+
+def test_window_prob_negative_sigma_raises():
+    with pytest.raises(ValueError):
+        analyze.window_prob(1.0, -0.1, 0.0, 2.0)
+
