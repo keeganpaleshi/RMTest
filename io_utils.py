@@ -31,7 +31,10 @@ def extract_time_series_events(events, cfg):
     ts_cfg = cfg.get("time_fit", {})
     out = {}
     for iso in ("Po214", "Po218", "Po210"):
-        win = ts_cfg.get(f"window_{iso}")
+        key = f"window_{iso}"
+        win = ts_cfg.get(key)
+        if win is None:
+            win = ts_cfg.get(key.replace("_Po", "_po"))
         if win is None:
             continue
         lo, hi = win

@@ -100,27 +100,41 @@ def plot_time_series(
     if fit_results is None:
         fit_results = {}
 
+    def _alt_key(k):
+        if "_po" in k:
+            return k.replace("_po", "_Po")
+        if "_Po" in k:
+            return k.replace("_Po", "_po")
+        return k
+
     def _cfg_get(cfg, key, default=None):
-        if isinstance(cfg, dict) and "time_fit" in cfg and key in cfg["time_fit"]:
-            return cfg["time_fit"][key]
-        if isinstance(cfg, dict) and key in cfg:
-            return cfg[key]
+        alt = _alt_key(key)
+        if isinstance(cfg, dict) and "time_fit" in cfg:
+            tf = cfg["time_fit"]
+            if key in tf:
+                return tf[key]
+            if alt in tf:
+                return tf[alt]
+        if isinstance(cfg, dict):
+            if key in cfg:
+                return cfg[key]
+            if alt in cfg:
+                return cfg[alt]
         return default
 
     default_const = config.get("nuclide_constants", {})
     default214 = default_const.get("Po214", PO214).half_life_s
     default218 = default_const.get("Po218", PO218).half_life_s
 
-    po214_hl = (
-        float(hl_Po214)
-        if hl_Po214 is not None
-        else float(_cfg_get(config, "hl_Po214", [default214])[0])
-    )
-    po218_hl = (
-        float(hl_Po218)
-        if hl_Po218 is not None
-        else float(_cfg_get(config, "hl_Po218", [default218])[0])
-    )
+    def _val(v, default):
+        if isinstance(v, list):
+            return float(v[0])
+        if v is None:
+            return float(default)
+        return float(v)
+
+    po214_hl = _val(hl_Po214 if hl_Po214 is not None else _cfg_get(config, "hl_Po214", default214), default214)
+    po218_hl = _val(hl_Po218 if hl_Po218 is not None else _cfg_get(config, "hl_Po218", default218), default218)
 
     if po214_hl <= 0:
         raise ValueError("hl_Po214 must be positive")
@@ -394,7 +408,7 @@ def plot_spectrum(
     # If an explicit Po-210 window is provided, focus the x-axis on that region
     win_p210 = None
     if config is not None:
-        win_p210 = config.get("window_Po210")
+        win_p210 = config.get("window_po210", config.get("window_Po210"))
     if win_p210 is not None:
         lo, hi = win_p210
         ax_main.set_xlim(lo, hi)

@@ -46,16 +46,16 @@ def test_fit_time_series_time_window_config():
     # Config window covering most events
     cfg = {
         "time_fit": {
-            "window_Po214": [7.6, 7.9],
-            "hl_Po214": [1.0],
+            "window_po214": [7.6, 7.9],
+            "hl_po214": 1.0,
             "eff_Po214": [1.0],
         }
     }
-    w = cfg["time_fit"]["window_Po214"]
+    w = cfg["time_fit"]["window_po214"]
     mask = (energies >= w[0]) & (energies <= w[1])
     times_dict = {"Po214": times[mask]}
     cfg_full = {
-        "isotopes": {"Po214": {"half_life_s": cfg["time_fit"]["hl_Po214"][0], "efficiency": 1.0}},
+        "isotopes": {"Po214": {"half_life_s": cfg["time_fit"]["hl_po214"], "efficiency": 1.0}},
         "fit_background": True,
         "fit_initial": True,
     }
@@ -65,16 +65,16 @@ def test_fit_time_series_time_window_config():
     # Narrower window -> fewer events
     cfg_narrow = {
         "time_fit": {
-            "window_Po214": [7.7, 7.8],
-            "hl_Po214": [1.0],
+            "window_po214": [7.7, 7.8],
+            "hl_po214": 1.0,
             "eff_Po214": [1.0],
         }
     }
-    w2 = cfg_narrow["time_fit"]["window_Po214"]
+    w2 = cfg_narrow["time_fit"]["window_po214"]
     mask2 = (energies >= w2[0]) & (energies <= w2[1])
     times_dict2 = {"Po214": times[mask2]}
     cfg_n = {
-        "isotopes": {"Po214": {"half_life_s": cfg_narrow["time_fit"]["hl_Po214"][0], "efficiency": 1.0}},
+        "isotopes": {"Po214": {"half_life_s": cfg_narrow["time_fit"]["hl_po214"], "efficiency": 1.0}},
         "fit_background": True,
         "fit_initial": True,
     }
