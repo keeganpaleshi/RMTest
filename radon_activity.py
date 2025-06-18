@@ -40,7 +40,8 @@ def compute_radon_activity(
         already include the detection efficiencies; this function will not
         scale them further.
     err218, err214 : float or None
-        Uncertainties on the rates in Bq.
+        Uncertainties on the rates in Bq.  Negative values are ignored
+        while zero values are accepted and treated as exact measurements.
     eff218, eff214 : float
         Detection efficiencies for the two isotopes.  They are only used to
         determine whether an isotope contributes to the average: a value of
@@ -65,9 +66,10 @@ def compute_radon_activity(
     float
         Propagated 1-sigma uncertainty.  When the mean is unweighted the
         errors are combined as ``sqrt(err218**2 + err214**2) / N`` where
-        ``N`` is the number of rates included and invalid uncertainties are
-        treated as zero.  If two rates are provided but neither uncertainty
-        is valid, the returned uncertainty is ``math.nan``.
+        ``N`` is the number of rates included.  Negative uncertainties are
+        ignored while zero-valued uncertainties are accepted as exact
+        measurements.  If two rates are provided but neither uncertainty is
+        valid, the returned uncertainty is ``math.nan``.
     """
     if eff218 < 0:
         raise ValueError("eff218 must be non-negative")
@@ -85,15 +87,21 @@ def compute_radon_activity(
 
     if rate218 is not None and eff218 > 0:
         values.append(rate218)
-        if err218 is not None and err218 > 0:
-            weights.append(1.0 / err218**2)
+        if err218 is not None and err218 >= 0:
+            if err218 == 0:
+                weights.append(float("inf"))
+            else:
+                weights.append(1.0 / err218**2)
         else:
             weights.append(None)
 
     if rate214 is not None and eff214 > 0:
         values.append(rate214)
-        if err214 is not None and err214 > 0:
-            weights.append(1.0 / err214**2)
+        if err214 is not None and err214 >= 0:
+            if err214 == 0:
+                weights.append(float("inf"))
+            else:
+                weights.append(1.0 / err214**2)
         else:
             weights.append(None)
 
@@ -103,8 +111,18 @@ def compute_radon_activity(
     # If both have valid uncertainties use weighted average
     if len(values) == 2 and all(w is not None for w in weights):
         w1, w2 = weights
-        A = (values[0] * w1 + values[1] * w2) / (w1 + w2)
-        sigma = math.sqrt(1.0 / (w1 + w2))
+        if math.isinf(w1) and math.isinf(w2):
+            A = (values[0] + values[1]) / 2.0
+            sigma = 0.0
+        elif math.isinf(w1):
+            A = values[0]
+            sigma = 0.0
+        elif math.isinf(w2):
+            A = values[1]
+            sigma = 0.0
+        else:
+            A = (values[0] * w1 + values[1] * w2) / (w1 + w2)
+            sigma = math.sqrt(1.0 / (w1 + w2))
         return A, sigma
 
     if len(values) == 2:
@@ -112,14 +130,19 @@ def compute_radon_activity(
         if all(w is None for w in weights):
             return A, math.nan
         # Unweighted average when any uncertainty is missing or invalid
-        e218 = err218 if err218 is not None and err218 > 0 else 0.0
-        e214 = err214 if err214 is not None and err214 > 0 else 0.0
+        e218 = err218 if err218 is not None and err218 >= 0 else 0.0
+        e214 = err214 if err214 is not None and err214 >= 0 else 0.0
         sigma = math.sqrt(e218**2 + e214**2) / 2.0
         return A, sigma
 
     # Only one valid value or missing errors
     A = values[0]
-    sigma = math.sqrt(1.0 / weights[0]) if weights[0] is not None else math.nan
+    if weights[0] is None:
+        sigma = math.nan
+    elif math.isinf(weights[0]):
+        sigma = 0.0
+    else:
+        sigma = math.sqrt(1.0 / weights[0])
     return A, sigma
 
 
