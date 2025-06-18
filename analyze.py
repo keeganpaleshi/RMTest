@@ -320,12 +320,6 @@ def parse_args():
         help="Fixed time bin width in seconds. Providing this option overrides `plotting.plot_time_bin_width_s` in config.json",
     )
     p.add_argument(
-        "--time-bin-width",
-        dest="time_bin_width",
-        type=float,
-        help=argparse.SUPPRESS,
-    )
-    p.add_argument(
         "--dump-ts-json",
         "--dump-time-series-json",
         dest="dump_ts_json",
