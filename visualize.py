@@ -29,7 +29,8 @@ def cov_heatmap(cov_matrix, out_png, labels=None):
         for j in range(n):
             plt.text(j, i, f"{corr[i,j]:.2f}", ha="center", va="center", color="white" if abs(corr[i,j])>0.5 else "black", fontsize=8)
     plt.tight_layout()
-    os.makedirs(os.path.dirname(out_png), exist_ok=True)
+    dirpath = os.path.dirname(out_png) or "."
+    os.makedirs(dirpath, exist_ok=True)
     plt.savefig(out_png, dpi=300)
     plt.close()
     return corr
@@ -62,7 +63,8 @@ def efficiency_bar(eff_dict, out_png, config=None):
         for i, w in enumerate(weights):
             plt.text(i, values[i] + errors[i], f"{w:.2f}", ha="center", va="bottom", fontsize=8)
     plt.tight_layout()
-    os.makedirs(os.path.dirname(out_png), exist_ok=True)
+    dirpath = os.path.dirname(out_png) or "."
+    os.makedirs(dirpath, exist_ok=True)
     plt.savefig(out_png, dpi=300)
     plt.close()
     return None

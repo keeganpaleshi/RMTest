@@ -31,3 +31,23 @@ def test_efficiency_bar_annotations(tmp_path, monkeypatch):
     efficiency_bar(eff, str(out))
     assert out.exists()
     assert any("0.6" in t for t in texts) and any("0.4" in t for t in texts)
+
+
+def test_cov_heatmap_bare_filename(tmp_path, monkeypatch):
+    cov = np.array([[1.0, 0.5], [0.5, 1.0]])
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("visualize.plt.savefig", lambda p, **k: Path(p).touch())
+
+    cov_heatmap(cov, "foo.png")
+
+    assert Path("foo.png").exists()
+
+
+def test_efficiency_bar_bare_filename(tmp_path, monkeypatch):
+    eff = {"sources": {"A": {"value": 0.5, "error": 0.1}}}
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("visualize.plt.savefig", lambda p, **k: Path(p).touch())
+
+    efficiency_bar(eff, "foo.png")
+
+    assert Path("foo.png").exists()
