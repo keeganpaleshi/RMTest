@@ -1171,7 +1171,9 @@ def main():
                     f"sig_n0_{iso.lower()}",
                     cfg["time_fit"].get(
                         f"sig_N0_{iso}",
-                        cfg["time_fit"].get(f"sig_N0_{iso.lower()}", n0_sigma),
+                        cfg["time_fit"].get(
+                            f"sig_n0_{iso.lower()}", n0_sigma
+                        ),
                     ),
                 ),
             )
@@ -1182,7 +1184,9 @@ def main():
                     f"sig_n0_{iso.lower()}",
                     cfg["time_fit"].get(
                         f"sig_N0_{iso}",
-                        cfg["time_fit"].get(f"sig_N0_{iso.lower()}", 1.0),
+                        cfg["time_fit"].get(
+                            f"sig_n0_{iso.lower()}", 1.0
+                        ),
                     ),
                 ),
             )
