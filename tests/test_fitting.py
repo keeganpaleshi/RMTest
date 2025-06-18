@@ -203,6 +203,34 @@ def test_fit_spectrum_non_monotonic_edges_error():
         fit_spectrum(energies, priors, bin_edges=edges)
 
 
+def test_fit_spectrum_background_only_irregular_edges():
+    """Background-only fit with irregular bin edges should recover the rate."""
+    edges = np.array([0.0, 1.0, 3.0, 4.0])
+
+    # Generate counts corresponding to a flat background of 10 counts/MeV
+    energies = np.concatenate([
+        np.linspace(0.05, 0.95, 10),
+        np.linspace(1.1, 2.9, 20),
+        np.linspace(3.05, 3.95, 10),
+    ])
+
+    priors = {
+        "sigma0": (0.05, 0.0),
+        "F": (0.0, 0.0),
+        "mu_Po210": (0.5, 0.0),
+        "S_Po210": (0.0, 0.0),
+        "mu_Po218": (1.5, 0.0),
+        "S_Po218": (0.0, 0.0),
+        "mu_Po214": (3.5, 0.0),
+        "S_Po214": (0.0, 0.0),
+        "b0": (9.0, 2.0),
+        "b1": (0.0, 0.0),
+    }
+
+    result = fit_spectrum(energies, priors, bin_edges=edges)
+    assert np.isclose(result.params["b0"], 10.0, atol=0.1)
+
+
 def test_fit_spectrum_custom_bounds():
     """User-provided parameter bounds should constrain the fit."""
     rng = np.random.default_rng(3)

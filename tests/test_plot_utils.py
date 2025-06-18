@@ -98,6 +98,43 @@ def test_plot_spectrum_po210_xlim(tmp_path):
     assert ax.get_xlim() == (5.2, 5.4)
 
 
+def test_plot_spectrum_irregular_edges_residuals(tmp_path, monkeypatch):
+    edges = np.array([0.0, 1.0, 3.0, 4.0])
+    energies = np.concatenate([
+        np.linspace(0.05, 0.95, 10),
+        np.linspace(1.1, 2.9, 20),
+        np.linspace(3.05, 3.95, 10),
+    ])
+
+    captured = []
+
+    def fake_bar(self, x, height, *args, **kwargs):
+        captured.append(np.array(height))
+        return type("obj", (), {})()
+
+    import matplotlib.axes
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "bar", fake_bar)
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    fit_vals = {"b0": 10.0, "b1": 0.0}
+    plot_spectrum(
+        energies,
+        fit_vals=fit_vals,
+        bin_edges=edges,
+        out_png=str(tmp_path / "spec_irreg.png"),
+    )
+
+    hist, _ = np.histogram(energies, bins=edges)
+    width = np.diff(edges)
+    centers = edges[:-1] + width / 2.0
+    model_counts = (fit_vals["b0"] + fit_vals["b1"] * centers) * width
+    expected = hist - model_counts
+
+    assert len(captured) >= 2
+    np.testing.assert_allclose(captured[1], expected)
+
+
 def test_plot_time_series_custom_half_life(tmp_path, monkeypatch):
     times = np.array([1000.1, 1000.2, 1001.1, 1001.8])
     energies = np.array([7.6, 7.7, 7.8, 7.7])
