@@ -60,7 +60,7 @@ def test_hierarchical_summary(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "fit_hierarchical_runs", fake_fit)
 
     def fake_write(out_dir, summary, timestamp=None):
-        d = Path(out_dir) / "new"
+        d = Path(out_dir)
         d.mkdir(parents=True, exist_ok=True)
         with open(d / "summary.json", "w") as f:
             json.dump({

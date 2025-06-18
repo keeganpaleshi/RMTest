@@ -387,32 +387,22 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
 
 
 def write_summary(output_dir, summary_dict, timestamp=None):
-    """
-    Write out ``summary_dict`` to ``summary.json`` under a timestamped
-    directory and return the path to that directory.
+    """Write ``summary_dict`` to ``summary.json`` and return the results folder."""
 
-    Parameters
-    ----------
-    output_dir : Path or str
-        Parent directory under which the results folder will be created.
-    summary_dict : dict
-        Data to serialise into ``summary.json``.
-    timestamp : str, optional
-        Timestamp string to use for the results folder.  If ``None`` a new
-        UTC timestamp will be generated.
-    """
-    # Create timestamped subfolder
-    if timestamp is None:
-        timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     output_path = Path(output_dir)
-    results_folder = output_path / timestamp
-    if results_folder.exists():
-        raise FileExistsError(f"Results folder already exists: {results_folder}")
-    results_folder.mkdir(parents=True, exist_ok=False)
+
+    if timestamp is None and output_path.is_dir():
+        results_folder = output_path
+    else:
+        if timestamp is None:
+            timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        results_folder = output_path / timestamp
+        if results_folder.exists():
+            raise FileExistsError(f"Results folder already exists: {results_folder}")
+        results_folder.mkdir(parents=True, exist_ok=False)
 
     summary_path = results_folder / "summary.json"
 
-    # Convert numpy types to native Python using shared helper
     sanitized = to_native(summary_dict)
 
     with open(summary_path, "w", encoding="utf-8") as f:
@@ -430,7 +420,7 @@ def copy_config(output_dir, config_path):
     ----------
     output_dir : Path or str
         Path to the directory where ``config_used.json`` should be placed.
-        The directory will be created if it does not already exist.
+        The directory must not already exist and will be created.
     config_path : Path, str or dict
         Configuration file to copy or configuration dictionary.
 
@@ -441,10 +431,7 @@ def copy_config(output_dir, config_path):
     """
 
     output_path = Path(output_dir)
-    # Create the destination folder if needed. "exist_ok=True" ensures this
-    # function can be called after :func:`write_summary` which already created
-    # the directory.
-    output_path.mkdir(parents=True, exist_ok=True)
+    output_path.mkdir(parents=True, exist_ok=False)
 
     dest_path = output_path / "config_used.json"
     if isinstance(config_path, (str, Path)):
