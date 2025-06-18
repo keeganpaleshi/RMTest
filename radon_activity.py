@@ -1,6 +1,7 @@
 """Utilities to combine Po-218 and Po-214 rates into a radon activity."""
 
 import math
+import numpy as np
 from typing import Optional, Tuple
 
 __all__ = [
@@ -176,7 +177,7 @@ def radon_activity_curve(
     dN0: float,
     half_life_s: float,
     cov_en0: float = 0.0,
-) -> Tuple["np.ndarray", "np.ndarray"]:
+) -> Tuple[np.ndarray, np.ndarray]:
     """Activity over time from fitted decay parameters.
 
     Parameters
@@ -204,7 +205,6 @@ def radon_activity_curve(
     numpy.ndarray
         Propagated 1-sigma uncertainty at each time.
     """
-    import numpy as np
 
     if half_life_s <= 0:
         raise ValueError("half_life_s must be positive")
