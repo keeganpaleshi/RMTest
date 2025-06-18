@@ -18,8 +18,13 @@ class Measurements:
     corr: Optional[np.ndarray] = None
 
 
-def BLUE(measurements: Measurements):
+def BLUE(measurements: Measurements, *, allow_negative: bool = True):
     """Return BLUE combination of the given measurements."""
-    return blue_combine(measurements.values, measurements.errors, measurements.corr)
+    return blue_combine(
+        measurements.values,
+        measurements.errors,
+        measurements.corr,
+        allow_negative=allow_negative,
+    )
 
 __all__ = ["blue_combine", "BLUE", "Measurements", "CovarianceMatrix"]
