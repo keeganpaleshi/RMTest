@@ -316,7 +316,6 @@ def parse_args(argv=None):
     )
     p.add_argument(
         "--plot-time-bin-width",
-        "--time-bin-width",
         dest="time_bin_width",
         type=float,
         help="Fixed time bin width in seconds. Providing this option overrides `plotting.plot_time_bin_width_s` in config.json",
