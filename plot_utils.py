@@ -105,38 +105,27 @@ def plot_time_series(
         fit_results = {}
 
     def _cfg_get(cfg, key, default=None):
-        """Lookup ``key`` in ``cfg`` case-insensitively.
+        """Lookup ``key`` in ``cfg``.
 
         The search first checks the ``time_fit`` sub-dictionary, then the
-        top level of ``cfg``.  Keys are matched ignoring case so that both new
-        ``hl_po214`` and legacy ``hl_Po214`` style names are recognised.
+        top level of ``cfg``. Keys are matched exactly and configuration
+        options should therefore use lower-case names such as ``hl_po214``
+        and ``hl_po218``.
         """
 
         if not isinstance(cfg, dict):
             return default
 
-        key_lc = str(key).lower()
-
         sub = cfg.get("time_fit", {})
-        if isinstance(sub, dict):
-            for k, v in sub.items():
-                if k.lower() == key_lc:
-                    return v
+        if isinstance(sub, dict) and key in sub:
+            return sub[key]
 
-        for k, v in cfg.items():
-            if k.lower() == key_lc:
-                return v
-
-        return default
+        return cfg.get(key, default)
 
     default_const = config.get("nuclide_constants", {})
     default214 = default_const.get("Po214", PO214).half_life_s
     default218 = default_const.get("Po218", PO218).half_life_s
 
-    if hl_po214 is None and "hl_Po214" in _legacy_kwargs:
-        hl_po214 = _legacy_kwargs.pop("hl_Po214")
-    if hl_po218 is None and "hl_Po218" in _legacy_kwargs:
-        hl_po218 = _legacy_kwargs.pop("hl_Po218")
 
     po214_hl = (
         float(hl_po214)
