@@ -68,7 +68,7 @@ The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--j
   back to this file in Unix seconds.
 - `spectrum.png` – spectrum plot with fitted peaks.
 - `time_series_Po214.png` and `time_series_Po218.png` – decay time-series plots.
-- `time_series_Po210.png` when `window_Po210` is set.
+- `time_series_Po210.png` when `window_po210` is set.
 - Optional `*_ts.json` files containing binned time series when enabled.
 - `efficiency.png` – bar chart of individual efficiencies and the BLUE result.
 - `eff_cov.png` – heatmap of the efficiency covariance matrix.
@@ -77,7 +77,7 @@ The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--j
    `--ambient-concentration` is provided.
 
 The `time_fit` routine still fits only Po‑214 and Po‑218.
-When `window_Po210` is provided the Po‑210 events are extracted and a
+When `window_po210` is provided the Po‑210 events are extracted and a
 time‑series histogram is produced without a decay fit. The `hl_Po210`
 value controls only the model curve drawn in this plot.
 
@@ -331,7 +331,7 @@ overlaying multiple isotopes so one does not obscure the other.
 when invoking `plot_time_series`.  When set to `true` the analysis does
 not clear the other window, allowing Po‑214 and Po‑218 to be plotted
 together on a single overlay.
-Specifying `window_Po210` (and optional `eff_Po210`) adds a Po‑210
+Specifying `window_po210` (and optional `eff_Po210`) adds a Po‑210
 histogram to the time-series plots. The model curve appears only when
 fit results for Po‑210 are available.
 

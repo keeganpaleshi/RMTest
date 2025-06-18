@@ -890,7 +890,7 @@ def main():
             baseline_info["noise_level"] = float(noise_level)
 
         # Record Po-210 and optional noise counts in baseline_counts
-        win_p210 = cfg.get("time_fit", {}).get("window_Po210")
+        win_p210 = cfg.get("time_fit", {}).get("window_po210")
         if win_p210 is not None:
             lo_p210, hi_p210 = win_p210
             probs_p210 = window_prob(
@@ -1101,7 +1101,7 @@ def main():
     time_plot_data = {}
     if cfg.get("time_fit", {}).get("do_time_fit", False):
         for iso in ("Po218", "Po214"):
-            win_key = f"window_{iso}"
+            win_key = f"window_{iso.lower()}"
 
             # Missing energy window for this isotope -> skip gracefully
             win_range = cfg.get("time_fit", {}).get(win_key)
@@ -1229,7 +1229,7 @@ def main():
         }
 
     # Also extract Po-210 events for plotting if a window is provided
-    win_p210 = cfg.get("time_fit", {}).get("window_Po210")
+    win_p210 = cfg.get("time_fit", {}).get("window_po210")
     if win_p210 is not None:
         lo, hi = win_p210
         mask210 = (
@@ -1264,7 +1264,7 @@ def main():
 
             # Build a wrapper to re‐run fit_time_series with modified priors
             def fit_wrapper(priors_mod):
-                win_range = cfg.get("time_fit", {}).get(f"window_{iso}")
+                win_range = cfg.get("time_fit", {}).get(f"window_{iso.lower()}")
                 if win_range is None:
                     raise ValueError(
                         f"Missing window for {iso} during systematics scan"

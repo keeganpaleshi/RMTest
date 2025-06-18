@@ -79,9 +79,9 @@
     },
     "time_fit": {
         "do_time_fit": true,
-        "window_Po214": [7.4, 7.9],
-        "window_Po218": [5.8, 6.3],
-        "window_Po210": [5.2, 5.4],
+        "window_po214": [7.4, 7.9],
+        "window_po218": [5.8, 6.3],
+        "window_po210": [5.2, 5.4],
         "eff_Po214": [0.40, 0.0],
         "eff_Po218": [0.20, 0.0],
         "eff_Po210": [0.10, 0.0],

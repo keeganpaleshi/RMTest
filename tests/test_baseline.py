@@ -18,7 +18,7 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [7, 9],
+            "window_po214": [7, 9],
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
@@ -101,7 +101,7 @@ def test_baseline_scaling_factor(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [7, 9],
+            "window_po214": [7, 9],
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
@@ -174,7 +174,7 @@ def test_n0_prior_from_baseline(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [7, 9],
+            "window_po214": [7, 9],
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
@@ -258,7 +258,7 @@ def test_isotopes_to_subtract_control(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [7, 9],
+            "window_po214": [7, 9],
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
@@ -331,9 +331,9 @@ def test_baseline_scaling_multiple_isotopes(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [7, 9],
-            "window_Po218": [5.8, 6.3],
-            "window_Po210": [5.2, 5.4],
+            "window_po214": [7, 9],
+            "window_po218": [5.8, 6.3],
+            "window_po210": [5.2, 5.4],
             "hl_Po214": [1.0, 0.0],
             "hl_Po218": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
@@ -450,7 +450,7 @@ def test_noise_level_none_not_recorded(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [7, 9],
+            "window_po214": [7, 9],
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
