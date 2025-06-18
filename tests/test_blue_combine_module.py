@@ -17,6 +17,7 @@ def test_blue_combine_module_runs():
     assert combined == pytest.approx(expected)
     assert sigma == pytest.approx(expected_sigma)
     assert len(weights) == 2
+    assert weights.sum() == pytest.approx(1.0)
 
 
 def test_blue_combine_wrapper_dataclass():

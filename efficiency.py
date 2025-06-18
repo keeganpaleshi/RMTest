@@ -90,6 +90,8 @@ def blue_combine(
     values: Sequence[float],
     errors: Sequence[float],
     corr: Optional[np.ndarray] = None,
+    *,
+    allow_negative: bool = False,
 ) -> Tuple[float, float, np.ndarray]:
     """Combine estimates using the BLUE method.
 
@@ -114,7 +116,9 @@ def blue_combine(
 
     Notes
     -----
-    If any resulting weight is negative, a ``UserWarning`` is emitted.
+    If ``allow_negative`` is ``False`` and any resulting weight is
+    negative, a :class:`ValueError` is raised.  Otherwise a
+    ``UserWarning`` is emitted.
     """
     vals = np.asarray(values, dtype=float)
     errs = np.asarray(errors, dtype=float)
@@ -136,7 +140,11 @@ def blue_combine(
     norm = float(ones @ Vinv @ ones)
     weights = (Vinv @ ones) / norm
     if np.any(weights < 0):
-        warnings.warn("negative BLUE weights encountered")
+        if allow_negative:
+            warnings.warn("negative BLUE weights encountered")
+        else:
+            raise ValueError("negative BLUE weights encountered")
+    weights /= weights.sum()
     estimate = float(weights @ vals)
     variance = 1.0 / norm
     return estimate, math.sqrt(variance), weights
