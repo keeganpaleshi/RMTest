@@ -78,7 +78,7 @@ The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--j
 
 The `time_fit` routine still fits only Po‑214 and Po‑218.
 When `window_po210` is provided the Po‑210 events are extracted and a
-time‑series histogram is produced without a decay fit. The `hl_Po210`
+time‑series histogram is produced without a decay fit. The `hl_po210`
 value controls only the model curve drawn in this plot.
 
 The time‐series model multiplies the decay rate by the detection efficiency
@@ -355,7 +355,7 @@ Example snippet:
 
 `plot_time_series` takes its half-life values from the `time_fit` section.
 When these keys are omitted, `hl_po214` and `hl_po218` fall back to their
-physical half-lives (≈164 µs and ≈183 s). `hl_Po210` defaults to its physical
+physical half-lives (≈164 µs and ≈183 s). `hl_po210` defaults to its physical
 half-life (≈138 days). Specify them to use other values. These custom
 half-lives control the decay model drawn over the time-series histogram.
 The same values are used in the `time_fit` routine itself, so changing
