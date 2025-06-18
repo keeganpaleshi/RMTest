@@ -101,10 +101,23 @@ def plot_time_series(
         fit_results = {}
 
     def _cfg_get(cfg, key, default=None):
-        if isinstance(cfg, dict) and "time_fit" in cfg and key in cfg["time_fit"]:
-            return cfg["time_fit"][key]
-        if isinstance(cfg, dict) and key in cfg:
+        """Fetch *key* from *cfg* with backwards compatibility."""
+
+        if not isinstance(cfg, dict):
+            return default
+
+        tf = cfg.get("time_fit", {})
+        if key in tf:
+            return tf[key]
+        alt = key.lower()
+        if alt != key and alt in tf:
+            return tf[alt]
+
+        if key in cfg:
             return cfg[key]
+        if alt != key and alt in cfg:
+            return cfg[alt]
+
         return default
 
     default_const = config.get("nuclide_constants", {})
@@ -395,6 +408,8 @@ def plot_spectrum(
     win_p210 = None
     if config is not None:
         win_p210 = config.get("window_Po210")
+        if win_p210 is None:
+            win_p210 = config.get("window_po210")
     if win_p210 is not None:
         lo, hi = win_p210
         ax_main.set_xlim(lo, hi)

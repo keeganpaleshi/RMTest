@@ -1098,8 +1098,10 @@ def main():
         for iso in ("Po218", "Po214"):
             win_key = f"window_{iso}"
 
-            # Missing energy window for this isotope -> skip gracefully
+            # Missing energy window for this isotope -> try lowercase variant
             win_range = cfg.get("time_fit", {}).get(win_key)
+            if win_range is None:
+                win_range = cfg.get("time_fit", {}).get(win_key.lower())
             if win_range is None:
                 print(
                     f"INFO: Config key '{win_key}' not found. Skipping time fit for {iso}."
@@ -1228,6 +1230,8 @@ def main():
 
     # Also extract Po-210 events for plotting if a window is provided
     win_p210 = cfg.get("time_fit", {}).get("window_Po210")
+    if win_p210 is None:
+        win_p210 = cfg.get("time_fit", {}).get("window_po210")
     if win_p210 is not None:
         lo, hi = win_p210
         mask210 = (
@@ -1263,6 +1267,8 @@ def main():
             # Build a wrapper to re‐run fit_time_series with modified priors
             def fit_wrapper(priors_mod):
                 win_range = cfg.get("time_fit", {}).get(f"window_{iso}")
+                if win_range is None:
+                    win_range = cfg.get("time_fit", {}).get(f"window_{iso}".lower())
                 if win_range is None:
                     raise ValueError(
                         f"Missing window for {iso} during systematics scan"
