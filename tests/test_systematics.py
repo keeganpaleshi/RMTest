@@ -185,3 +185,18 @@ def test_analyze_systematics_skip_unknown(tmp_path, monkeypatch):
     analyze.main()
 
     assert captured.get("sigma") == {}
+
+
+def test_scan_systematics_repeatable():
+    priors = {"x": (1.0, 0.1)}
+
+    def fit_func(p):
+        return {"x": p["x"][0] + 1.0}
+
+    shifts = {"x": 0.5}
+
+    d1, unc1 = scan_systematics(fit_func, priors, shifts)
+    d2, unc2 = scan_systematics(fit_func, priors, shifts)
+
+    assert d1 == d2
+    assert unc1 == unc2
