@@ -427,8 +427,8 @@ def copy_config(output_dir, config_path):
     Parameters
     ----------
     output_dir : Path or str
-        Path to the directory returned by :func:`write_summary`.  This
-        directory must contain ``summary.json``.
+        Path to the directory where ``config_used.json`` should be placed.
+        The directory will be created if it does not already exist.
     config_path : Path, str or dict
         Configuration file to copy or configuration dictionary.
 
@@ -439,15 +439,11 @@ def copy_config(output_dir, config_path):
     """
 
     output_path = Path(output_dir)
+    # Create the destination folder. "exist_ok=False" ensures we do not
+    # accidentally overwrite an existing results directory.
+    output_path.mkdir(parents=True, exist_ok=False)
 
-    if not (output_path / "summary.json").is_file():
-        raise RuntimeError(
-            f"{output_dir} does not contain summary.json; provide the timestamped results folder."
-        )
-
-    dest_folder = output_path
-
-    dest_path = dest_folder / "config_used.json"
+    dest_path = output_path / "config_used.json"
     if isinstance(config_path, (str, Path)):
         shutil.copyfile(Path(config_path), dest_path)
         logger.info(f"Copied config {config_path} -> {dest_path}")
