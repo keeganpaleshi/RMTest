@@ -15,16 +15,11 @@ DEFAULT_NOISE_CUTOFF = 400
 # Iteration cap for ``scipy.optimize.curve_fit``
 CURVE_FIT_MAX_EVALS = 10000
 
-# Limit for stable exponentiation when evaluating EMG tails or similar
-# likelihood terms. Values beyond roughly ``±700`` overflow in IEEE-754
-# doubles, so clip the exponent to this range.
-_EXP_LIMIT = EXP_OVERFLOW_DOUBLE
-
-
+# Clip exponents to ``±EXP_OVERFLOW_DOUBLE`` to avoid floating-point overflow
+# when evaluating functions with large tails (e.g. EMG).
 def safe_exp(x: np.ndarray) -> np.ndarray:
     """Return ``exp(x)`` with the input clipped to ``[-EXP_OVERFLOW_DOUBLE, EXP_OVERFLOW_DOUBLE]``."""
     return np.exp(np.clip(x, -EXP_OVERFLOW_DOUBLE, EXP_OVERFLOW_DOUBLE))
-
 
 # Backwards compatibility for older modules/tests
 _safe_exp = safe_exp
