@@ -227,6 +227,10 @@ def parse_args():
         help="Ignore events occurring after this ISO timestamp. Providing this option overrides `analysis.analysis_end_time` in config.json",
     )
     p.add_argument(
+        "--analysis-start-time",
+        help="Reference start time of the analysis (ISO string or epoch). Overrides `analysis.analysis_start_time` in config.json",
+    )
+    p.add_argument(
         "--spike-end-time",
         help="Discard events before this ISO timestamp. Providing this option overrides `analysis.spike_end_time` in config.json",
     )
@@ -457,6 +461,10 @@ def main():
     if args.analysis_end_time is not None:
         _log_override("analysis", "analysis_end_time", args.analysis_end_time)
         cfg.setdefault("analysis", {})["analysis_end_time"] = args.analysis_end_time
+
+    if args.analysis_start_time is not None:
+        _log_override("analysis", "analysis_start_time", args.analysis_start_time)
+        cfg.setdefault("analysis", {})["analysis_start_time"] = args.analysis_start_time
 
     if args.spike_end_time is not None:
         _log_override("analysis", "spike_end_time", args.spike_end_time)

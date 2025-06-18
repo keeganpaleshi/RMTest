@@ -34,7 +34,7 @@ python analyze.py --config config.json --input merged_data.csv \
     [--efficiency-json eff.json] [--systematics-json syst.json] \
     [--spike-count N --spike-count-err S] [--slope RATE] \
     [--noise-cutoff N] \
-    [--analysis-end-time ISO --spike-end-time ISO] \
+    [--analysis-start-time ISO --analysis-end-time ISO --spike-end-time ISO] \
     [--spike-period START END] [--run-period START END] \
     [--radon-interval START END] \
     [--hl-po214 SEC] [--hl-po218 SEC] \
@@ -251,7 +251,7 @@ file alongside the plot.
 
 Additional convenience flags include `--spike-count` (with optional
 `--spike-count-err`) to override spike efficiency inputs, `--slope` to
-apply a linear ADC drift correction, `--analysis-end-time` and
+apply a linear ADC drift correction, `--analysis-start-time`, `--analysis-end-time` and
 `--spike-end-time` to clip the dataset, one or more `--spike-period`
 options to exclude specific time windows, `--settle-s` to skip the
 initial settling period in the decay fit, `--seed` to set the random
