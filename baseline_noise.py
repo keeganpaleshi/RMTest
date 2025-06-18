@@ -15,7 +15,13 @@ def _exponential(x, A, k):
 
 
 def estimate_baseline_noise(
-    adc_values, peak_adc=None, nbins=50, model="constant", return_mask=False
+    adc_values,
+    peak_adc=None,
+    nbins=50,
+    model="constant",
+    return_mask=False,
+    *,
+    pedestal_cut=None,
 ):
     """Estimate electronic noise level from baseline ADC values.
 
@@ -29,6 +35,9 @@ def estimate_baseline_noise(
         Number of histogram bins.
     model : {"constant", "exponential"}
         Functional form used for the fit.
+    pedestal_cut : float, optional
+        Lower ADC threshold for the noise pedestal. Values below this
+        are ignored.
 
     Returns
     -------
@@ -43,6 +52,8 @@ def estimate_baseline_noise(
     """
     adc_arr = np.asarray(adc_values, dtype=float)
     mask = np.ones_like(adc_arr, dtype=bool)
+    if pedestal_cut is not None:
+        mask &= adc_arr > pedestal_cut
     if peak_adc is not None:
         mask &= adc_arr < peak_adc
     adc = adc_arr[mask]
