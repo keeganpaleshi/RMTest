@@ -123,9 +123,9 @@ def plot_time_series(
     )
 
     if po214_hl <= 0:
-        raise ValueError("hl_Po214 must be positive")
+        raise ValueError("hl_po214 must be positive")
     if po218_hl <= 0:
-        raise ValueError("hl_Po218 must be positive")
+        raise ValueError("hl_po218 must be positive")
 
     iso_params = {
         "Po214": {

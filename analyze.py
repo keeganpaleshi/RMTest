@@ -272,12 +272,18 @@ def parse_args():
     p.add_argument(
         "--hl-po214",
         type=float,
-        help="Half-life to use for Po-214 in seconds. Providing this option overrides `time_fit.hl_po214` in config.json",
+        help=(
+            "Half-life to use for Po-214 in seconds. "
+            "Providing this option overrides `time_fit.hl_po214` in config.json"
+        ),
     )
     p.add_argument(
         "--hl-po218",
         type=float,
-        help="Half-life to use for Po-218 in seconds. Providing this option overrides `time_fit.hl_po218` in config.json",
+        help=(
+            "Half-life to use for Po-218 in seconds. "
+            "Providing this option overrides `time_fit.hl_po218` in config.json"
+        ),
     )
     p.add_argument(
         "--debug",
