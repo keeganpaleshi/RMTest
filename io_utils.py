@@ -441,9 +441,10 @@ def copy_config(output_dir, config_path):
     """
 
     output_path = Path(output_dir)
-    # Create the destination folder. "exist_ok=False" ensures we do not
-    # accidentally overwrite an existing results directory.
-    output_path.mkdir(parents=True, exist_ok=False)
+    # Create the destination folder if needed. Allow existing directories
+    # so that this function can be called after ``write_summary`` has
+    # already created the results directory.
+    output_path.mkdir(parents=True, exist_ok=True)
 
     dest_path = output_path / "config_used.json"
     if isinstance(config_path, (str, Path)):
