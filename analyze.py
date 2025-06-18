@@ -90,6 +90,7 @@ from plot_utils import (
     plot_time_series,
     plot_radon_activity,
     plot_equivalent_air,
+    plot_radon_trend,
 )
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
