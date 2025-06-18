@@ -400,8 +400,9 @@ def plot_spectrum(
         hist, edges = np.histogram(energies, bins=bin_edges)
     else:
         hist, edges = np.histogram(energies, bins=bins)
-    centers = 0.5 * (edges[:-1] + edges[1:])
-    width = edges[1] - edges[0]
+
+    width = np.diff(edges)
+    centers = edges[:-1] + width / 2.0
 
     if show_res:
         fig, (ax_main, ax_res) = plt.subplots(
@@ -439,7 +440,8 @@ def plot_spectrum(
         palette_name = str(config.get("palette", "default")) if config else "default"
         palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
         fit_color = palette.get("fit", "red")
-        ax_main.plot(x, y * width, color=fit_color, lw=2, label="Fit")
+        avg_width = float(np.mean(width))
+        ax_main.plot(x, y * avg_width, color=fit_color, lw=2, label="Fit")
 
         if show_res:
             y_cent = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * centers
