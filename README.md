@@ -332,7 +332,7 @@ overlaying multiple isotopes so one does not obscure the other.
 when invoking `plot_time_series`.  When set to `true` the analysis does
 not clear the other window, allowing Po‑214 and Po‑218 to be plotted
 together on a single overlay.
-Specifying `window_po210` (and optional `eff_Po210`) adds a Po‑210
+Specifying `window_po210` (and optional `eff_po210`) adds a Po‑210
 histogram to the time-series plots. The model curve appears only when
 fit results for Po‑210 are available.
 
@@ -365,7 +365,7 @@ The same values are used in the `time_fit` routine itself, so changing
 them to the radon half-life (~3.8 days) to match the slowly varying
 radon activity.
 
-`sig_N0_Po214` and `sig_N0_Po218` set the uncertainty on the prior for the
+`sig_n0_po214` and `sig_n0_po218` set the uncertainty on the prior for the
 initial activity `N0` when no baseline range is provided.  Without a baseline,
 the fit applies a Gaussian prior `(0, sig_N0_{iso})` so `N0` may vary rather
 than being fixed to zero.  The default width is `1.0` if not specified in the
@@ -391,8 +391,8 @@ Example snippet:
     "hl_po214": [328320, 0.0],
     "hl_po218": [328320, 0.0],
     "hl_po210": [11923200, 0.0],
-    "sig_N0_Po214": 1.0,
-    "sig_N0_Po218": 1.0
+    "sig_n0_po214": 1.0,
+    "sig_n0_po218": 1.0
 }
 ```
 
