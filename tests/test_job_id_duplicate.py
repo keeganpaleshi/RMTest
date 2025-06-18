@@ -45,7 +45,8 @@ def test_duplicate_job_id_raises(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "apply_burst_filter", lambda df, cfg, mode="rate": (df, 0))
-    monkeypatch.setattr(analyze, "copy_config", lambda *a, **k: None)
+    # Use the real copy_config so that an existing job-id triggers an error
+    monkeypatch.setattr(analyze, "copy_config", analyze.copy_config)
 
     args = [
         "analyze.py",
