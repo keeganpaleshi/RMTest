@@ -8,7 +8,10 @@ import argparse
 from datetime import datetime, timezone
 from dateutil import parser as date_parser
 
-__all__ = ["to_native", "find_adc_bin_peaks", "cps_to_cpd", "cps_to_bq", "parse_time"]
+__all__ = ["to_native", "find_adc_bin_peaks", "cps_to_cpd", "cps_to_bq", "parse_time", "LITERS_PER_M3"]
+
+# Conversion factor from cubic meters to liters
+LITERS_PER_M3 = 1000.0
 
 try:
     import pandas as pd
@@ -116,13 +119,15 @@ def cps_to_bq(rate_cps, volume_liters=None):
     """Convert counts/s to activity in Bq.
 
     If ``volume_liters`` is provided, the result is returned as Bq/m^3
-    assuming ``volume_liters`` describes the detector volume.
+    assuming ``volume_liters`` describes the detector volume. Conversion
+    from liters to cubic meters uses :data:`LITERS_PER_M3`.
     """
 
     if volume_liters is None:
         return float(rate_cps)
 
-    volume_m3 = volume_liters / 1000.0
+    # Convert liters -> m^3 using the LITERS_PER_M3 factor
+    volume_m3 = volume_liters / LITERS_PER_M3
     if volume_m3 <= 0:
         raise ValueError("volume_liters must be positive")
     return float(rate_cps) / volume_m3
