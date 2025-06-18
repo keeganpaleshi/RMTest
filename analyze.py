@@ -865,17 +865,7 @@ def main():
         if noise_level is not None:
             baseline_info["noise_level"] = float(noise_level)
 
-        # Record Po-210 and optional noise counts in baseline_counts
-        win_p210 = cfg.get("time_fit", {}).get("window_Po210")
-        if win_p210 is not None:
-            lo_p210, hi_p210 = win_p210
-            probs_p210 = window_prob(
-                base_events["energy_MeV"].values,
-                base_events["denergy_MeV"].values,
-                lo_p210,
-                hi_p210,
-            )
-            baseline_counts["Po210"] = float(np.sum(probs_p210))
+        # Record noise counts in ``baseline_counts``
         if "mask_noise" in locals():
             baseline_counts["noise"] = int(np.sum(mask_noise))
 
