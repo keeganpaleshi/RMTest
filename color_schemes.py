@@ -34,15 +34,22 @@ COLOR_SCHEMES = {
     },
 }
 
+__all__ = ["COLOR_SCHEMES", "apply_palette"]
+
 
 def apply_palette(name: str = "default") -> None:
-    """Apply the given palette to ``matplotlib``.
+    """Apply the given palette globally in ``matplotlib``.
 
     Parameters
     ----------
-    name:
+    name : str, optional
         Name of the palette to apply. If the palette does not exist the
         ``default`` palette is used.
+
+    Notes
+    -----
+    This updates ``plt.rcParams['axes.prop_cycle']`` so subsequent plots
+    cycle through the colors in the chosen palette.
     """
 
     from cycler import cycler
