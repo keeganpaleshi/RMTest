@@ -107,6 +107,8 @@ found to be non-positive definite.
 
 ## Configuration
 
+The parser is case sensitive, so all keys in `config.json` should be lowercase. Mixed-case names from older files remain supported for backward compatibility but are deprecated.
+
 `nominal_adc` under the `calibration` section sets the expected raw ADC
 centroids for Po‑210, Po‑218 and Po‑214 when using automatic calibration.
 If omitted, defaults of `{"Po210": 1250, "Po218": 1400, "Po214": 1800}`
