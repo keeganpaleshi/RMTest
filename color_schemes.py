@@ -33,3 +33,23 @@ COLOR_SCHEMES = {
         "hist": "lightgray",
     },
 }
+
+
+def apply_palette(name: str = "default") -> None:
+    """Apply the given palette to ``matplotlib``.
+
+    Parameters
+    ----------
+    name:
+        Name of the palette to apply. If the palette does not exist the
+        ``default`` palette is used.
+    """
+
+    from cycler import cycler
+    from matplotlib import pyplot as plt
+    from matplotlib.colors import to_hex
+
+    palette = COLOR_SCHEMES.get(name, COLOR_SCHEMES["default"])
+    colors = [to_hex(c) for c in palette.values()]
+    plt.rcParams["axes.prop_cycle"] = cycler(color=colors)
+
