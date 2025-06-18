@@ -273,12 +273,12 @@ def parse_args():
     p.add_argument(
         "--hl-po214",
         type=float,
-        help="Half-life to use for Po-214 in seconds. Providing this option overrides `time_fit.hl_Po214` in config.json",
+        help="Half-life to use for Po-214 in seconds. Providing this option overrides `time_fit.hl_po214` in config.json",
     )
     p.add_argument(
         "--hl-po218",
         type=float,
-        help="Half-life to use for Po-218 in seconds. Providing this option overrides `time_fit.hl_Po218` in config.json",
+        help="Half-life to use for Po-218 in seconds. Providing this option overrides `time_fit.hl_po218` in config.json",
     )
     p.add_argument(
         "--debug",
@@ -474,20 +474,20 @@ def main():
     if args.hl_po214 is not None:
         tf = cfg.setdefault("time_fit", {})
         sig = 0.0
-        current = tf.get("hl_Po214")
+        current = tf.get("hl_po214")
         if isinstance(current, list) and len(current) > 1:
             sig = current[1]
-        _log_override("time_fit", "hl_Po214", [float(args.hl_po214), sig])
-        tf["hl_Po214"] = [float(args.hl_po214), sig]
+        _log_override("time_fit", "hl_po214", [float(args.hl_po214), sig])
+        tf["hl_po214"] = [float(args.hl_po214), sig]
 
     if args.hl_po218 is not None:
         tf = cfg.setdefault("time_fit", {})
         sig = 0.0
-        current = tf.get("hl_Po218")
+        current = tf.get("hl_po218")
         if isinstance(current, list) and len(current) > 1:
             sig = current[1]
-        _log_override("time_fit", "hl_Po218", [float(args.hl_po218), sig])
-        tf["hl_Po218"] = [float(args.hl_po218), sig]
+        _log_override("time_fit", "hl_po218", [float(args.hl_po218), sig])
+        tf["hl_po218"] = [float(args.hl_po218), sig]
 
 
     if args.time_bin_mode:
@@ -1219,7 +1219,7 @@ def main():
         }
 
     # Also extract Po-210 events for plotting if a window is provided
-    win_p210 = cfg.get("time_fit", {}).get("window_Po210")
+    win_p210 = cfg.get("time_fit", {}).get("window_po210")
     if win_p210 is not None:
         lo, hi = win_p210
         mask210 = (
@@ -1499,7 +1499,7 @@ def main():
             dN0 = fit.get("dN0_Po214", 0.0)
             default_const = cfg.get("nuclide_constants", {})
             default_hl = default_const.get("Po210", PO210).half_life_s
-            hl = cfg.get("time_fit", {}).get("hl_Po214", [default_hl])[0]
+            hl = cfg.get("time_fit", {}).get("hl_po214", [default_hl])[0]
             cov = _cov_entry(fit_result, "E_Po214", "N0_Po214")
             delta214, err_delta214 = radon_delta(
                 t_start_rel,
@@ -1522,7 +1522,7 @@ def main():
             dN0 = fit.get("dN0_Po218", 0.0)
             default_const = cfg.get("nuclide_constants", {})
             default_hl = default_const.get("Po210", PO210).half_life_s
-            hl = cfg.get("time_fit", {}).get("hl_Po218", [default_hl])[0]
+            hl = cfg.get("time_fit", {}).get("hl_po218", [default_hl])[0]
             cov = _cov_entry(fit_result, "E_Po218", "N0_Po218")
             delta218, err_delta218 = radon_delta(
                 t_start_rel,
@@ -1698,7 +1698,7 @@ def main():
             dN0 = fit.get("dN0_Po214", 0.0)
             default_const = cfg.get("nuclide_constants", {})
             default_hl = default_const.get("Po210", PO210).half_life_s
-            hl = cfg.get("time_fit", {}).get("hl_Po214", [default_hl])[0]
+            hl = cfg.get("time_fit", {}).get("hl_po214", [default_hl])[0]
             cov = _cov_entry(fit_result, "E_Po214", "N0_Po214")
             A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
             plot_radon_activity(
@@ -1719,7 +1719,7 @@ def main():
             dN0 = fit.get("dN0_Po218", 0.0)
             default_const = cfg.get("nuclide_constants", {})
             default_hl = default_const.get("Po210", PO210).half_life_s
-            hl = cfg.get("time_fit", {}).get("hl_Po218", [default_hl])[0]
+            hl = cfg.get("time_fit", {}).get("hl_po218", [default_hl])[0]
             cov = _cov_entry(fit_result, "E_Po218", "N0_Po218")
             A218, dA218 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
 
@@ -1770,7 +1770,7 @@ def main():
                 dN0214 = fit.get("dN0_Po214", 0.0)
                 default_const = cfg.get("nuclide_constants", {})
                 default_hl = default_const.get("Po210", PO210).half_life_s
-                hl214 = cfg.get("time_fit", {}).get("hl_Po214", [default_hl])[0]
+                hl214 = cfg.get("time_fit", {}).get("hl_po214", [default_hl])[0]
                 cov214 = _cov_entry(fit_result, "E_Po214", "N0_Po214")
                 A214_tr, _ = radon_activity_curve(
                     rel_trend, E214, dE214, N0214, dN0214, hl214, cov214
@@ -1785,7 +1785,7 @@ def main():
                 dN0218 = fit.get("dN0_Po218", 0.0)
                 default_const = cfg.get("nuclide_constants", {})
                 default_hl = default_const.get("Po210", PO210).half_life_s
-                hl218 = cfg.get("time_fit", {}).get("hl_Po218", [default_hl])[0]
+                hl218 = cfg.get("time_fit", {}).get("hl_po218", [default_hl])[0]
                 cov218 = _cov_entry(fit_result, "E_Po218", "N0_Po218")
                 A218_tr, _ = radon_activity_curve(
                     rel_trend, E218, dE218, N0218, dN0218, hl218, cov218
