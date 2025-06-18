@@ -20,6 +20,8 @@ This repository provides a complete pipeline to analyze electrostatic radon moni
 
 ## Installation
 
+This project requires **Python 3.11** or newer.
+
 ```bash
 pip install -r requirements.txt
 ```
