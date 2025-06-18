@@ -386,7 +386,8 @@ def plot_spectrum(
     bins : int, optional
         Number of bins if ``bin_edges`` is not supplied.
     bin_edges : array-like, optional
-        Explicit bin edges in MeV.  Overrides ``bins``.
+        Explicit, strictly increasing bin edges in MeV.  Non-uniform widths
+        are supported and override ``bins``.
     config : dict, optional
         Plotting configuration dictionary.
     """

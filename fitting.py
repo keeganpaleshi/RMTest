@@ -101,8 +101,9 @@ def fit_spectrum(
         energies.  Ignored if ``bin_edges`` is provided.  If both ``bins``
         and ``bin_edges`` are ``None``, the Freedman--Diaconis rule is used.
     bin_edges : array-like, optional
-        Explicit bin edges for histogramming the energies.  Takes precedence
-        over ``bins`` when given.
+        Explicit, strictly increasing bin edges for histogramming the
+        energies. Non-uniform spacing is supported and takes precedence over
+        ``bins`` when given.
     bounds : dict, optional
         Mapping of parameter name to ``(lower, upper)`` tuples overriding the
         default ±5σ range derived from the priors.  ``None`` values disable a
