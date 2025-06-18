@@ -20,8 +20,8 @@ def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
         },
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [7.5, 8.0],
-            "window_Po218": None,
+            "window_po214": [7.5, 8.0],
+            "window_po218": None,
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
@@ -79,7 +79,7 @@ def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
     analyze.main()
 
     assert received["config"]["plot_time_binning_mode"] == "fd"
-    assert received["config"]["window_Po214"] == [7.5, 8.0]
+    assert received["config"]["window_po214"] == [7.5, 8.0]
     assert received["config"]["overlay_isotopes"] is True
 
 
@@ -94,8 +94,8 @@ def test_analysis_start_time_applied(tmp_path, monkeypatch):
         },
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [7.5, 8.0],
-            "window_Po218": None,
+            "window_po214": [7.5, 8.0],
+            "window_po218": None,
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
@@ -161,8 +161,8 @@ def test_job_id_overrides_results_folder(tmp_path, monkeypatch):
         },
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [7.5, 8.0],
-            "window_Po218": None,
+            "window_po214": [7.5, 8.0],
+            "window_po218": None,
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
@@ -227,7 +227,7 @@ def test_efficiency_json_cli(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [7.5, 8.0],
+            "window_po214": [7.5, 8.0],
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
@@ -287,7 +287,7 @@ def test_systematics_json_cli(tmp_path, monkeypatch):
         "pipeline": {"log_level": "INFO"},
         "calibration": {},
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
-        "time_fit": {"do_time_fit": True, "window_Po214": [7.4,7.9], "hl_Po214": [1.0,0.0], "eff_Po214": [1.0,0.0], "flags": {}},
+        "time_fit": {"do_time_fit": True, "window_po214": [7.4,7.9], "hl_Po214": [1.0,0.0], "eff_Po214": [1.0,0.0], "flags": {}},
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
@@ -344,7 +344,7 @@ def test_time_bin_cli(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [7.5, 8.0],
+            "window_po214": [7.5, 8.0],
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
@@ -447,9 +447,9 @@ def test_po210_time_series_plot_generated(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [7.5, 8.0],
-            "window_Po218": None,
-            "window_Po210": [5.2, 5.4],
+            "window_po214": [7.5, 8.0],
+            "window_po218": None,
+            "window_po210": [5.2, 5.4],
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "eff_Po210": [1.0, 0.0],
@@ -835,7 +835,7 @@ def test_settle_s_cli(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [0.0, 20.0],
+            "window_po214": [0.0, 20.0],
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
@@ -947,7 +947,7 @@ def test_analysis_end_time_cli(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [0.0, 20.0],
+            "window_po214": [0.0, 20.0],
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
@@ -1006,7 +1006,7 @@ def test_spike_end_time_cli(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [0.0, 20.0],
+            "window_po214": [0.0, 20.0],
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
@@ -1065,7 +1065,7 @@ def test_spike_period_cli(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [0.0, 20.0],
+            "window_po214": [0.0, 20.0],
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
@@ -1771,7 +1771,7 @@ def test_spike_periods_null_config(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [0.0, 20.0],
+            "window_po214": [0.0, 20.0],
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
@@ -1828,8 +1828,8 @@ def test_hl_po214_cli_overrides(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [0.0, 20.0],
-            "window_Po218": [0.0, 20.0],
+            "window_po214": [0.0, 20.0],
+            "window_po218": [0.0, 20.0],
             "hl_Po214": [1.0, 0.0],
             "hl_Po218": [2.0, 0.0],
             "eff_Po214": [1.0, 0.0],
@@ -1889,7 +1889,7 @@ def test_hl_po210_default_used(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": False,
-            "window_Po210": [5.2, 5.4],
+            "window_po210": [5.2, 5.4],
             "flags": {},
         },
         "systematics": {"enable": False},

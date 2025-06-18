@@ -18,7 +18,7 @@ def test_noise_cutoff_filters_events(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [0, 20],
+            "window_po214": [0, 20],
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
@@ -86,7 +86,7 @@ def test_invalid_noise_cutoff_skips_cut(tmp_path, monkeypatch, caplog):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [0, 20],
+            "window_po214": [0, 20],
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},

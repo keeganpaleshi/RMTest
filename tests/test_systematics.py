@@ -115,7 +115,7 @@ def test_analyze_systematics_skip_unknown(tmp_path, monkeypatch):
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
             "do_time_fit": True,
-            "window_Po214": [7.0, 8.0],
+            "window_po214": [7.0, 8.0],
             "hl_Po214": [1.0, 0.0],
             "eff_Po214": [1.0, 0.0],
             "flags": {},
