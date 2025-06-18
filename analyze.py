@@ -1648,8 +1648,10 @@ def main(argv=None):
     if weights is not None:
         summary["efficiency"]["blue_weights"] = list(weights)
 
-    out_dir = write_summary(args.output_dir, summary, args.job_id or now_str)
-    copy_config(out_dir, cfg)
+    ts_id = args.job_id or now_str
+    results_dir = args.output_dir / ts_id
+    copy_config(results_dir, cfg)
+    out_dir = write_summary(args.output_dir, summary, ts_id)
 
     # Generate plots now that the output directory exists
     if spec_plot_data:

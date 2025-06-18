@@ -148,15 +148,15 @@ def test_write_summary_and_copy_config(tmp_path):
     summary = {"a": 1, "b": 2}
     outdir = tmp_path / "out"
     ts = "19700101T000000Z"
-    results = write_summary(outdir, summary, ts)
-    assert (Path(results) / "summary.json").exists()
-    # Create dummy config and copy
     cfg = {"test": 1}
     cp = tmp_path / "cfg.json"
     with open(cp, "w") as f:
         json.dump(cfg, f)
-    dest = copy_config(results, cp)
+    results_dir = outdir / ts
+    dest = copy_config(results_dir, cp)
     assert Path(dest).exists()
+    results = write_summary(outdir, summary, ts)
+    assert (Path(results) / "summary.json").exists()
 
 
 def test_write_summary_with_nullable_integers(tmp_path):
