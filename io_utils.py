@@ -222,15 +222,16 @@ def load_events(csv_path):
     Read event CSV into a DataFrame with columns:
        ['fUniqueID','fBits','timestamp','adc','fchannel']
     Column aliases like ``time`` or ``adc_ch`` are automatically renamed to
-    their canonical form.  Ensures ``timestamp`` is float seconds and ``adc`` is
-    an integer, sorts the result by ``timestamp`` and returns the DataFrame.
+    their canonical form.  Ensures ``timestamp`` and ``adc`` are returned as
+    floating point numbers, sorts the result by ``timestamp`` and returns the
+    DataFrame.
     """
     path = Path(csv_path)
     if not path.is_file():
         raise FileNotFoundError(f"Input CSV not found: {csv_path}")
 
-    # Read CSV; assume no header comments, first row is header
-    df = pd.read_csv(path)
+    # Read CSV strictly as strings to avoid type inference surprises
+    df = pd.read_csv(path, sep=",", engine="c", dtype=str)
 
     # Allow some common alternate column names
     rename = {
@@ -249,12 +250,14 @@ def load_events(csv_path):
     if missing:
         raise KeyError(f"Input CSV is missing required columns: {missing}")
 
-    # Convert columns to numeric
+    # Convert numeric columns explicitly
     df["timestamp"] = pd.to_numeric(df["timestamp"], errors="coerce")
     df["adc"] = pd.to_numeric(df["adc"], errors="coerce")
 
-    # Drop rows with non-finite timestamp or adc values
     start_len = len(df)
+
+    # Drop rows with invalid values that became NaN
+    df = df.dropna(subset=["timestamp", "adc"])
     mask = np.isfinite(df["timestamp"]) & np.isfinite(df["adc"])
     df = df[mask]
 
@@ -265,7 +268,7 @@ def load_events(csv_path):
 
     # Convert types
     df["timestamp"] = df["timestamp"].astype(float)
-    df["adc"] = df["adc"].astype(int)
+    df["adc"] = df["adc"].astype(float)
 
     # Sort by timestamp
     df = df.sort_values("timestamp").reset_index(drop=True)
