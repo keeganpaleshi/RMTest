@@ -765,7 +765,7 @@ def main():
     # 3. Energy calibration
     # ────────────────────────────────────────────────────────────
     adc_vals = events["adc"].values
-
+    calibration_valid = True
     try:
         if cfg.get("calibration", {}).get("method", "two-point") == "auto":
             # Auto‐cal using Freedman‐Diaconis histogram + peak detection
@@ -781,8 +781,9 @@ def main():
         else:
             # Two‐point calibration as given in config
             cal_params = derive_calibration_constants(adc_vals, config=cfg)
-    except RuntimeError as e:
-        print(f"WARNING: calibration failed – {e}. Using defaults.")
+    except Exception:
+        logging.exception("calibration failed – using defaults")
+        calibration_valid = False
         cal_params = {"a": (0.005, 0.001), "c": (0.02, 0.005), "sigma_E": (0.3, 0.1)}
 
     # Save “a, c, sigma_E” so we can reconstruct energies
@@ -1578,6 +1579,7 @@ def main():
         "timestamp": now_str,
         "config_used": args.config.name,
         "calibration": cal_params,
+        "calibration_valid": calibration_valid,
         "spectral_fit": spec_dict,
         "time_fit": time_fit_serializable,
         "systematics": systematics_results,
