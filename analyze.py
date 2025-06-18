@@ -158,11 +158,11 @@ _spike_eff_cache = {}
 def get_spike_efficiency(spike_cfg):
     """Return spike efficiency using :func:`calc_spike_efficiency` with caching."""
 
-    key = (
-        spike_cfg.get("counts"),
-        spike_cfg.get("activity_bq"),
-        spike_cfg.get("live_time_s"),
-    )
+    counts = spike_cfg.get("counts")
+    activity = spike_cfg.get("activity_bq")
+    live_time = spike_cfg.get("live_time_s")
+
+    key = (counts, activity, live_time)
     if key not in _spike_eff_cache:
         from efficiency import calc_spike_efficiency
 
