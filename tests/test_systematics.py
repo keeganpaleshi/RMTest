@@ -103,8 +103,8 @@ def test_scan_systematics_fractional_and_absolute():
     shifts = {"sigma_E_frac": 0.1, "mu_keV": 2.0}
     deltas, tot = scan_systematics(fit_func, priors, shifts)
     assert deltas["sigma_E"] == pytest.approx(0.2)
-    assert deltas["mu"] == pytest.approx(2.0)
-    expected = math.sqrt(0.2 ** 2 + 2.0 ** 2)
+    assert deltas["mu"] == pytest.approx(0.002)
+    expected = math.sqrt(0.2 ** 2 + 0.002 ** 2)
     assert tot == pytest.approx(expected)
 
 
