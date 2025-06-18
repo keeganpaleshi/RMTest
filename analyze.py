@@ -1102,7 +1102,7 @@ def main():
     time_plot_data = {}
     if cfg.get("time_fit", {}).get("do_time_fit", False):
         for iso in ("Po218", "Po214"):
-            win_key = f"window_{iso}"
+            win_key = f"window_{iso.lower()}"
 
             # Missing energy window for this isotope -> skip gracefully
             win_range = cfg.get("time_fit", {}).get(win_key)
@@ -1135,8 +1135,8 @@ def main():
         if hl_key in cfg["time_fit"]:
             T12, T12sig = cfg["time_fit"][hl_key]
             priors_time["tau"] = (T12 / np.log(2), T12sig / np.log(2))
-        elif f"hl_{iso}" in cfg["time_fit"]:
-            T12, T12sig = cfg["time_fit"][f"hl_{iso}"]
+        elif f"hl_{iso.lower()}" in cfg["time_fit"]:
+            T12, T12sig = cfg["time_fit"][f"hl_{iso.lower()}"]
             priors_time["tau"] = (T12 / np.log(2), T12sig / np.log(2))
 
         # Background‐rate prior
@@ -1186,7 +1186,7 @@ def main():
         fit_cfg = {
             "isotopes": {
                 iso: {
-                    "half_life_s": cfg["time_fit"].get(f"hl_{iso.lower()}", cfg["time_fit"].get(f"hl_{iso}", [np.nan]))[0],
+                    "half_life_s": cfg["time_fit"].get(f"hl_{iso.lower()}", [np.nan])[0],
                     "efficiency": cfg["time_fit"][f"eff_{iso}"][0],
                 }
             },
@@ -1233,7 +1233,7 @@ def main():
         }
 
     # Also extract Po-210 events for plotting if a window is provided
-    win_p210 = cfg.get("time_fit", {}).get("window_Po210")
+    win_p210 = cfg.get("time_fit", {}).get("window_po210")
     if win_p210 is not None:
         lo, hi = win_p210
         mask210 = (
@@ -1268,7 +1268,7 @@ def main():
 
             # Build a wrapper to re‐run fit_time_series with modified priors
             def fit_wrapper(priors_mod):
-                win_range = cfg.get("time_fit", {}).get(f"window_{iso}")
+                win_range = cfg.get("time_fit", {}).get(f"window_{iso.lower()}")
                 if win_range is None:
                     raise ValueError(
                         f"Missing window for {iso} during systematics scan"
@@ -1286,7 +1286,7 @@ def main():
                 cfg_fit = {
                     "isotopes": {
                         iso: {
-                            "half_life_s": cfg["time_fit"].get(f"hl_{iso.lower()}", cfg["time_fit"].get(f"hl_{iso}", [np.nan]))[0],
+                            "half_life_s": cfg["time_fit"].get(f"hl_{iso.lower()}", [np.nan])[0],
                             "efficiency": priors_mod["eff"][0],
                         }
                     },
@@ -1649,7 +1649,7 @@ def main():
             if not overlay:
                 for other_iso in ("Po214", "Po218", "Po210"):
                     if other_iso != iso:
-                        plot_cfg[f"window_{other_iso}"] = None
+                        plot_cfg[f"window_{other_iso.lower()}"] = None
                 ts_times = pdata["events_times"]
                 ts_energy = pdata["events_energy"]
                 fit_obj = time_fit_results.get(iso)
