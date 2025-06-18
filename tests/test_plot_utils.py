@@ -11,7 +11,7 @@ from plot_utils import plot_time_series, plot_spectrum, extract_time_series
 def basic_config():
     return {
         "window_po214": [7.5, 8.0],
-        "eff_Po214": [1.0],
+        "eff_po214": [1.0],
         "window_po218": None,
         "time_bin_mode": "fixed",
         "time_bin_s": 1.0,
@@ -102,7 +102,7 @@ def test_plot_time_series_custom_half_life(tmp_path, monkeypatch):
     times = np.array([1000.1, 1000.2, 1001.1, 1001.8])
     energies = np.array([7.6, 7.7, 7.8, 7.7])
     cfg = basic_config()
-    cfg["hl_Po214"] = [2.0]
+    cfg["hl_po214"] = [2.0]
 
     captured = {}
 
@@ -138,8 +138,8 @@ def test_plot_time_series_custom_half_life_po218(tmp_path, monkeypatch):
     cfg = basic_config()
     cfg.update({
         "window_po218": [5.8, 6.3],
-        "eff_Po218": [1.0],
-        "hl_Po218": [4.0],
+        "eff_po218": [1.0],
+        "hl_po218": [4.0],
     })
 
     captured = {}
@@ -174,8 +174,8 @@ def test_plot_time_series_time_fit_half_lives(tmp_path, monkeypatch):
     cfg = basic_config()
     cfg.update({
         "window_po218": [5.8, 6.3],
-        "eff_Po218": [1.0],
-        "time_fit": {"hl_Po214": [2.0], "hl_Po218": [4.0]},
+        "eff_po218": [1.0],
+        "time_fit": {"hl_po214": [2.0], "hl_po218": [4.0]},
     })
 
     captured = {}
@@ -212,7 +212,7 @@ def test_plot_time_series_time_fit_half_lives(tmp_path, monkeypatch):
 
 def test_plot_time_series_invalid_half_life_po214(tmp_path):
     cfg = basic_config()
-    cfg["hl_Po214"] = [0.0]
+    cfg["hl_po214"] = [0.0]
     with pytest.raises(ValueError):
         plot_time_series(
             np.array([1000.1]),
@@ -227,7 +227,7 @@ def test_plot_time_series_invalid_half_life_po214(tmp_path):
 
 def test_plot_time_series_invalid_half_life_po218(tmp_path):
     cfg = basic_config()
-    cfg.update({"window_po218": [5.8, 6.3], "eff_Po218": [1.0], "hl_Po218": [-2.0]})
+    cfg.update({"window_po218": [5.8, 6.3], "eff_po218": [1.0], "hl_po218": [-2.0]})
     with pytest.raises(ValueError):
         plot_time_series(
             np.array([1000.1]),
@@ -277,7 +277,7 @@ def test_plot_time_series_po210_no_model(tmp_path, monkeypatch):
     times = np.array([1000.1, 1000.2])
     energies = np.array([5.3, 5.25])
     cfg = basic_config()
-    cfg.update({"window_po210": [5.2, 5.4], "eff_Po210": [1.0]})
+    cfg.update({"window_po210": [5.2, 5.4], "eff_po210": [1.0]})
 
     labels = []
 
@@ -308,7 +308,7 @@ def test_plot_time_series_po210_default_half_life(tmp_path, monkeypatch):
     times = np.array([1000.1, 1001.1, 1001.9])
     energies = np.array([5.3, 5.3, 5.3])
     cfg = basic_config()
-    cfg.update({"window_po210": [5.2, 5.4], "eff_Po210": [1.0]})
+    cfg.update({"window_po210": [5.2, 5.4], "eff_po210": [1.0]})
 
     captured = {}
 

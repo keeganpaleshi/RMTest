@@ -20,8 +20,8 @@ def test_time_window_filters_events(tmp_path, monkeypatch):
         "time_fit": {
             "do_time_fit": True,
             "window_po214": [7, 9],
-            "hl_Po214": [1.0, 0.0],
-            "eff_Po214": [1.0, 0.0],
+            "hl_po214": [1.0, 0.0],
+            "eff_po214": [1.0, 0.0],
             "flags": {},
         },
         "systematics": {"enable": False},
@@ -152,8 +152,8 @@ def test_time_window_filters_events_config(tmp_path, monkeypatch):
         "time_fit": {
             "do_time_fit": True,
             "window_po214": [7, 9],
-            "hl_Po214": [1.0, 0.0],
-            "eff_Po214": [1.0, 0.0],
+            "hl_po214": [1.0, 0.0],
+            "eff_po214": [1.0, 0.0],
             "flags": {},
         },
         "systematics": {"enable": False},
@@ -231,8 +231,8 @@ def test_run_period_filters_events(tmp_path, monkeypatch):
         "time_fit": {
             "do_time_fit": True,
             "window_po214": [7, 9],
-            "hl_Po214": [1.0, 0.0],
-            "eff_Po214": [1.0, 0.0],
+            "hl_po214": [1.0, 0.0],
+            "eff_po214": [1.0, 0.0],
             "flags": {},
         },
         "systematics": {"enable": False},
@@ -318,8 +318,8 @@ def test_baseline_range_iso_strings(tmp_path, monkeypatch, start, end):
         "time_fit": {
             "do_time_fit": True,
             "window_po214": [7, 9],
-            "hl_Po214": [1.0, 0.0],
-            "eff_Po214": [1.0, 0.0],
+            "hl_po214": [1.0, 0.0],
+            "eff_po214": [1.0, 0.0],
             "flags": {},
         },
         "systematics": {"enable": False},
