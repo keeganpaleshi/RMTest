@@ -16,6 +16,7 @@ def estimate_linear_background(energies, centroids, peak_width=0.3, bins="fd"):
         Half-width around each centroid to exclude from the fit.
     bins : int or sequence or str, optional
         Histogram bin specification passed to ``numpy.histogram``.
+        The fit is weighted by ``sqrt(counts)`` assuming Poisson statistics.
 
     Returns
     -------
@@ -29,6 +30,7 @@ def estimate_linear_background(energies, centroids, peak_width=0.3, bins="fd"):
 
     hist, edges = np.histogram(e, bins=bins)
     centers = 0.5 * (edges[:-1] + edges[1:])
+    weights = np.sqrt(np.clip(hist, 1, None))
     mask = np.ones_like(centers, dtype=bool)
     for mu in centroids.values():
         mask &= ~((centers >= mu - peak_width) & (centers <= mu + peak_width))
@@ -36,6 +38,6 @@ def estimate_linear_background(energies, centroids, peak_width=0.3, bins="fd"):
     if mask.sum() < 2:
         return 0.0, 0.0
 
-    coeffs = np.polyfit(centers[mask], hist[mask], 1)
+    coeffs = np.polyfit(centers[mask], hist[mask], 1, w=weights[mask])
     b1, b0 = coeffs
     return float(b0), float(b1)
