@@ -6,6 +6,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from constants import PO210
 from plot_utils import plot_time_series, plot_spectrum, extract_time_series
+from fitting import fit_spectrum
 
 
 def basic_config():
@@ -96,6 +97,55 @@ def test_plot_spectrum_po210_xlim(tmp_path):
     cfg = {"window_po210": [5.2, 5.4]}
     ax = plot_spectrum(energies, config=cfg, out_png=str(tmp_path / "spec2.png"))
     assert ax.get_xlim() == (5.2, 5.4)
+
+
+def test_plot_spectrum_irregular_edges_residuals(tmp_path, monkeypatch):
+    rng = np.random.default_rng(42)
+    edges = np.array([0.0, 1.0, 3.0, 4.0])
+    energies = np.concatenate(
+        [
+            rng.uniform(0.0, 1.0, 50),
+            rng.uniform(1.0, 3.0, 50),
+            rng.uniform(3.0, 4.0, 50),
+        ]
+    )
+
+    priors = {
+        "sigma0": (0.05, 0.0),
+        "F": (0.0, 0.0),
+        "mu_Po210": (1.0, 0.0),
+        "S_Po210": (0.0, 0.0),
+        "mu_Po218": (2.0, 0.0),
+        "S_Po218": (0.0, 0.0),
+        "mu_Po214": (3.0, 0.0),
+        "S_Po214": (0.0, 0.0),
+        "b0": (50.0, 5.0),
+        "b1": (0.0, 0.0),
+    }
+
+    fit_vals = fit_spectrum(energies, priors, bin_edges=edges).params
+
+    captured = []
+
+    def fake_bar(self, x, height, *args, **kwargs):
+        captured.append(np.asarray(height))
+        return type("obj", (), {})()
+
+    import matplotlib.axes
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "bar", fake_bar)
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    plot_spectrum(energies, fit_vals=fit_vals, bin_edges=edges, out_png=str(tmp_path / "spec3.png"))
+
+    hist, _ = np.histogram(energies, bins=edges)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    width = edges[1] - edges[0]
+    model_counts = (fit_vals["b0"] + fit_vals["b1"] * centers) * width
+    expected = hist - model_counts
+
+    residuals = captured[1]
+    assert np.allclose(residuals, expected)
 
 
 def test_plot_time_series_custom_half_life(tmp_path, monkeypatch):

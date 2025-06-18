@@ -181,6 +181,37 @@ def test_fit_spectrum_custom_bins_and_edges():
     assert "F" in out_edges.params
 
 
+def test_fit_spectrum_irregular_edges_background_only():
+    """Background-only fit should recover constant rate with uneven bins."""
+    rng = np.random.default_rng(42)
+    edges = np.array([0.0, 1.0, 3.0, 4.0])
+
+    # 50 counts in each bin so the true background rate per bin is constant
+    energies = np.concatenate(
+        [
+            rng.uniform(0.0, 1.0, 50),
+            rng.uniform(1.0, 3.0, 50),
+            rng.uniform(3.0, 4.0, 50),
+        ]
+    )
+
+    priors = {
+        "sigma0": (0.05, 0.0),
+        "F": (0.0, 0.0),
+        "mu_Po210": (1.0, 0.0),
+        "S_Po210": (0.0, 0.0),
+        "mu_Po218": (2.0, 0.0),
+        "S_Po218": (0.0, 0.0),
+        "mu_Po214": (3.0, 0.0),
+        "S_Po214": (0.0, 0.0),
+        "b0": (50.0, 5.0),
+        "b1": (0.0, 0.0),
+    }
+
+    out = fit_spectrum(energies, priors, bin_edges=edges)
+    assert out.params["b0"] == pytest.approx(50.0, rel=0.05)
+
+
 def test_fit_spectrum_custom_bounds():
     """User-provided parameter bounds should constrain the fit."""
     rng = np.random.default_rng(3)
