@@ -17,4 +17,4 @@ jobs:
         run: |
           bash scripts/setup_tests.sh
       - name: Run tests
-        run: pytest -v
+        run: pytest -q
