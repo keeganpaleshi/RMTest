@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 import sys
+import logging
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -151,8 +152,8 @@ def test_calibration_sanity_check_triggers_error():
         derive_calibration_constants(adc, cfg)
 
 
-def test_calibrate_run_quadratic_option():
-    """calibrate_run should support optional quadratic calibration."""
+def test_calibrate_run_quadratic_option(caplog):
+    """calibrate_run should warn and fall back to linear when quadratic requested."""
     rng = np.random.default_rng(3)
     adc = np.concatenate([
         rng.normal(1000, 2, 300),
@@ -175,7 +176,9 @@ def test_calibrate_run_quadratic_option():
         }
     }
 
-    out = derive_calibration_constants(adc, cfg)
+    with caplog.at_level(logging.WARNING):
+        out = derive_calibration_constants(adc, cfg)
+    assert "quadratic calibration is currently disabled" in caplog.text.lower()
 
     a, _ = out["a"]
     a2, _ = out["a2"]
@@ -183,13 +186,12 @@ def test_calibrate_run_quadratic_option():
 
     adc_test = np.array([1000, 1500, 2000])
     energies = apply_calibration(adc_test, a, c, quadratic_coeff=a2)
-    expected = np.array([
-        DEFAULT_KNOWN_ENERGIES["Po210"],
-        DEFAULT_KNOWN_ENERGIES["Po218"],
-        DEFAULT_KNOWN_ENERGIES["Po214"],
-    ])
-
-    assert np.allclose(energies, expected, rtol=1e-3)
+    assert np.allclose(
+        energies[[0, 2]],
+        [DEFAULT_KNOWN_ENERGIES["Po210"], DEFAULT_KNOWN_ENERGIES["Po214"]],
+        rtol=1e-3,
+    )
+    assert a2 == 0.0
 
 
 def test_energy_uncertainty_clipping():

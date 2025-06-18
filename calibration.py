@@ -2,6 +2,7 @@ import numpy as np
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 from scipy.stats import exponnorm
+import logging
 from constants import (
     _TAU_MIN,
     DEFAULT_NOISE_CUTOFF,
@@ -221,7 +222,15 @@ def calibrate_run(adc_values, config, hist_bins=None):
     E214 = energies["Po214"]
     E218 = energies["Po218"]
 
-    quadratic = bool(config.get("calibration", {}).get("quadratic", False))
+    user_requested_quadratic = bool(
+        config.get("calibration", {}).get("quadratic", False)
+    )
+    if user_requested_quadratic:
+        logging.warning(
+            "Quadratic calibration is currently disabled. Using linear calibration instead."
+        )
+
+    quadratic = False
 
     if quadratic:
         # Solve for quadratic coefficients a2, a, c using all three peaks
