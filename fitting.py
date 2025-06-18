@@ -210,12 +210,16 @@ def fit_spectrum(
 
     iso_list = ["Po210", "Po218", "Po214"]
 
+    # Cache EMG tail evaluations keyed by isotope and parameter tuple
+    emg_cache: dict[tuple, np.ndarray] = {}
+
     def _model_density(x, *params):
         idx = 0
         sigma0 = params[idx]
         idx += 1
         F_val = params[idx]
         idx += 1
+        sigma_arr = np.sqrt(sigma0 ** 2 + F_val * x)
         y = np.zeros_like(x)
         for iso in iso_list:
             mu = params[idx]
@@ -225,14 +229,17 @@ def fit_spectrum(
             if use_emg[iso]:
                 tau = params[idx]
                 idx += 1
-                sigma = np.sqrt(sigma0 ** 2 + F_val * x)
-                with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
-                    y_emg = emg_left(x, mu, sigma, tau)
-                y_emg = np.nan_to_num(y_emg, nan=0.0, posinf=0.0, neginf=0.0)
+                key = (iso, mu, tau, sigma0, F_val)
+                if key in emg_cache:
+                    y_emg = emg_cache[key]
+                else:
+                    with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+                        y_emg = emg_left(x, mu, sigma_arr, tau)
+                    y_emg = np.nan_to_num(y_emg, nan=0.0, posinf=0.0, neginf=0.0)
+                    emg_cache[key] = y_emg
                 y += S * y_emg
             else:
-                sigma = np.sqrt(sigma0 ** 2 + F_val * x)
-                y += S * gaussian(x, mu, sigma)
+                y += S * gaussian(x, mu, sigma_arr)
         b0 = params[idx]
         b1 = params[idx + 1]
         return y + b0 + b1 * x

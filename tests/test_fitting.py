@@ -6,6 +6,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fitting import fit_time_series, fit_spectrum, _TAU_MIN
+from calibration import gaussian, emg_left
+import timeit
 
 
 def simulate_decay(E_true, eff, T, n_events=1000):
@@ -489,3 +491,70 @@ def test_fit_time_series_efficiency_zero_raises():
     }
     with pytest.raises(ValueError):
         fit_time_series(times_dict, 0.0, 10.0, cfg)
+
+
+def test_model_density_vectorised_speedup():
+    """Vectorised model evaluation should be significantly faster."""
+    rng = np.random.default_rng(123)
+    x = rng.normal(7.5, 0.2, 1_000_000)
+
+    iso_list = ["Po210", "Po218", "Po214"]
+    use_emg = {"Po210": False, "Po218": True, "Po214": False}
+    params = [0.05, 0.01,
+              5.3, 100.0, 6.0, 100.0, 2.0,
+              7.7, 100.0, 0.0, 0.0]
+
+    def model_density_slow(x, *pars):
+        idx = 0
+        sigma0 = pars[idx]; idx += 1
+        F_val = pars[idx]; idx += 1
+        y = np.zeros_like(x)
+        for iso in iso_list:
+            mu = pars[idx]; idx += 1
+            S = pars[idx]; idx += 1
+            if use_emg[iso]:
+                tau = pars[idx]; idx += 1
+                y_emg = np.empty_like(x)
+                for j, val in enumerate(x):
+                    sigma = np.sqrt(sigma0 ** 2 + F_val * val)
+                    y_emg[j] = emg_left(val, mu, sigma, tau)
+                y += S * y_emg
+            else:
+                y_g = np.empty_like(x)
+                for j, val in enumerate(x):
+                    sigma = np.sqrt(sigma0 ** 2 + F_val * val)
+                    y_g[j] = gaussian(val, mu, sigma)
+                y += S * y_g
+        b0 = pars[idx]
+        b1 = pars[idx + 1]
+        return y + b0 + b1 * x
+
+    emg_cache = {}
+
+    def model_density_fast(x, *pars):
+        idx = 0
+        sigma0 = pars[idx]; idx += 1
+        F_val = pars[idx]; idx += 1
+        sigma_arr = np.sqrt(sigma0 ** 2 + F_val * x)
+        y = np.zeros_like(x)
+        for iso in iso_list:
+            mu = pars[idx]; idx += 1
+            S = pars[idx]; idx += 1
+            if use_emg[iso]:
+                tau = pars[idx]; idx += 1
+                key = (iso, mu, tau, sigma0, F_val)
+                if key not in emg_cache:
+                    y_emg = emg_left(x, mu, sigma_arr, tau)
+                    emg_cache[key] = y_emg
+                else:
+                    y_emg = emg_cache[key]
+                y += S * y_emg
+            else:
+                y += S * gaussian(x, mu, sigma_arr)
+        b0 = pars[idx]
+        b1 = pars[idx + 1]
+        return y + b0 + b1 * x
+
+    slow = timeit.timeit(lambda: model_density_slow(x, *params), number=1)
+    fast = timeit.timeit(lambda: model_density_fast(x, *params), number=1)
+    assert slow / fast > 10.0
