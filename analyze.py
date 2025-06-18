@@ -593,15 +593,17 @@ def main(argv=None):
     # 2a. Pedestal / electronic-noise cut (integer ADC)
     # ───────────────────────────────────────────────
     noise_thr = cfg.get("calibration", {}).get("noise_cutoff")
+    noise_thr_val = None
     n_removed_noise = 0
     if noise_thr is not None:
         try:
-            thr_val = int(noise_thr)
+            noise_thr_val = int(noise_thr)
         except (ValueError, TypeError):
             logging.warning(f"Invalid noise_cutoff '{noise_thr}' - skipping noise cut")
+            noise_thr_val = None
         else:
             before = len(events)
-            events = events[events["adc"] > thr_val].reset_index(drop=True)
+            events = events[events["adc"] > noise_thr_val].reset_index(drop=True)
             n_removed_noise = before - len(events)
             logging.info(f"Noise cut removed {n_removed_noise} events")
 
@@ -897,6 +899,7 @@ def main(argv=None):
                 result = estimate_baseline_noise(
                     base_events["adc"].values,
                     peak_adc=peak_adc,
+                    pedestal_cut=noise_thr_val,
                     return_mask=True,
                 )
                 if isinstance(result, tuple) and len(result) == 3:
