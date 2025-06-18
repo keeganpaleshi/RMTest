@@ -536,6 +536,14 @@ pytest -v
 ```
 
 
+## Benchmarking
+
+Run the spectrum fitting benchmark to verify performance improvements:
+```bash
+python benchmarks/benchmark_sigma_vectorisation.py
+```
+The script asserts that the optimised implementation runs at least ten times faster than a naive unvectorised version.
+
 ## Hierarchical Analysis
 
 Use `hierarchical.py` to perform Bayesian hierarchical inference across multiple runs. The function `fit_hierarchical_runs` pools measurements of the half-life and calibration constants. It returns posterior means, standard deviations and 95% credible intervals for the global parameters. Running `analyze.py` with `--hierarchical-summary result.json` collects the half-life and calibration outputs from all `summary.json` files under the chosen output directory and writes the combined fit to `result.json`.
