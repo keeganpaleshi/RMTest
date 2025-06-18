@@ -9,9 +9,9 @@ from calibration import (
     apply_calibration,
     emg_left,
     gaussian,
-    DEFAULT_KNOWN_ENERGIES,
     derive_calibration_constants,
 )
+from constants import DEFAULT_KNOWN_ENERGIES
 
 
 def test_two_point_calibration():

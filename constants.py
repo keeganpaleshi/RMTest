@@ -41,6 +41,15 @@ DEFAULT_NOMINAL_ADC = {
 # specify ``spectral_fit.expected_peaks``.
 DEFAULT_ADC_CENTROIDS = DEFAULT_NOMINAL_ADC.copy()
 
+# Default alpha energies (MeV) used when calibration configuration does not
+# specify ``known_energies``.  Values correspond to the Po-210, Po-218 and
+# Po-214 peaks.
+DEFAULT_KNOWN_ENERGIES = {
+    "Po210": 5.304,  # MeV
+    "Po218": 6.002,  # MeV
+    "Po214": 7.687,  # MeV
+}
+
 from dataclasses import dataclass
 
 
@@ -111,6 +120,7 @@ __all__ = [
     "CURVE_FIT_MAX_EVALS",
     "DEFAULT_NOMINAL_ADC",
     "DEFAULT_ADC_CENTROIDS",
+    "DEFAULT_KNOWN_ENERGIES",
     "safe_exp",
     "_safe_exp",
     "NuclideConst",

@@ -6,21 +6,9 @@ from constants import (
     _TAU_MIN,
     DEFAULT_NOISE_CUTOFF,
     DEFAULT_NOMINAL_ADC,
+    DEFAULT_KNOWN_ENERGIES,
     safe_exp as _safe_exp,
 )
-
-
-
-
-# Known α energies (MeV) from config or central constants:
-# Default alpha energies (MeV) used for calibration when not specified
-# in the configuration file.  Values are Po-210, Po-218 and Po-214
-DEFAULT_KNOWN_ENERGIES = {
-    "Po210": 5.304,  # MeV
-    "Po218": 6.002,  # MeV
-    "Po214": 7.687,  # MeV  (use the SNOLAB‐observed centroids if desired)
-}
-
 
 def emg_left(x, mu, sigma, tau):
     """Exponentially modified Gaussian (left-skewed) PDF.
