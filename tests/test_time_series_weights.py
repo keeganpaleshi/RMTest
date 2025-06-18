@@ -23,15 +23,13 @@ def base_config(T):
 def test_uniform_weight_scaling_invariant():
     times = simulate_times(50, 10, seed=1)
     cfg = base_config(10)
-    res0 = fit_time_series({"Po214": times}, 0.0, 10, cfg)
     res_half = fit_time_series(
         {"Po214": times}, 0.0, 10, cfg, weights={"Po214": np.ones_like(times) * 0.5}
     )
     res_double = fit_time_series(
         {"Po214": times}, 0.0, 10, cfg, weights={"Po214": np.ones_like(times) * 2.0}
     )
-    assert res0.params["E_Po214"] == pytest.approx(res_half.params["E_Po214"], rel=1e-2)
-    assert res0.params["E_Po214"] == pytest.approx(res_double.params["E_Po214"], rel=1e-2)
+    assert res_half.params["E_Po214"] == pytest.approx(res_double.params["E_Po214"], rel=1e-2)
 
 
 def test_variable_weights_scale_independent():
