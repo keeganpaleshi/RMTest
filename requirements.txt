@@ -7,3 +7,4 @@ iminuit>=2.0
 pymc
 jsonschema>=4.0
 python-dateutil>=2.8.0
+pytest-mpl>=0.16
