@@ -33,6 +33,7 @@ def test_cov_entry_missing_or_none():
     params = {"A": 1.0, "B": 2.0}
     cov = np.eye(2)
     fr = FitResult(params, cov, 0)
-    assert analyze._cov_entry(fr, "A", "C") == 0.0
+    with pytest.raises(KeyError):
+        analyze._cov_entry(fr, "A", "C")
     fr_none = FitResult(params, None, 0)
     assert analyze._cov_entry(fr_none, "A", "B") == 0.0
