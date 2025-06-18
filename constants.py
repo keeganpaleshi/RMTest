@@ -2,6 +2,7 @@
 """Shared constants for analysis modules."""
 
 import numpy as np
+import math
 
 # Minimum allowed value for the exponential tail constant used in EMG fits.
 _TAU_MIN = 1e-6
@@ -20,9 +21,13 @@ CURVE_FIT_MAX_EVALS = 10000
 _EXP_LIMIT = EXP_OVERFLOW_DOUBLE
 
 
-def _safe_exp(x: np.ndarray) -> np.ndarray:
-    """Return ``exp(x)`` with the input clipped to ``[-_EXP_LIMIT, _EXP_LIMIT]``."""
-    return np.exp(np.clip(x, -_EXP_LIMIT, _EXP_LIMIT))
+def safe_exp(x: np.ndarray) -> np.ndarray:
+    """Return ``exp(x)`` with the input clipped to ``[-EXP_OVERFLOW_DOUBLE, EXP_OVERFLOW_DOUBLE]``."""
+    return np.exp(np.clip(x, -EXP_OVERFLOW_DOUBLE, EXP_OVERFLOW_DOUBLE))
+
+
+# Backwards compatibility for older modules/tests
+_safe_exp = safe_exp
 
 # Nominal ADC centroids for the Po-210, Po-218 and Po-214 peaks used
 # when calibration data does not specify otherwise.
@@ -106,6 +111,7 @@ __all__ = [
     "CURVE_FIT_MAX_EVALS",
     "DEFAULT_NOMINAL_ADC",
     "DEFAULT_ADC_CENTROIDS",
+    "safe_exp",
     "_safe_exp",
     "NuclideConst",
     "PO214",

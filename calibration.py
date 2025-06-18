@@ -6,7 +6,7 @@ from constants import (
     _TAU_MIN,
     DEFAULT_NOISE_CUTOFF,
     DEFAULT_NOMINAL_ADC,
-    _safe_exp,
+    safe_exp as _safe_exp,
 )
 
 
