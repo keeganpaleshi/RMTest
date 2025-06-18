@@ -79,7 +79,6 @@ from fitting import fit_spectrum, fit_time_series, FitResult
 
 from constants import (
     DEFAULT_NOISE_CUTOFF,
-    PO210,
     PO214,
     PO218,
     DEFAULT_ADC_CENTROIDS,
@@ -94,7 +93,7 @@ from plot_utils import (
 )
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
-from utils import find_adc_bin_peaks, cps_to_bq
+from utils import find_adc_bin_peaks
 
 
 def _fit_params(obj):
