@@ -130,6 +130,10 @@ def compute_total_radon(
 ) -> Tuple[float, float, float, float]:
     """Convert activity into concentration and total radon in the sample volume.
 
+    The ``monitor_volume`` of the counting chamber and the ``sample_volume`` of
+    the air sample must be supplied using the same units.  The configuration
+    files included with this repository use liters.
+
     Both ``monitor_volume`` and ``sample_volume`` must be non-negative.  A
     ``ValueError`` is raised if ``monitor_volume`` is not positive, if
     ``sample_volume`` is negative, or if ``err_bq`` is negative.
@@ -144,6 +148,11 @@ def compute_total_radon(
         Total radon in the sample volume in Bq.
     sigma_total : float
         Uncertainty on ``total_bq``.
+
+    Examples
+    --------
+    >>> compute_total_radon(5.0, 0.5, 10.0, 20.0)
+    (0.5, 0.05, 10.0, 1.0)
     """
     if monitor_volume <= 0:
         raise ValueError("monitor_volume must be positive")
