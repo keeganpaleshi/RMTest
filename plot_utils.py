@@ -82,8 +82,8 @@ def plot_time_series(
     t_end,
     config,
     out_png,
-    hl_Po214=None,
-    hl_Po218=None,
+    hl_po214=None,
+    hl_po218=None,
 ):
     """
     all_timestamps: 1D np.ndarray of absolute UNIX times (s)
@@ -92,7 +92,7 @@ def plot_time_series(
     t_start, t_end: floats (absolute UNIX times) for the fit window
     config:         JSON dict or nested configuration
     out_png:        output path for the PNG file
-    hl_Po214, hl_Po218: optional half-life values in seconds. If not
+    hl_po214, hl_po218: optional half-life values in seconds. If not
         provided, these are looked up using the configuration keys
         ``hl_po214`` and ``hl_po218`` under ``time_fit`` and default to
         ``PO214_HALF_LIFE_S`` and ``PO218_HALF_LIFE_S`` respectively.
@@ -115,14 +115,14 @@ def plot_time_series(
     default218 = default_const.get("Po218", PO218).half_life_s
 
     po214_hl = (
-        float(hl_Po214)
-        if hl_Po214 is not None
-        else float(_cfg_get(config, "hl_Po214", [default214])[0])
+        float(hl_po214)
+        if hl_po214 is not None
+        else float(_cfg_get(config, "hl_po214", [default214])[0])
     )
     po218_hl = (
-        float(hl_Po218)
-        if hl_Po218 is not None
-        else float(_cfg_get(config, "hl_Po218", [default218])[0])
+        float(hl_po218)
+        if hl_po218 is not None
+        else float(_cfg_get(config, "hl_po218", [default218])[0])
     )
 
     if po214_hl <= 0:
@@ -150,7 +150,7 @@ def plot_time_series(
             "half_life": float(
                 _cfg_get(
                     config,
-                    "hl_Po210",
+                    "hl_po210",
                     [default_const.get("Po210", PO210).half_life_s],
                 )[0]
             ),
