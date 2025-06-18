@@ -3,6 +3,7 @@
 # -----------------------------------------------------
 
 import os
+import logging
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -130,16 +131,28 @@ def plot_time_series(
     if hl_po218 is None and "hl_po218" in _legacy_kwargs:
         hl_po218 = _legacy_kwargs.pop("hl_po218")
 
-    po214_hl = (
-        float(hl_po214)
-        if hl_po214 is not None
-        else float(_cfg_get(config, "hl_po214", [default214])[0])
-    )
-    po218_hl = (
-        float(hl_po218)
-        if hl_po218 is not None
-        else float(_cfg_get(config, "hl_po218", [default218])[0])
-    )
+    cfg214 = _cfg_get(config, "hl_po214", None)
+    cfg218 = _cfg_get(config, "hl_po218", None)
+
+    if hl_po214 is not None:
+        po214_hl = float(hl_po214)
+    elif cfg214 is not None:
+        po214_hl = float(cfg214[0]) if isinstance(cfg214, list) else float(cfg214)
+    else:
+        po214_hl = float(default214)
+        logging.info(
+            "hl_po214 not specified; using physical half-life %.5g s", po214_hl
+        )
+
+    if hl_po218 is not None:
+        po218_hl = float(hl_po218)
+    elif cfg218 is not None:
+        po218_hl = float(cfg218[0]) if isinstance(cfg218, list) else float(cfg218)
+    else:
+        po218_hl = float(default218)
+        logging.info(
+            "hl_po218 not specified; using physical half-life %.5g s", po218_hl
+        )
 
     if po214_hl <= 0:
         raise ValueError("hl_po214 must be positive")

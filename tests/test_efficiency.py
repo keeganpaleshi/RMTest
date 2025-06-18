@@ -74,3 +74,11 @@ def test_blue_combine_negative_weights_warning():
     with pytest.warns(UserWarning):
         _, _, weights = blue_combine(vals, errs, corr)
     assert np.any(weights < 0)
+
+
+def test_blue_combine_negative_weights_error():
+    vals = np.array([1.0, 2.0])
+    errs = np.array([0.1, 0.2])
+    corr = np.array([[1.0, 0.99], [0.99, 1.0]])
+    with pytest.raises(ValueError):
+        blue_combine(vals, errs, corr, allow_negative=False)

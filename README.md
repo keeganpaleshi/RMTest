@@ -364,6 +364,9 @@ When these keys are omitted, `hl_po214` and `hl_po218` fall back to their
 physical half-lives (≈164 µs and ≈183 s). `hl_po210` defaults to its physical
 half-life (≈138 days). These custom half-lives control the decay model drawn
 over the time-series histogram.
+When `time_fit.do_time_fit` is `false` and no custom value is given,
+`plot_time_series` still uses these physical half-lives for the overlay and
+logs this fallback choice.
 The same values are used in the `time_fit` routine itself, so changing
 `hl_po214` or `hl_po218` affects both the unbinned fit and the overlay in
 `plot_time_series`. For monitoring that spans multiple days you may set
@@ -506,6 +509,10 @@ which will be combined.  When the configuration file provides an
 
 The helper `blue_combine.py` exposes a small wrapper so the combination
 can be used independently via ``from blue_combine import BLUE``.
+
+Pass ``allow_negative=False`` to ``blue_combine`` (or ``BLUE``) to raise a
+``ValueError`` when any weight is negative.  The default ``True`` merely
+emits a warning and returns the weights unchanged.
 
 The option `--efficiency-json PATH` may be supplied on the command line to
 load the efficiency section from a separate file instead of embedding it
