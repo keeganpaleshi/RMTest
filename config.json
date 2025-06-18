@@ -82,20 +82,20 @@
         "window_po214": [7.4, 7.9],
         "window_po218": [5.8, 6.3],
         "window_po210": [5.2, 5.4],
-        "eff_Po214": [0.40, 0.0],
-        "eff_Po218": [0.20, 0.0],
-        "eff_Po210": [0.10, 0.0],
+        "eff_po214": [0.40, 0.0],
+        "eff_po218": [0.20, 0.0],
+        "eff_po210": [0.10, 0.0],
         "hl_po214": [328320, 0.0],
         "hl_po218": [328320, 0.0],
-        "bkg_Po214": [0.0, 0.0],
-        "bkg_Po218": [0.0, 0.0],
-        "sig_N0_Po214": 1.0,
-        "sig_N0_Po218": 1.0,
+        "bkg_po214": [0.0, 0.0],
+        "bkg_po218": [0.0, 0.0],
+        "sig_N0_po214": 1.0,
+        "sig_N0_po218": 1.0,
         "background_guess": 0.0,
         "n0_guess_fraction": 0.1,
         "flags": {
             "fix_background_b": false,
-            "fix_N0_Po218": false
+            "fix_N0_po218": false
         }
     },
     "systematics": {
