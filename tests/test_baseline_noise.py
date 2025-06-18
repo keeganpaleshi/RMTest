@@ -47,3 +47,25 @@ def test_unknown_model_raises():
     adc = rng.uniform(0, 200, 100)
     with pytest.raises(ValueError):
         estimate_baseline_noise(adc, peak_adc=250, nbins=20, model="unknown")
+
+
+def test_pedestal_cut_below_peak_no_effect():
+    rng = np.random.default_rng(3)
+    adc = rng.uniform(900, 1100, 1000)
+    level_cut, params_cut, mask_cut = estimate_baseline_noise(
+        adc,
+        peak_adc=1200,
+        pedestal_cut=50,
+        nbins=30,
+        model="constant",
+        return_mask=True,
+    )
+    level_no, params_no, mask_no = estimate_baseline_noise(
+        adc,
+        peak_adc=1200,
+        nbins=30,
+        model="constant",
+        return_mask=True,
+    )
+    assert level_cut == pytest.approx(level_no)
+    assert np.array_equal(mask_cut, mask_no)
