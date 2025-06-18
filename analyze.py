@@ -177,7 +177,8 @@ def get_spike_efficiency(spike_cfg):
     return _spike_eff_cache[key]
 
 
-def parse_args():
+def parse_args(argv=None):
+    """Parse command line arguments."""
     p = argparse.ArgumentParser(description="Full Radon Monitor Analysis Pipeline")
     p.add_argument(
         "--config", "-c", required=True, help="Path to JSON configuration file"
@@ -364,7 +365,7 @@ def parse_args():
         ),
     )
 
-    args = p.parse_args()
+    args = p.parse_args(argv)
 
     if args.time_bin_mode_new is not None and args.time_bin_mode_old is not None:
         if args.time_bin_mode_new != args.time_bin_mode_old:
@@ -383,8 +384,8 @@ def parse_args():
     return args
 
 
-def main():
-    cli_args = sys.argv[:]
+def main(argv=None):
+    cli_args = [sys.argv[0]] + (list(argv) if argv is not None else sys.argv[1:])
     cli_sha256 = hashlib.sha256(" ".join(cli_args).encode("utf-8")).hexdigest()
     try:
         commit = subprocess.check_output(
@@ -400,7 +401,7 @@ def main():
     except Exception:
         requirements_sha256 = "unknown"
 
-    args = parse_args()
+    args = parse_args(argv)
     # Convert CLI paths to Path objects
     args.config = Path(args.config)
     args.input = Path(args.input)
