@@ -239,9 +239,9 @@ def plot_time_series(
     palette_name = str(config.get("palette", "default"))
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     colors = {
-        "Po214": palette.get("Po214", "tab:red"),
-        "Po218": palette.get("Po218", "tab:blue"),
-        "Po210": palette.get("Po210", "tab:green"),
+        "Po214": palette.get("Po214", "#d62728"),
+        "Po218": palette.get("Po218", "#1f77b4"),
+        "Po210": palette.get("Po210", "#2ca02c"),
     }
 
     for iso in iso_list:
@@ -416,7 +416,7 @@ def plot_spectrum(
 
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
-    hist_color = palette.get("hist", "gray")
+    hist_color = palette.get("hist", "#808080")
     ax_main.bar(centers, hist, width=width, color=hist_color, alpha=0.7, label="Data")
 
     # If an explicit Po-210 window is provided, focus the x-axis on that region
@@ -440,7 +440,7 @@ def plot_spectrum(
                 y += amp / (sigma_E * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu) / sigma_E) ** 2)
         palette_name = str(config.get("palette", "default")) if config else "default"
         palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
-        fit_color = palette.get("fit", "red")
+        fit_color = palette.get("fit", "#ff0000")
         avg_width = float(np.mean(width))
         ax_main.plot(x, y * avg_width, color=fit_color, lw=2, label="Fit")
 
@@ -464,7 +464,7 @@ def plot_spectrum(
                 color=hist_color,
                 alpha=0.7,
             )
-            ax_res.axhline(0.0, color="black", lw=1)
+            ax_res.axhline(0.0, color="#000000", lw=1)
             ax_res.set_ylabel("Residuals")
 
     ax_main.set_ylabel("Counts per bin")
@@ -507,7 +507,7 @@ def plot_radon_activity(times, activity, errors, out_png, config=None):
     plt.figure(figsize=(8, 4))
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
-    color = palette.get("radon_activity", "tab:purple")
+    color = palette.get("radon_activity", "#9467bd")
     plt.errorbar(times_dt, activity, yerr=errors, fmt="o-", color=color)
     plt.xlabel("Time (UTC)")
     plt.ylabel("Radon Activity (Bq)")
@@ -575,7 +575,7 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
     plt.figure(figsize=(8, 4))
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
-    color = palette.get("equivalent_air", "tab:green")
+    color = palette.get("equivalent_air", "#2ca02c")
     plt.errorbar(times_dt, volumes, yerr=errors, fmt="o-", color=color)
     plt.xlabel("Time")
     plt.ylabel("Equivalent Air Volume")
@@ -635,7 +635,7 @@ def plot_radon_trend(times, activity, out_png, config=None):
     plt.figure(figsize=(8, 4))
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
-    color = palette.get("radon_activity", "tab:purple")
+    color = palette.get("radon_activity", "#9467bd")
     plt.plot(times_dt, activity, "o-", color=color)
     plt.xlabel("Time")
     plt.ylabel("Radon Activity (Bq)")

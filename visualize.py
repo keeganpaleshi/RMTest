@@ -25,7 +25,15 @@ def cov_heatmap(cov_matrix, out_png, labels=None):
     plt.yticks(range(n), labels)
     for i in range(n):
         for j in range(n):
-            plt.text(j, i, f"{corr[i,j]:.2f}", ha="center", va="center", color="white" if abs(corr[i,j])>0.5 else "black", fontsize=8)
+            plt.text(
+                j,
+                i,
+                f"{corr[i,j]:.2f}",
+                ha="center",
+                va="center",
+                color="#ffffff" if abs(corr[i,j]) > 0.5 else "#000000",
+                fontsize=8,
+            )
     plt.tight_layout()
     dirpath = os.path.dirname(out_png) or "."
     os.makedirs(dirpath, exist_ok=True)
@@ -51,7 +59,7 @@ def efficiency_bar(eff_dict, out_png, config=None):
     plt.figure(figsize=(6, 4))
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
-    color = palette.get("efficiency_bar", "tab:blue")
+    color = palette.get("efficiency_bar", "#1f77b4")
     plt.bar(x, values, yerr=errors, capsize=4, color=color, alpha=0.7)
     plt.xticks(x, names, rotation=45, ha="right")
     plt.ylabel("Efficiency")
