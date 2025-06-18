@@ -40,6 +40,14 @@ def test_estimate_linear_background():
     assert b1 != 0
 
 
+def test_linear_background_slope_unbiased():
+    """Estimated slope should match the true continuum slope."""
+    energies, peaks = generate_spectrum()
+    b0, b1 = estimate_linear_background(energies, peaks, peak_width=0.3)
+    assert b0 == pytest.approx(200.0, rel=0.05)
+    assert b1 == pytest.approx(8.0, rel=0.05)
+
+
 def test_auto_background_priors(monkeypatch, tmp_path):
     energies, peaks = generate_spectrum()
     rng = np.random.default_rng(1)
