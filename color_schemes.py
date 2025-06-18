@@ -1,6 +1,9 @@
 # Color palettes for plotting
 # Each scheme maps element names to matplotlib color names.
 
+import matplotlib.pyplot as plt
+from matplotlib import cycler
+
 COLOR_SCHEMES = {
     "default": {
         "Po214": "tab:red",
@@ -33,3 +36,29 @@ COLOR_SCHEMES = {
         "hist": "lightgray",
     },
 }
+
+
+def apply_palette(name: str = "default") -> dict:
+    """Apply the color palette ``name`` to Matplotlib.
+
+    This sets :data:`matplotlib.pyplot.rcParams['axes.prop_cycle']` so that
+    subsequent plots use the palette's colors in order.
+
+    Parameters
+    ----------
+    name : str, optional
+        Name of the palette in :data:`COLOR_SCHEMES`.  Defaults to
+        ``"default"``.
+
+    Returns
+    -------
+    dict
+        The palette dictionary that was applied.
+    """
+
+    palette = COLOR_SCHEMES.get(str(name), COLOR_SCHEMES["default"])
+    plt.rcParams["axes.prop_cycle"] = cycler("color", list(palette.values()))
+    return palette
+
+
+__all__ = ["COLOR_SCHEMES", "apply_palette"]
