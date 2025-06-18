@@ -1466,8 +1466,8 @@ def main():
     from radon_activity import compute_radon_activity, compute_total_radon
 
     radon_results = {}
-    eff_Po214 = cfg.get("time_fit", {}).get("eff_po214", [1.0])[0]
-    eff_Po218 = cfg.get("time_fit", {}).get("eff_po218", [1.0])[0]
+    eff_po214 = cfg.get("time_fit", {}).get("eff_po214", [1.0])[0]
+    eff_po218 = cfg.get("time_fit", {}).get("eff_po218", [1.0])[0]
 
     rate214 = None
     err214 = None
@@ -1484,7 +1484,7 @@ def main():
         err218 = fit_dict.get("dE_corrected", fit_dict.get("dE_Po218"))
 
     A_radon, dA_radon = compute_radon_activity(
-        rate218, err218, eff_Po218, rate214, err214, eff_Po214
+        rate218, err218, eff_po218, rate214, err214, eff_po214
     )
 
     # Convert activity to a concentration per liter of monitor volume and the
@@ -1561,10 +1561,10 @@ def main():
         d_radon, d_err = compute_radon_activity(
             delta218,
             err_delta218,
-            eff_Po218,
+            eff_po218,
             delta214,
             err_delta214,
-            eff_Po214,
+            eff_po214,
         )
         radon_results["radon_delta_Bq"] = {"value": d_radon, "uncertainty": d_err}
 
