@@ -295,6 +295,8 @@ def apply_burst_filter(df, cfg, mode="rate"):
 
         if micro_win is not None and micro_thr is not None:
             times = out_df["timestamp"].values.astype(float)
+            if len(times) == 0:
+                return out_df, removed_total
             window_end = times + float(micro_win)
             j = np.searchsorted(times, window_end, side="right")
             counts = j - np.arange(len(times))
