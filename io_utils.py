@@ -17,9 +17,8 @@ def extract_time_series_events(events, cfg):
     """Slice events for time-series fits based on isotope windows.
 
     Configuration keys **must** use lowercase isotope names, for example
-    ``window_po214``.  Mixed‑case keys such as ``window_Po214`` remain
-    accepted for backward compatibility but should be avoided in new
-    configuration files.
+    ``window_po214``.  Mixed‑case keys used by older versions are no
+    longer supported.
 
     Parameters
     ----------
