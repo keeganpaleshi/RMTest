@@ -31,7 +31,7 @@ def extract_time_series_events(events, cfg):
     ts_cfg = cfg.get("time_fit", {})
     out = {}
     for iso in ("Po214", "Po218", "Po210"):
-        win = ts_cfg.get(f"window_{iso}")
+        win = ts_cfg.get(f"window_{iso.lower()}")
         if win is None:
             continue
         lo, hi = win
@@ -63,9 +63,36 @@ CONFIG_SCHEMA = {
             "type": "object",
             "properties": {
                 "do_time_fit": {"type": "boolean"},
-                "hl_po214": {"type": "number", "exclusiveMinimum": 0},
-                "hl_po218": {"type": "number", "exclusiveMinimum": 0},
-                "hl_po210": {"type": "number", "exclusiveMinimum": 0},
+                "hl_po214": {
+                    "oneOf": [
+                        {"type": "number", "exclusiveMinimum": 0},
+                        {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 1,
+                        },
+                    ]
+                },
+                "hl_po218": {
+                    "oneOf": [
+                        {"type": "number", "exclusiveMinimum": 0},
+                        {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 1,
+                        },
+                    ]
+                },
+                "hl_po210": {
+                    "oneOf": [
+                        {"type": "number", "exclusiveMinimum": 0},
+                        {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 1,
+                        },
+                    ]
+                },
             },
             "required": ["do_time_fit"],
         },

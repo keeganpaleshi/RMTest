@@ -114,32 +114,32 @@ def plot_time_series(
     po214_hl = (
         float(hl_Po214)
         if hl_Po214 is not None
-        else float(_cfg_get(config, "hl_Po214", [default214])[0])
+        else float(_cfg_get(config, "hl_po214", [default214])[0])
     )
     po218_hl = (
         float(hl_Po218)
         if hl_Po218 is not None
-        else float(_cfg_get(config, "hl_Po218", [default218])[0])
+        else float(_cfg_get(config, "hl_po218", [default218])[0])
     )
 
     if po214_hl <= 0:
-        raise ValueError("hl_Po214 must be positive")
+        raise ValueError("hl_po214 must be positive")
     if po218_hl <= 0:
-        raise ValueError("hl_Po218 must be positive")
+        raise ValueError("hl_po218 must be positive")
 
     iso_params = {
         "Po214": {
-            "window": _cfg_get(config, "window_Po214"),
+            "window": _cfg_get(config, "window_po214"),
             "eff": float(_cfg_get(config, "eff_Po214", [1.0])[0]),
             "half_life": po214_hl,
         },
         "Po218": {
-            "window": _cfg_get(config, "window_Po218"),
+            "window": _cfg_get(config, "window_po218"),
             "eff": float(_cfg_get(config, "eff_Po218", [1.0])[0]),
             "half_life": po218_hl,
         },
         "Po210": {
-            "window": _cfg_get(config, "window_Po210"),
+            "window": _cfg_get(config, "window_po210"),
             "eff": float(_cfg_get(config, "eff_Po210", [1.0])[0]),
             "half_life": float(
                 _cfg_get(
@@ -394,7 +394,7 @@ def plot_spectrum(
     # If an explicit Po-210 window is provided, focus the x-axis on that region
     win_p210 = None
     if config is not None:
-        win_p210 = config.get("window_Po210")
+        win_p210 = config.get("window_po210")
     if win_p210 is not None:
         lo, hi = win_p210
         ax_main.set_xlim(lo, hi)
