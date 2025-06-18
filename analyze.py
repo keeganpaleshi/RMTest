@@ -284,13 +284,13 @@ def parse_args():
     )
     p.add_argument(
         "--plot-time-binning-mode",
-        dest="time_bin_mode",
+        dest="time_bin_mode_new",
         choices=["auto", "fd", "fixed"],
         help="Time-series binning mode. Providing this option overrides `plotting.plot_time_binning_mode` in config.json",
     )
     p.add_argument(
         "--time-bin-mode",
-        dest="time_bin_mode",
+        dest="time_bin_mode_old",
         choices=["auto", "fd", "fixed"],
         help="DEPRECATED alias for --plot-time-binning-mode",
     )
@@ -342,7 +342,24 @@ def parse_args():
             "write a hierarchical fit summary to OUTFILE"
         ),
     )
-    return p.parse_args()
+
+    args = p.parse_args()
+
+    if args.time_bin_mode_new is not None and args.time_bin_mode_old is not None:
+        if args.time_bin_mode_new != args.time_bin_mode_old:
+            p.error(
+                "--plot-time-binning-mode conflicts with deprecated --time-bin-mode"
+            )
+
+    args.time_bin_mode = (
+        args.time_bin_mode_new
+        if args.time_bin_mode_new is not None
+        else args.time_bin_mode_old
+    )
+    del args.time_bin_mode_new
+    del args.time_bin_mode_old
+
+    return args
 
 
 def main():
