@@ -7,7 +7,7 @@ import analyze
 import efficiency
 
 
-def test_spike_efficiency_cache_separate_by_error(monkeypatch):
+def test_spike_efficiency_cache_same_for_error(monkeypatch):
     calls = []
 
     def fake_calc(counts, act, live):
@@ -23,5 +23,5 @@ def test_spike_efficiency_cache_separate_by_error(monkeypatch):
     analyze.get_spike_efficiency(cfg1)
     analyze.get_spike_efficiency(cfg2)
 
-    assert len(calls) == 2
-    assert len(analyze._spike_eff_cache) == 2
+    assert len(calls) == 1
+    assert len(analyze._spike_eff_cache) == 1
