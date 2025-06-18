@@ -22,7 +22,11 @@ def extract_time_series_events(events, cfg):
     events : pandas.DataFrame
         Event data with ``timestamp`` and ``energy_MeV`` columns.
     cfg : dict
-        Configuration containing ``time_fit`` settings.
+        Configuration containing ``time_fit`` settings. The
+        window definitions should use lowercase keys
+        (``window_po214`` etc.). Mixed-case keys such as
+        ``window_Po214`` are still recognized for backward
+        compatibility.
 
     Returns
     -------
@@ -36,6 +40,7 @@ def extract_time_series_events(events, cfg):
         # Windows are stored using lowercase isotope names
         win = ts_cfg.get(f"window_{iso.lower()}")
         if win is None:
+            # mixed-case lookup retained for backward compatibility
             win = ts_cfg.get(f"window_{iso}")
         if win is None:
             continue
