@@ -3,11 +3,12 @@
 # -----------------------------------------------------
 
 import logging
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
 from iminuit import Minuit
-from scipy.optimize import curve_fit
+from scipy.optimize import curve_fit, OptimizeWarning
 from calibration import emg_left, gaussian
 from constants import _TAU_MIN, EXP_OVERFLOW_DOUBLE, CURVE_FIT_MAX_EVALS
 
@@ -245,14 +246,20 @@ def fit_spectrum(
         return _model_density(x, *params) * width
 
     if not unbinned:
-        popt, pcov = curve_fit(
-            _model_binned,
-            centers,
-            hist,
-            p0=p0,
-            bounds=(bounds_lo, bounds_hi),
-            maxfev=CURVE_FIT_MAX_EVALS,
-        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="Covariance of the parameters could not be estimated",
+                category=OptimizeWarning,
+            )
+            popt, pcov = curve_fit(
+                _model_binned,
+                centers,
+                hist,
+                p0=p0,
+                bounds=(bounds_lo, bounds_hi),
+                maxfev=CURVE_FIT_MAX_EVALS,
+            )
     else:
         def _nll(*params):
             rate = _model_density(e, *params)
@@ -295,7 +302,7 @@ def fit_spectrum(
 
         m.hesse()
         cov = np.array(m.covariance)
-        perr = np.sqrt(np.diag(cov))
+        perr = np.sqrt(np.clip(np.diag(cov), 0, None))
         try:
             eigvals = np.linalg.eigvals(cov)
             fit_valid = bool(np.all(eigvals > 0))
@@ -316,7 +323,7 @@ def fit_spectrum(
             try:
                 np.linalg.cholesky(cov)
                 fit_valid = True
-                perr = np.sqrt(np.diag(cov))
+                perr = np.sqrt(np.clip(np.diag(cov), 0, None))
             except np.linalg.LinAlgError:
                 pass
         out["fit_valid"] = fit_valid
@@ -325,7 +332,7 @@ def fit_spectrum(
             out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
         return FitResult(out, cov, int(ndf))
 
-    perr = np.sqrt(np.diag(pcov))
+    perr = np.sqrt(np.clip(np.diag(pcov), 0, None))
     try:
         eigvals = np.linalg.eigvals(pcov)
         fit_valid = bool(np.all(eigvals > 0))
@@ -346,7 +353,7 @@ def fit_spectrum(
         try:
             np.linalg.cholesky(pcov)
             fit_valid = True
-            perr = np.sqrt(np.diag(pcov))
+            perr = np.sqrt(np.clip(np.diag(pcov), 0, None))
         except np.linalg.LinAlgError:
             pass
     out = {}
@@ -608,7 +615,7 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
 
     m.hesse()  # compute uncertainties
     cov = np.array(m.covariance)
-    perr = np.sqrt(np.diag(cov))
+    perr = np.sqrt(np.clip(np.diag(cov), 0, None))
     try:
         eigvals = np.linalg.eigvals(cov)
         fit_valid = bool(np.all(eigvals > 0))
@@ -629,7 +636,7 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
         try:
             np.linalg.cholesky(cov)
             fit_valid = True
-            perr = np.sqrt(np.diag(cov))
+            perr = np.sqrt(np.clip(np.diag(cov), 0, None))
         except np.linalg.LinAlgError:
             fit_valid = False
     out["fit_valid"] = fit_valid
