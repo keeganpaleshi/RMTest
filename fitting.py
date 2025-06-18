@@ -10,7 +10,7 @@ import numpy as np
 from iminuit import Minuit
 from scipy.optimize import curve_fit, OptimizeWarning
 from calibration import emg_left, gaussian
-from constants import _TAU_MIN, CURVE_FIT_MAX_EVALS, _safe_exp
+from constants import _TAU_MIN, CURVE_FIT_MAX_EVALS, safe_exp as _safe_exp
 
 # Use shared overflow guard for exponentiation
 __all__ = ["fit_time_series", "fit_decay", "fit_spectrum"]
