@@ -46,7 +46,7 @@ def fit_hierarchical_runs(run_results, draws=2000, tune=1000, chains=2, random_s
         int_obs = np.array([r["intercept"] for r in run_results], dtype=float)
         int_err = np.array([max(r.get("dintercept", np.nan), 1e-6) for r in run_results], dtype=float)
 
-    with pm.Model() as model:
+    with pm.Model():
         # Global mean and between-run scatter for half-life
         mu_hl = pm.Normal("mu_hl", mu=hl_obs.mean(), sigma=10 * hl_obs.std() + 1e-6)
         sigma_hl = pm.HalfNormal("sigma_hl", sigma=hl_obs.std() + 1e-6)
