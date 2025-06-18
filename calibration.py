@@ -4,20 +4,12 @@ from scipy.optimize import curve_fit
 from scipy.stats import exponnorm
 from constants import (
     _TAU_MIN,
-    EXP_OVERFLOW_DOUBLE,
     DEFAULT_NOISE_CUTOFF,
     DEFAULT_NOMINAL_ADC,
+    _safe_exp,
 )
 
-# Limit for stable exponentiation when evaluating the EMG tail. Values
-# beyond ~700 in magnitude overflow in IEEE-754 doubles.  Match the
-# safeguard used in :mod:`fitting`.
-_EXP_LIMIT = EXP_OVERFLOW_DOUBLE
 
-
-def _safe_exp(x: np.ndarray) -> np.ndarray:
-    """Return ``exp(x)`` with the input clipped to ``[-_EXP_LIMIT, _EXP_LIMIT]``."""
-    return np.exp(np.clip(x, -_EXP_LIMIT, _EXP_LIMIT))
 
 
 # Known α energies (MeV) from config or central constants:

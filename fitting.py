@@ -10,21 +10,9 @@ import numpy as np
 from iminuit import Minuit
 from scipy.optimize import curve_fit, OptimizeWarning
 from calibration import emg_left, gaussian
-from constants import _TAU_MIN, EXP_OVERFLOW_DOUBLE, CURVE_FIT_MAX_EVALS
+from constants import _TAU_MIN, CURVE_FIT_MAX_EVALS, _safe_exp
 
-# Prevent overflow in exp calculations. Values beyond ~700 in magnitude
-# lead to inf/0 under IEEE-754 doubles.  Clip the exponent to a safe range
-# so the likelihood remains finite during optimization.
-_EXP_LIMIT = EXP_OVERFLOW_DOUBLE
-
-# Minimum allowed value for the exponential tail constant to avoid
-# divide-by-zero overflow when evaluating the EMG component. The
-# value itself lives in :mod:`constants` as ``_TAU_MIN``.
-
-def _safe_exp(x):
-    """Return ``exp(x)`` with the input clipped to ``[-_EXP_LIMIT, _EXP_LIMIT]``."""
-    return np.exp(np.clip(x, -_EXP_LIMIT, _EXP_LIMIT))
-
+# Use shared overflow guard for exponentiation
 __all__ = ["fit_time_series", "fit_decay", "fit_spectrum"]
 
 
