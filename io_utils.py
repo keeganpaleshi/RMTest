@@ -408,7 +408,7 @@ def write_summary(output_dir, summary_dict, timestamp=None):
     results_folder = output_path / timestamp
     if results_folder.exists():
         raise FileExistsError(f"Results folder already exists: {results_folder}")
-    ensure_dir(results_folder)
+    results_folder.mkdir(parents=True, exist_ok=False)
 
     summary_path = results_folder / "summary.json"
 
@@ -441,9 +441,10 @@ def copy_config(output_dir, config_path):
     """
 
     output_path = Path(output_dir)
-    # Create the destination folder. "exist_ok=False" ensures we do not
-    # accidentally overwrite an existing results directory.
-    output_path.mkdir(parents=True, exist_ok=False)
+    # Create the destination folder if needed. "exist_ok=True" ensures this
+    # function can be called after :func:`write_summary` which already created
+    # the directory.
+    output_path.mkdir(parents=True, exist_ok=True)
 
     dest_path = output_path / "config_used.json"
     if isinstance(config_path, (str, Path)):
