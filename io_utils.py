@@ -279,7 +279,7 @@ def load_events(csv_path):
     return df
 
 
-def apply_burst_filter(df, cfg, mode="rate"):
+def apply_burst_filter(df, cfg=None, mode="rate"):
     """Remove events occurring during high-rate bursts.
 
     ``mode`` selects the filtering strategy:
@@ -293,8 +293,8 @@ def apply_burst_filter(df, cfg, mode="rate"):
     ----------
     df : pandas.DataFrame
         Event data containing a ``timestamp`` column in seconds.
-    cfg : dict
-        Configuration dictionary.  Expected keys under ``burst_filter`` are
+    cfg : dict, optional
+        Configuration dictionary. Expected keys under ``burst_filter`` are
         ``burst_window_size_s``, ``rolling_median_window`` and
         ``burst_multiplier``.
 
@@ -306,6 +306,7 @@ def apply_burst_filter(df, cfg, mode="rate"):
         Number of events removed.
     """
 
+    cfg = cfg or {}
     bcfg = cfg.get("burst_filter", {})
     warnings.filterwarnings(
         "ignore",
@@ -328,18 +329,26 @@ def apply_burst_filter(df, cfg, mode="rate"):
             times = out_df["timestamp"].values.astype(float)
             if len(times) == 0:
                 return out_df, removed_total
-            window_end = times + float(micro_win)
-            j = np.searchsorted(times, window_end, side="right")
-            counts = j - np.arange(len(times))
-            starts = np.nonzero(counts >= int(micro_thr))[0]
 
-            if len(starts) > 0:
-                diff = np.zeros(len(times) + 1, dtype=int)
-                diff[starts] += 1
-                diff[j[starts]] -= 1
-                to_remove = np.cumsum(diff[:-1]) > 0
+            t_min = times.min()
+            t_max = times.max()
+            hist, edges = np.histogram(times, bins=np.arange(t_min, t_max + 2))
+            hist = hist.astype(int)
+
+            win = int(micro_win)
+            thr = int(micro_thr)
+            if win > 0:
+                csum = np.concatenate([[0], np.cumsum(hist)])
+                counts = csum[win:] - csum[:-win]
+                burst_bins = np.zeros_like(hist, dtype=bool)
+                for i, c in enumerate(counts):
+                    if c >= thr:
+                        burst_bins[i : i + win] = True
             else:
-                to_remove = np.zeros(len(times), dtype=bool)
+                burst_bins = np.zeros_like(hist, dtype=bool)
+
+            bin_idx = np.searchsorted(edges, times, side="right") - 1
+            to_remove = burst_bins[bin_idx]
 
             removed_total += int(to_remove.sum())
             out_df = out_df[~to_remove].reset_index(drop=True)

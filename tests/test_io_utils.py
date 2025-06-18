@@ -286,7 +286,7 @@ def test_apply_burst_filter_micro_burst():
     assert len(filtered) == len(times) - 4
 
 
-def test_apply_burst_filter_single_searchsorted(monkeypatch):
+def test_apply_burst_filter_histogram_called(monkeypatch):
     times = np.arange(100)
     df = pd.DataFrame(
         {
@@ -305,15 +305,49 @@ def test_apply_burst_filter_single_searchsorted(monkeypatch):
     }
 
     calls = {"n": 0}
-    orig_ss = np.searchsorted
+    orig_hist = np.histogram
 
     def wrapped(*args, **kwargs):
         calls["n"] += 1
-        return orig_ss(*args, **kwargs)
+        return orig_hist(*args, **kwargs)
 
-    monkeypatch.setattr(np, "searchsorted", wrapped)
+    monkeypatch.setattr(np, "histogram", wrapped)
     apply_burst_filter(df, cfg, mode="micro")
     assert calls["n"] == 1
+
+
+def test_apply_burst_filter_both_matches_sequential():
+    base = np.concatenate([np.arange(120), np.arange(130, 150)])
+    micro = np.full(6, 30)
+    rate = np.concatenate([
+        120 + i + 0.1 * np.arange(4)
+        for i in range(10)
+    ]).ravel()
+    times = np.concatenate([base, micro, rate])
+    df = pd.DataFrame(
+        {
+            "fUniqueID": range(len(times)),
+            "fBits": [0] * len(times),
+            "timestamp": times,
+            "adc": [1000] * len(times),
+            "fchannel": [1] * len(times),
+        }
+    )
+    cfg = {
+        "burst_filter": {
+            "burst_window_size_s": 10,
+            "rolling_median_window": 3,
+            "burst_multiplier": 3,
+            "micro_window_size_s": 1,
+            "micro_count_threshold": 5,
+        }
+    }
+
+    seq, rem1 = apply_burst_filter(df, cfg, mode="micro")
+    seq, rem2 = apply_burst_filter(seq, cfg, mode="rate")
+    both, total = apply_burst_filter(df, cfg, mode="both")
+    assert total == rem1 + rem2
+    assert both.reset_index(drop=True).equals(seq.reset_index(drop=True))
 
 
 def test_load_config_duplicate_keys(tmp_path):
