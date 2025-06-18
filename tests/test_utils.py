@@ -52,3 +52,11 @@ def test_parse_time_numeric_str():
 
 def test_parse_time_numeric_str_float():
     assert parse_time("42.5") == pytest.approx(42.5)
+
+
+def test_parse_time_iso_no_fraction():
+    assert parse_time("1970-01-01T00:00:00Z") == pytest.approx(0.0)
+
+
+def test_parse_time_iso_fraction():
+    assert parse_time("1970-01-01T00:00:00.5Z") == pytest.approx(0.5)
