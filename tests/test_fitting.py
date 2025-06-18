@@ -428,3 +428,30 @@ def test_fit_time_series_half_life_negative_raises():
     }
     with pytest.raises(ValueError):
         fit_time_series(times_dict, 0.0, 10.0, cfg)
+
+
+def test_fit_spectrum_variable_bin_edges(tmp_path):
+    rng = np.random.default_rng(10)
+    energies = np.concatenate([
+        rng.normal(5.3, 0.05, 120),
+        rng.normal(6.0, 0.05, 120),
+        rng.normal(7.7, 0.05, 120),
+    ])
+
+    priors = {
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (120, 12),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (120, 12),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (120, 12),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+
+    edges_nonuniform = np.array([5.0, 5.2, 5.4, 5.9, 6.3, 6.8, 7.2, 7.8, 8.0])
+    res = fit_spectrum(energies, priors, bin_edges=edges_nonuniform)
+    assert "sigma0" in res.params
+

@@ -98,6 +98,19 @@ def test_plot_spectrum_po210_xlim(tmp_path):
     assert ax.get_xlim() == (5.2, 5.4)
 
 
+def test_plot_spectrum_variable_bin_edges(tmp_path):
+    rng = np.random.default_rng(1)
+    energies = np.concatenate([
+        rng.normal(5.3, 0.05, 80),
+        rng.normal(6.0, 0.05, 80),
+        rng.normal(7.7, 0.05, 80),
+    ])
+    edges = np.array([5.0, 5.1, 5.4, 5.8, 6.3, 6.7, 7.1, 7.6, 8.0])
+    out_png = tmp_path / "var_spec.png"
+    plot_spectrum(energies, bin_edges=edges, out_png=str(out_png))
+    assert out_png.exists()
+
+
 def test_plot_time_series_custom_half_life(tmp_path, monkeypatch):
     times = np.array([1000.1, 1000.2, 1001.1, 1001.8])
     energies = np.array([7.6, 7.7, 7.8, 7.7])

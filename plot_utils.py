@@ -384,7 +384,8 @@ def plot_spectrum(
     bins : int, optional
         Number of bins if ``bin_edges`` is not supplied.
     bin_edges : array-like, optional
-        Explicit bin edges in MeV.  Overrides ``bins``.
+        Explicit bin edges in MeV.  Overrides ``bins``.  Non-uniform bin widths
+        are supported.
     config : dict, optional
         Plotting configuration dictionary.
     """
@@ -399,7 +400,7 @@ def plot_spectrum(
     else:
         hist, edges = np.histogram(energies, bins=bins)
     centers = 0.5 * (edges[:-1] + edges[1:])
-    width = edges[1] - edges[0]
+    width = np.diff(edges)
 
     if show_res:
         fig, (ax_main, ax_res) = plt.subplots(
@@ -424,20 +425,19 @@ def plot_spectrum(
         ax_main.set_xlim(lo, hi)
 
     if fit_vals:
-        x = np.linspace(edges[0], edges[-1], 1000)
         sigma_E = fit_vals.get("sigma_E", 1.0)
-        y = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * x
+        y = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * centers
         for pk in ("Po210", "Po218", "Po214"):
             mu_key = f"mu_{pk}"
             amp_key = f"S_{pk}"
             if mu_key in fit_vals and amp_key in fit_vals:
                 mu = fit_vals[mu_key]
                 amp = fit_vals[amp_key]
-                y += amp / (sigma_E * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu) / sigma_E) ** 2)
+                y += amp / (sigma_E * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((centers - mu) / sigma_E) ** 2)
         palette_name = str(config.get("palette", "default")) if config else "default"
         palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
         fit_color = palette.get("fit", "red")
-        ax_main.plot(x, y * width, color=fit_color, lw=2, label="Fit")
+        ax_main.plot(centers, y * width, color=fit_color, lw=2, label="Fit")
 
         if show_res:
             y_cent = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * centers

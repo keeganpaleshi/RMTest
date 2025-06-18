@@ -114,7 +114,8 @@ def fit_spectrum(
         and ``bin_edges`` are ``None``, the Freedman--Diaconis rule is used.
     bin_edges : array-like, optional
         Explicit bin edges for histogramming the energies.  Takes precedence
-        over ``bins`` when given.
+        over ``bins`` when given.  Non-uniform bin widths are supported and
+        handled automatically.
     bounds : dict, optional
         Mapping of parameter name to ``(lower, upper)`` tuples overriding the
         default ±5σ range derived from the priors.  ``None`` values disable a
@@ -148,7 +149,10 @@ def fit_spectrum(
     else:
         edges = np.histogram_bin_edges(e, bins="fd")
 
-    width = edges[1] - edges[0]
+    if np.any(np.diff(edges) <= 0):
+        raise ValueError("bin edges must be monotonically increasing")
+
+    width = np.diff(edges)
     centers = 0.5 * (edges[:-1] + edges[1:])
     if not unbinned:
         hist, _ = np.histogram(e, bins=edges)
