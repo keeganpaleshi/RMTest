@@ -82,8 +82,9 @@ def plot_time_series(
     t_end,
     config,
     out_png,
-    hl_Po214=None,
-    hl_Po218=None,
+    hl_po214=None,
+    hl_po218=None,
+    **_legacy_kwargs,
 ):
     """
     all_timestamps: 1D np.ndarray of absolute UNIX times (s)
@@ -132,14 +133,19 @@ def plot_time_series(
     default214 = default_const.get("Po214", PO214).half_life_s
     default218 = default_const.get("Po218", PO218).half_life_s
 
+    if hl_po214 is None and "hl_Po214" in _legacy_kwargs:
+        hl_po214 = _legacy_kwargs.pop("hl_Po214")
+    if hl_po218 is None and "hl_Po218" in _legacy_kwargs:
+        hl_po218 = _legacy_kwargs.pop("hl_Po218")
+
     po214_hl = (
-        float(hl_Po214)
-        if hl_Po214 is not None
+        float(hl_po214)
+        if hl_po214 is not None
         else float(_cfg_get(config, "hl_po214", [default214])[0])
     )
     po218_hl = (
-        float(hl_Po218)
-        if hl_Po218 is not None
+        float(hl_po218)
+        if hl_po218 is not None
         else float(_cfg_get(config, "hl_po218", [default218])[0])
     )
 
