@@ -152,7 +152,7 @@ count also appears in `summary.json` under `noise_cut.removed_events`.
 
 `analysis_start_time` in the optional `analysis` section sets the global
 time origin for decay fitting and time-series plots.  Provide an
-ISO‑8601 string such as `"2020-01-01T00:00:00Z"`.  When omitted the first
+ISO‑8601 string such as `"2023-07-31T00:00:00Z"`.  When omitted the first
 event timestamp is used.
 
 All other time-related fields (`analysis_end_time`, `spike_end_time`,
@@ -184,12 +184,12 @@ Example snippet:
 
 ```json
 "analysis": {
-    "analysis_start_time": "2020-01-01T00:00:00Z",
-    "analysis_end_time": "2020-01-02T00:00:00Z",
-    "spike_end_time": "2020-01-01T01:00:00Z",
-    "spike_periods": [["2020-01-01T03:00:00Z", "2020-01-01T04:00:00Z"]],
-    "run_periods": [["2020-01-01T02:00:00Z", "2020-01-01T06:00:00Z"]],
-    "radon_interval": ["2020-01-01T02:00:00Z", "2020-01-01T06:00:00Z"],
+    "analysis_start_time": "2023-07-31T00:00:00Z",
+    "analysis_end_time": "2024-02-01T06:00:00Z",
+    "spike_end_time": "2023-07-31T00:10:00Z",
+    "spike_periods": [["2023-11-12T00:00:00Z", "2023-11-13T12:00:00Z"]],
+    "run_periods": [["2023-09-28T00:00:00Z", "2023-10-28T23:59:59Z"], ["2024-01-05T00:00:00Z", "2024-01-10T23:59:59Z"]],
+    "radon_interval": ["2024-01-05T06:00:00Z", "2024-01-06T18:00:00Z"],
     "ambient_concentration": 0.02
 }
 ```
@@ -199,12 +199,12 @@ When present the value is also written to `summary.json` under the
 
 ```json
 "analysis": {
-    "analysis_start_time": "2020-01-01T00:00:00Z",
-    "analysis_end_time": "2020-01-02T00:00:00Z",
-    "spike_end_time": "2020-01-01T01:00:00Z",
-    "spike_periods": [["2020-01-01T03:00:00Z", "2020-01-01T04:00:00Z"]],
-    "run_periods": [["2020-01-01T02:00:00Z", "2020-01-01T06:00:00Z"]],
-    "radon_interval": ["2020-01-01T02:00:00Z", "2020-01-01T06:00:00Z"],
+    "analysis_start_time": "2023-07-31T00:00:00Z",
+    "analysis_end_time": "2024-02-01T06:00:00Z",
+    "spike_end_time": "2023-07-31T00:10:00Z",
+    "spike_periods": [["2023-11-12T00:00:00Z", "2023-11-13T12:00:00Z"]],
+    "run_periods": [["2023-09-28T00:00:00Z", "2023-10-28T23:59:59Z"], ["2024-01-05T00:00:00Z", "2024-01-10T23:59:59Z"]],
+    "radon_interval": ["2024-01-05T06:00:00Z", "2024-01-06T18:00:00Z"],
     "ambient_concentration": 0.02
 }
 ```
