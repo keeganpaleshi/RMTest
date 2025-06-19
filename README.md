@@ -453,8 +453,20 @@ Example snippet:
 Command line usage:
 
 ```bash
+# subtract electronics + radon
 python analyze.py --config assay.json --input run.csv --output_dir results \
-    --baseline_range 2023-07-01T00:00:00Z 2023-07-03T00:00:00Z
+    --baseline_range 2023-07-01T00:00:00Z 2023-07-03T00:00:00Z \
+    --baseline-mode all
+
+# keep self-emanation, remove only electronics
+python analyze.py --config assay.json --input run.csv --output_dir results \
+    --baseline_range 2023-07-01T00:00:00Z 2023-07-03T00:00:00Z \
+    --baseline-mode electronics
+
+# debugging: no subtraction
+python analyze.py --config assay.json --input run.csv --output_dir results \
+    --baseline_range 2023-07-01T00:00:00Z 2023-07-03T00:00:00Z \
+    --baseline-mode none
 ```
 
 ### Baseline Noise Cut
