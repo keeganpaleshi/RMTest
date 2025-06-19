@@ -29,11 +29,18 @@ def test_cov_entry_valid_params():
     assert analyze._cov_entry(fr, "B", "C") == pytest.approx(0.3)
 
 
-def test_cov_entry_missing_or_none():
+def test_cov_entry_missing_params():
     params = {"A": 1.0, "B": 2.0}
     cov = np.eye(2)
     fr = FitResult(params, cov, 0)
+
+    # One missing
     with pytest.raises(KeyError):
         analyze._cov_entry(fr, "A", "C")
+
+    # Both missing should still raise
+    with pytest.raises(KeyError):
+        analyze._cov_entry(fr, "C", "D")
+
     fr_none = FitResult(params, None, 0)
     assert analyze._cov_entry(fr_none, "A", "B") == 0.0
