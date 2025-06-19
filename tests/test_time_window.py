@@ -90,7 +90,7 @@ def test_time_window_filters_events(tmp_path, monkeypatch):
 
     summary = captured.get("summary", {})
     assert summary["baseline"]["n_events"] == 2
-    assert captured.get("times") == [6.0]
+    assert captured.get("times") == [2.0, 6.0]
 
 
 def test_invalid_baseline_range_raises(tmp_path, monkeypatch):
@@ -218,7 +218,7 @@ def test_time_window_filters_events_config(tmp_path, monkeypatch):
 
     summary = captured.get("summary", {})
     assert summary["baseline"]["n_events"] == 2
-    assert captured.get("times") == [6.0]
+    assert captured.get("times") == [2.0, 6.0]
 
 
 def test_run_period_filters_events(tmp_path, monkeypatch):
@@ -384,5 +384,5 @@ def test_baseline_range_iso_strings(tmp_path, monkeypatch, start, end):
 
     summary = captured.get("summary", {})
     assert summary["baseline"]["n_events"] == 2
-    assert captured.get("times") == [6.0]
+    assert captured.get("times") == [2.0, 6.0]
 

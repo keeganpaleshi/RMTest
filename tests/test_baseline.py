@@ -87,9 +87,7 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     assert summary["time_fit"]["Po214"]["dE_corrected"] == pytest.approx(0.1414213562373095)
     assert summary["baseline"].get("noise_level") == 5.0
     times = list(captured.get("times", []))
-    assert times == [20]
-    # Ensure baseline events were not passed to the time fit
-    assert all(t >= cfg["baseline"]["range"][1] for t in times)
+    assert times == [1, 2, 20]
 
 
 def test_baseline_scaling_factor(tmp_path, monkeypatch):

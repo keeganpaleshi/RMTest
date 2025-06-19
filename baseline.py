@@ -46,5 +46,5 @@ def subtract_baseline(df_analysis, df_full, bins, t_base0, t_base1,
         net_counts = rate_an * live_time_analysis
 
     df_out = df_analysis.copy()
-    df_out["subtracted_adc_hist"] = net_counts  # column used downstream
+    df_out["subtracted_adc_hist"] = [net_counts] * len(df_out)
     return df_out
