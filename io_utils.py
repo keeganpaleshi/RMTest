@@ -162,6 +162,17 @@ CONFIG_SCHEMA = {
                 "settle_s": {"type": ["number", "null"], "minimum": 0},
             },
         },
+        "columns": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "fUniqueID": {"type": "string"},
+                "fBits": {"type": "string"},
+                "timestamp": {"type": "string"},
+                "adc": {"type": "string"},
+                "fchannel": {"type": "string"},
+            },
+        },
         "efficiency": {"type": "object"},
     },
     "required": [
@@ -217,14 +228,15 @@ def load_config(config_path):
     return cfg
 
 
-def load_events(csv_path):
+def load_events(csv_path, *, column_map=None):
     """
     Read event CSV into a DataFrame with columns:
        ['fUniqueID','fBits','timestamp','adc','fchannel']
     Column aliases like ``time`` or ``adc_ch`` are automatically renamed to
-    their canonical form.  Ensures ``timestamp`` and ``adc`` are returned as
-    floating point numbers, sorts the result by ``timestamp`` and returns the
-    DataFrame.
+    their canonical form.  A mapping of canonical column names to the
+    actual CSV headers may be supplied via ``column_map``. Ensures
+    ``timestamp`` and ``adc`` are returned as floating point numbers,
+    sorts the result by ``timestamp`` and returns the DataFrame.
     """
     path = Path(csv_path)
     if not path.is_file():
@@ -232,6 +244,12 @@ def load_events(csv_path):
 
     # Read CSV strictly as strings to avoid type inference surprises
     df = pd.read_csv(path, sep=",", engine="c", dtype=str)
+
+    # Rename columns based on explicit configuration mapping
+    if column_map:
+        cfg_rename = {v: k for k, v in column_map.items() if v in df.columns}
+        if cfg_rename:
+            df = df.rename(columns=cfg_rename, errors="ignore")
 
     # Allow some common alternate column names
     rename = {
