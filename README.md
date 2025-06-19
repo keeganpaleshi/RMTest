@@ -30,7 +30,7 @@ pip install -r requirements.txt
 
 ```bash
 python analyze.py --config config.json --input merged_data.csv \
-    [--output_dir results] [--job-id MYRUN] \
+    [--output_dir results] [--job-id MYRUN] [--overwrite] \
     [--efficiency-json eff.json] [--systematics-json syst.json] \
     [--spike-count N --spike-count-err S] [--slope RATE] \
     [--noise-cutoff N] \
@@ -65,7 +65,7 @@ sample layout which also includes typical auxiliary fields such as
 
 ## Output
 
-The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--job-id` is given the folder `<output_dir>/<job-id>/` is used instead. The directory includes:
+The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--job-id` is given the folder `<output_dir>/<job-id>/` is used instead. If the folder already exists run with `--overwrite` to replace it. The directory includes:
 
 - `summary.json` – calibration and fit summary.
 - `config_used.json` – copy of the configuration used.
