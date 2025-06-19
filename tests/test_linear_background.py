@@ -117,3 +117,17 @@ def test_auto_background_priors(monkeypatch, tmp_path):
     b0_man, b1_man = estimate_linear_background(energies, peaks, peak_width=0.3)
     assert captured["b0"][0] == pytest.approx(b0_man, rel=0.05)
     assert captured["b1"][0] == pytest.approx(b1_man, rel=0.1)
+
+
+def test_zero_count_bins():
+    """estimate_linear_background should handle empty histogram bins."""
+    rng = np.random.default_rng(42)
+    peaks = {"Po210": 5.3, "Po214": 7.7}
+    energies = np.concatenate([
+        rng.normal(peaks["Po210"], 0.01, 50),
+        rng.normal(peaks["Po214"], 0.01, 50),
+    ])
+
+    b0, b1 = estimate_linear_background(energies, peaks, peak_width=0.3, bins=50)
+    assert not np.isnan(b0)
+    assert not np.isnan(b1)
