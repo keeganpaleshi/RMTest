@@ -216,6 +216,12 @@ def parse_args(argv=None):
         ),
     )
     p.add_argument(
+        "--baseline-mode",
+        choices=["none", "electronics", "radon", "all"],
+        default="all",
+        help="Background removal strategy (default: all)",
+    )
+    p.add_argument(
         "--burst-mode",
         choices=["none", "micro", "rate", "both"],
         help="Burst filtering mode to pass to apply_burst_filter. Providing this option overrides `burst_filter.burst_mode` in config.json",
