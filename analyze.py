@@ -50,6 +50,7 @@ import argparse
 import sys
 import logging
 import random
+import re
 from datetime import datetime, timezone
 import subprocess
 import hashlib
@@ -101,6 +102,13 @@ from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
 from utils import find_adc_bin_peaks, adc_hist_edges, cps_to_bq
 from radmon.baseline import subtract_baseline
+
+
+def parse_time_arg(s: str) -> datetime:
+    """Return a timezone-aware datetime parsed from ``s``."""
+    if re.fullmatch(r"[+-]?\d+", str(s)):
+        return datetime.utcfromtimestamp(int(s)).replace(tzinfo=timezone.utc)
+    return date_parser.isoparse(str(s)).astimezone(timezone.utc)
 
 
 def _fit_params(obj):
@@ -399,6 +407,13 @@ def parse_args(argv=None):
     del args.time_bin_mode_new
     del args.time_bin_mode_old
 
+    if args.analysis_start_time is not None:
+        args.analysis_start_time = parse_time_arg(args.analysis_start_time)
+    if args.analysis_end_time is not None:
+        args.analysis_end_time = parse_time_arg(args.analysis_end_time)
+    if args.baseline_range:
+        args.baseline_range = [parse_time_arg(t) for t in args.baseline_range]
+
     return args
 
 
@@ -601,17 +616,16 @@ def main(argv=None):
     # 2. Load event data
     # ────────────────────────────────────────────────────────────
     try:
-        df_full = load_events(args.input, column_map=cfg.get("columns"))
+        events_all = load_events(args.input, column_map=cfg.get("columns"))
     except Exception as e:
         print(f"ERROR: Could not load events from '{args.input}': {e}")
         sys.exit(1)
 
-    if df_full.empty:
+    if events_all.empty:
         print("No events found in the input CSV. Exiting.")
         sys.exit(0)
 
-    # ``load_events()`` enforces that ``events["timestamp"]`` is numeric, so no
-    # additional conversion is performed here.
+    events_filtered = events_all.copy()
 
     # ───────────────────────────────────────────────
     # 2a. Pedestal / electronic-noise cut (integer ADC)
@@ -628,16 +642,16 @@ def main(argv=None):
             )
             noise_thr_val = None
         else:
-            before = len(df_full)
-            df_full = df_full[df_full["adc"] > noise_thr_val].reset_index(drop=True)
-            n_removed_noise = before - len(df_full)
+            before = len(events_filtered)
+            events_filtered = events_filtered[events_filtered["adc"] > noise_thr_val].reset_index(drop=True)
+            n_removed_noise = before - len(events_filtered)
             logging.info(f"Noise cut removed {n_removed_noise} events")
 
-    _ensure_events(df_full, "noise cut")
+    _ensure_events(events_filtered, "noise cut")
 
     # Optional burst filter to remove high-rate clusters
-    total_span = df_full["timestamp"].max() - df_full["timestamp"].min()
-    rate_cps = len(df_full) / max(total_span, 1e-9)
+    total_span = (events_filtered["timestamp"].max() - events_filtered["timestamp"].min()).total_seconds()
+    rate_cps = len(events_filtered) / max(total_span, 1e-9)
     if args.burst_mode is None:
         current_mode = cfg.get("burst_filter", {}).get("burst_mode", "rate")
         if current_mode == "rate" and rate_cps < 0.1:
@@ -649,8 +663,8 @@ def main(argv=None):
         else cfg.get("burst_filter", {}).get("burst_mode", "rate")
     )
 
-    n_before_burst = len(df_full)
-    df_full, n_removed_burst = apply_burst_filter(df_full, cfg, mode=burst_mode)
+    n_before_burst = len(events_filtered)
+    events_filtered, n_removed_burst = apply_burst_filter(events_filtered, cfg, mode=burst_mode)
     if n_before_burst > 0:
         frac_removed = n_removed_burst / n_before_burst
         logging.info(
@@ -661,38 +675,39 @@ def main(argv=None):
                 f"More than half of events vetoed by burst filter ({frac_removed:.1%})"
             )
 
-    _ensure_events(df_full, "burst filtering")
+    _ensure_events(events_filtered, "burst filtering")
 
-    # Keep a copy of the data set after noise and burst filtering but before
-    # any time-window selections. This full set is later used to extract
-    # baseline events independent of the analysis time windows.
-    events_full = df_full.copy()
+    # ``events_filtered`` holds data after noise and burst filtering but before
+    # any time-window selections.  The original ``events_all`` frame is kept
+    # for baseline extraction.
 
     # Global t₀ reference
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
     if t0_cfg is not None:
         try:
-            t0_global = pd.to_datetime(t0_cfg, utc=True).timestamp()
+            t0_global = _to_dt(t0_cfg)
+            cfg.setdefault("analysis", {})["analysis_start_time"] = t0_global.timestamp()
         except Exception:
             logging.warning(
                 f"Invalid analysis_start_time '{t0_cfg}' - using first event"
             )
-            t0_global = df_full["timestamp"].min()
+            t0_global = events_filtered["timestamp"].min()
     else:
-        t0_global = df_full["timestamp"].min()
+        t0_global = events_filtered["timestamp"].min()
 
-    def _to_epoch(val):
-        try:
-            return float(val)
-        except Exception:
-            return pd.to_datetime(val, utc=True).timestamp()
+    def _to_dt(val):
+        if isinstance(val, datetime):
+            return val.astimezone(timezone.utc)
+        if isinstance(val, (int, float)):
+            return datetime.utcfromtimestamp(float(val)).replace(tzinfo=timezone.utc)
+        return date_parser.isoparse(str(val)).astimezone(timezone.utc)
 
     t_end_cfg = cfg.get("analysis", {}).get("analysis_end_time")
     t_end_global = None
     if t_end_cfg is not None:
         try:
-            t_end_global = _to_epoch(t_end_cfg)
-            cfg.setdefault("analysis", {})["analysis_end_time"] = t_end_global
+            t_end_global = _to_dt(t_end_cfg)
+            cfg.setdefault("analysis", {})["analysis_end_time"] = t_end_global.timestamp()
         except Exception:
             logging.warning(
                 f"Invalid analysis_end_time '{t_end_cfg}' - using last event"
@@ -703,8 +718,8 @@ def main(argv=None):
     t_spike_end = None
     if spike_end_cfg is not None:
         try:
-            t_spike_end = _to_epoch(spike_end_cfg)
-            cfg.setdefault("analysis", {})["spike_end_time"] = t_spike_end
+            t_spike_end = _to_dt(spike_end_cfg)
+            cfg.setdefault("analysis", {})["spike_end_time"] = t_spike_end.timestamp()
         except Exception:
             logging.warning(f"Invalid spike_end_time '{spike_end_cfg}' - ignoring")
             t_spike_end = None
@@ -716,8 +731,8 @@ def main(argv=None):
     for period in spike_periods_cfg:
         try:
             start, end = period
-            start_ts = _to_epoch(start)
-            end_ts = _to_epoch(end)
+            start_ts = _to_dt(start)
+            end_ts = _to_dt(end)
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
             spike_periods.append((start_ts, end_ts))
@@ -735,8 +750,8 @@ def main(argv=None):
     for period in run_periods_cfg:
         try:
             start, end = period
-            start_ts = _to_epoch(start)
-            end_ts = _to_epoch(end)
+            start_ts = _to_dt(start)
+            end_ts = _to_dt(end)
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
             run_periods.append((start_ts, end_ts))
@@ -752,18 +767,18 @@ def main(argv=None):
     if radon_interval_cfg:
         try:
             start_r, end_r = radon_interval_cfg
-            start_r_ts = _to_epoch(start_r)
-            end_r_ts = _to_epoch(end_r)
+            start_r_ts = _to_dt(start_r)
+            end_r_ts = _to_dt(end_r)
             if end_r_ts <= start_r_ts:
                 raise ValueError("end <= start")
             radon_interval = (start_r_ts, end_r_ts)
-            cfg.setdefault("analysis", {})["radon_interval"] = [start_r_ts, end_r_ts]
+            cfg.setdefault("analysis", {})["radon_interval"] = [start_r_ts.timestamp(), end_r_ts.timestamp()]
         except Exception as e:
             logging.warning(f"Invalid radon_interval {radon_interval_cfg} -> {e}")
             radon_interval = None
 
     # Apply optional time window cuts before any baseline or fit operations
-    df_analysis = df_full.copy()
+    df_analysis = events_filtered.copy()
     if t_spike_end is not None:
         df_analysis = df_analysis[df_analysis["timestamp"] >= t_spike_end].reset_index(drop=True)
     for start_ts, end_ts in spike_periods:
@@ -788,8 +803,8 @@ def main(argv=None):
 
     _ensure_events(df_analysis, "time-window selection")
 
-    analysis_start = datetime.fromtimestamp(t0_global, tz=timezone.utc)
-    analysis_end = datetime.fromtimestamp(t_end_global, tz=timezone.utc)
+    analysis_start = t0_global
+    analysis_end = t_end_global
 
     # Optional ADC drift correction before calibration
     # Applied once using either the CLI value or the config default.
@@ -808,9 +823,9 @@ def main(argv=None):
         try:
             df_analysis["adc"] = apply_linear_adc_shift(
                 df_analysis["adc"].values,
-                df_analysis["timestamp"].values,
+                (df_analysis["timestamp"].view("int64") / 1e9).values,
                 float(drift_rate),
-                t_ref=t0_global,
+                t_ref=t0_global.timestamp(),
                 mode=drift_mode,
                 params=drift_params,
             )
@@ -875,24 +890,14 @@ def main(argv=None):
     baseline_range = None
     if args.baseline_range:
         _log_override("baseline", "range", args.baseline_range)
-        start_s, end_s = args.baseline_range
-        try:
-            t0_epoch = float(start_s)
-            t1_epoch = float(end_s)
-        except ValueError:
-            t0_dt = date_parser.parse(start_s)
-            t1_dt = date_parser.parse(end_s)
-            if t0_dt.tzinfo is None:
-                t0_dt = t0_dt.replace(tzinfo=UTC)
-            if t1_dt.tzinfo is None:
-                t1_dt = t1_dt.replace(tzinfo=UTC)
-            t0_epoch = t0_dt.timestamp()
-            t1_epoch = t1_dt.timestamp()
+        start_dt, end_dt = args.baseline_range
+        t0_epoch = start_dt.timestamp()
+        t1_epoch = end_dt.timestamp()
         logging.info(
             f"Baseline window (epoch seconds): {t0_epoch} \u2192 {t1_epoch}"
         )
         cfg.setdefault("baseline", {})["range"] = [t0_epoch, t1_epoch]
-        baseline_range = [t0_epoch, t1_epoch]
+        baseline_range = [start_dt, end_dt]
     elif "range" in baseline_cfg:
         baseline_range = baseline_cfg.get("range")
 
@@ -904,23 +909,24 @@ def main(argv=None):
 
     if baseline_range:
 
-        def to_epoch(x):
-            try:
-                return float(x)
-            except Exception:
-                return pd.to_datetime(x, utc=True).timestamp()
+        def to_dt(x):
+            if isinstance(x, datetime):
+                return x
+            if isinstance(x, (int, float)):
+                return datetime.utcfromtimestamp(float(x)).replace(tzinfo=timezone.utc)
+            return date_parser.isoparse(str(x)).astimezone(timezone.utc)
 
-        t_start_base = to_epoch(baseline_range[0])
-        t_end_base = to_epoch(baseline_range[1])
+        t_start_base = to_dt(baseline_range[0])
+        t_end_base = to_dt(baseline_range[1])
         if t_end_base <= t_start_base:
             raise ValueError("baseline_range end time must be greater than start time")
-        mask_base_full = (events_full["timestamp"] >= t_start_base) & (
-            events_full["timestamp"] < t_end_base
+        mask_base_full = (events_all["timestamp"] >= t_start_base) & (
+            events_all["timestamp"] <= t_end_base
         )
         mask_base = (df_analysis["timestamp"] >= t_start_base) & (
-            df_analysis["timestamp"] < t_end_base
+            df_analysis["timestamp"] <= t_end_base
         )
-        base_events = events_full[mask_base_full].copy()
+        base_events = events_all.loc[mask_base_full].copy()
         # Apply calibration to the baseline events
         if not base_events.empty:
             base_events["energy_MeV"] = apply_calibration(
@@ -937,11 +943,11 @@ def main(argv=None):
             base_events["denergy_MeV"] = np.sqrt(np.clip(var_base, 0, None))
         if len(base_events) == 0:
             raise ValueError("baseline_range yielded zero events")
-        baseline_live_time = float(t_end_base - t_start_base)
-        cfg.setdefault("baseline", {})["range"] = [t_start_base, t_end_base]
+        baseline_live_time = float((t_end_base - t_start_base).total_seconds())
+        cfg.setdefault("baseline", {})["range"] = [t_start_base.timestamp(), t_end_base.timestamp()]
         baseline_info = {
-            "start": t_start_base,
-            "end": t_end_base,
+            "start": t_start_base.timestamp(),
+            "end": t_end_base.timestamp(),
             "n_events": len(base_events),
             "live_time": baseline_live_time,
         }
@@ -978,12 +984,12 @@ def main(argv=None):
     _ensure_events(df_analysis, "baseline subtraction")
 
     if args.baseline_range:
-        t_base0 = _to_epoch(args.baseline_range[0])
-        t_base1 = _to_epoch(args.baseline_range[1])
+        t_base0 = _to_dt(args.baseline_range[0])
+        t_base1 = _to_dt(args.baseline_range[1])
         edges = adc_hist_edges(df_analysis["adc"].values, hist_bins)
         df_analysis = subtract_baseline(
             df_analysis,
-            df_full,
+            events_all,
             bins=edges,
             t_base0=t_base0,
             t_base1=t_base1,
@@ -1258,7 +1264,8 @@ def main(argv=None):
         if args.settle_s is not None:
             cut = t0_global + float(args.settle_s)
             iso_events = iso_events[iso_events["timestamp"] >= cut]
-        times_dict = {iso: iso_events["timestamp"].values}
+        ts_sec = (iso_events["timestamp"].view("int64") / 1e9).values
+        times_dict = {iso: ts_sec}
         weights_map = {iso: iso_events["weight"].values}
         fit_cfg = {
             "isotopes": {
@@ -1362,7 +1369,7 @@ def main(argv=None):
                 )
                 mask = probs > 0
                 filtered_df = df_analysis[mask]
-                times_dict = {iso: filtered_df["timestamp"].values}
+                times_dict = {iso: (filtered_df["timestamp"].view("int64") / 1e9).values}
                 weights_local = {iso: probs[mask]}
                 cfg_fit = {
                     "isotopes": {
@@ -1742,12 +1749,16 @@ def main(argv=None):
                 for other_iso in ("Po214", "Po218", "Po210"):
                     if other_iso != iso:
                         plot_cfg[f"window_{other_iso.lower()}"] = None
-                ts_times = pdata["events_times"]
+                ts_raw = pdata["events_times"]
+                if np.issubdtype(ts_raw.dtype, np.datetime64):
+                    ts_times = (ts_raw.view("int64") / 1e9)
+                else:
+                    ts_times = ts_raw
                 ts_energy = pdata["events_energy"]
                 fit_obj = time_fit_results.get(iso)
                 fit_dict = _fit_params(fit_obj)
             else:
-                ts_times = df_analysis["timestamp"].values
+                ts_times = (df_analysis["timestamp"].view("int64") / 1e9).values
                 ts_energy = df_analysis["energy_MeV"].values
                 fit_dict = {}
                 for k in ("Po214", "Po218", "Po210"):
