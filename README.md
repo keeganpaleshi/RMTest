@@ -435,6 +435,8 @@ scale factors for Po-214, Po-218, Po-210 and electronic noise are stored in
 option `--baseline_range` overrides `baseline.range` from the
 configuration when provided. When you specify this option the
 configuration's interval is ignored in favour of the CLI value.
+The `--baseline-mode` option selects the background removal strategy.
+Valid modes are `none`, `electronics`, `radon` and `all` (default).
 
 
 Example snippet:
