@@ -83,3 +83,11 @@ def test_blue_combine_negative_weights_error():
     corr = np.array([[1.0, 0.99], [0.99, 1.0]])
     with pytest.raises(ValueError):
         blue_combine(vals, errs, corr)
+
+
+def test_blue_combine_singular_matrix_error():
+    vals = np.array([1.0, 2.0])
+    errs = np.array([0.1, 0.2])
+    corr = np.array([[1.0, 1.0], [1.0, 1.0]])
+    with pytest.raises(ValueError, match="covariance matrix is not invertible"):
+        blue_combine(vals, errs, corr)
