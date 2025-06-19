@@ -982,10 +982,6 @@ def main(argv=None):
         if "mask_noise" in locals():
             baseline_counts["noise"] = int(np.sum(mask_noise))
 
-        # Record noise counts in ``baseline_counts``
-        if "mask_noise" in locals():
-            baseline_counts["noise"] = int(np.sum(mask_noise))
-
     _ensure_events(df_analysis, "baseline subtraction")
 
     if args.baseline_range:
