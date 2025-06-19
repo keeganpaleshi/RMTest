@@ -14,6 +14,7 @@ __all__ = [
     "adc_hist_edges",
     "cps_to_cpd",
     "cps_to_bq",
+    "parse_time_arg",
     "parse_time",
     "LITERS_PER_M3",
 ]
@@ -195,6 +196,13 @@ def parse_time(s: str) -> float:
         return float(dt.timestamp())
 
     raise argparse.ArgumentTypeError(f"could not parse time: {s!r}")
+
+
+def parse_time_arg(val) -> datetime:
+    """Parse a time argument into a UTC ``datetime`` object."""
+
+    ts = parse_time(val)
+    return datetime.fromtimestamp(ts, tz=timezone.utc)
 
 
 if __name__ == "__main__":
