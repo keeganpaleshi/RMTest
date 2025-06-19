@@ -935,9 +935,16 @@ def main(argv=None):
                 + 2 * adc_b ** 3 * cov_a_a2
             )
             base_events["denergy_MeV"] = np.sqrt(np.clip(var_base, 0, None))
+        else:
+            base_events["energy_MeV"] = np.array([], dtype=float)
+            base_events["denergy_MeV"] = np.array([], dtype=float)
         if len(base_events) == 0:
-            raise ValueError("baseline_range yielded zero events")
-        baseline_live_time = float(t_end_base - t_start_base)
+            logging.warning(
+                "baseline_range yielded zero events \u2013 skipping baseline subtraction"
+            )
+            baseline_live_time = 0.0
+        else:
+            baseline_live_time = float(t_end_base - t_start_base)
         cfg.setdefault("baseline", {})["range"] = [t_start_base, t_end_base]
         baseline_info = {
             "start": t_start_base,
