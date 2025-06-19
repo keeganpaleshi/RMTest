@@ -310,7 +310,9 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
     Parameters
     ----------
     df : pandas.DataFrame
-        Event data containing a ``timestamp`` column in seconds.
+        Event data containing a ``timestamp`` column. The values can be either
+        numeric seconds or ``datetime64`` objects. ``datetime64`` values are
+        converted to seconds internally.
     cfg : dict, optional
         Configuration dictionary. Expected keys under ``burst_filter`` are
         ``burst_window_size_s``, ``rolling_median_window`` and
@@ -338,13 +340,19 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
     removed_total = 0
     out_df = df.copy()
 
+    ts = out_df["timestamp"]
+    if pd.api.types.is_datetime64_any_dtype(ts):
+        times_sec = ts.view("int64").to_numpy() / 1e9
+    else:
+        times_sec = ts.astype(float).to_numpy()
+
     # ───── micro-burst veto ─────
     if mode in ("micro", "both"):
         micro_win = bcfg.get("micro_window_size_s")
         micro_thr = bcfg.get("micro_count_threshold")
 
         if micro_win is not None and micro_thr is not None:
-            times = out_df["timestamp"].values.astype(float)
+            times = times_sec
             if len(times) == 0:
                 return out_df, removed_total
 
@@ -371,6 +379,13 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
             removed_total += int(to_remove.sum())
             out_df = out_df[~to_remove].reset_index(drop=True)
 
+            # Recalculate times after removing events
+            ts = out_df["timestamp"]
+            if pd.api.types.is_datetime64_any_dtype(ts):
+                times_sec = ts.view("int64").to_numpy() / 1e9
+            else:
+                times_sec = ts.astype(float).to_numpy()
+
     # ───── rate-based veto ─────
     if mode in ("rate", "both"):
         win = bcfg.get("burst_window_size_s")
@@ -378,8 +393,8 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
         mult = bcfg.get("burst_multiplier")
 
         if win is not None and roll is not None and mult is not None and len(out_df) > 0:
-            t0 = out_df["timestamp"].min()
-            bins = ((out_df["timestamp"] - t0) // float(win)).astype(int)
+            t0 = times_sec.min()
+            bins = pd.Series(((times_sec - t0) // float(win)).astype(int), index=out_df.index)
 
             counts = bins.value_counts().sort_index()
             full_index = range(counts.index.min(), counts.index.max() + 1)
