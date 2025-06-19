@@ -55,6 +55,7 @@ import subprocess
 import hashlib
 import json
 from pathlib import Path
+import shutil
 
 import math
 import numpy as np
@@ -211,6 +212,11 @@ def parse_args(argv=None):
     p.add_argument(
         "--job-id",
         help="Optional identifier used for the results folder instead of the timestamp",
+    )
+    p.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing results folder if it already exists",
     )
     p.add_argument(
         "--efficiency-json",
@@ -1654,7 +1660,13 @@ def main(argv=None):
         summary["efficiency"]["blue_weights"] = list(weights)
 
     results_dir = Path(args.output_dir) / (args.job_id or now_str)
-    copy_config(results_dir, cfg)
+    if results_dir.exists():
+        if args.overwrite:
+            shutil.rmtree(results_dir)
+        else:
+            raise FileExistsError(f"Results folder already exists: {results_dir}")
+
+    copy_config(results_dir, cfg, exist_ok=args.overwrite)
     out_dir = write_summary(results_dir, summary)
 
     # Generate plots now that the output directory exists

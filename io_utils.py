@@ -412,7 +412,7 @@ def write_summary(output_dir, summary_dict, timestamp=None):
     return results_folder
 
 
-def copy_config(output_dir, config_path):
+def copy_config(output_dir, config_path, *, exist_ok=False):
     """
     Copy the used config JSON into the timestamped results folder.
 
@@ -420,7 +420,10 @@ def copy_config(output_dir, config_path):
     ----------
     output_dir : Path or str
         Path to the directory where ``config_used.json`` should be placed.
-        The directory must not already exist and will be created.
+        The directory will be created if needed.
+    exist_ok : bool, optional
+        If ``True``, allow ``output_dir`` to already exist.
+        Defaults to ``False``.
     config_path : Path, str or dict
         Configuration file to copy or configuration dictionary.
 
@@ -431,7 +434,7 @@ def copy_config(output_dir, config_path):
     """
 
     output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=False)
+    output_path.mkdir(parents=True, exist_ok=exist_ok)
 
     dest_path = output_path / "config_used.json"
     if isinstance(config_path, (str, Path)):

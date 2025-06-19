@@ -2036,7 +2036,7 @@ def test_time_fields_written_back(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "load_config", fake_load)
 
-    def fake_copy(outdir, cfg_in):
+    def fake_copy(outdir, cfg_in, exist_ok=False):
         captured["cfg"] = cfg_in
 
     monkeypatch.setattr(analyze, "copy_config", fake_copy)
