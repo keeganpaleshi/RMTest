@@ -235,7 +235,7 @@ def test_apply_burst_filter_no_removal():
         {
             "fUniqueID": range(100),
             "fBits": [0] * 100,
-            "timestamp": np.arange(100),
+            "timestamp": pd.to_datetime(np.arange(100), unit="s"),
             "adc": [1000] * 100,
             "fchannel": [1] * 100,
         }
@@ -254,7 +254,7 @@ def test_apply_burst_filter_with_burst():
         {
             "fUniqueID": range(len(times)),
             "fBits": [0] * len(times),
-            "timestamp": times,
+            "timestamp": pd.to_datetime(times, unit="s"),
             "adc": [1000] * len(times),
             "fchannel": [1] * len(times),
         }
@@ -270,7 +270,7 @@ def test_apply_burst_filter_mode_none():
         {
             "fUniqueID": range(10),
             "fBits": [0] * 10,
-            "timestamp": [0] * 10,
+            "timestamp": pd.to_datetime([0] * 10, unit="s"),
             "adc": [1000] * 10,
             "fchannel": [1] * 10,
         }
@@ -295,7 +295,7 @@ def test_apply_burst_filter_micro_burst():
         {
             "fUniqueID": range(len(times)),
             "fBits": [0] * len(times),
-            "timestamp": times,
+            "timestamp": pd.to_datetime(times, unit="s"),
             "adc": [1000] * len(times),
             "fchannel": [1] * len(times),
         }
@@ -317,7 +317,7 @@ def test_apply_burst_filter_histogram_called(monkeypatch):
         {
             "fUniqueID": range(len(times)),
             "fBits": [0] * len(times),
-            "timestamp": times,
+            "timestamp": pd.to_datetime(times, unit="s"),
             "adc": [1000] * len(times),
             "fchannel": [1] * len(times),
         }
@@ -353,7 +353,7 @@ def test_apply_burst_filter_both_matches_sequential():
         {
             "fUniqueID": range(len(times)),
             "fBits": [0] * len(times),
-            "timestamp": times,
+            "timestamp": pd.to_datetime(times, unit="s"),
             "adc": [1000] * len(times),
             "fchannel": [1] * len(times),
         }
