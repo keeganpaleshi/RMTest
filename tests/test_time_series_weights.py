@@ -90,8 +90,21 @@ def test_weighted_nll_matches_numeric_integration():
     def rate(t):
         return eff * (E * (1 - np.exp(-lam * t)) + lam * N0 * np.exp(-lam * t)) + B
 
-    integral_num = quad(rate, 0.0, t_end - t_start)[0] * np.sum(weights)
+    weight_mean = np.mean(weights)
+    integral_num = quad(rate, 0.0, t_end - t_start)[0] * weight_mean
     rate_vals = rate(times - t_start)
     numeric_nll = integral_num - np.sum(weights * np.log(rate_vals))
 
     assert analytic_nll == pytest.approx(numeric_nll, rel=1e-6)
+
+
+def test_weights_none_equivalent_to_ones():
+    times = simulate_times(40, 15, seed=4)
+    cfg = base_config(15)
+    res_none = fit_time_series({"Po214": times}, 0.0, 15, cfg, weights=None)
+    res_one = fit_time_series(
+        {"Po214": times}, 0.0, 15, cfg, weights={"Po214": np.ones_like(times)}
+    )
+    assert res_none.params["E_Po214"] == pytest.approx(
+        res_one.params["E_Po214"], rel=1e-6
+    )
