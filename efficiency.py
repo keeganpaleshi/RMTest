@@ -126,6 +126,8 @@ def blue_combine(
         raise ValueError("values and errors must have the same length")
     if vals.size == 0:
         raise ValueError("no values provided")
+    if np.any(errs < 0):
+        raise ValueError("errors cannot contain negative values")
 
     if corr is None:
         cov = np.diag(errs**2)
