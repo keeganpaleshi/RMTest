@@ -455,6 +455,21 @@ python analyze.py --config assay.json --input run.csv --output_dir results \
     --baseline_range 2023-07-01T00:00:00Z 2023-07-03T00:00:00Z
 ```
 
+### Baseline Noise Cut
+
+The helper `baseline_noise.estimate_baseline_noise` extracts the electronic
+noise level from baseline events. Its optional `pedestal_cut` parameter
+omits ADC values at or below the supplied threshold. When a baseline range
+is specified, `analyze.py` forwards `calibration.noise_cutoff` as this value.
+
+Example configuration to tighten the cut (set it to `null` to disable):
+
+```json
+"calibration": {
+    "noise_cutoff": 300
+}
+```
+
 ## Utility Conversions
 
 `utils.py` provides simple helpers to convert count rates and to search for
