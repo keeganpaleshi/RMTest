@@ -45,6 +45,9 @@ python analyze.py --config config.json --input merged_data.csv \
     [--hierarchical-summary OUT.json]
 ```
 
+The script exits with an error message if filtering removes all events at any stage
+(noise cut, burst filter, time-window selection or baseline subtraction).
+
 ## Input CSV Format
 
 The input file must be a comma-separated table with these columns:

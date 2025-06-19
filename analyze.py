@@ -123,6 +123,13 @@ def _cov_entry(fit: FitResult | dict, p1: str, p2: str) -> float:
     return 0.0
 
 
+def _ensure_events(events: pd.DataFrame, stage: str) -> None:
+    """Exit if ``events`` is empty, printing a helpful message."""
+    if len(events) == 0:
+        print(f"No events remaining after {stage}. Exiting.")
+        sys.exit(1)
+
+
 def window_prob(E, sigma, lo, hi):
     """Return probability that each ``E`` lies in [lo, hi].
 
@@ -609,6 +616,8 @@ def main(argv=None):
             n_removed_noise = before - len(events)
             logging.info(f"Noise cut removed {n_removed_noise} events")
 
+    _ensure_events(events, "noise cut")
+
     # Optional burst filter to remove high-rate clusters
     total_span = events["timestamp"].max() - events["timestamp"].min()
     rate_cps = len(events) / max(total_span, 1e-9)
@@ -634,6 +643,8 @@ def main(argv=None):
             logging.warning(
                 f"More than half of events vetoed by burst filter ({frac_removed:.1%})"
             )
+
+    _ensure_events(events, "burst filtering")
 
     # Keep a copy of the data set after noise and burst filtering but before
     # any time-window selections. This full set is later used to extract
@@ -754,6 +765,8 @@ def main(argv=None):
         events = events[events["timestamp"] <= t_end_global].reset_index(drop=True)
     else:
         t_end_global = events["timestamp"].max()
+
+    _ensure_events(events, "time-window selection")
 
     # Optional ADC drift correction before calibration
     # Applied once using either the CLI value or the config default.
@@ -935,6 +948,8 @@ def main(argv=None):
         # here since it may be misaligned after ``events`` has been
         # reindexed, which can inadvertently drop all remaining rows on
         # newer pandas versions.
+
+    _ensure_events(events, "baseline subtraction")
 
     # ────────────────────────────────────────────────────────────
     # 5. Spectral fit (optional)
