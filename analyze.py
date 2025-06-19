@@ -113,20 +113,31 @@ def _fit_params(obj):
 
 
 def _cov_entry(fit: FitResult | dict, p1: str, p2: str) -> float:
-    """Return covariance between two parameters from a FitResult."""
-    if isinstance(fit, FitResult) and fit.cov is not None:
-        ordered = [
-            k for k in fit.params.keys() if k != "fit_valid" and not k.startswith("d")
-        ]
-        if p1 not in ordered or p2 not in ordered:
-            missing = p1 if p1 not in ordered else p2
-            raise KeyError(f"Parameter {missing!r} not found in FitResult")
-        i1 = ordered.index(p1)
-        i2 = ordered.index(p2)
-        cov = np.asarray(fit.cov, dtype=float)
-        if cov.ndim >= 2 and i1 < cov.shape[0] and i2 < cov.shape[1]:
-            return float(cov[i1, i2])
-    return 0.0
+    """Return covariance between two parameters from a ``FitResult``.
+
+    Raises
+    ------
+    KeyError
+        If either ``p1`` or ``p2`` is not present in the covariance matrix.
+    """
+
+    if not isinstance(fit, FitResult) or fit.cov is None:
+        return 0.0
+
+    ordered = [
+        k for k in fit.params.keys() if k != "fit_valid" and not k.startswith("d")
+    ]
+
+    if p1 not in ordered or p2 not in ordered:
+        raise KeyError(f"Parameter(s) missing in covariance: {p1}, {p2}")
+
+    i1 = ordered.index(p1)
+    i2 = ordered.index(p2)
+    cov = np.asarray(fit.cov, dtype=float)
+    if cov.ndim >= 2 and i1 < cov.shape[0] and i2 < cov.shape[1]:
+        return float(cov[i1, i2])
+
+    raise KeyError(f"Parameter(s) missing in covariance: {p1}, {p2}")
 
 
 def _ensure_events(events: pd.DataFrame, stage: str) -> None:
