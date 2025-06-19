@@ -2,7 +2,7 @@
 
 This repository provides a complete pipeline to analyze electrostatic radon monitor data.
 
-**Note:** All time quantities are expressed in seconds and all energies are given in MeV throughout the documentation and code.
+**Note:** All time quantities are expressed in seconds and all energies are given in MeV throughout the documentation and code. Event timestamps are stored as UTC `datetime` objects throughout the pipeline. Command-line options that take timestamps (such as `--analysis-start-time`) accept either ISO‑8601 strings or Unix seconds and are parsed accordingly.
 
 ## Structure
 
