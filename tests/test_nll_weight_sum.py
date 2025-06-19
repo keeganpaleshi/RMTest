@@ -49,7 +49,8 @@ def test_weighted_nll_analytic_matches_numeric():
     def rate(t):
         return eff * (E * (1 - np.exp(-lam * t)) + lam * N0 * np.exp(-lam * t)) + B
 
-    integral_num = quad(rate, 0.0, t_end - t_start)[0] * np.sum(weights)
+    weight_mean = np.mean(weights)
+    integral_num = quad(rate, 0.0, t_end - t_start)[0] * weight_mean
     rate_vals = rate(times - t_start)
     numeric_nll = integral_num - np.sum(weights * np.log(rate_vals))
 
