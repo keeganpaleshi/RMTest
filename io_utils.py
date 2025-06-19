@@ -235,8 +235,8 @@ def load_events(csv_path, *, column_map=None):
     Column aliases like ``time`` or ``adc_ch`` are automatically renamed to
     their canonical form.  A mapping of canonical column names to the
     actual CSV headers may be supplied via ``column_map``. Ensures
-    ``timestamp`` and ``adc`` are returned as floating point numbers,
-    sorts the result by ``timestamp`` and returns the DataFrame.
+    ``timestamp`` is returned as ``datetime64[ns, UTC]`` and ``adc`` as
+    ``float``.  The result is sorted by timestamp.
     """
     path = Path(csv_path)
     if not path.is_file():
@@ -268,15 +268,15 @@ def load_events(csv_path, *, column_map=None):
     if missing:
         raise KeyError(f"Input CSV is missing required columns: {missing}")
 
-    # Convert numeric columns explicitly
-    df["timestamp"] = pd.to_numeric(df["timestamp"], errors="coerce")
+    # Convert columns to proper dtypes
+    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s", utc=True, errors="coerce")
     df["adc"] = pd.to_numeric(df["adc"], errors="coerce")
 
     start_len = len(df)
 
     # Drop rows with invalid values that became NaN
     df = df.dropna(subset=["timestamp", "adc"])
-    mask = np.isfinite(df["timestamp"]) & np.isfinite(df["adc"])
+    mask = df["adc"].apply(np.isfinite)
     df = df[mask]
 
     # Remove exact duplicate rows
@@ -285,7 +285,6 @@ def load_events(csv_path, *, column_map=None):
     discarded = start_len - len(df)
 
     # Convert types
-    df["timestamp"] = df["timestamp"].astype(float)
     df["adc"] = df["adc"].astype(float)
 
     # Sort by timestamp
@@ -344,7 +343,11 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
         micro_thr = bcfg.get("micro_count_threshold")
 
         if micro_win is not None and micro_thr is not None:
-            times = out_df["timestamp"].values.astype(float)
+            ts = out_df["timestamp"]
+            if np.issubdtype(ts.dtype, np.datetime64):
+                times = ts.view("int64") / 1e9
+            else:
+                times = ts.astype(float)
             if len(times) == 0:
                 return out_df, removed_total
 
@@ -378,8 +381,14 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
         mult = bcfg.get("burst_multiplier")
 
         if win is not None and roll is not None and mult is not None and len(out_df) > 0:
-            t0 = out_df["timestamp"].min()
-            bins = ((out_df["timestamp"] - t0) // float(win)).astype(int)
+            ts = out_df["timestamp"]
+            if np.issubdtype(ts.dtype, np.datetime64):
+                ts_sec = ts.view("int64") / 1e9
+                t0 = ts_sec.min()
+                bins = ((ts_sec - t0) // float(win)).astype(int)
+            else:
+                t0 = ts.min()
+                bins = ((ts - t0) // float(win)).astype(int)
 
             counts = bins.value_counts().sort_index()
             full_index = range(counts.index.min(), counts.index.max() + 1)
