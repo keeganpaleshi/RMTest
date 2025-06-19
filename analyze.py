@@ -99,7 +99,7 @@ from plot_utils import (
 )
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
-from utils import find_adc_bin_peaks, cps_to_bq
+from utils import find_adc_bin_peaks, adc_hist_edges, cps_to_bq
 from radmon.baseline import subtract_baseline
 
 
@@ -991,10 +991,11 @@ def main(argv=None):
     if args.baseline_range:
         t_base0 = _to_epoch(args.baseline_range[0])
         t_base1 = _to_epoch(args.baseline_range[1])
+        edges = adc_hist_edges(df_analysis["adc"].values, hist_bins)
         df_analysis = subtract_baseline(
             df_analysis,
             df_full,
-            bins=hist_bins,
+            bins=edges,
             t_base0=t_base0,
             t_base1=t_base1,
             mode=args.baseline_mode,

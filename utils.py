@@ -8,7 +8,15 @@ import argparse
 from datetime import datetime, timezone
 from dateutil import parser as date_parser
 
-__all__ = ["to_native", "find_adc_bin_peaks", "cps_to_cpd", "cps_to_bq", "parse_time", "LITERS_PER_M3"]
+__all__ = [
+    "to_native",
+    "find_adc_bin_peaks",
+    "adc_hist_edges",
+    "cps_to_cpd",
+    "cps_to_bq",
+    "parse_time",
+    "LITERS_PER_M3",
+]
 
 # Conversion factor from cubic meters to liters
 LITERS_PER_M3 = 1000.0
@@ -108,6 +116,38 @@ def find_adc_bin_peaks(adc_values, expected, window=50, prominence=0.0, width=No
             results[name] = float(guess)
 
     return results
+
+
+def adc_hist_edges(adc_values, hist_bins=None):
+    """Return histogram bin edges for raw ADC values.
+
+    Parameters
+    ----------
+    adc_values : array-like
+        Raw ADC values used to define the histogram range.
+    hist_bins : int or None, optional
+        Number of bins to divide the range into. When ``None`` each
+        ADC channel becomes its own bin.
+
+    Returns
+    -------
+    np.ndarray
+        Array of bin edges suitable for :func:`numpy.histogram`.
+    """
+
+    adc_arr = np.asarray(adc_values, dtype=float)
+    if adc_arr.size == 0:
+        return np.asarray([0.0, 1.0], dtype=float)
+
+    min_adc = int(np.min(adc_arr))
+    max_adc = int(np.max(adc_arr))
+
+    if hist_bins is None:
+        edges = np.arange(min_adc, max_adc + 2)
+    else:
+        edges = np.linspace(min_adc, max_adc, int(hist_bins) + 1)
+
+    return edges
 
 
 def cps_to_cpd(rate_cps):
