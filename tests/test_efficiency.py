@@ -83,3 +83,18 @@ def test_blue_combine_negative_weights_error():
     corr = np.array([[1.0, 0.99], [0.99, 1.0]])
     with pytest.raises(ValueError):
         blue_combine(vals, errs, corr)
+
+
+def test_blue_combine_negative_errors_uncorrelated():
+    vals = np.array([0.4, 0.5])
+    errs = np.array([0.1, -0.2])
+    with pytest.raises(ValueError):
+        blue_combine(vals, errs)
+
+
+def test_blue_combine_negative_errors_correlated():
+    vals = np.array([0.4, 0.5])
+    errs = np.array([0.1, -0.2])
+    corr = np.eye(2)
+    with pytest.raises(ValueError):
+        blue_combine(vals, errs, corr)
