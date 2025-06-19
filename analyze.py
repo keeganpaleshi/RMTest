@@ -989,8 +989,12 @@ def main(argv=None):
     _ensure_events(df_analysis, "baseline subtraction")
 
     if args.baseline_range:
-        t_base0 = _to_epoch(args.baseline_range[0])
-        t_base1 = _to_epoch(args.baseline_range[1])
+        t_base0 = datetime.fromtimestamp(
+            _to_epoch(args.baseline_range[0]), tz=timezone.utc
+        )
+        t_base1 = datetime.fromtimestamp(
+            _to_epoch(args.baseline_range[1]), tz=timezone.utc
+        )
         edges = adc_hist_edges(df_analysis["adc"].values, hist_bins)
         df_analysis = subtract_baseline(
             df_analysis,

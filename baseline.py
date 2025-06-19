@@ -1,14 +1,24 @@
 import numpy as np
 import logging
+import pandas as pd
 
 __all__ = ["rate_histogram", "subtract_baseline"]
 
 
+def _seconds(col):
+    """Return timestamp column as seconds from epoch."""
+    if np.issubdtype(col.dtype, np.number):
+        return col.astype(float).to_numpy()
+    ts = pd.to_datetime(col, utc=True)
+    return ts.view("int64") / 1e9
+
+
 def rate_histogram(df, bins):
-    """Return (histogram in counts/s, live_time_s)"""
+    """Return (histogram in counts/s, live_time_s)."""
     if df.empty:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
-    live = float(df["timestamp"].iloc[-1] - df["timestamp"].iloc[0])
+    ts = _seconds(df["timestamp"])
+    live = float(ts[-1] - ts[0])
     hist_src = df.get("subtracted_adc_hist", df["adc"]).to_numpy()
     hist, _ = np.histogram(hist_src, bins=bins)
     if live <= 0:
@@ -18,11 +28,23 @@ def rate_histogram(df, bins):
 
 def subtract_baseline(df_analysis, df_full, bins, t_base0, t_base1,
                       mode="all", live_time_analysis=None):
-    """Subtract baseline from df_analysis and return NEW dataframe copy.
+    """Subtract baseline from ``df_analysis`` and return a new ``DataFrame``.
 
-    mode: 'none' | 'electronics' | 'radon' | 'all'
-    live_time_analysis: seconds represented by df_analysis;
-                        if None it is calculated internally.
+    Parameters
+    ----------
+    df_analysis : pandas.DataFrame
+        Data to be baseline corrected.
+    df_full : pandas.DataFrame
+        Full dataset used to extract the baseline slice.
+    bins : array-like
+        Histogram bin edges.
+    t_base0, t_base1 : datetime.datetime
+        Start and end of the baseline range (UTC assumed for naive datetimes).
+    mode : {"none", "electronics", "radon", "all"}
+        Type of subtraction to perform.
+    live_time_analysis : float, optional
+        Seconds represented by ``df_analysis``; if ``None`` it is calculated
+        internally.
     """
     assert mode in ("none", "electronics", "radon", "all")
 
@@ -35,7 +57,10 @@ def subtract_baseline(df_analysis, df_full, bins, t_base0, t_base1,
         live_time_analysis = live_an
 
     # baseline slice
-    mask = (df_full["timestamp"] >= t_base0) & (df_full["timestamp"] <= t_base1)
+    t0 = pd.to_datetime(t_base0, utc=True).timestamp()
+    t1 = pd.to_datetime(t_base1, utc=True).timestamp()
+    ts_full = _seconds(df_full["timestamp"])
+    mask = (ts_full >= t0) & (ts_full <= t1)
     if not mask.any():
         logging.warning("baseline_range matched no events – skipping subtraction")
         return df_analysis.copy()
