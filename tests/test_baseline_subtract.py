@@ -19,8 +19,8 @@ def test_baseline_none():
         df,
         df,
         bins=bins,
-        t_base0=0,
-        t_base1=5,
+        t_base0=pd.Timestamp(0, unit="s", tz="UTC"),
+        t_base1=pd.Timestamp(5, unit="s", tz="UTC"),
         mode="none",
     )
     hist_before, _ = baseline.rate_histogram(df, bins)
@@ -43,8 +43,8 @@ def test_baseline_time_norm():
         df_an,
         df_full,
         bins=bins,
-        t_base0=100,
-        t_base1=140,
+        t_base0=pd.Timestamp(100, unit="s", tz="UTC"),
+        t_base1=pd.Timestamp(140, unit="s", tz="UTC"),
         mode="all",
     )
     integral = out["subtracted_adc_hist"].iloc[0].sum()
