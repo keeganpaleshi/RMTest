@@ -176,9 +176,7 @@ def test_calibrate_run_quadratic_option(caplog):
         }
     }
 
-    with caplog.at_level(logging.WARNING):
-        out = derive_calibration_constants(adc, cfg)
-    assert "quadratic calibration is currently disabled" in caplog.text.lower()
+    out = derive_calibration_constants(adc, cfg)
 
     a, _ = out["a"]
     a2, _ = out["a2"]
@@ -187,11 +185,15 @@ def test_calibrate_run_quadratic_option(caplog):
     adc_test = np.array([1000, 1500, 2000])
     energies = apply_calibration(adc_test, a, c, quadratic_coeff=a2)
     assert np.allclose(
-        energies[[0, 2]],
-        [DEFAULT_KNOWN_ENERGIES["Po210"], DEFAULT_KNOWN_ENERGIES["Po214"]],
+        energies,
+        [
+            DEFAULT_KNOWN_ENERGIES["Po210"],
+            DEFAULT_KNOWN_ENERGIES["Po218"],
+            DEFAULT_KNOWN_ENERGIES["Po214"],
+        ],
         rtol=1e-3,
     )
-    assert a2 == 0.0
+    assert a2 != 0.0
 
 
 def test_energy_uncertainty_clipping():
@@ -200,10 +202,18 @@ def test_energy_uncertainty_clipping():
 
     events = pd.DataFrame({"adc": [1.0]})
     a_sig = 0.001
+    a2_sig = 0.002
     c_sig = 0.02
     cov_ac = -0.1
+    cov_a_a2 = -0.05
 
-    var_energy = (events["adc"] * a_sig) ** 2 + c_sig ** 2 + 2 * events["adc"] * cov_ac
+    var_energy = (
+        (events["adc"] * a_sig) ** 2
+        + (events["adc"] ** 2 * a2_sig) ** 2
+        + c_sig ** 2
+        + 2 * events["adc"] * cov_ac
+        + 2 * events["adc"] ** 3 * cov_a_a2
+    )
     assert var_energy.iloc[0] < 0
 
     events["denergy_MeV"] = np.sqrt(np.clip(var_energy, 0, None))
