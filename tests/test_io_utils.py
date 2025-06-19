@@ -128,6 +128,31 @@ def test_load_events_column_aliases(tmp_path):
     assert "adc_ch" not in loaded.columns
 
 
+def test_load_events_custom_columns(tmp_path):
+    df = pd.DataFrame(
+        {
+            "uid": [1],
+            "bits": [0],
+            "ftimestamps": [1000],
+            "fadc_channels": [1250],
+            "chan": [1],
+        }
+    )
+    p = tmp_path / "custom.csv"
+    df.to_csv(p, index=False)
+    column_map = {
+        "fUniqueID": "uid",
+        "fBits": "bits",
+        "timestamp": "ftimestamps",
+        "adc": "fadc_channels",
+        "fchannel": "chan",
+    }
+    loaded = load_events(p, column_map=column_map)
+    assert list(loaded["timestamp"])[0] == 1000.0
+    assert list(loaded["adc"])[0] == 1250
+    assert "ftimestamps" not in loaded.columns
+
+
 def test_load_events_missing_column(tmp_path):
     df = pd.DataFrame(
         {

@@ -63,6 +63,18 @@ sample layout which also includes typical auxiliary fields such as
 `baseline_adc`, `spike_flag`, `valid`, `temperature`, `run_id`,
 `pressure` and `humidity`.
 
+When your CSV uses different header names you can specify them under
+the `columns` section of the configuration.  Provide a mapping from the
+canonical names (`timestamp`, `adc`, etc.) to the actual column names in
+the file:
+
+```json
+"columns": {
+    "timestamp": "ftimestamps",
+    "adc": "fadc_channels"
+}
+```
+
 ## Output
 
 The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--job-id` is given the folder `<output_dir>/<job-id>/` is used instead. If the folder already exists run with `--overwrite` to replace it. The directory includes:

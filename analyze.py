@@ -601,7 +601,7 @@ def main(argv=None):
     # 2. Load event data
     # ────────────────────────────────────────────────────────────
     try:
-        df_full = load_events(args.input)
+        df_full = load_events(args.input, column_map=cfg.get("columns"))
     except Exception as e:
         print(f"ERROR: Could not load events from '{args.input}': {e}")
         sys.exit(1)
