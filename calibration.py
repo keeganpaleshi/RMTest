@@ -210,15 +210,9 @@ def calibrate_run(adc_values, config, hist_bins=None):
     E214 = energies["Po214"]
     E218 = energies["Po218"]
 
-    user_requested_quadratic = bool(
+    quadratic = bool(
         config.get("calibration", {}).get("quadratic", False)
     )
-    if user_requested_quadratic:
-        logging.warning(
-            "Quadratic calibration is currently disabled. Using linear calibration instead."
-        )
-
-    quadratic = False
 
     if quadratic:
         # Solve for quadratic coefficients a2, a, c using all three peaks
@@ -331,6 +325,7 @@ def derive_calibration_constants(adc_values, config):
         "sigma_E": (float(res["sigma_E"]), sigE_err),
         "peaks": res.get("peaks", {}),
         "ac_covariance": cov.tolist(),
+        "cov_a_a2": float(res.get("cov_a_a2", 0.0)),
     }
     return out
 
@@ -403,6 +398,7 @@ def derive_calibration_constants_auto(
         "sigma_E": (float(res["sigma_E"]), sigE_err),
         "peaks": res.get("peaks", {}),
         "ac_covariance": cov.tolist(),
+        "cov_a_a2": float(res.get("cov_a_a2", 0.0)),
     }
     return out
 
