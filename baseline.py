@@ -9,7 +9,8 @@ def rate_histogram(df, bins):
     if df.empty:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
     live = float(df["timestamp"].iloc[-1] - df["timestamp"].iloc[0])
-    hist, _ = np.histogram(df["adc"].to_numpy(), bins=bins)
+    hist_src = df.get("subtracted_adc_hist", df["adc"]).to_numpy()
+    hist, _ = np.histogram(hist_src, bins=bins)
     if live <= 0:
         return np.zeros_like(hist, dtype=float), live
     return hist / live, live
