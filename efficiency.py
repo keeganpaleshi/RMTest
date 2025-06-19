@@ -122,6 +122,8 @@ def blue_combine(
     """
     vals = np.asarray(values, dtype=float)
     errs = np.asarray(errors, dtype=float)
+    if np.any(errs < 0):
+        raise ValueError("errors cannot be negative")
     if vals.size != errs.size:
         raise ValueError("values and errors must have the same length")
     if vals.size == 0:
