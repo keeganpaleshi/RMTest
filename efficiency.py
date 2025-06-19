@@ -135,7 +135,10 @@ def blue_combine(
             raise ValueError("correlation matrix has wrong shape")
         cov = c * np.outer(errs, errs)
 
-    Vinv = np.linalg.inv(cov)
+    try:
+        Vinv = np.linalg.inv(cov)
+    except np.linalg.LinAlgError as exc:
+        raise ValueError("covariance matrix is not invertible") from exc
     ones = np.ones(vals.size)
     norm = float(ones @ Vinv @ ones)
     weights = (Vinv @ ones) / norm
