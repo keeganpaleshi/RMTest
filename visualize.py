@@ -1,5 +1,7 @@
 import os
 import numpy as np
+import matplotlib as _mpl
+_mpl.use("Agg")
 import matplotlib.pyplot as plt
 from color_schemes import COLOR_SCHEMES
 
