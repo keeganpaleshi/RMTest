@@ -7,6 +7,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
 import baseline_noise
+import baseline
 from fitting import FitResult
 
 
@@ -502,3 +503,11 @@ def test_noise_level_none_not_recorded(tmp_path, monkeypatch):
 
     summary = captured.get("summary", {})
     assert "noise_level" not in summary.get("baseline", {})
+
+
+def test_rate_histogram_single_event():
+    df = pd.DataFrame({"timestamp": [1.0], "adc": [10.0]})
+    bins = np.array([0, 20])
+    rate, live = baseline.rate_histogram(df, bins)
+    assert live == 0.0
+    assert np.all(rate == 0.0)
