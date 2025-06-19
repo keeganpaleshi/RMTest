@@ -49,19 +49,22 @@ def fit_hierarchical_runs(run_results, draws=2000, tune=1000, chains=2, random_s
     with pm.Model():
         # Global mean and between-run scatter for half-life
         mu_hl = pm.Normal("mu_hl", mu=hl_obs.mean(), sigma=10 * hl_obs.std() + 1e-6)
-        sigma_hl = pm.HalfNormal("sigma_hl", sigma=hl_obs.std() + 1e-6)
+        hl_scale = max(hl_obs.std(), hl_obs.mean() * 0.1, 1e-3)
+        sigma_hl = pm.HalfNormal("sigma_hl", sigma=hl_scale)
         hl = pm.Normal("hl", mu=mu_hl, sigma=sigma_hl, shape=n)
         pm.Normal("hl_obs", mu=hl, sigma=hl_err, observed=hl_obs)
 
         if use_slope:
             mu_a = pm.Normal("mu_a", mu=slope_obs.mean(), sigma=10 * slope_obs.std() + 1e-6)
-            sigma_a = pm.HalfNormal("sigma_a", sigma=slope_obs.std() + 1e-6)
+            slope_scale = max(slope_obs.std(), slope_obs.mean() * 0.1, 1e-3)
+            sigma_a = pm.HalfNormal("sigma_a", sigma=slope_scale)
             a = pm.Normal("a", mu=mu_a, sigma=sigma_a, shape=n)
             pm.Normal("a_obs", mu=a, sigma=slope_err, observed=slope_obs)
 
         if use_intercept:
             mu_c = pm.Normal("mu_c", mu=int_obs.mean(), sigma=10 * int_obs.std() + 1e-6)
-            sigma_c = pm.HalfNormal("sigma_c", sigma=int_obs.std() + 1e-6)
+            int_scale = max(int_obs.std(), int_obs.mean() * 0.1, 1e-3)
+            sigma_c = pm.HalfNormal("sigma_c", sigma=int_scale)
             c = pm.Normal("c", mu=mu_c, sigma=sigma_c, shape=n)
             pm.Normal("c_obs", mu=c, sigma=int_err, observed=int_obs)
 
