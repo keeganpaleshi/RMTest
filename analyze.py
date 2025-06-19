@@ -826,22 +826,15 @@ def main(argv=None):
     try:
         if cfg.get("calibration", {}).get("method", "two-point") == "auto":
             adc_arr = df_analysis["adc"].to_numpy()
-            try:
-                cal_params = derive_calibration_constants_auto(
-                    adc_arr,
-                    cfg,
-                    hist_bins=hist_bins,
-                )
-            except TypeError:
-                cal_params = derive_calibration_constants_auto(
-                    adc_arr,
-                    noise_cutoff=cfg["calibration"].get(
-                        "noise_cutoff", DEFAULT_NOISE_CUTOFF
-                    ),
-                    hist_bins=hist_bins,
-                    peak_search_radius=cfg["calibration"].get("peak_search_radius", 200),
-                    nominal_adc=cfg["calibration"].get("nominal_adc"),
-                )
+            cal_params = derive_calibration_constants_auto(
+                adc_arr,
+                noise_cutoff=cfg["calibration"].get(
+                    "noise_cutoff", DEFAULT_NOISE_CUTOFF
+                ),
+                hist_bins=hist_bins,
+                peak_search_radius=cfg["calibration"].get("peak_search_radius", 200),
+                nominal_adc=cfg["calibration"].get("nominal_adc"),
+            )
         else:
             # Two‐point calibration as given in config
             cal_params = derive_calibration_constants(adc_vals, config=cfg)
