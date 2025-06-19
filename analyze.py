@@ -100,6 +100,7 @@ from plot_utils import (
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
 from utils import find_adc_bin_peaks, cps_to_bq
+from radmon.baseline import subtract_baseline
 
 
 def _fit_params(obj):
@@ -600,12 +601,12 @@ def main(argv=None):
     # 2. Load event data
     # ────────────────────────────────────────────────────────────
     try:
-        events = load_events(args.input)
+        df_full = load_events(args.input)
     except Exception as e:
         print(f"ERROR: Could not load events from '{args.input}': {e}")
         sys.exit(1)
 
-    if events.empty:
+    if df_full.empty:
         print("No events found in the input CSV. Exiting.")
         sys.exit(0)
 
@@ -627,16 +628,16 @@ def main(argv=None):
             )
             noise_thr_val = None
         else:
-            before = len(events)
-            events = events[events["adc"] > noise_thr_val].reset_index(drop=True)
-            n_removed_noise = before - len(events)
+            before = len(df_full)
+            df_full = df_full[df_full["adc"] > noise_thr_val].reset_index(drop=True)
+            n_removed_noise = before - len(df_full)
             logging.info(f"Noise cut removed {n_removed_noise} events")
 
-    _ensure_events(events, "noise cut")
+    _ensure_events(df_full, "noise cut")
 
     # Optional burst filter to remove high-rate clusters
-    total_span = events["timestamp"].max() - events["timestamp"].min()
-    rate_cps = len(events) / max(total_span, 1e-9)
+    total_span = df_full["timestamp"].max() - df_full["timestamp"].min()
+    rate_cps = len(df_full) / max(total_span, 1e-9)
     if args.burst_mode is None:
         current_mode = cfg.get("burst_filter", {}).get("burst_mode", "rate")
         if current_mode == "rate" and rate_cps < 0.1:
@@ -648,8 +649,8 @@ def main(argv=None):
         else cfg.get("burst_filter", {}).get("burst_mode", "rate")
     )
 
-    n_before_burst = len(events)
-    events, n_removed_burst = apply_burst_filter(events, cfg, mode=burst_mode)
+    n_before_burst = len(df_full)
+    df_full, n_removed_burst = apply_burst_filter(df_full, cfg, mode=burst_mode)
     if n_before_burst > 0:
         frac_removed = n_removed_burst / n_before_burst
         logging.info(
@@ -660,12 +661,12 @@ def main(argv=None):
                 f"More than half of events vetoed by burst filter ({frac_removed:.1%})"
             )
 
-    _ensure_events(events, "burst filtering")
+    _ensure_events(df_full, "burst filtering")
 
     # Keep a copy of the data set after noise and burst filtering but before
     # any time-window selections. This full set is later used to extract
     # baseline events independent of the analysis time windows.
-    events_full = events.copy()
+    events_full = df_full.copy()
 
     # Global t₀ reference
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
@@ -676,9 +677,9 @@ def main(argv=None):
             logging.warning(
                 f"Invalid analysis_start_time '{t0_cfg}' - using first event"
             )
-            t0_global = events["timestamp"].min()
+            t0_global = df_full["timestamp"].min()
     else:
-        t0_global = events["timestamp"].min()
+        t0_global = df_full["timestamp"].min()
 
     def _to_epoch(val):
         try:
@@ -762,27 +763,33 @@ def main(argv=None):
             radon_interval = None
 
     # Apply optional time window cuts before any baseline or fit operations
+    df_analysis = df_full.copy()
     if t_spike_end is not None:
-        events = events[events["timestamp"] >= t_spike_end].reset_index(drop=True)
+        df_analysis = df_analysis[df_analysis["timestamp"] >= t_spike_end].reset_index(drop=True)
     for start_ts, end_ts in spike_periods:
-        mask = (events["timestamp"] >= start_ts) & (events["timestamp"] < end_ts)
+        mask = (df_analysis["timestamp"] >= start_ts) & (
+            df_analysis["timestamp"] < end_ts
+        )
         if mask.any():
-            events = events[~mask].reset_index(drop=True)
+            df_analysis = df_analysis[~mask].reset_index(drop=True)
     if run_periods:
-        keep_mask = np.zeros(len(events), dtype=bool)
+        keep_mask = np.zeros(len(df_analysis), dtype=bool)
         for start_ts, end_ts in run_periods:
-            keep_mask |= (events["timestamp"] >= start_ts) & (
-                events["timestamp"] < end_ts
+            keep_mask |= (df_analysis["timestamp"] >= start_ts) & (
+                df_analysis["timestamp"] < end_ts
             )
-        events = events[keep_mask].reset_index(drop=True)
-        if t_end_cfg is None and len(events) > 0:
-            t_end_global = events["timestamp"].max()
+        df_analysis = df_analysis[keep_mask].reset_index(drop=True)
+        if t_end_cfg is None and len(df_analysis) > 0:
+            t_end_global = df_analysis["timestamp"].max()
     if t_end_global is not None:
-        events = events[events["timestamp"] <= t_end_global].reset_index(drop=True)
+        df_analysis = df_analysis[df_analysis["timestamp"] <= t_end_global].reset_index(drop=True)
     else:
-        t_end_global = events["timestamp"].max()
+        t_end_global = df_analysis["timestamp"].max()
 
-    _ensure_events(events, "time-window selection")
+    _ensure_events(df_analysis, "time-window selection")
+
+    analysis_start = datetime.fromtimestamp(t0_global, tz=timezone.utc)
+    analysis_end = datetime.fromtimestamp(t_end_global, tz=timezone.utc)
 
     # Optional ADC drift correction before calibration
     # Applied once using either the CLI value or the config default.
@@ -799,9 +806,9 @@ def main(argv=None):
 
     if drift_rate != 0.0 or drift_mode != "linear" or drift_params is not None:
         try:
-            events["adc"] = apply_linear_adc_shift(
-                events["adc"].values,
-                events["timestamp"].values,
+            df_analysis["adc"] = apply_linear_adc_shift(
+                df_analysis["adc"].values,
+                df_analysis["timestamp"].values,
                 float(drift_rate),
                 t_ref=t0_global,
                 mode=drift_mode,
@@ -813,20 +820,28 @@ def main(argv=None):
     # ────────────────────────────────────────────────────────────
     # 3. Energy calibration
     # ────────────────────────────────────────────────────────────
-    adc_vals = events["adc"].values
+    adc_vals = df_analysis["adc"].values
+    hist_bins = cfg["calibration"].get("hist_bins", 2000)
     calibration_valid = True
     try:
         if cfg.get("calibration", {}).get("method", "two-point") == "auto":
-            # Auto‐cal using Freedman‐Diaconis histogram + peak detection
-            cal_params = derive_calibration_constants_auto(
-                adc_vals,
-                noise_cutoff=cfg["calibration"].get(
-                    "noise_cutoff", DEFAULT_NOISE_CUTOFF
-                ),
-                hist_bins=cfg["calibration"].get("hist_bins", 2000),
-                peak_search_radius=cfg["calibration"].get("peak_search_radius", 200),
-                nominal_adc=cfg["calibration"].get("nominal_adc"),
-            )
+            adc_arr = df_analysis["adc"].to_numpy()
+            try:
+                cal_params = derive_calibration_constants_auto(
+                    adc_arr,
+                    cfg,
+                    hist_bins=hist_bins,
+                )
+            except TypeError:
+                cal_params = derive_calibration_constants_auto(
+                    adc_arr,
+                    noise_cutoff=cfg["calibration"].get(
+                        "noise_cutoff", DEFAULT_NOISE_CUTOFF
+                    ),
+                    hist_bins=hist_bins,
+                    peak_search_radius=cfg["calibration"].get("peak_search_radius", 200),
+                    nominal_adc=cfg["calibration"].get("nominal_adc"),
+                )
         else:
             # Two‐point calibration as given in config
             cal_params = derive_calibration_constants(adc_vals, config=cfg)
@@ -845,9 +860,9 @@ def main(argv=None):
     cov_a_a2 = float(cal_params.get("cov_a_a2", 0.0))
 
     # Apply calibration -> new column “energy_MeV” and its uncertainty
-    events["energy_MeV"] = apply_calibration(events["adc"], a, c, quadratic_coeff=a2)
+    df_analysis["energy_MeV"] = apply_calibration(df_analysis["adc"], a, c, quadratic_coeff=a2)
 
-    adc_vals = events["adc"].astype(float)
+    adc_vals = df_analysis["adc"].astype(float)
     var_energy = (
         (adc_vals * a_sig) ** 2
         + (adc_vals ** 2 * a2_sig) ** 2
@@ -855,7 +870,7 @@ def main(argv=None):
         + 2 * adc_vals * cov_ac
         + 2 * adc_vals ** 3 * cov_a_a2
     )
-    events["denergy_MeV"] = np.sqrt(np.clip(var_energy, 0, None))
+    df_analysis["denergy_MeV"] = np.sqrt(np.clip(var_energy, 0, None))
 
     # ────────────────────────────────────────────────────────────
     # 4. Baseline run (optional)
@@ -909,8 +924,8 @@ def main(argv=None):
         mask_base_full = (events_full["timestamp"] >= t_start_base) & (
             events_full["timestamp"] < t_end_base
         )
-        mask_base = (events["timestamp"] >= t_start_base) & (
-            events["timestamp"] < t_end_base
+        mask_base = (df_analysis["timestamp"] >= t_start_base) & (
+            df_analysis["timestamp"] < t_end_base
         )
         base_events = events_full[mask_base_full].copy()
         # Apply calibration to the baseline events
@@ -967,23 +982,24 @@ def main(argv=None):
         if "mask_noise" in locals():
             baseline_counts["noise"] = int(np.sum(mask_noise))
 
-        # Remove baseline events from the main dataset before any fits. Use
-        # the same timestamp mask applied to the filtered ``events`` DataFrame.
+        # Record noise counts in ``baseline_counts``
+        if "mask_noise" in locals():
+            baseline_counts["noise"] = int(np.sum(mask_noise))
 
-    # After creating ``base_events``, drop them from the dataset
-    if baseline_range:
-        # Remove rows where ``mask_base`` is True
-        events = events[~mask_base].reset_index(drop=True)
+    _ensure_events(df_analysis, "baseline subtraction")
 
-        if t_end_cfg is None:
-            t_end_global = events["timestamp"].max()
-
-        # Baseline events were already removed above. Avoid reapplying the mask
-        # here since it may be misaligned after ``events`` has been
-        # reindexed, which can inadvertently drop all remaining rows on
-        # newer pandas versions.
-
-    _ensure_events(events, "baseline subtraction")
+    if args.baseline_range:
+        t_base0 = _to_epoch(args.baseline_range[0])
+        t_base1 = _to_epoch(args.baseline_range[1])
+        df_analysis = subtract_baseline(
+            df_analysis,
+            df_full,
+            bins=hist_bins,
+            t_base0=t_base0,
+            t_base1=t_base1,
+            mode=args.baseline_mode,
+            live_time_analysis=(analysis_end - analysis_start).total_seconds(),
+        )
 
     # ────────────────────────────────────────────────────────────
     # 5. Spectral fit (optional)
@@ -1003,7 +1019,7 @@ def main(argv=None):
             default_bins = cfg["spectral_fit"].get("fd_hist_bins")
 
         if method == "fd":
-            E_all = events["energy_MeV"].values
+            E_all = df_analysis["energy_MeV"].values
             # Freedman‐Diaconis on energy array
             q25, q75 = np.percentile(E_all, [25, 75])
             iqr = q75 - q25
@@ -1031,8 +1047,8 @@ def main(argv=None):
                 width = bin_cfg.get("adc_bin_width", 1)
             else:
                 width = cfg["spectral_fit"].get("adc_bin_width", 1)
-            adc_min = events["adc"].min()
-            adc_max = events["adc"].max()
+            adc_min = df_analysis["adc"].min()
+            adc_max = df_analysis["adc"].max()
             bins = int(np.ceil((adc_max - adc_min + 1) / width))
 
             # Build edges in ADC units then convert to energy for plotting
@@ -1047,7 +1063,7 @@ def main(argv=None):
 
         # `find_adc_bin_peaks` will return a dict: e.g. { "Po210": adc_centroid, … }
         adc_peaks = find_adc_bin_peaks(
-            events["adc"].values,
+            df_analysis["adc"].values,
             expected=expected_peaks,
             window=cfg["spectral_fit"].get("peak_search_width_adc", 50),
             prominence=cfg["spectral_fit"].get("peak_search_prominence", 0),
@@ -1077,8 +1093,8 @@ def main(argv=None):
             peak_tol = cfg["spectral_fit"].get("spectral_peak_tolerance_mev", 0.3)
             raw_count = float(
                 (
-                    (events["energy_MeV"] >= mu - peak_tol)
-                    & (events["energy_MeV"] <= mu + peak_tol)
+                    (df_analysis["energy_MeV"] >= mu - peak_tol)
+                    & (df_analysis["energy_MeV"] <= mu + peak_tol)
                 ).sum()
             )
             mu_amp = max(raw_count, 1.0)
@@ -1102,7 +1118,7 @@ def main(argv=None):
             mu_map = {k: priors_spec[f"mu_{k}"][0] for k in adc_peaks.keys()}
             peak_tol = cfg["spectral_fit"].get("spectral_peak_tolerance_mev", 0.3)
             b0_est, b1_est = estimate_linear_background(
-                events["energy_MeV"].values,
+                df_analysis["energy_MeV"].values,
                 mu_map,
                 peak_width=peak_tol,
             )
@@ -1121,7 +1137,7 @@ def main(argv=None):
         spec_fit_out = None
         try:
             fit_kwargs = {
-                "energies": events["energy_MeV"].values,
+                "energies": df_analysis["energy_MeV"].values,
                 "priors": priors_spec,
                 "flags": spec_flags,
             }
@@ -1152,7 +1168,7 @@ def main(argv=None):
         elif isinstance(spec_fit_out, dict):
             fit_vals = spec_fit_out
         spec_plot_data = {
-            "energies": events["energy_MeV"].values,
+            "energies": df_analysis["energy_MeV"].values,
             "fit_vals": fit_vals,
             "bins": bins,
             "bin_edges": bin_edges,
@@ -1178,10 +1194,10 @@ def main(argv=None):
 
             lo, hi = win_range
             probs = window_prob(
-                events["energy_MeV"].values, events["denergy_MeV"].values, lo, hi
+                df_analysis["energy_MeV"].values, df_analysis["denergy_MeV"].values, lo, hi
             )
             iso_mask = probs > 0
-            iso_events = events[iso_mask].copy()
+            iso_events = df_analysis[iso_mask].copy()
             iso_events["weight"] = probs[iso_mask]
             if iso_events.empty:
                 print(f"WARNING: No events found for {iso} in [{lo}, {hi}] MeV.")
@@ -1312,12 +1328,12 @@ def main(argv=None):
     if win_p210 is not None:
         lo, hi = win_p210
         mask210 = (
-            (events["energy_MeV"] >= lo)
-            & (events["energy_MeV"] <= hi)
-            & (events["timestamp"] >= t0_global)
-            & (events["timestamp"] <= t_end_global)
+            (df_analysis["energy_MeV"] >= lo)
+            & (df_analysis["energy_MeV"] <= hi)
+            & (df_analysis["timestamp"] >= t0_global)
+            & (df_analysis["timestamp"] <= t_end_global)
         )
-        events_p210 = events[mask210]
+        events_p210 = df_analysis[mask210]
         time_plot_data["Po210"] = {
             "events_times": events_p210["timestamp"].values,
             "events_energy": events_p210["energy_MeV"].values,
@@ -1349,13 +1365,13 @@ def main(argv=None):
                         f"Missing window for {iso} during systematics scan"
                     )
                 probs = window_prob(
-                    events["energy_MeV"].values,
-                    events["denergy_MeV"].values,
+                    df_analysis["energy_MeV"].values,
+                    df_analysis["denergy_MeV"].values,
                     win_range[0],
                     win_range[1],
                 )
                 mask = probs > 0
-                filtered_df = events[mask]
+                filtered_df = df_analysis[mask]
                 times_dict = {iso: filtered_df["timestamp"].values}
                 weights_local = {iso: probs[mask]}
                 cfg_fit = {
@@ -1741,8 +1757,8 @@ def main(argv=None):
                 fit_obj = time_fit_results.get(iso)
                 fit_dict = _fit_params(fit_obj)
             else:
-                ts_times = events["timestamp"].values
-                ts_energy = events["energy_MeV"].values
+                ts_times = df_analysis["timestamp"].values
+                ts_energy = df_analysis["energy_MeV"].values
                 fit_dict = {}
                 for k in ("Po214", "Po218", "Po210"):
                     obj = time_fit_results.get(k)
