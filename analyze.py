@@ -613,6 +613,8 @@ def main(argv=None):
     # ────────────────────────────────────────────────────────────
     try:
         df_full = load_events(args.input, column_map=cfg.get("columns"))
+        if pd.api.types.is_datetime64_any_dtype(df_full["timestamp"]):
+            df_full["timestamp"] = df_full["timestamp"].view("int64") / 1e9
     except Exception as e:
         print(f"ERROR: Could not load events from '{args.input}': {e}")
         sys.exit(1)
@@ -621,8 +623,8 @@ def main(argv=None):
         print("No events found in the input CSV. Exiting.")
         sys.exit(0)
 
-    # ``load_events()`` enforces that ``events["timestamp"]`` is numeric, so no
-    # additional conversion is performed here.
+    # ``load_events()`` now returns timezone-aware datetimes; convert to epoch
+    # seconds for internal calculations.
 
     # ───────────────────────────────────────────────
     # 2a. Pedestal / electronic-noise cut (integer ADC)

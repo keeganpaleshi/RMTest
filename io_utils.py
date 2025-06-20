@@ -234,9 +234,10 @@ def load_events(csv_path, *, column_map=None):
        ['fUniqueID','fBits','timestamp','adc','fchannel']
     Column aliases like ``time`` or ``adc_ch`` are automatically renamed to
     their canonical form.  A mapping of canonical column names to the
-    actual CSV headers may be supplied via ``column_map``. Ensures
-    ``timestamp`` and ``adc`` are returned as floating point numbers,
-    sorts the result by ``timestamp`` and returns the DataFrame.
+    actual CSV headers may be supplied via ``column_map``. The ``timestamp``
+    column is parsed to ``datetime64[ns, UTC]`` while ``adc`` is returned as a
+    floating point number. The DataFrame is sorted by ``timestamp`` before being
+    returned.
     """
     path = Path(csv_path)
     if not path.is_file():
@@ -260,7 +261,12 @@ def load_events(csv_path, *, column_map=None):
         "unique_id": "fUniqueID",
         "bits": "fBits",
     }
+
     df = df.rename(columns=rename, errors="ignore")
+
+    # Parse timestamps (epoch seconds) into timezone-aware datetimes
+    if "timestamp" in df.columns:
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s", utc=True, errors="coerce")
 
     # Check required columns after renaming
     required_cols = ["fUniqueID", "fBits", "timestamp", "adc", "fchannel"]
@@ -269,14 +275,13 @@ def load_events(csv_path, *, column_map=None):
         raise KeyError(f"Input CSV is missing required columns: {missing}")
 
     # Convert numeric columns explicitly
-    df["timestamp"] = pd.to_numeric(df["timestamp"], errors="coerce")
-    df["adc"] = pd.to_numeric(df["adc"], errors="coerce")
+    df["adc"] = pd.to_numeric(df.get("adc"), errors="coerce")
 
     start_len = len(df)
 
     # Drop rows with invalid values that became NaN
     df = df.dropna(subset=["timestamp", "adc"])
-    mask = np.isfinite(df["timestamp"]) & np.isfinite(df["adc"])
+    mask = np.isfinite(df["adc"])
     df = df[mask]
 
     # Remove exact duplicate rows
@@ -285,7 +290,6 @@ def load_events(csv_path, *, column_map=None):
     discarded = start_len - len(df)
 
     # Convert types
-    df["timestamp"] = df["timestamp"].astype(float)
     df["adc"] = df["adc"].astype(float)
 
     # Sort by timestamp
