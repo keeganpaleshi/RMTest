@@ -10,6 +10,7 @@ from fitting import (
     _neg_log_likelihood_time,
     _integral_model,
 )
+from radon.baseline import subtract_baseline
 
 
 def simulate_times(n, T, seed=0):
@@ -107,4 +108,27 @@ def test_weights_none_equivalent_to_ones():
     )
     assert res_none.params["E_Po214"] == pytest.approx(
         res_one.params["E_Po214"], rel=1e-6
+    )
+
+
+def test_weights_from_corrected_sigma():
+    counts = 30
+    baseline_counts = 15
+    eff = 1.0
+    live_time = 10.0
+    baseline_live_time = 5.0
+
+    _, sigma = subtract_baseline(
+        counts, eff, live_time, baseline_counts, baseline_live_time
+    )
+
+    times = simulate_times(counts, live_time, seed=5)
+    cfg = base_config(live_time)
+    w = np.full_like(times, 1.0 / sigma ** 2)
+
+    res_sigma = fit_time_series({"Po214": times}, 0.0, live_time, cfg, weights={"Po214": w})
+    res_unit = fit_time_series({"Po214": times}, 0.0, live_time, cfg, weights={"Po214": np.ones_like(times)})
+
+    assert res_sigma.params["E_Po214"] == pytest.approx(
+        res_unit.params["E_Po214"], rel=1e-3
     )

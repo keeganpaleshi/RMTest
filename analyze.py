@@ -100,7 +100,8 @@ from plot_utils import (
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
 from utils import find_adc_bin_peaks, adc_hist_edges, cps_to_bq
-from radmon.baseline import subtract_baseline
+from radmon.baseline import subtract_baseline as subtract_baseline_df
+from radon.baseline import subtract_baseline as subtract_counts
 
 
 def _fit_params(obj):
@@ -1005,7 +1006,7 @@ def main(argv=None):
             _to_epoch(args.baseline_range[1]), tz=timezone.utc
         )
         edges = adc_hist_edges(df_analysis["adc"].values, hist_bins)
-        df_analysis = subtract_baseline(
+        df_analysis = subtract_baseline_df(
             df_analysis,
             df_full,
             bins=edges,
@@ -1282,8 +1283,30 @@ def main(argv=None):
         if args.settle_s is not None:
             cut = t0_global + float(args.settle_s)
             iso_events = iso_events[iso_events["timestamp"] >= cut]
+
+        t_start_fit = t0_global
+        if args.settle_s is not None:
+            t_start_fit = t0_global + float(args.settle_s)
+
         times_dict = {iso: iso_events["timestamp"].values}
-        weights_map = {iso: iso_events["weight"].values}
+        weights_arr = iso_events["weight"].values
+
+        # Optional variance weighting using baseline counts
+        corr_sigma = None
+        if baseline_live_time > 0 and iso in baseline_counts:
+            eff_iso = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
+            if eff_iso > 0:
+                counts_total = float(np.sum(weights_arr))
+                _, corr_sigma = subtract_counts(
+                    counts_total,
+                    eff_iso,
+                    t_end_global - t_start_fit,
+                    baseline_counts[iso],
+                    baseline_live_time,
+                )
+        if corr_sigma is not None:
+            weights_arr = weights_arr * (1.0 / float(corr_sigma) ** 2)
+        weights_map = {iso: weights_arr}
         fit_cfg = {
             "isotopes": {
                 iso: {
@@ -1306,9 +1329,6 @@ def main(argv=None):
         # Run time-series fit
         decay_out = None  # fresh variable each iteration
         try:
-            t_start_fit = t0_global
-            if args.settle_s is not None:
-                t_start_fit = t0_global + float(args.settle_s)
             try:
                 decay_out = fit_time_series(
                     times_dict,
