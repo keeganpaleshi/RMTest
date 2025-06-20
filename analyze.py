@@ -107,7 +107,7 @@ from utils import (
     parse_time_arg,
 )
 from radmon.baseline import subtract_baseline
-from radon.baseline import subtract_baseline as subtract_radon_baseline
+from radon.baseline import subtract_baseline_counts
 
 
 def _fit_params(obj):
@@ -1325,7 +1325,7 @@ def main(argv=None):
             analysis_counts = float(np.sum(iso_events["weight"]))
             live_time_analysis = (analysis_end - analysis_start).total_seconds()
             if iso in isotopes_to_subtract and baseline_live_time > 0 and eff > 0:
-                c_rate, c_sigma = subtract_radon_baseline(
+                c_rate, c_sigma = subtract_baseline_counts(
                     analysis_counts,
                     eff,
                     live_time_analysis,
