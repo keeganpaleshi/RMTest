@@ -694,14 +694,14 @@ def main(argv=None):
     # 2. Load event data
     # ────────────────────────────────────────────────────────────
     try:
-        df_full = load_events(args.input, column_map=cfg.get("columns"))
-        if pd.api.types.is_datetime64_any_dtype(df_full["timestamp"]):
-            df_full["timestamp"] = df_full["timestamp"].view("int64") / 1e9
+        events_all = load_events(args.input, column_map=cfg.get("columns"))
+        if pd.api.types.is_datetime64_any_dtype(events_all["timestamp"]):
+            events_all["timestamp"] = events_all["timestamp"].view("int64") / 1e9
     except Exception as e:
         print(f"ERROR: Could not load events from '{args.input}': {e}")
         sys.exit(1)
 
-    if df_full.empty:
+    if events_all.empty:
         print("No events found in the input CSV. Exiting.")
         sys.exit(0)
 
@@ -714,6 +714,7 @@ def main(argv=None):
     noise_thr = cfg.get("calibration", {}).get("noise_cutoff")
     n_removed_noise = 0
     noise_thr_val = None
+    events_filtered = events_all.copy()
     if noise_thr is not None:
         try:
             noise_thr_val = int(noise_thr)
@@ -723,16 +724,16 @@ def main(argv=None):
             )
             noise_thr_val = None
         else:
-            before = len(df_full)
-            df_full = df_full[df_full["adc"] > noise_thr_val].reset_index(drop=True)
-            n_removed_noise = before - len(df_full)
+            before = len(events_filtered)
+            events_filtered = events_filtered[events_filtered["adc"] > noise_thr_val].reset_index(drop=True)
+            n_removed_noise = before - len(events_filtered)
             logging.info(f"Noise cut removed {n_removed_noise} events")
 
-    _ensure_events(df_full, "noise cut")
+    _ensure_events(events_filtered, "noise cut")
 
     # Optional burst filter to remove high-rate clusters
-    total_span = df_full["timestamp"].max() - df_full["timestamp"].min()
-    rate_cps = len(df_full) / max(total_span, 1e-9)
+    total_span = events_filtered["timestamp"].max() - events_filtered["timestamp"].min()
+    rate_cps = len(events_filtered) / max(total_span, 1e-9)
     if args.burst_mode is None:
         current_mode = cfg.get("burst_filter", {}).get("burst_mode", "rate")
         if current_mode == "rate" and rate_cps < 0.1:
@@ -744,8 +745,8 @@ def main(argv=None):
         else cfg.get("burst_filter", {}).get("burst_mode", "rate")
     )
 
-    n_before_burst = len(df_full)
-    df_full, n_removed_burst = apply_burst_filter(df_full, cfg, mode=burst_mode)
+    n_before_burst = len(events_filtered)
+    events_filtered, n_removed_burst = apply_burst_filter(events_filtered, cfg, mode=burst_mode)
     if n_before_burst > 0:
         frac_removed = n_removed_burst / n_before_burst
         logging.info(
@@ -756,12 +757,9 @@ def main(argv=None):
                 f"More than half of events vetoed by burst filter ({frac_removed:.1%})"
             )
 
-    _ensure_events(df_full, "burst filtering")
+    _ensure_events(events_filtered, "burst filtering")
 
-    # Keep a copy of the data set after noise and burst filtering but before
-    # any time-window selections. This full set is later used to extract
-    # baseline events independent of the analysis time windows.
-    events_full = df_full.copy()
+
 
     # Global t₀ reference
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
@@ -773,9 +771,9 @@ def main(argv=None):
             logging.warning(
                 f"Invalid analysis_start_time '{t0_cfg}' - using first event"
             )
-            t0_global = df_full["timestamp"].min()
+            t0_global = events_filtered["timestamp"].min()
     else:
-        t0_global = df_full["timestamp"].min()
+        t0_global = events_filtered["timestamp"].min()
 
     t_end_cfg = cfg.get("analysis", {}).get("analysis_end_time")
     t_end_global = None
@@ -853,7 +851,7 @@ def main(argv=None):
             radon_interval = None
 
     # Apply optional time window cuts before any baseline or fit operations
-    df_analysis = df_full.copy()
+    df_analysis = events_filtered.copy()
     if t_spike_end is not None:
         df_analysis = df_analysis[df_analysis["timestamp"] >= t_spike_end].reset_index(drop=True)
     for start_ts, end_ts in spike_periods:
@@ -986,13 +984,13 @@ def main(argv=None):
         t_end_base = parse_time(baseline_range[1])
         if t_end_base <= t_start_base:
             raise ValueError("baseline_range end time must be greater than start time")
-        mask_base_full = (events_full["timestamp"] >= t_start_base) & (
-            events_full["timestamp"] < t_end_base
+        mask_base_full = (events_all["timestamp"] >= t_start_base) & (
+            events_all["timestamp"] < t_end_base
         )
         mask_base = (df_analysis["timestamp"] >= t_start_base) & (
             df_analysis["timestamp"] < t_end_base
         )
-        base_events = events_full[mask_base_full].copy()
+        base_events = events_all[mask_base_full].copy()
         # Apply calibration to the baseline events
         if not base_events.empty:
             base_events["energy_MeV"] = apply_calibration(
@@ -1062,7 +1060,7 @@ def main(argv=None):
         edges = adc_hist_edges(df_analysis["adc"].values, hist_bins)
         df_analysis = subtract_baseline(
             df_analysis,
-            df_full,
+            events_all,
             bins=edges,
             t_base0=t_base0,
             t_base1=t_base1,
