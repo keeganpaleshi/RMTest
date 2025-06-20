@@ -2,7 +2,7 @@
 
 This repository provides a complete pipeline to analyze electrostatic radon monitor data.
 
-**Note:** All time quantities are expressed in seconds and all energies are given in MeV throughout the documentation and code. Event timestamps are stored as UTC `datetime` objects throughout the pipeline. Command-line options that take timestamps (such as `--analysis-start-time`) accept either ISO‑8601 strings or Unix seconds and are parsed accordingly.
+**Note:** All time quantities are expressed in seconds and all energies are given in MeV throughout the documentation and code. Event timestamps are stored as timezone-aware `datetime` objects (UTC by default). Command-line options that take timestamps (such as `--analysis-start-time`) accept either ISO‑8601 strings or Unix seconds and are parsed in the timezone specified by `--timezone` (default `UTC`).
 
 ## Structure
 
@@ -30,7 +30,7 @@ pip install -r requirements.txt
 
 ```bash
 python analyze.py --config config.json --input merged_data.csv \
-    [--output_dir results] [--job-id MYRUN] [--overwrite] \
+    [--output_dir results] [--job-id MYRUN] [--overwrite] [--timezone TZ] \
     [--efficiency-json eff.json] [--systematics-json syst.json] \
     [--spike-count N --spike-count-err S] [--slope RATE] \
     [--noise-cutoff N] \

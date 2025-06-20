@@ -7,6 +7,7 @@ from dataclasses import is_dataclass, asdict
 import argparse
 from datetime import datetime, timezone
 from dateutil import parser as date_parser
+from dateutil.tz import gettz
 
 __all__ = [
     "to_native",
@@ -174,16 +175,23 @@ def cps_to_bq(rate_cps, volume_liters=None):
     return float(rate_cps) / volume_m3
 
 
-def parse_time(s: str) -> float:
-    """Parse a timestamp string, number, or ``datetime`` into Unix epoch seconds."""
+def parse_time(s, tz="UTC") -> float:
+    """Parse a timestamp string, number or ``datetime`` into epoch seconds.
+
+    Naïve datetimes and ISO strings are interpreted in the provided
+    ``tz`` timezone, which may be a string or ``tzinfo`` instance.
+    """
+
+    tzinfo = gettz(tz) if not isinstance(tz, timezone) else tz
+    if tzinfo is None:
+        tzinfo = timezone.utc
+
     if isinstance(s, (int, float)):
         return float(s)
 
     if isinstance(s, datetime):
-        dt = s
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return float(dt.timestamp())
+        dt = s if s.tzinfo is not None else s.replace(tzinfo=tzinfo)
+        return float(dt.astimezone(tzinfo).timestamp())
 
     if isinstance(s, str):
         try:
@@ -197,18 +205,24 @@ def parse_time(s: str) -> float:
             raise argparse.ArgumentTypeError(f"could not parse time: {s!r}") from e
 
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-
+            dt = dt.replace(tzinfo=tzinfo)
+        else:
+            dt = dt.astimezone(tzinfo)
         return float(dt.timestamp())
 
     raise argparse.ArgumentTypeError(f"could not parse time: {s!r}")
 
 
-def parse_time_arg(val) -> datetime:
-    """Parse a time argument into a UTC ``datetime`` object."""
+def parse_time_arg(val, tz="UTC") -> datetime:
+    """Parse a time argument using :func:`parse_time` and return a timezone-aware
+    ``datetime``.
+    """
 
-    ts = parse_time(val)
-    return datetime.fromtimestamp(ts, tz=timezone.utc)
+    ts = parse_time(val, tz=tz)
+    tzinfo = gettz(tz) if not isinstance(tz, timezone) else tz
+    if tzinfo is None:
+        tzinfo = timezone.utc
+    return datetime.fromtimestamp(ts, tz=tzinfo)
 
 
 if __name__ == "__main__":

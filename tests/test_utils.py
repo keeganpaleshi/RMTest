@@ -61,3 +61,8 @@ def test_parse_time_iso_no_fraction():
 
 def test_parse_time_iso_fraction():
     assert parse_time("1970-01-01T00:00:00.5Z") == pytest.approx(0.5)
+
+
+def test_parse_time_naive_with_zone():
+    ts = parse_time("1970-01-01T00:00:00", tz="Europe/Berlin")
+    assert ts == pytest.approx(-3600.0)
