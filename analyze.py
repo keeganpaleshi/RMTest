@@ -100,7 +100,8 @@ from plot_utils import (
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
 from utils import find_adc_bin_peaks, adc_hist_edges, cps_to_bq
-from radmon.baseline import subtract_baseline
+from radmon.baseline import subtract_baseline as subtract_baseline_df
+from radon.baseline import subtract_baseline as subtract_baseline_rate
 
 
 def _fit_params(obj):
@@ -999,7 +1000,7 @@ def main(argv=None):
         t_base0 = _to_epoch(args.baseline_range[0])
         t_base1 = _to_epoch(args.baseline_range[1])
         edges = adc_hist_edges(df_analysis["adc"].values, hist_bins)
-        df_analysis = subtract_baseline(
+        df_analysis = subtract_baseline_df(
             df_analysis,
             df_full,
             bins=edges,
@@ -1537,17 +1538,13 @@ def main(argv=None):
         params = _fit_params(fit)
         if params and (f"E_{iso}" in params):
             s = scales.get(iso, 1.0)
-            params["E_corrected"] = params[f"E_{iso}"] - s * rate
             err_fit = params.get(f"dE_{iso}", 0.0)
-            sigma_rate = 0.0
-            if baseline_live_time > 0:
-                count = baseline_counts.get(iso, 0.0)
-                eff = cfg["time_fit"].get(
-                    f"eff_{iso.lower()}", [1.0]
-                )[0]
-                if eff > 0:
-                    sigma_rate = math.sqrt(count) / (baseline_live_time * eff)
-            params["dE_corrected"] = float(math.hypot(err_fit, sigma_rate * s))
+            err_base = baseline_unc.get(iso, 0.0)
+            corr, ds = subtract_baseline_rate(
+                params[f"E_{iso}"], err_fit, rate, err_base, scale=s
+            )
+            params["E_corrected"] = corr
+            params["dE_corrected"] = float(ds)
 
     if baseline_rates:
         baseline_info["rate_Bq"] = baseline_rates
