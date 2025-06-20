@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 import pytest
+from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -61,3 +62,13 @@ def test_parse_time_iso_no_fraction():
 
 def test_parse_time_iso_fraction():
     assert parse_time("1970-01-01T00:00:00.5Z") == pytest.approx(0.5)
+
+
+def test_parse_time_datetime_naive():
+    dt = datetime(1970, 1, 1)
+    assert parse_time(dt) == pytest.approx(0.0)
+
+
+def test_parse_time_datetime_aware():
+    dt = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    assert parse_time(dt) == pytest.approx(0.0)
