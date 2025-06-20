@@ -377,6 +377,12 @@ Example snippet:
 }
 ```
 
+`plot_time_series` can also display uncertainty bands around the model
+curves.  Pass arrays of propagated errors via the optional
+`model_errors` argument.  When running `analyze.py` these arrays are
+derived from the fitted parameters (`corrected_sigma`) so shaded ±1σ
+regions appear alongside the dashed model lines.
+
 `plot_time_series` takes its half-life values from the `time_fit` section.
 Specify custom values using the keys `hl_po214`, `hl_po218` and `hl_po210`.
 When these keys are omitted, `hl_po214` and `hl_po218` fall back to their

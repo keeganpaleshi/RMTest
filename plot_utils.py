@@ -86,6 +86,8 @@ def plot_time_series(
     out_png,
     hl_po214=None,
     hl_po218=None,
+    *,
+    model_errors=None,
     **_legacy_kwargs,
 ):
     """
@@ -101,6 +103,10 @@ def plot_time_series(
         ``PO214_HALF_LIFE_S`` and ``PO218_HALF_LIFE_S`` respectively.
         When Po-210 is plotted the overlay uses the ``hl_po210``
         configuration value.
+    model_errors : dict[str, array-like], optional
+        Mapping of isotope name to 1D arrays of uncertainties for the
+        model curve. When provided, ``fill_between`` is used to draw
+        ±1σ bands around the corresponding model.
     """
 
     if fit_results is None:
@@ -309,6 +315,20 @@ def plot_time_series(
                 ls="--",
                 label=f"Model {iso}",
             )
+            if model_errors and iso in model_errors:
+                err = np.asarray(model_errors[iso], dtype=float)
+                if err.size == model_counts.size:
+                    kw = {"step": "mid"} if style != "lines" else {}
+                    plt.fill_between(
+                        centers_dt,
+                        model_counts - err,
+                        model_counts + err,
+                        color=colors[iso],
+                        alpha=0.3,
+                        **kw,
+                    )
+                else:
+                    raise ValueError("model_errors array length mismatch")
 
     plt.xlabel("Time")
     plt.ylabel("Counts / s" if normalise_rate else "Counts per bin")

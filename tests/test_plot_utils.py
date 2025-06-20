@@ -773,3 +773,34 @@ def test_plot_radon_activity_axis_labels(tmp_path, monkeypatch):
     assert captured["axis"].get_xlabel() == "Elapsed Time (s)"
 
 
+def test_plot_time_series_uncertainty_band(tmp_path, monkeypatch):
+    times = np.array([1000.1, 1000.6, 1001.2, 1001.8])
+    energies = np.full_like(times, 7.7)
+    cfg = basic_config()
+    cfg.update({"plot_time_bin_width_s": 1.0})
+
+    band_called = {}
+
+    def fake_fill(x, y1, y2, *args, **kwargs):
+        band_called["ok"] = True
+        return type("obj", (), {})()
+
+    monkeypatch.setattr("plot_utils.plt.fill_between", fake_fill)
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    model_errs = {"Po214": np.full(3, 0.1)}
+
+    plot_time_series(
+        times,
+        energies,
+        {"E": 0.1, "B": 0.0, "N0": 0.0},
+        1000.0,
+        1003.0,
+        cfg,
+        str(tmp_path / "ts_band.png"),
+        model_errors=model_errs,
+    )
+
+    assert band_called.get("ok")
+
+
