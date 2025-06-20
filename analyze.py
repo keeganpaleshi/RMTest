@@ -1343,6 +1343,8 @@ def main(argv=None):
                 "value": c_rate,
                 "uncertainty": c_sigma,
             }
+            weight_factor = 1.0 / (c_sigma ** 2) if c_sigma > 0 else 1.0
+            iso_events["weight"] *= weight_factor
         else:
             priors_time["N0"] = (
                 0.0,
@@ -1369,6 +1371,8 @@ def main(argv=None):
                 "value": c_rate,
                 "uncertainty": c_sigma,
             }
+            weight_factor = 1.0 / (c_sigma ** 2) if c_sigma > 0 else 1.0
+            iso_events["weight"] *= weight_factor
 
         # Store priors for use in systematics scanning
         priors_time_all[iso] = priors_time
