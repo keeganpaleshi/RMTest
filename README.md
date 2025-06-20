@@ -2,7 +2,7 @@
 
 This repository provides a complete pipeline to analyze electrostatic radon monitor data.
 
-**Note:** All time quantities are expressed in seconds and all energies are given in MeV throughout the documentation and code. Event timestamps are stored as UTC `datetime` objects throughout the pipeline. Command-line options that take timestamps (such as `--analysis-start-time`) accept either ISO‑8601 strings or Unix seconds and are parsed accordingly.
+**Note:** All time quantities are expressed in seconds and all energies are given in MeV throughout the documentation and code. Event timestamps are stored as UTC `numpy.datetime64` objects throughout the pipeline. The helper function `parse_datetime` converts input values to this representation and accepts ISO‑8601 strings (with or without timezone), numeric epoch seconds or existing `datetime` objects. Command-line options that take timestamps (such as `--analysis-start-time`) are parsed with this helper, so both ISO‑8601 strings and Unix seconds work interchangeably.
 
 ## Structure
 
@@ -55,6 +55,8 @@ The input file must be a comma-separated table with these columns:
 - `fUniqueID` – unique event number
 - `fBits` – status bits or flags
 - `timestamp` – event timestamp in seconds
+  (either numeric Unix seconds or an ISO‑8601 string; parsed with
+  `parse_datetime` to `numpy.datetime64[ns, UTC]`)
 - `adc` – raw ADC value
 - `fchannel` – acquisition channel
 
@@ -167,19 +169,20 @@ count also appears in `summary.json` under `noise_cut.removed_events`.
 
 `analysis_start_time` in the optional `analysis` section sets the global
 time origin for decay fitting and time-series plots.  Provide an
-ISO‑8601 string such as `"2023-07-31T00:00:00Z"`.  When omitted the first
-event timestamp is used.
+ISO‑8601 string such as `"2023-07-31T00:00:00Z"` or the corresponding
+numeric Unix seconds.  When omitted the first event timestamp is used.
 
 All other time-related fields (`analysis_end_time`, `spike_end_time`,
 `spike_periods`, `run_periods`, `radon_interval` and
 `baseline.range`) likewise accept absolute timestamps in ISO 8601
-format.
+format or numeric seconds.  All of these are parsed with
+`parse_datetime` so the same formats apply everywhere.
 
 `analysis_end_time` may be specified to stop processing after the given
 timestamp while `spike_end_time` discards all events before its value.
 `spike_periods` holds a list of `[start, end]` pairs where events are
-excluded entirely.  All of these accept ISO‑8601 strings and can also be
-set with the corresponding CLI options.
+excluded entirely.  All of these accept either ISO‑8601 strings or
+numeric seconds and can also be set with the corresponding CLI options.
 `run_periods` specifies the intervals of valid data to keep after spike
 filtering.  Events falling outside all provided periods are discarded.
 `radon_interval` sets two timestamps used to compute the change in radon
