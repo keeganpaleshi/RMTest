@@ -99,7 +99,13 @@ from plot_utils import (
 )
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
-from utils import find_adc_bin_peaks, adc_hist_edges, cps_to_bq
+from utils import (
+    find_adc_bin_peaks,
+    adc_hist_edges,
+    cps_to_bq,
+    parse_time,
+    parse_time_arg,
+)
 from radmon.baseline import subtract_baseline
 
 
@@ -223,6 +229,7 @@ def parse_args(argv=None):
         "--baseline_range",
         nargs=2,
         metavar=("TSTART", "TEND"),
+        type=parse_time_arg,
         help=(
             "Optional baseline-run interval. Providing this option overrides `baseline.range` in config.json. Provide two values (either ISO strings or epoch floats). If set, those events are extracted (same energy cuts) and listed in `baseline` of the summary."
         ),
@@ -267,10 +274,12 @@ def parse_args(argv=None):
     )
     p.add_argument(
         "--analysis-end-time",
+        type=parse_time_arg,
         help="Ignore events occurring after this ISO timestamp. Providing this option overrides `analysis.analysis_end_time` in config.json",
     )
     p.add_argument(
         "--analysis-start-time",
+        type=parse_time_arg,
         help="Reference start time of the analysis (ISO string or epoch). Overrides `analysis.analysis_start_time` in config.json",
     )
     p.add_argument(
@@ -497,11 +506,11 @@ def main(argv=None):
 
     if args.analysis_end_time is not None:
         _log_override("analysis", "analysis_end_time", args.analysis_end_time)
-        cfg.setdefault("analysis", {})["analysis_end_time"] = args.analysis_end_time
+        cfg.setdefault("analysis", {})["analysis_end_time"] = args.analysis_end_time.timestamp()
 
     if args.analysis_start_time is not None:
         _log_override("analysis", "analysis_start_time", args.analysis_start_time)
-        cfg.setdefault("analysis", {})["analysis_start_time"] = args.analysis_start_time
+        cfg.setdefault("analysis", {})["analysis_start_time"] = args.analysis_start_time.timestamp()
 
     if args.spike_end_time is not None:
         _log_override("analysis", "spike_end_time", args.spike_end_time)
@@ -685,7 +694,8 @@ def main(argv=None):
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
     if t0_cfg is not None:
         try:
-            t0_global = pd.to_datetime(t0_cfg, utc=True).timestamp()
+            t0_global = parse_time(t0_cfg)
+            cfg.setdefault("analysis", {})["analysis_start_time"] = t0_global
         except Exception:
             logging.warning(
                 f"Invalid analysis_start_time '{t0_cfg}' - using first event"
@@ -694,17 +704,11 @@ def main(argv=None):
     else:
         t0_global = df_full["timestamp"].min()
 
-    def _to_epoch(val):
-        try:
-            return float(val)
-        except Exception:
-            return pd.to_datetime(val, utc=True).timestamp()
-
     t_end_cfg = cfg.get("analysis", {}).get("analysis_end_time")
     t_end_global = None
     if t_end_cfg is not None:
         try:
-            t_end_global = _to_epoch(t_end_cfg)
+            t_end_global = parse_time(t_end_cfg)
             cfg.setdefault("analysis", {})["analysis_end_time"] = t_end_global
         except Exception:
             logging.warning(
@@ -716,7 +720,7 @@ def main(argv=None):
     t_spike_end = None
     if spike_end_cfg is not None:
         try:
-            t_spike_end = _to_epoch(spike_end_cfg)
+            t_spike_end = parse_time(spike_end_cfg)
             cfg.setdefault("analysis", {})["spike_end_time"] = t_spike_end
         except Exception:
             logging.warning(f"Invalid spike_end_time '{spike_end_cfg}' - ignoring")
@@ -729,8 +733,8 @@ def main(argv=None):
     for period in spike_periods_cfg:
         try:
             start, end = period
-            start_ts = _to_epoch(start)
-            end_ts = _to_epoch(end)
+            start_ts = parse_time(start)
+            end_ts = parse_time(end)
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
             spike_periods.append((start_ts, end_ts))
@@ -748,8 +752,8 @@ def main(argv=None):
     for period in run_periods_cfg:
         try:
             start, end = period
-            start_ts = _to_epoch(start)
-            end_ts = _to_epoch(end)
+            start_ts = parse_time(start)
+            end_ts = parse_time(end)
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
             run_periods.append((start_ts, end_ts))
@@ -765,8 +769,8 @@ def main(argv=None):
     if radon_interval_cfg:
         try:
             start_r, end_r = radon_interval_cfg
-            start_r_ts = _to_epoch(start_r)
-            end_r_ts = _to_epoch(end_r)
+            start_r_ts = parse_time(start_r)
+            end_r_ts = parse_time(end_r)
             if end_r_ts <= start_r_ts:
                 raise ValueError("end <= start")
             radon_interval = (start_r_ts, end_r_ts)
@@ -888,19 +892,8 @@ def main(argv=None):
     baseline_range = None
     if args.baseline_range:
         _log_override("baseline", "range", args.baseline_range)
-        start_s, end_s = args.baseline_range
-        try:
-            t0_epoch = float(start_s)
-            t1_epoch = float(end_s)
-        except ValueError:
-            t0_dt = date_parser.parse(start_s)
-            t1_dt = date_parser.parse(end_s)
-            if t0_dt.tzinfo is None:
-                t0_dt = t0_dt.replace(tzinfo=UTC)
-            if t1_dt.tzinfo is None:
-                t1_dt = t1_dt.replace(tzinfo=UTC)
-            t0_epoch = t0_dt.timestamp()
-            t1_epoch = t1_dt.timestamp()
+        t0_epoch = args.baseline_range[0].timestamp()
+        t1_epoch = args.baseline_range[1].timestamp()
         logging.info(
             f"Baseline window (epoch seconds): {t0_epoch} \u2192 {t1_epoch}"
         )
@@ -916,15 +909,8 @@ def main(argv=None):
     mask_base = None
 
     if baseline_range:
-
-        def to_epoch(x):
-            try:
-                return float(x)
-            except Exception:
-                return pd.to_datetime(x, utc=True).timestamp()
-
-        t_start_base = to_epoch(baseline_range[0])
-        t_end_base = to_epoch(baseline_range[1])
+        t_start_base = parse_time(baseline_range[0])
+        t_end_base = parse_time(baseline_range[1])
         if t_end_base <= t_start_base:
             raise ValueError("baseline_range end time must be greater than start time")
         mask_base_full = (events_full["timestamp"] >= t_start_base) & (
@@ -998,12 +984,8 @@ def main(argv=None):
     _ensure_events(df_analysis, "baseline subtraction")
 
     if args.baseline_range:
-        t_base0 = datetime.fromtimestamp(
-            _to_epoch(args.baseline_range[0]), tz=timezone.utc
-        )
-        t_base1 = datetime.fromtimestamp(
-            _to_epoch(args.baseline_range[1]), tz=timezone.utc
-        )
+        t_base0 = args.baseline_range[0]
+        t_base1 = args.baseline_range[1]
         edges = adc_hist_edges(df_analysis["adc"].values, hist_bins)
         df_analysis = subtract_baseline(
             df_analysis,
