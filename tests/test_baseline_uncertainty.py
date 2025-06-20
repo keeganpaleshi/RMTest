@@ -3,7 +3,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pytest
 import numpy as np
-from radon.baseline import subtract_baseline
+from radon.baseline import subtract_baseline_counts
 
 
 def test_subtract_baseline_uncertainty():
@@ -20,7 +20,7 @@ def test_subtract_baseline_uncertainty():
     )
     expected_sigma = np.sqrt(expected_sigma_sq)
 
-    rate, sigma = subtract_baseline(
+    rate, sigma = subtract_baseline_counts(
         counts, efficiency, live_time, baseline_counts, baseline_live_time
     )
 
