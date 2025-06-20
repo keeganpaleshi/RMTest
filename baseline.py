@@ -1,6 +1,7 @@
 import numpy as np
 import logging
 import pandas as pd
+from utils import parse_time
 
 __all__ = ["rate_histogram", "subtract_baseline"]
 
@@ -57,8 +58,8 @@ def subtract_baseline(df_analysis, df_full, bins, t_base0, t_base1,
         live_time_analysis = live_an
 
     # baseline slice
-    t0 = pd.to_datetime(t_base0, utc=True).timestamp()
-    t1 = pd.to_datetime(t_base1, utc=True).timestamp()
+    t0 = parse_time(t_base0)
+    t1 = parse_time(t_base1)
     ts_full = _seconds(df_full["timestamp"])
     mask = (ts_full >= t0) & (ts_full <= t1)
     if not mask.any():
