@@ -1538,6 +1538,9 @@ def main(argv=None):
     }
     baseline_info["scales"] = scales
 
+    corrected_rates = {}
+    corrected_unc = {}
+
     for iso, rate in baseline_rates.items():
         fit = time_fit_results.get(iso)
         params = _fit_params(fit)
@@ -1553,12 +1556,19 @@ def main(argv=None):
                 )[0]
                 if eff > 0:
                     sigma_rate = math.sqrt(count) / (baseline_live_time * eff)
-            params["dE_corrected"] = float(math.hypot(err_fit, sigma_rate * s))
+            dE_corr = float(math.hypot(err_fit, sigma_rate * s))
+            params["dE_corrected"] = dE_corr
+            corrected_rates[iso] = params["E_corrected"]
+            corrected_unc[iso] = dE_corr
 
     if baseline_rates:
         baseline_info["rate_Bq"] = baseline_rates
         baseline_info["rate_unc_Bq"] = baseline_unc
         baseline_info["dilution_factor"] = dilution_factor
+    if corrected_rates:
+        baseline_info["corrected_rate_Bq"] = corrected_rates
+    if corrected_unc:
+        baseline_info["corrected_sigma_Bq"] = corrected_unc
 
     # ────────────────────────────────────────────────────────────
     # Radon activity extrapolation
