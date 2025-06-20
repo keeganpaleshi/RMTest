@@ -108,3 +108,39 @@ def test_weights_none_equivalent_to_ones():
     assert res_none.params["E_Po214"] == pytest.approx(
         res_one.params["E_Po214"], rel=1e-6
     )
+
+
+def test_corrected_sigma_weighting():
+    """Weighted fit should reproduce variance from baseline subtraction."""
+    T = 100.0
+    n = 100
+    baseline_counts = 25
+    baseline_live_time = 100.0
+    seed = 1
+
+    times = simulate_times(n, T, seed=seed)
+    cfg = base_config(T)
+
+    # Standard unweighted fit
+    res_std = fit_time_series({"Po214": times}, 0.0, T, cfg, weights={"Po214": np.ones_like(times)})
+
+    # Expected uncertainty from baseline subtraction
+    from radon.baseline import subtract_baseline_counts
+
+    _, corrected_sigma = subtract_baseline_counts(
+        n,
+        1.0,
+        T,
+        baseline_counts,
+        baseline_live_time,
+    )
+
+    # Uniform weight factor that reproduces the expected variance
+    w = n * baseline_live_time**2 / (n * baseline_live_time**2 + baseline_counts * T**2)
+
+    res_weight = fit_time_series({"Po214": times}, 0.0, T, cfg, weights={"Po214": np.full_like(times, w)})
+
+    assert res_std.params["E_Po214"] == pytest.approx(
+        res_weight.params["E_Po214"], rel=1e-3
+    )
+    assert res_weight.params["dE_Po214"] == pytest.approx(corrected_sigma, rel=2e-2)
