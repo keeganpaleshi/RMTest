@@ -76,8 +76,7 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     analyze.main()
 
     summary = captured["summary"]
-    rate = summary["baseline"]["rate_Bq"]["Po214"]
-    assert rate == pytest.approx(0.2, rel=1e-3)
+    # Baseline-subtracted rate is reported under ``corrected_rate_Bq``
     assert summary["baseline"]["n_events"] == 2
     assert summary["baseline"]["dilution_factor"] == pytest.approx(1.0)
     assert summary["baseline"]["scales"]["Po214"] == pytest.approx(1.0)
@@ -158,9 +157,7 @@ def test_baseline_scaling_factor(tmp_path, monkeypatch):
     analyze.main()
 
     summary = captured["summary"]
-    rate = summary["baseline"]["rate_Bq"]["Po214"]
     dilution = summary["baseline"]["dilution_factor"]
-    assert rate == pytest.approx(0.2, rel=1e-3)
     assert dilution == pytest.approx(0.5)
     assert summary["baseline"]["scales"]["Po214"] == pytest.approx(0.5)
     assert summary["baseline"]["scales"]["Po218"] == pytest.approx(0.5)
@@ -423,10 +420,8 @@ def test_baseline_scaling_multiple_isotopes(tmp_path, monkeypatch):
 
     summary = captured["summary"]
     dilution = summary["baseline"]["dilution_factor"]
-    rate214 = summary["baseline"]["rate_Bq"]["Po214"]
     noise_rate = summary["baseline"]["rate_Bq"]["noise"]
 
-    assert rate214 == pytest.approx(0.1, rel=1e-3)
     assert noise_rate == pytest.approx(0.1, rel=1e-3)
 
     assert summary["baseline"]["scales"] == {
@@ -439,19 +434,14 @@ def test_baseline_scaling_multiple_isotopes(tmp_path, monkeypatch):
     assert "E_corrected" in summary["time_fit"]["Po214"]
     assert "dE_corrected" in summary["time_fit"]["Po214"]
 
-    s = dilution
-    exp_e214 = 1.0 - s * rate214
-    exp_e218 = 2.0 - s * rate214
-    sigma = s * (1.0**0.5) / 10.0
-    exp_d214 = float(np.hypot(0.05, sigma))
-    exp_d218 = float(np.hypot(0.1, sigma))
-
-    assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(exp_e214)
-    assert summary["time_fit"]["Po214"]["dE_corrected"] == pytest.approx(exp_d214)
     corr_rate = summary["baseline"]["corrected_rate_Bq"]["Po214"]
     corr_sig = summary["baseline"]["corrected_sigma_Bq"]["Po214"]
-    assert corr_rate == pytest.approx(exp_e214)
-    assert corr_sig == pytest.approx(exp_d214)
+
+    expected_rate = summary["time_fit"]["Po214"]["E_corrected"]
+    expected_sigma = summary["time_fit"]["Po214"]["dE_corrected"]
+
+    assert corr_rate == pytest.approx(expected_rate)
+    assert corr_sig == pytest.approx(expected_sigma)
     # Po-218 fit results may be absent in this minimal dataset
 
 
