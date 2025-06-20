@@ -101,6 +101,7 @@ from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
 from utils import find_adc_bin_peaks, adc_hist_edges, cps_to_bq
 from radmon.baseline import subtract_baseline
+from radon.baseline import subtract_baseline as subtract_radon_baseline
 
 
 def _fit_params(obj):
@@ -1266,6 +1267,30 @@ def main(argv=None):
                     cfg["time_fit"].get(f"sig_N0_{iso}", n0_sigma),
                 ),
             )
+
+            analysis_counts = float(np.sum(iso_events["weight"]))
+            live_time_analysis = (analysis_end - analysis_start).total_seconds()
+            if iso in isotopes_to_subtract and baseline_live_time > 0 and eff > 0:
+                c_rate, c_sigma = subtract_radon_baseline(
+                    analysis_counts,
+                    eff,
+                    live_time_analysis,
+                    baseline_counts.get(iso, 0.0),
+                    baseline_live_time,
+                )
+            else:
+                if eff > 0 and live_time_analysis > 0:
+                    c_rate = analysis_counts / (live_time_analysis * eff)
+                    c_sigma = math.sqrt(analysis_counts) / (
+                        live_time_analysis * eff
+                    )
+                else:
+                    c_rate = 0.0
+                    c_sigma = 0.0
+            baseline_info.setdefault("corrected_activity", {})[iso] = {
+                "value": c_rate,
+                "uncertainty": c_sigma,
+            }
         else:
             priors_time["N0"] = (
                 0.0,
@@ -1274,6 +1299,24 @@ def main(argv=None):
                     cfg["time_fit"].get(f"sig_N0_{iso}", 1.0),
                 ),
             )
+
+            analysis_counts = float(np.sum(iso_events["weight"]))
+            live_time_analysis = (analysis_end - analysis_start).total_seconds()
+            eff = cfg["time_fit"].get(
+                f"eff_{iso.lower()}", [1.0]
+            )[0]
+            if eff > 0 and live_time_analysis > 0:
+                c_rate = analysis_counts / (live_time_analysis * eff)
+                c_sigma = math.sqrt(analysis_counts) / (
+                    live_time_analysis * eff
+                )
+            else:
+                c_rate = 0.0
+                c_sigma = 0.0
+            baseline_info.setdefault("corrected_activity", {})[iso] = {
+                "value": c_rate,
+                "uncertainty": c_sigma,
+            }
 
         # Store priors for use in systematics scanning
         priors_time_all[iso] = priors_time
