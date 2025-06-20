@@ -1,16 +1,14 @@
 import numpy as np
 import logging
 import pandas as pd
-from utils import parse_time
+from utils import parse_time, parse_datetime
 
 __all__ = ["rate_histogram", "subtract_baseline"]
 
 
 def _seconds(col):
     """Return timestamp column as seconds from epoch."""
-    if np.issubdtype(col.dtype, np.number):
-        return col.astype(float).to_numpy()
-    ts = pd.to_datetime(col, utc=True)
+    ts = parse_datetime(col)
     return ts.view("int64") / 1e9
 
 

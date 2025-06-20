@@ -9,7 +9,7 @@ import pandas as pd
 from constants import load_nuclide_overrides
 
 import numpy as np
-from utils import to_native
+from utils import to_native, parse_datetime
 import jsonschema
 
 
@@ -344,11 +344,9 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
     removed_total = 0
     out_df = df.copy()
 
-    ts = out_df["timestamp"]
-    if pd.api.types.is_datetime64_any_dtype(ts):
-        times_sec = ts.view("int64").to_numpy() / 1e9
-    else:
-        times_sec = ts.astype(float).to_numpy()
+    ts = parse_datetime(out_df["timestamp"])
+    out_df["timestamp"] = ts
+    times_sec = ts.view("int64").to_numpy() / 1e9
 
     # ───── micro-burst veto ─────
     if mode in ("micro", "both"):
@@ -384,11 +382,9 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
             out_df = out_df[~to_remove].reset_index(drop=True)
 
             # Recalculate times after removing events
-            ts = out_df["timestamp"]
-            if pd.api.types.is_datetime64_any_dtype(ts):
-                times_sec = ts.view("int64").to_numpy() / 1e9
-            else:
-                times_sec = ts.astype(float).to_numpy()
+            ts = parse_datetime(out_df["timestamp"])
+            out_df["timestamp"] = ts
+            times_sec = ts.view("int64").to_numpy() / 1e9
 
     # ───── rate-based veto ─────
     if mode in ("rate", "both"):
