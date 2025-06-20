@@ -208,6 +208,78 @@ def get_spike_efficiency(spike_cfg):
     return _spike_eff_cache[key]
 
 
+def _ts_bin_centers_widths(times, cfg, t_start, t_end):
+    """Return bin centers and widths matching :func:`plot_time_series`."""
+    times_rel = np.asarray(times, dtype=float) - float(t_start)
+    bin_mode = str(
+        cfg.get("plot_time_binning_mode", cfg.get("time_bin_mode", "fixed"))
+    ).lower()
+    if bin_mode in ("fd", "auto"):
+        data = times_rel[(times_rel >= 0) & (times_rel <= (t_end - t_start))]
+        if len(data) < 2:
+            n_bins = 1
+        else:
+            q25, q75 = np.percentile(data, [25, 75])
+            iqr = q75 - q25
+            if iqr <= 0:
+                n_bins = int(cfg.get("time_bins_fallback", 1))
+            else:
+                bin_width = 2 * iqr / (len(data) ** (1.0 / 3.0))
+                if isinstance(bin_width, np.timedelta64):
+                    bin_width = bin_width / np.timedelta64(1, "s")
+                    data_range = (data.max() - data.min()) / np.timedelta64(1, "s")
+                else:
+                    data_range = data.max() - data.min()
+                n_bins = max(1, int(np.ceil(data_range / float(bin_width))))
+    else:
+        dt = int(cfg.get("plot_time_bin_width_s", cfg.get("time_bin_s", 3600)))
+        n_bins = int(np.floor((t_end - t_start) / dt))
+        if n_bins < 1:
+            n_bins = 1
+
+    if bin_mode not in ("fd", "auto"):
+        edges = np.arange(0, (n_bins + 1) * dt, dt, dtype=float)
+    else:
+        edges = np.linspace(0, (t_end - t_start), n_bins + 1)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    widths = np.diff(edges)
+    return centers, widths
+
+
+def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
+    """Propagate fit parameter errors to the model curve."""
+    if fit_obj is None:
+        return None
+    params = _fit_params(fit_obj)
+    default_const = cfg.get("nuclide_constants", {})
+    hl_default = {
+        "Po214": default_const.get("Po214", PO214).half_life_s,
+        "Po218": default_const.get("Po218", PO218).half_life_s,
+        "Po210": default_const.get("Po210", PO210).half_life_s,
+    }[iso]
+    hl = cfg.get("time_fit", {}).get(f"hl_{iso.lower()}", [hl_default])[0]
+    eff = cfg.get("time_fit", {}).get(f"eff_{iso.lower()}", [1.0])[0]
+    lam = math.log(2.0) / float(hl)
+    dE = params.get("dE_corrected", params.get(f"dE_{iso}", 0.0))
+    dN0 = params.get(f"dN0_{iso}", 0.0)
+    dB = params.get(f"dB_{iso}", params.get("dB", 0.0))
+    cov = 0.0
+    try:
+        cov = _cov_entry(fit_obj, f"E_{iso}", f"N0_{iso}")
+    except Exception:
+        cov = 0.0
+    t = np.asarray(centers, dtype=float)
+    exp_term = np.exp(-lam * t)
+    dR_dE = eff * (1.0 - exp_term)
+    dR_dN0 = eff * lam * exp_term
+    dR_dB = 1.0
+    var = (dR_dE * dE) ** 2 + (dR_dN0 * dN0) ** 2 + (dR_dB * dB) ** 2
+    if cov:
+        var += 2.0 * dR_dE * dR_dN0 * cov
+    sigma_rate = np.sqrt(var)
+    return sigma_rate if normalise else sigma_rate * widths
+
+
 def parse_args(argv=None):
     """Parse command line arguments."""
     p = argparse.ArgumentParser(description="Full Radon Monitor Analysis Pipeline")
@@ -1803,6 +1875,24 @@ def main(argv=None):
                     obj = time_fit_results.get(k)
                     if obj:
                         fit_dict.update(_fit_params(obj))
+
+            centers, widths = _ts_bin_centers_widths(
+                ts_times, plot_cfg, t0_global, t_end_global
+            )
+            normalise = bool(plot_cfg.get("plot_time_normalise_rate", False))
+            model_errs = {}
+            iso_list_err = [iso] if not overlay else [i for i in ("Po214", "Po218", "Po210") if time_fit_results.get(i)]
+            for iso_key in iso_list_err:
+                sigma_arr = _model_uncertainty(
+                    centers,
+                    widths,
+                    time_fit_results.get(iso_key),
+                    iso_key,
+                    plot_cfg,
+                    normalise,
+                )
+                if sigma_arr is not None:
+                    model_errs[iso_key] = sigma_arr
             _ = plot_time_series(
                 all_timestamps=ts_times,
                 all_energies=ts_energy,
@@ -1811,6 +1901,7 @@ def main(argv=None):
                 t_end=t_end_global,
                 config=plot_cfg,
                 out_png=Path(out_dir) / f"time_series_{iso}.png",
+                model_errors=model_errs,
             )
         except Exception as e:
             print(f"WARNING: Could not create time-series plot for {iso} -> {e}")
