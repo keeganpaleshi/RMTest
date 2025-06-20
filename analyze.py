@@ -100,7 +100,7 @@ from plot_utils import (
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
 from utils import find_adc_bin_peaks, adc_hist_edges, cps_to_bq
-from radmon.baseline import subtract_baseline
+from radon.baseline import subtract_baseline
 
 
 def _fit_params(obj):
@@ -1194,6 +1194,10 @@ def main(argv=None):
     time_fit_results = {}
     priors_time_all = {}
     time_plot_data = {}
+    iso_event_counts = {}
+    t_start_fit_global = t0_global
+    if args.settle_s is not None:
+        t_start_fit_global = t0_global + float(args.settle_s)
     if cfg.get("time_fit", {}).get("do_time_fit", False):
         for iso in ("Po218", "Po214"):
             win_key = f"window_{iso.lower()}"
@@ -1282,6 +1286,7 @@ def main(argv=None):
         if args.settle_s is not None:
             cut = t0_global + float(args.settle_s)
             iso_events = iso_events[iso_events["timestamp"] >= cut]
+        iso_event_counts[iso] = float(iso_events["weight"].sum())
         times_dict = {iso: iso_events["timestamp"].values}
         weights_map = {iso: iso_events["weight"].values}
         fit_cfg = {
@@ -1513,17 +1518,24 @@ def main(argv=None):
     baseline_rates = {}
     baseline_unc = {}
     if baseline_live_time > 0:
+        live_time = t_end_global - t_start_fit_global
         for iso, count in baseline_counts.items():
             eff = cfg["time_fit"].get(
                 f"eff_{iso.lower()}", [1.0]
             )[0]
-            if eff > 0:
-                rate = count / (baseline_live_time * eff)
-                err = np.sqrt(count) / (baseline_live_time * eff)
+            counts = iso_event_counts.get(iso, 0.0)
+            if eff > 0 and live_time > 0:
+                rate, err = subtract_baseline(
+                    counts,
+                    eff,
+                    live_time,
+                    count,
+                    baseline_live_time,
+                )
             else:
                 rate = 0.0
                 err = 0.0
-            baseline_rates[iso] = rate  # Bq
+            baseline_rates[iso] = rate
             baseline_unc[iso] = err
 
     dilution_factor = 0.0
@@ -1545,19 +1557,13 @@ def main(argv=None):
             s = scales.get(iso, 1.0)
             params["E_corrected"] = params[f"E_{iso}"] - s * rate
             err_fit = params.get(f"dE_{iso}", 0.0)
-            sigma_rate = 0.0
-            if baseline_live_time > 0:
-                count = baseline_counts.get(iso, 0.0)
-                eff = cfg["time_fit"].get(
-                    f"eff_{iso.lower()}", [1.0]
-                )[0]
-                if eff > 0:
-                    sigma_rate = math.sqrt(count) / (baseline_live_time * eff)
-            params["dE_corrected"] = float(math.hypot(err_fit, sigma_rate * s))
+            params["dE_corrected"] = float(math.hypot(err_fit, baseline_unc.get(iso, 0.0) * s))
 
     if baseline_rates:
         baseline_info["rate_Bq"] = baseline_rates
         baseline_info["rate_unc_Bq"] = baseline_unc
+        baseline_info["corrected_rate_Bq"] = baseline_rates
+        baseline_info["corrected_sigma_Bq"] = baseline_unc
         baseline_info["dilution_factor"] = dilution_factor
 
     # ────────────────────────────────────────────────────────────
