@@ -16,6 +16,7 @@ __all__ = [
     "cps_to_bq",
     "parse_time_arg",
     "parse_time",
+    "parse_datetime",
     "LITERS_PER_M3",
 ]
 
@@ -202,6 +203,18 @@ def parse_time(s: str) -> float:
         return float(dt.timestamp())
 
     raise argparse.ArgumentTypeError(f"could not parse time: {s!r}")
+
+
+def parse_datetime(val):
+    """Parse timestamps into UTC ``datetime64`` values."""
+    if pd is None:
+        raise ImportError("pandas is required for parse_datetime")
+
+    if isinstance(val, pd.Series) and pd.api.types.is_numeric_dtype(val):
+        return pd.to_datetime(val.astype(float), unit="s", utc=True)
+    if not isinstance(val, pd.Series) and np.issubdtype(getattr(val, "dtype", type(val)), np.number):
+        return pd.to_datetime(val, unit="s", utc=True)
+    return pd.to_datetime(val, utc=True)
 
 
 def parse_time_arg(val) -> datetime:

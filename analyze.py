@@ -105,6 +105,7 @@ from utils import (
     cps_to_bq,
     parse_time,
     parse_time_arg,
+    parse_datetime,
 )
 from radmon.baseline import subtract_baseline
 from radon.baseline import subtract_baseline_counts
@@ -695,8 +696,7 @@ def main(argv=None):
     # ────────────────────────────────────────────────────────────
     try:
         events_all = load_events(args.input, column_map=cfg.get("columns"))
-        if pd.api.types.is_datetime64_any_dtype(events_all["timestamp"]):
-            events_all["timestamp"] = events_all["timestamp"].view("int64") / 1e9
+        events_all["timestamp"] = parse_datetime(events_all["timestamp"])
     except Exception as e:
         print(f"ERROR: Could not load events from '{args.input}': {e}")
         sys.exit(1)
