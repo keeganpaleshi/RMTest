@@ -622,19 +622,22 @@ def main(argv=None):
     # 2. Load event data
     # ────────────────────────────────────────────────────────────
     try:
-        df_full = load_events(args.input, column_map=cfg.get("columns"))
-        if pd.api.types.is_datetime64_any_dtype(df_full["timestamp"]):
-            df_full["timestamp"] = df_full["timestamp"].view("int64") / 1e9
+        df_all = load_events(args.input, column_map=cfg.get("columns"))
+        if pd.api.types.is_datetime64_any_dtype(df_all["timestamp"]):
+            df_all["timestamp"] = df_all["timestamp"].view("int64") / 1e9
     except Exception as e:
         print(f"ERROR: Could not load events from '{args.input}': {e}")
         sys.exit(1)
 
-    if df_full.empty:
+    if df_all.empty:
         print("No events found in the input CSV. Exiting.")
         sys.exit(0)
 
     # ``load_events()`` now returns timezone-aware datetimes; convert to epoch
-    # seconds for internal calculations.
+    # seconds for internal calculations.  Keep an untouched copy for baseline
+    # extraction later.
+
+    df_full = df_all.copy()
 
     # ───────────────────────────────────────────────
     # 2a. Pedestal / electronic-noise cut (integer ADC)
@@ -687,9 +690,9 @@ def main(argv=None):
     _ensure_events(df_full, "burst filtering")
 
     # Keep a copy of the data set after noise and burst filtering but before
-    # any time-window selections. This full set is later used to extract
-    # baseline events independent of the analysis time windows.
-    events_full = df_full.copy()
+    # any time-window selections. This filtered set is later used for analysis
+    # while the unfiltered ``df_all`` is preserved for baseline extraction.
+    events_filtered = df_full.copy()
 
     # Global t₀ reference
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
@@ -914,13 +917,13 @@ def main(argv=None):
         t_end_base = parse_time(baseline_range[1])
         if t_end_base <= t_start_base:
             raise ValueError("baseline_range end time must be greater than start time")
-        mask_base_full = (events_full["timestamp"] >= t_start_base) & (
-            events_full["timestamp"] < t_end_base
+        mask_base_full = (df_all["timestamp"] >= t_start_base) & (
+            df_all["timestamp"] < t_end_base
         )
         mask_base = (df_analysis["timestamp"] >= t_start_base) & (
             df_analysis["timestamp"] < t_end_base
         )
-        base_events = events_full[mask_base_full].copy()
+        base_events = df_all[mask_base_full].copy()
         # Apply calibration to the baseline events
         if not base_events.empty:
             base_events["energy_MeV"] = apply_calibration(
@@ -990,7 +993,7 @@ def main(argv=None):
         edges = adc_hist_edges(df_analysis["adc"].values, hist_bins)
         df_analysis = subtract_baseline(
             df_analysis,
-            df_full,
+            events_filtered,
             bins=edges,
             t_base0=t_base0,
             t_base1=t_base1,
