@@ -84,8 +84,12 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     assert summary["baseline"]["scales"]["Po218"] == pytest.approx(1.0)
     assert summary["baseline"]["scales"]["Po210"] == pytest.approx(1.0)
     assert summary["baseline"]["scales"]["noise"] == pytest.approx(1.0)
+    corr_rate = summary["baseline"]["corrected_rate_Bq"]["Po214"]
+    corr_sig = summary["baseline"]["corrected_sigma_Bq"]["Po214"]
     assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(0.8)
     assert summary["time_fit"]["Po214"]["dE_corrected"] == pytest.approx(0.1414213562373095)
+    assert corr_rate == pytest.approx(0.8)
+    assert corr_sig == pytest.approx(0.1414213562373095)
     assert summary["baseline"].get("noise_level") == 5.0
     times = list(captured.get("times", []))
     assert times == [1, 2, 20]
@@ -160,8 +164,12 @@ def test_baseline_scaling_factor(tmp_path, monkeypatch):
     assert dilution == pytest.approx(0.5)
     assert summary["baseline"]["scales"]["Po214"] == pytest.approx(0.5)
     assert summary["baseline"]["scales"]["Po218"] == pytest.approx(0.5)
+    corr_rate = summary["baseline"]["corrected_rate_Bq"]["Po214"]
+    corr_sig = summary["baseline"]["corrected_sigma_Bq"]["Po214"]
     assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(0.9)
     assert summary["time_fit"]["Po214"]["dE_corrected"] == pytest.approx(0.07071067811865475)
+    assert corr_rate == pytest.approx(0.9)
+    assert corr_sig == pytest.approx(0.07071067811865475)
 
 
 def test_n0_prior_from_baseline(tmp_path, monkeypatch):
@@ -314,6 +322,8 @@ def test_isotopes_to_subtract_control(tmp_path, monkeypatch):
     assert "rate_Bq" not in summary.get("baseline", {})
     assert "E_corrected" not in summary["time_fit"]["Po214"]
     assert "dE_corrected" not in summary["time_fit"]["Po214"]
+    assert "corrected_rate_Bq" not in summary.get("baseline", {})
+    assert "corrected_sigma_Bq" not in summary.get("baseline", {})
     assert summary["baseline"]["scales"]["Po214"] == pytest.approx(1.0)
 
 
@@ -438,6 +448,10 @@ def test_baseline_scaling_multiple_isotopes(tmp_path, monkeypatch):
 
     assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(exp_e214)
     assert summary["time_fit"]["Po214"]["dE_corrected"] == pytest.approx(exp_d214)
+    corr_rate = summary["baseline"]["corrected_rate_Bq"]["Po214"]
+    corr_sig = summary["baseline"]["corrected_sigma_Bq"]["Po214"]
+    assert corr_rate == pytest.approx(exp_e214)
+    assert corr_sig == pytest.approx(exp_d214)
     # Po-218 fit results may be absent in this minimal dataset
 
 
