@@ -99,7 +99,7 @@ from plot_utils import (
 )
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
-from utils import find_adc_bin_peaks, adc_hist_edges, cps_to_bq
+from utils import find_adc_bin_peaks, adc_hist_edges, cps_to_bq, parse_time
 from radmon.baseline import subtract_baseline
 
 
@@ -683,7 +683,7 @@ def main(argv=None):
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
     if t0_cfg is not None:
         try:
-            t0_global = pd.to_datetime(t0_cfg, utc=True).timestamp()
+            t0_global = parse_time(t0_cfg)
         except Exception:
             logging.warning(
                 f"Invalid analysis_start_time '{t0_cfg}' - using first event"
@@ -693,10 +693,7 @@ def main(argv=None):
         t0_global = df_full["timestamp"].min()
 
     def _to_epoch(val):
-        try:
-            return float(val)
-        except Exception:
-            return pd.to_datetime(val, utc=True).timestamp()
+        return parse_time(val)
 
     t_end_cfg = cfg.get("analysis", {}).get("analysis_end_time")
     t_end_global = None
@@ -916,10 +913,7 @@ def main(argv=None):
     if baseline_range:
 
         def to_epoch(x):
-            try:
-                return float(x)
-            except Exception:
-                return pd.to_datetime(x, utc=True).timestamp()
+            return parse_time(x)
 
         t_start_base = to_epoch(baseline_range[0])
         t_end_base = to_epoch(baseline_range[1])

@@ -174,10 +174,15 @@ def cps_to_bq(rate_cps, volume_liters=None):
     return float(rate_cps) / volume_m3
 
 
-def parse_time(s: str) -> float:
-    """Parse a timestamp string or integer into Unix epoch seconds as a float."""
+def parse_time(s) -> float:
+    """Parse a timestamp string, ``datetime`` or number into Unix epoch seconds."""
     if isinstance(s, (int, float)):
         return float(s)
+
+    if isinstance(s, datetime):
+        if s.tzinfo is None:
+            s = s.replace(tzinfo=timezone.utc)
+        return float(s.timestamp())
 
     if isinstance(s, str):
         try:
