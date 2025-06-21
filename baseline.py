@@ -2,16 +2,18 @@ import numpy as np
 import logging
 import pandas as pd
 from utils import parse_time
+from io_utils import parse_datetime
 
 __all__ = ["rate_histogram", "subtract_baseline"]
 
 
 def _seconds(col):
     """Return timestamp column as seconds from epoch."""
-    if np.issubdtype(col.dtype, np.number):
-        return col.astype(float).to_numpy()
-    ts = pd.to_datetime(col, utc=True)
-    return ts.view("int64") / 1e9
+    ts = col
+    if not pd.api.types.is_datetime64_any_dtype(ts):
+        ts = ts.map(parse_datetime)
+    ts = pd.to_datetime(ts, utc=True)
+    return ts.view("int64").to_numpy() / 1e9
 
 
 def rate_histogram(df, bins):

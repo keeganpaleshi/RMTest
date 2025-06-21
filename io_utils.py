@@ -350,9 +350,11 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
     Parameters
     ----------
     df : pandas.DataFrame
-        Event data containing a ``timestamp`` column. The values can be either
-        numeric seconds or ``datetime64`` objects. ``datetime64`` values are
-        converted to seconds internally.
+        Event data containing a ``timestamp`` column. Values may be numeric
+        epoch seconds or ``datetime64`` objects. All timestamps are first
+        converted to ``datetime64`` using :func:`parse_datetime` and the
+        DataFrame is updated accordingly. Seconds are only used internally for
+        histogram calculations.
     cfg : dict, optional
         Configuration dictionary. Expected keys under ``burst_filter`` are
         ``burst_window_size_s``, ``rolling_median_window`` and
@@ -381,10 +383,10 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
     out_df = df.copy()
 
     ts = out_df["timestamp"]
-    if pd.api.types.is_datetime64_any_dtype(ts):
-        times_sec = ts.view("int64").to_numpy() / 1e9
-    else:
-        times_sec = ts.astype(float).to_numpy()
+    if not pd.api.types.is_datetime64_any_dtype(ts):
+        ts = ts.map(parse_datetime)
+        out_df["timestamp"] = ts
+    times_sec = ts.view("int64").to_numpy() / 1e9
 
     # ───── micro-burst veto ─────
     if mode in ("micro", "both"):
@@ -421,10 +423,10 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
 
             # Recalculate times after removing events
             ts = out_df["timestamp"]
-            if pd.api.types.is_datetime64_any_dtype(ts):
-                times_sec = ts.view("int64").to_numpy() / 1e9
-            else:
-                times_sec = ts.astype(float).to_numpy()
+            if not pd.api.types.is_datetime64_any_dtype(ts):
+                ts = ts.map(parse_datetime)
+                out_df["timestamp"] = ts
+            times_sec = ts.view("int64").to_numpy() / 1e9
 
     # ───── rate-based veto ─────
     if mode in ("rate", "both"):
