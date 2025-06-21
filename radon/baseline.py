@@ -33,10 +33,16 @@ def subtract_baseline_counts(
     **not** intended for DataFrame-based spectra or time series.
     """
 
+    if live_time <= 0 or efficiency <= 0:
+        return 0.0, 0.0
     rate = counts / live_time / efficiency
     sigma_sq = counts / live_time**2 / efficiency**2
-    baseline_rate = baseline_counts / baseline_live_time / efficiency
-    baseline_sigma_sq = baseline_counts / baseline_live_time**2 / efficiency**2
+    if baseline_live_time > 0:
+        baseline_rate = baseline_counts / baseline_live_time / efficiency
+        baseline_sigma_sq = baseline_counts / baseline_live_time**2 / efficiency**2
+    else:
+        baseline_rate = 0.0
+        baseline_sigma_sq = 0.0
     corrected_rate = rate - baseline_rate
     corrected_sigma = np.sqrt(sigma_sq + baseline_sigma_sq)
     return corrected_rate, corrected_sigma
