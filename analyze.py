@@ -62,7 +62,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 from dateutil import parser as date_parser
-from dateutil.tz import UTC
+from dateutil.tz import UTC, gettz
 
 from hierarchical import fit_hierarchical_runs
 
@@ -299,10 +299,15 @@ def parse_args(argv=None):
         help="Directory under which to create a timestamped analysis folder (override with --job-id)",
     )
     p.add_argument(
+        "--timezone",
+        default="UTC",
+        help="Timezone for naive input timestamps (default: UTC)",
+    )
+    p.add_argument(
         "--baseline_range",
         nargs=2,
         metavar=("TSTART", "TEND"),
-        type=parse_time_arg,
+        type=str,
         help=(
             "Optional baseline-run interval. Providing this option overrides `baseline.range` in config.json. Provide two values (either ISO strings or epoch floats). If set, those events are extracted (same energy cuts) and listed in `baseline` of the summary."
         ),
@@ -347,12 +352,12 @@ def parse_args(argv=None):
     )
     p.add_argument(
         "--analysis-end-time",
-        type=parse_time_arg,
+        type=str,
         help="Ignore events occurring after this ISO timestamp. Providing this option overrides `analysis.analysis_end_time` in config.json",
     )
     p.add_argument(
         "--analysis-start-time",
-        type=parse_time_arg,
+        type=str,
         help="Reference start time of the analysis (ISO string or epoch). Overrides `analysis.analysis_start_time` in config.json",
     )
     p.add_argument(
@@ -526,6 +531,34 @@ def main(argv=None):
     if args.hierarchical_summary:
         args.hierarchical_summary = Path(args.hierarchical_summary)
 
+    # Resolve timezone for subsequent time parsing
+    tzinfo = gettz(args.timezone)
+    if tzinfo is None:
+        print(f"ERROR: Unknown timezone '{args.timezone}'")
+        sys.exit(1)
+
+    if args.baseline_range:
+        args.baseline_range = [parse_time_arg(t, tz=tzinfo) for t in args.baseline_range]
+    if args.analysis_end_time is not None:
+        args.analysis_end_time = parse_time_arg(args.analysis_end_time, tz=tzinfo)
+    if args.analysis_start_time is not None:
+        args.analysis_start_time = parse_time_arg(args.analysis_start_time, tz=tzinfo)
+    if args.spike_end_time is not None:
+        args.spike_end_time = parse_time_arg(args.spike_end_time, tz=tzinfo)
+    if args.spike_period:
+        args.spike_period = [
+            [parse_time_arg(s, tz=tzinfo), parse_time_arg(e, tz=tzinfo)] for s, e in args.spike_period
+        ]
+    if args.run_period:
+        args.run_period = [
+            [parse_time_arg(s, tz=tzinfo), parse_time_arg(e, tz=tzinfo)] for s, e in args.run_period
+        ]
+    if args.radon_interval:
+        args.radon_interval = [
+            parse_time_arg(args.radon_interval[0], tz=tzinfo),
+            parse_time_arg(args.radon_interval[1], tz=tzinfo),
+        ]
+
     # ────────────────────────────────────────────────────────────
     # 1. Load configuration
     # ────────────────────────────────────────────────────────────
@@ -587,19 +620,26 @@ def main(argv=None):
 
     if args.spike_end_time is not None:
         _log_override("analysis", "spike_end_time", args.spike_end_time)
-        cfg.setdefault("analysis", {})["spike_end_time"] = args.spike_end_time
+        cfg.setdefault("analysis", {})["spike_end_time"] = args.spike_end_time.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     if args.spike_period:
         _log_override("analysis", "spike_periods", args.spike_period)
-        cfg.setdefault("analysis", {})["spike_periods"] = args.spike_period
+        cfg.setdefault("analysis", {})["spike_periods"] = [
+            [s.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), e.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")] for s, e in args.spike_period
+        ]
 
     if args.run_period:
         _log_override("analysis", "run_periods", args.run_period)
-        cfg.setdefault("analysis", {})["run_periods"] = args.run_period
+        cfg.setdefault("analysis", {})["run_periods"] = [
+            [s.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), e.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")] for s, e in args.run_period
+        ]
 
     if args.radon_interval:
         _log_override("analysis", "radon_interval", args.radon_interval)
-        cfg.setdefault("analysis", {})["radon_interval"] = args.radon_interval
+        cfg.setdefault("analysis", {})["radon_interval"] = [
+            args.radon_interval[0].astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            args.radon_interval[1].astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        ]
 
     if args.settle_s is not None:
         _log_override("analysis", "settle_s", float(args.settle_s))
@@ -696,6 +736,7 @@ def main(argv=None):
     try:
         events_all = load_events(args.input, column_map=cfg.get("columns"))
         if pd.api.types.is_datetime64_any_dtype(events_all["timestamp"]):
+            events_all["timestamp"] = events_all["timestamp"].dt.tz_convert(tzinfo)
             events_all["timestamp"] = events_all["timestamp"].view("int64") / 1e9
     except Exception as e:
         print(f"ERROR: Could not load events from '{args.input}': {e}")

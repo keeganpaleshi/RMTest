@@ -5,8 +5,9 @@ from scipy.signal import find_peaks
 import math
 from dataclasses import is_dataclass, asdict
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
 from dateutil import parser as date_parser
+from dateutil.tz import gettz
 
 __all__ = [
     "to_native",
@@ -174,15 +175,31 @@ def cps_to_bq(rate_cps, volume_liters=None):
     return float(rate_cps) / volume_m3
 
 
-def parse_time(s: str) -> float:
-    """Parse a timestamp string, number, or ``datetime`` into Unix epoch seconds."""
+def parse_time(s, tz="UTC") -> float:
+    """Parse a timestamp string, number, or ``datetime`` into Unix epoch seconds.
+
+    Parameters
+    ----------
+    s : str | float | int | datetime
+        Input value to parse.
+    tz : str or tzinfo, optional
+        Timezone to assume for naïve inputs. ``dateutil.tz.gettz`` is used to
+        resolve the value. Defaults to ``"UTC"``.
+    """
+
+    tzinfo_obj = tz if isinstance(tz, tzinfo) else gettz(tz)
+    if tzinfo_obj is None:
+        tzinfo_obj = timezone.utc
+
     if isinstance(s, (int, float)):
         return float(s)
 
     if isinstance(s, datetime):
         dt = s
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=tzinfo_obj)
+        else:
+            dt = dt.astimezone(tzinfo_obj)
         return float(dt.timestamp())
 
     if isinstance(s, str):
@@ -197,17 +214,22 @@ def parse_time(s: str) -> float:
             raise argparse.ArgumentTypeError(f"could not parse time: {s!r}") from e
 
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=tzinfo_obj)
+        else:
+            dt = dt.astimezone(tzinfo_obj)
 
         return float(dt.timestamp())
 
     raise argparse.ArgumentTypeError(f"could not parse time: {s!r}")
 
 
-def parse_time_arg(val) -> datetime:
-    """Parse a time argument into a UTC ``datetime`` object."""
+def parse_time_arg(val, tz="UTC") -> datetime:
+    """Parse a time argument into a UTC ``datetime`` object.
 
-    ts = parse_time(val)
+    ``tz`` specifies the timezone for naïve inputs.
+    """
+
+    ts = parse_time(val, tz=tz)
     return datetime.fromtimestamp(ts, tz=timezone.utc)
 
 
