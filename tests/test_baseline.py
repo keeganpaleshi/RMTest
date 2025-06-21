@@ -86,9 +86,9 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     corr_rate = summary["baseline"]["corrected_rate_Bq"]["Po214"]
     corr_sig = summary["baseline"]["corrected_sigma_Bq"]["Po214"]
     assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(0.8)
-    assert summary["time_fit"]["Po214"]["dE_corrected"] == pytest.approx(0.1414213562373095)
+    assert summary["time_fit"]["Po214"]["dE_corrected"] == pytest.approx(np.sqrt(3.0)/10)
     assert corr_rate == pytest.approx(0.8)
-    assert corr_sig == pytest.approx(0.1414213562373095)
+    assert corr_sig == pytest.approx(np.sqrt(3.0)/10)
     assert summary["baseline"].get("noise_level") == 5.0
     times = list(captured.get("times", []))
     assert times == [1, 2, 20]
@@ -164,9 +164,9 @@ def test_baseline_scaling_factor(tmp_path, monkeypatch):
     corr_rate = summary["baseline"]["corrected_rate_Bq"]["Po214"]
     corr_sig = summary["baseline"]["corrected_sigma_Bq"]["Po214"]
     assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(0.9)
-    assert summary["time_fit"]["Po214"]["dE_corrected"] == pytest.approx(0.07071067811865475)
+    assert summary["time_fit"]["Po214"]["dE_corrected"] == pytest.approx(np.sqrt(3.0)/20)
     assert corr_rate == pytest.approx(0.9)
-    assert corr_sig == pytest.approx(0.07071067811865475)
+    assert corr_sig == pytest.approx(np.sqrt(3.0)/20)
 
 
 def test_n0_prior_from_baseline(tmp_path, monkeypatch):
@@ -507,6 +507,80 @@ def test_noise_level_none_not_recorded(tmp_path, monkeypatch):
 
     summary = captured.get("summary", {})
     assert "noise_level" not in summary.get("baseline", {})
+
+
+def test_sigma_rate_uses_weighted_counts(tmp_path, monkeypatch):
+    """Baseline-corrected uncertainty should use weighted iso counts."""
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "baseline": {"range": [0, 10], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {
+            "do_time_fit": True,
+            "window_po214": [7, 9],
+            "hl_po214": [1.0, 0.0],
+            "eff_po214": [1.0, 0.0],
+            "flags": {},
+        },
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    cfg_path = tmp_path / "cfg.json"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    df = pd.DataFrame({
+        "fUniqueID": [1, 2, 3],
+        "fBits": [0, 0, 0],
+        "timestamp": [1, 2, 20],
+        "adc": [8, 8, 8],
+        "fchannel": [1, 1, 1],
+    })
+    data_path = tmp_path / "data.csv"
+    df.to_csv(data_path, index=False)
+
+    cal_mock = {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0), "peaks": {"Po210": {"centroid_adc": 10}}}
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({"E_Po214": 1.0}, np.zeros((1,1)), 0))
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(baseline_noise, "estimate_baseline_noise", lambda *a, **k: (None, {}))
+
+    baseline_e = np.array([8.0, 8.0])
+    def fake_window_prob(E, sigma, lo, hi):
+        arr = np.asarray(E)
+        if arr.size == 2 and np.allclose(arr, baseline_e):
+            return np.full_like(arr, 2.0)
+        return np.ones_like(arr)
+
+    monkeypatch.setattr(analyze, "window_prob", fake_window_prob)
+
+    captured = {}
+
+    def fake_write(out_dir, summary, timestamp=None):
+        captured["summary"] = summary
+        d = Path(out_dir) / (timestamp or "x")
+        d.mkdir(parents=True, exist_ok=True)
+        return str(d)
+
+    monkeypatch.setattr(analyze, "write_summary", fake_write)
+    monkeypatch.setattr(analyze, "copy_config", lambda *a, **k: None)
+
+    args = [
+        "analyze.py",
+        "--config", str(cfg_path),
+        "--input", str(data_path),
+        "--output_dir", str(tmp_path),
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+    analyze.main()
+
+    dE_corr = captured["summary"]["time_fit"]["Po214"]["dE_corrected"]
+    assert dE_corr == pytest.approx(np.sqrt(3.0) / 10.0)
 
 
 def test_rate_histogram_single_event():
