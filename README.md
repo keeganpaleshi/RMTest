@@ -2,7 +2,7 @@
 
 This repository provides a complete pipeline to analyze electrostatic radon monitor data.
 
-**Note:** All time quantities are expressed in seconds and all energies are given in MeV throughout the documentation and code. Event timestamps are stored as UTC `numpy.datetime64` objects throughout the pipeline. The helper function `parse_datetime` converts input values to this representation and accepts ISO‑8601 strings (with or without timezone), numeric epoch seconds or existing `datetime` objects. Command-line options that take timestamps (such as `--analysis-start-time`) are parsed with this helper, so both ISO‑8601 strings and Unix seconds work interchangeably.
+**Note:** All time quantities are expressed in seconds and all energies are given in MeV throughout the documentation and code. Event timestamps are stored as UTC `numpy.datetime64` objects throughout the pipeline. The helper function `parse_datetime` converts input values to this representation and accepts ISO‑8601 strings (with or without timezone), numeric epoch seconds or existing `datetime` objects. Command-line options that take timestamps (such as `--analysis-start-time`) are parsed with this helper, so both ISO‑8601 strings and Unix seconds work interchangeably. A global `--timezone` option controls which zone naïve times are interpreted in (default: `UTC`).
 
 ## Structure
 
@@ -42,6 +42,7 @@ python analyze.py --config config.json --input merged_data.csv \
     [--ambient-file amb.txt (time conc)] [--ambient-concentration 0.1] \
     [--burst-mode rate] \
     [--plot-time-binning-mode fixed --plot-time-bin-width 3600] [--dump-time-series-json] \
+    [--timezone Europe/Berlin] \
     [--hierarchical-summary OUT.json]
 ```
 

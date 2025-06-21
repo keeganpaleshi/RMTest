@@ -47,3 +47,8 @@ def test_parse_time_arg_numeric(inp, expected):
 def test_parse_time_arg_invalid(inp):
     with pytest.raises((argparse.ArgumentTypeError, ValueError)):
         parse_time_arg(inp)
+
+
+def test_parse_time_arg_naive_timezone():
+    dt = parse_time_arg("1970-01-01T01:00:00", tz="Europe/Berlin")
+    assert dt == datetime(1970, 1, 1, tzinfo=timezone.utc)
