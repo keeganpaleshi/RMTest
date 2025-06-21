@@ -803,7 +803,12 @@ def main(argv=None):
     )
 
     n_before_burst = len(events_filtered)
-    events_filtered, n_removed_burst = apply_burst_filter(events_filtered, cfg, mode=burst_mode)
+    events_filtered, n_removed_burst = apply_burst_filter(
+        events_filtered, cfg, mode=burst_mode
+    )
+    if pd.api.types.is_datetime64_any_dtype(events_filtered["timestamp"]):
+        if events_filtered["timestamp"].dt.tz is None:
+            events_filtered["timestamp"] = events_filtered["timestamp"].dt.tz_localize(timezone.utc)
     if n_before_burst > 0:
         frac_removed = n_removed_burst / n_before_burst
         logging.info(
@@ -1727,15 +1732,21 @@ def main(argv=None):
         if not params:
             continue
         eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
-        if eff <= 0:
+        live = iso_live_time.get(iso, 0.0)
+        counts = iso_counts.get(iso, 0.0)
+        if eff <= 0 or live <= 0:
             continue
-        corrected_rate, corrected_sigma = subtract_baseline_counts(
-            iso_counts.get(iso, 0.0),
-            eff,
-            iso_live_time.get(iso, 0.0),
-            baseline_counts.get(iso, 0.0),
-            baseline_live_time,
-        )
+        if baseline_live_time > 0:
+            corrected_rate, corrected_sigma = subtract_baseline_counts(
+                counts,
+                eff,
+                live,
+                baseline_counts.get(iso, 0.0),
+                baseline_live_time,
+            )
+        else:
+            corrected_rate = counts / (live * eff)
+            corrected_sigma = math.sqrt(counts) / (live * eff)
         params["E_corrected"] = corrected_rate
         params["dE_corrected"] = corrected_sigma
         corrected_rates[iso] = corrected_rate
