@@ -1733,6 +1733,7 @@ def main(argv=None):
         "noise": 1.0,
     }
     baseline_info["scales"] = scales
+    baseline_info["analysis_counts"] = iso_counts
 
     corrected_rates = {}
     corrected_unc = {}
