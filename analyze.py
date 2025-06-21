@@ -912,6 +912,10 @@ def main(argv=None):
 
     # Apply optional time window cuts before any baseline or fit operations
     df_analysis = events_filtered.copy()
+    # Ensure timestamps are timezone-aware for comparisons
+    df_analysis["timestamp"] = pd.to_datetime(
+        df_analysis["timestamp"], unit="s", utc=True
+    )
     if t_spike_end is not None:
         df_analysis = df_analysis[df_analysis["timestamp"] >= t_spike_end].reset_index(drop=True)
     for start_ts, end_ts in spike_periods:
@@ -959,9 +963,10 @@ def main(argv=None):
 
     if drift_rate != 0.0 or drift_mode != "linear" or drift_params is not None:
         try:
+            ts_seconds = df_analysis["timestamp"].astype("int64").to_numpy() / 1e9
             df_analysis["adc"] = apply_linear_adc_shift(
                 df_analysis["adc"].values,
-                df_analysis["timestamp"].values,
+                ts_seconds,
                 float(drift_rate),
                 t_ref=t0_global,
                 mode=drift_mode,
@@ -1049,8 +1054,9 @@ def main(argv=None):
         t_end_base = pd.to_datetime(parse_datetime(baseline_range[1]), utc=True)
         if t_end_base <= t_start_base:
             raise ValueError("baseline_range end time must be greater than start time")
-        mask_base_full = (events_all["timestamp"] >= t_start_base) & (
-            events_all["timestamp"] < t_end_base
+        events_all_ts = pd.to_datetime(events_all["timestamp"], unit="s", utc=True)
+        mask_base_full = (events_all_ts >= t_start_base) & (
+            events_all_ts < t_end_base
         )
         mask_base = (df_analysis["timestamp"] >= t_start_base) & (
             df_analysis["timestamp"] < t_end_base
