@@ -2,7 +2,7 @@
 
 import numpy as np
 
-__all__ = ["subtract_baseline_counts"]
+__all__ = ["subtract_baseline_counts", "subtract_baseline"]
 
 
 def subtract_baseline_counts(
@@ -40,3 +40,9 @@ def subtract_baseline_counts(
     corrected_rate = rate - baseline_rate
     corrected_sigma = np.sqrt(sigma_sq + baseline_sigma_sq)
     return corrected_rate, corrected_sigma
+
+
+def subtract_baseline(*args, **kwargs):
+    """Alias for :func:`subtract_baseline_counts`."""
+    return subtract_baseline_counts(*args, **kwargs)
+
