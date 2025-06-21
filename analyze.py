@@ -803,7 +803,12 @@ def main(argv=None):
     )
 
     n_before_burst = len(events_filtered)
-    events_filtered, n_removed_burst = apply_burst_filter(events_filtered, cfg, mode=burst_mode)
+    events_filtered, n_removed_burst = apply_burst_filter(
+        events_filtered, cfg, mode=burst_mode
+    )
+    if pd.api.types.is_datetime64_any_dtype(events_filtered["timestamp"]):
+        if events_filtered["timestamp"].dt.tz is None:
+            events_filtered["timestamp"] = events_filtered["timestamp"].dt.tz_localize(timezone.utc)
     if n_before_burst > 0:
         frac_removed = n_removed_burst / n_before_burst
         logging.info(
@@ -1315,6 +1320,8 @@ def main(argv=None):
     time_fit_results = {}
     priors_time_all = {}
     time_plot_data = {}
+    iso_counts = {}
+    iso_live_time = {}
     if cfg.get("time_fit", {}).get("do_time_fit", False):
         for iso in ("Po218", "Po214"):
             win_key = f"window_{iso.lower()}"
@@ -1334,6 +1341,7 @@ def main(argv=None):
             iso_mask = probs > 0
             iso_events = df_analysis[iso_mask].copy()
             iso_events["weight"] = probs[iso_mask]
+            iso_counts[iso] = float(np.sum(iso_events["weight"]))
             if iso_events.empty:
                 print(f"WARNING: No events found for {iso} in [{lo}, {hi}] MeV.")
                 continue
@@ -1481,6 +1489,7 @@ def main(argv=None):
             t_start_fit = t0_global
             if args.settle_s is not None:
                 t_start_fit = t0_global + float(args.settle_s)
+            iso_live_time[iso] = float(t_end_global_ts - t_start_fit)
             try:
                 decay_out = fit_time_series(
                     times_dict,
@@ -1718,25 +1727,30 @@ def main(argv=None):
     corrected_rates = {}
     corrected_unc = {}
 
-    for iso, rate in baseline_rates.items():
-        fit = time_fit_results.get(iso)
+    for iso, fit in time_fit_results.items():
         params = _fit_params(fit)
-        if params and (f"E_{iso}" in params):
-            s = scales.get(iso, 1.0)
-            params["E_corrected"] = params[f"E_{iso}"] - s * rate
-            err_fit = params.get(f"dE_{iso}", 0.0)
-            sigma_rate = 0.0
-            if baseline_live_time > 0:
-                count = baseline_counts.get(iso, 0.0)
-                eff = cfg["time_fit"].get(
-                    f"eff_{iso.lower()}", [1.0]
-                )[0]
-                if eff > 0:
-                    sigma_rate = math.sqrt(count) / (baseline_live_time * eff)
-            dE_corr = float(math.hypot(err_fit, sigma_rate * s))
-            params["dE_corrected"] = dE_corr
-            corrected_rates[iso] = params["E_corrected"]
-            corrected_unc[iso] = dE_corr
+        if not params:
+            continue
+        eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
+        live = iso_live_time.get(iso, 0.0)
+        counts = iso_counts.get(iso, 0.0)
+        if eff <= 0 or live <= 0:
+            continue
+        if baseline_live_time > 0:
+            corrected_rate, corrected_sigma = subtract_baseline_counts(
+                counts,
+                eff,
+                live,
+                baseline_counts.get(iso, 0.0),
+                baseline_live_time,
+            )
+        else:
+            corrected_rate = counts / (live * eff)
+            corrected_sigma = math.sqrt(counts) / (live * eff)
+        params["E_corrected"] = corrected_rate
+        params["dE_corrected"] = corrected_sigma
+        corrected_rates[iso] = corrected_rate
+        corrected_unc[iso] = corrected_sigma
 
     if baseline_rates:
         baseline_info["rate_Bq"] = baseline_rates
