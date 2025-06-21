@@ -95,6 +95,7 @@ The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--j
 - `radon_activity.png` – extrapolated radon activity over time.
  - `equivalent_air.png` – equivalent air volume plot when `--ambient-file` or
    `--ambient-concentration` is provided.
+- `iso_counts.json` – weighted event totals per isotope.
 
 The `time_fit` routine still fits only Po‑214 and Po‑218.
 When `window_po210` is provided the Po‑210 events are extracted and a
@@ -505,6 +506,18 @@ Example configuration to tighten the cut (set it to `null` to disable):
     "noise_cutoff": 300
 }
 ```
+
+### Weighted Event Counts
+
+Noise estimation and baseline subtraction work through per-event weights
+rather than removing events outright. Each baseline window produces a
+weight factor of ``1/σ²`` where ``σ`` is the uncertainty on the
+background-corrected activity for the isotope. Electronic noise events
+are scaled in the same fashion when a noise level is available. The
+weighted totals are stored in ``iso_counts.json`` and can differ from the
+raw number of events. These same weights are supplied to
+``fit_time_series`` so the decay fit accounts for the baseline and noise
+uncertainties.
 
 ## Utility Conversions
 
