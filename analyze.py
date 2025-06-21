@@ -1315,6 +1315,8 @@ def main(argv=None):
     time_fit_results = {}
     priors_time_all = {}
     time_plot_data = {}
+    iso_counts = {}
+    iso_live_time = {}
     if cfg.get("time_fit", {}).get("do_time_fit", False):
         for iso in ("Po218", "Po214"):
             win_key = f"window_{iso.lower()}"
@@ -1449,6 +1451,9 @@ def main(argv=None):
         if args.settle_s is not None:
             cut = pd.to_datetime(t0_global + float(args.settle_s), unit="s", utc=True)
             iso_events = iso_events[iso_events["timestamp"] >= cut]
+
+        iso_counts[iso] = float(iso_events["weight"].sum())
+
         ts_vals = iso_events["timestamp"]
         if pd.api.types.is_datetime64_any_dtype(ts_vals):
             ts_vals = ts_vals.view("int64").to_numpy() / 1e9
@@ -1481,6 +1486,8 @@ def main(argv=None):
             t_start_fit = t0_global
             if args.settle_s is not None:
                 t_start_fit = t0_global + float(args.settle_s)
+            live = t_end_global_ts - t_start_fit
+            iso_live_time[iso] = live
             try:
                 decay_out = fit_time_series(
                     times_dict,
@@ -1718,25 +1725,25 @@ def main(argv=None):
     corrected_rates = {}
     corrected_unc = {}
 
-    for iso, rate in baseline_rates.items():
-        fit = time_fit_results.get(iso)
+    for iso, fit in time_fit_results.items():
         params = _fit_params(fit)
-        if params and (f"E_{iso}" in params):
-            s = scales.get(iso, 1.0)
-            params["E_corrected"] = params[f"E_{iso}"] - s * rate
-            err_fit = params.get(f"dE_{iso}", 0.0)
-            sigma_rate = 0.0
-            if baseline_live_time > 0:
-                count = baseline_counts.get(iso, 0.0)
-                eff = cfg["time_fit"].get(
-                    f"eff_{iso.lower()}", [1.0]
-                )[0]
-                if eff > 0:
-                    sigma_rate = math.sqrt(count) / (baseline_live_time * eff)
-            dE_corr = float(math.hypot(err_fit, sigma_rate * s))
-            params["dE_corrected"] = dE_corr
-            corrected_rates[iso] = params["E_corrected"]
-            corrected_unc[iso] = dE_corr
+        if not params or (f"E_{iso}" not in params):
+            continue
+
+        eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
+
+        corrected_rate, corrected_sigma = subtract_baseline_counts(
+            iso_counts.get(iso, 0.0),
+            eff,
+            iso_live_time.get(iso, 0.0),
+            baseline_counts.get(iso, 0.0),
+            baseline_live_time,
+        )
+
+        params["E_corrected"] = corrected_rate
+        params["dE_corrected"] = corrected_sigma
+        corrected_rates[iso] = corrected_rate
+        corrected_unc[iso] = corrected_sigma
 
     if baseline_rates:
         baseline_info["rate_Bq"] = baseline_rates
