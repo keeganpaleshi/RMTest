@@ -1428,6 +1428,7 @@ def main(argv=None):
             }
             weight_factor = 1.0 / (c_sigma ** 2) if c_sigma > 0 else 1.0
             iso_events["weight"] *= weight_factor
+            iso_counts[iso] = float(np.sum(iso_events["weight"]))
         else:
             priors_time["N0"] = (
                 0.0,
@@ -1458,6 +1459,7 @@ def main(argv=None):
             }
             weight_factor = 1.0 / (c_sigma ** 2) if c_sigma > 0 else 1.0
             iso_events["weight"] *= weight_factor
+            iso_counts[iso] = float(np.sum(iso_events["weight"]))
 
         # Store priors for use in systematics scanning
         priors_time_all[iso] = priors_time
