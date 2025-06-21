@@ -1322,6 +1322,7 @@ def main(argv=None):
     priors_time_all = {}
     time_plot_data = {}
     iso_live_time = {}
+    iso_counts = {}
     if cfg.get("time_fit", {}).get("do_time_fit", False):
         for iso in ("Po218", "Po214"):
             win_key = f"window_{iso.lower()}"
@@ -1426,6 +1427,7 @@ def main(argv=None):
             }
             weight_factor = 1.0 / (c_sigma ** 2) if c_sigma > 0 else 1.0
             iso_events["weight"] *= weight_factor
+            iso_counts[iso] = float(np.sum(iso_events["weight"]))
         else:
             priors_time["N0"] = (
                 0.0,
@@ -1455,6 +1457,7 @@ def main(argv=None):
             }
             weight_factor = 1.0 / (c_sigma ** 2) if c_sigma > 0 else 1.0
             iso_events["weight"] *= weight_factor
+            iso_counts[iso] = float(np.sum(iso_events["weight"]))
 
         # Store priors for use in systematics scanning
         priors_time_all[iso] = priors_time
