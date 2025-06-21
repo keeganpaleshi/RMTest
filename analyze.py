@@ -109,6 +109,7 @@ from utils import (
 from io_utils import parse_datetime
 from radmon.baseline import subtract_baseline
 from radon.baseline import subtract_baseline_counts
+import radon
 
 
 def _fit_params(obj):
@@ -1322,6 +1323,7 @@ def main(argv=None):
     priors_time_all = {}
     time_plot_data = {}
     iso_live_time = {}
+    iso_counts = {}
     if cfg.get("time_fit", {}).get("do_time_fit", False):
         for iso in ("Po218", "Po214"):
             win_key = f"window_{iso.lower()}"
@@ -1341,6 +1343,7 @@ def main(argv=None):
             iso_mask = probs > 0
             iso_events = df_analysis[iso_mask].copy()
             iso_events["weight"] = probs[iso_mask]
+            iso_counts[iso] = iso_events["weight"].sum()
             if iso_events.empty:
                 print(f"WARNING: No events found for {iso} in [{lo}, {hi}] MeV.")
                 continue
@@ -1495,6 +1498,8 @@ def main(argv=None):
             t_start_fit = t0_global
             if args.settle_s is not None:
                 t_start_fit = t0_global + float(args.settle_s)
+            live = t_end_global_ts - t_start_fit
+            iso_live_time[iso] = live
             try:
                 decay_out = fit_time_series(
                     times_dict,
@@ -1705,55 +1710,29 @@ def main(argv=None):
     baseline_unc = {}
     if baseline_live_time > 0:
         for iso, count in baseline_counts.items():
-            eff = cfg["time_fit"].get(
-                f"eff_{iso.lower()}", [1.0]
-            )[0]
-            if eff > 0:
-                rate = count / (baseline_live_time * eff)
-                err = np.sqrt(count) / (baseline_live_time * eff)
-            else:
-                rate = 0.0
-                err = 0.0
-            baseline_rates[iso] = rate  # Bq
+            eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
+            rate = count / (baseline_live_time * eff) if eff > 0 else 0.0
+            err = np.sqrt(count) / (baseline_live_time * eff) if eff > 0 else 0.0
+            baseline_rates[iso] = rate
             baseline_unc[iso] = err
 
-    dilution_factor = 0.0
-    if monitor_vol + sample_vol > 0:
-        dilution_factor = monitor_vol / (monitor_vol + sample_vol)
-
-    scales = {
-        "Po214": dilution_factor,
-        "Po218": dilution_factor,
-        "Po210": 1.0,
-        "noise": 1.0,
-    }
+    dilution_factor = monitor_vol / (monitor_vol + sample_vol) if (monitor_vol + sample_vol) > 0 else 0.0
+    scales = {"Po214": dilution_factor, "Po218": dilution_factor, "Po210": 1.0, "noise": 1.0}
     baseline_info["scales"] = scales
 
     corrected_rates = {}
     corrected_unc = {}
-
-    for iso, rate in baseline_rates.items():
-        fit = time_fit_results.get(iso)
-        params = _fit_params(fit)
-        if params and (f"E_{iso}" in params):
-            s = scales.get(iso, 1.0)
-            err_fit = params.get(f"dE_{iso}", 0.0)
-            if iso_live_time.get(iso, 0) > 0 and baseline_live_time > 0:
-                params["E_corrected"] = params[f"E_{iso}"] - s * rate
-                sigma_rate = 0.0
-                count = baseline_counts.get(iso, 0.0)
-                eff = cfg["time_fit"].get(
-                    f"eff_{iso.lower()}", [1.0]
-                )[0]
-                if eff > 0:
-                    sigma_rate = math.sqrt(count) / (baseline_live_time * eff)
-                dE_corr = float(math.hypot(err_fit, sigma_rate * s))
-            else:
-                params["E_corrected"] = params[f"E_{iso}"]
-                dE_corr = err_fit
-            params["dE_corrected"] = dE_corr
-            corrected_rates[iso] = params["E_corrected"]
-            corrected_unc[iso] = dE_corr
+    for iso in time_fit_results:
+        eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
+        corr_rate, corr_sigma = radon.baseline.subtract_baseline_counts(
+            iso_counts[iso], eff, iso_live_time[iso],
+            baseline_counts.get(iso, 0.0), baseline_live_time
+        )
+        params = _fit_params(time_fit_results[iso])
+        params["E_corrected"] = corr_rate
+        params["dE_corrected"] = corr_sigma
+        corrected_rates[iso] = corr_rate
+        corrected_unc[iso] = corr_sigma
 
     if baseline_rates:
         baseline_info["rate_Bq"] = baseline_rates
