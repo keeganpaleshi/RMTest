@@ -849,13 +849,16 @@ def main(argv=None):
 
     spike_end_cfg = cfg.get("analysis", {}).get("spike_end_time")
     t_spike_end = None
+    t_spike_end_ts = None
     if spike_end_cfg is not None:
         try:
             t_spike_end = pd.to_datetime(parse_datetime(spike_end_cfg), utc=True)
             cfg.setdefault("analysis", {})["spike_end_time"] = parse_time(t_spike_end)
+            t_spike_end_ts = parse_time(t_spike_end)
         except Exception:
             logging.warning(f"Invalid spike_end_time '{spike_end_cfg}' - ignoring")
             t_spike_end = None
+            t_spike_end_ts = None
 
     spike_periods_cfg = cfg.get("analysis", {}).get("spike_periods", [])
     if spike_periods_cfg is None:
@@ -868,12 +871,12 @@ def main(argv=None):
             end_ts = pd.to_datetime(parse_datetime(end), utc=True)
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
-            spike_periods.append((start_ts, end_ts))
+            spike_periods.append((parse_time(start_ts), parse_time(end_ts)))
         except Exception as e:
             logging.warning(f"Invalid spike_period {period} -> {e}")
     if spike_periods:
         cfg.setdefault("analysis", {})["spike_periods"] = [
-            [parse_time(s), parse_time(e)] for s, e in spike_periods
+            [s, e] for s, e in spike_periods
         ]
 
     run_periods_cfg = cfg.get("analysis", {}).get("run_periods", [])
@@ -887,12 +890,12 @@ def main(argv=None):
             end_ts = pd.to_datetime(parse_datetime(end), utc=True)
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
-            run_periods.append((start_ts, end_ts))
+            run_periods.append((parse_time(start_ts), parse_time(end_ts)))
         except Exception as e:
             logging.warning(f"Invalid run_period {period} -> {e}")
     if run_periods:
         cfg.setdefault("analysis", {})["run_periods"] = [
-            [parse_time(s), parse_time(e)] for s, e in run_periods
+            [s, e] for s, e in run_periods
         ]
 
     radon_interval_cfg = cfg.get("analysis", {}).get("radon_interval")
@@ -912,8 +915,10 @@ def main(argv=None):
 
     # Apply optional time window cuts before any baseline or fit operations
     df_analysis = events_filtered.copy()
-    if t_spike_end is not None:
-        df_analysis = df_analysis[df_analysis["timestamp"] >= t_spike_end].reset_index(drop=True)
+    if pd.api.types.is_datetime64_any_dtype(df_analysis["timestamp"]):
+        df_analysis["timestamp"] = df_analysis["timestamp"].view("int64") / 1e9
+    if t_spike_end_ts is not None:
+        df_analysis = df_analysis[df_analysis["timestamp"] >= t_spike_end_ts].reset_index(drop=True)
     for start_ts, end_ts in spike_periods:
         mask = (df_analysis["timestamp"] >= start_ts) & (
             df_analysis["timestamp"] < end_ts
@@ -930,13 +935,13 @@ def main(argv=None):
         if t_end_cfg is None and len(df_analysis) > 0:
             t_end_global = df_analysis["timestamp"].max()
     if t_end_global is not None:
-        df_analysis = df_analysis[df_analysis["timestamp"] <= t_end_global].reset_index(drop=True)
+        if not isinstance(t_end_global, (int, float)):
+            t_end_global_ts = parse_time(t_end_global)
+        else:
+            t_end_global_ts = float(t_end_global)
+        df_analysis = df_analysis[df_analysis["timestamp"] <= t_end_global_ts].reset_index(drop=True)
     else:
         t_end_global = df_analysis["timestamp"].max()
-
-    if not isinstance(t_end_global, (int, float)):
-        t_end_global_ts = parse_time(t_end_global)
-    else:
         t_end_global_ts = float(t_end_global)
 
     _ensure_events(df_analysis, "time-window selection")
@@ -1023,6 +1028,7 @@ def main(argv=None):
     # ────────────────────────────────────────────────────────────
     baseline_info = {}
     baseline_counts = {}
+    iso_counts = {}
     baseline_cfg = cfg.get("baseline", {})
     isotopes_to_subtract = baseline_cfg.get("isotopes_to_subtract", ["Po214", "Po218"])
     baseline_range = None
@@ -1049,11 +1055,13 @@ def main(argv=None):
         t_end_base = pd.to_datetime(parse_datetime(baseline_range[1]), utc=True)
         if t_end_base <= t_start_base:
             raise ValueError("baseline_range end time must be greater than start time")
-        mask_base_full = (events_all["timestamp"] >= t_start_base) & (
-            events_all["timestamp"] < t_end_base
+        t_start_base_ts = parse_time(t_start_base)
+        t_end_base_ts = parse_time(t_end_base)
+        mask_base_full = (events_all["timestamp"] >= t_start_base_ts) & (
+            events_all["timestamp"] < t_end_base_ts
         )
-        mask_base = (df_analysis["timestamp"] >= t_start_base) & (
-            df_analysis["timestamp"] < t_end_base
+        mask_base = (df_analysis["timestamp"] >= t_start_base_ts) & (
+            df_analysis["timestamp"] < t_end_base_ts
         )
         base_events = events_all[mask_base_full].copy()
         # Apply calibration to the baseline events
@@ -1442,12 +1450,15 @@ def main(argv=None):
             weight_factor = 1.0 / (c_sigma ** 2) if c_sigma > 0 else 1.0
             iso_events["weight"] *= weight_factor
 
+        # Store weighted counts for this isotope
+        iso_counts[iso] = float(np.sum(iso_events["weight"]))
+
         # Store priors for use in systematics scanning
         priors_time_all[iso] = priors_time
 
         # Build configuration for fit_time_series
         if args.settle_s is not None:
-            cut = pd.to_datetime(t0_global + float(args.settle_s), unit="s", utc=True)
+            cut = t0_global + float(args.settle_s)
             iso_events = iso_events[iso_events["timestamp"] >= cut]
         ts_vals = iso_events["timestamp"]
         if pd.api.types.is_datetime64_any_dtype(ts_vals):
@@ -1516,8 +1527,8 @@ def main(argv=None):
         mask210 = (
             (df_analysis["energy_MeV"] >= lo)
             & (df_analysis["energy_MeV"] <= hi)
-            & (df_analysis["timestamp"] >= pd.to_datetime(t0_global, unit="s", utc=True))
-            & (df_analysis["timestamp"] <= t_end_global)
+            & (df_analysis["timestamp"] >= t0_global)
+            & (df_analysis["timestamp"] <= t_end_global_ts)
         )
         events_p210 = df_analysis[mask210]
         time_plot_data["Po210"] = {
