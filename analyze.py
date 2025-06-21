@@ -1321,6 +1321,7 @@ def main(argv=None):
     time_fit_results = {}
     priors_time_all = {}
     time_plot_data = {}
+    iso_live_time = {}
     if cfg.get("time_fit", {}).get("do_time_fit", False):
         for iso in ("Po218", "Po214"):
             win_key = f"window_{iso.lower()}"
@@ -1396,19 +1397,25 @@ def main(argv=None):
 
             analysis_counts = float(np.sum(iso_events["weight"]))
             live_time_analysis = (analysis_end - analysis_start).total_seconds()
-            if iso in isotopes_to_subtract and baseline_live_time > 0 and eff > 0:
+            iso_live_time[iso] = live_time_analysis
+            if (
+                iso in isotopes_to_subtract
+                and iso_live_time[iso] > 0
+                and baseline_live_time > 0
+                and eff > 0
+            ):
                 c_rate, c_sigma = subtract_baseline_counts(
                     analysis_counts,
                     eff,
-                    live_time_analysis,
+                    iso_live_time[iso],
                     baseline_counts.get(iso, 0.0),
                     baseline_live_time,
                 )
             else:
-                if eff > 0 and live_time_analysis > 0:
-                    c_rate = analysis_counts / (live_time_analysis * eff)
+                if eff > 0 and iso_live_time[iso] > 0:
+                    c_rate = analysis_counts / (iso_live_time[iso] * eff)
                     c_sigma = math.sqrt(analysis_counts) / (
-                        live_time_analysis * eff
+                        iso_live_time[iso] * eff
                     )
                 else:
                     c_rate = 0.0
@@ -1430,13 +1437,14 @@ def main(argv=None):
 
             analysis_counts = float(np.sum(iso_events["weight"]))
             live_time_analysis = (analysis_end - analysis_start).total_seconds()
+            iso_live_time[iso] = live_time_analysis
             eff = cfg["time_fit"].get(
                 f"eff_{iso.lower()}", [1.0]
             )[0]
-            if eff > 0 and live_time_analysis > 0:
-                c_rate = analysis_counts / (live_time_analysis * eff)
+            if eff > 0 and iso_live_time[iso] > 0:
+                c_rate = analysis_counts / (iso_live_time[iso] * eff)
                 c_sigma = math.sqrt(analysis_counts) / (
-                    live_time_analysis * eff
+                    iso_live_time[iso] * eff
                 )
             else:
                 c_rate = 0.0
@@ -1729,17 +1737,20 @@ def main(argv=None):
         params = _fit_params(fit)
         if params and (f"E_{iso}" in params):
             s = scales.get(iso, 1.0)
-            params["E_corrected"] = params[f"E_{iso}"] - s * rate
             err_fit = params.get(f"dE_{iso}", 0.0)
-            sigma_rate = 0.0
-            if baseline_live_time > 0:
+            if iso_live_time.get(iso, 0) > 0 and baseline_live_time > 0:
+                params["E_corrected"] = params[f"E_{iso}"] - s * rate
+                sigma_rate = 0.0
                 count = baseline_counts.get(iso, 0.0)
                 eff = cfg["time_fit"].get(
                     f"eff_{iso.lower()}", [1.0]
                 )[0]
                 if eff > 0:
                     sigma_rate = math.sqrt(count) / (baseline_live_time * eff)
-            dE_corr = float(math.hypot(err_fit, sigma_rate * s))
+                dE_corr = float(math.hypot(err_fit, sigma_rate * s))
+            else:
+                params["E_corrected"] = params[f"E_{iso}"]
+                dE_corr = err_fit
             params["dE_corrected"] = dE_corr
             corrected_rates[iso] = params["E_corrected"]
             corrected_unc[iso] = dE_corr

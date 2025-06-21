@@ -27,3 +27,25 @@ def test_subtract_baseline_uncertainty():
     assert rate == pytest.approx(expected_rate)
     assert sigma == pytest.approx(expected_sigma)
 
+
+def test_zero_live_time_behaviour():
+    counts = 10
+    baseline_counts = 5
+    efficiency = 1.0
+    # live_time zero -> expect divide-by-zero results
+    with pytest.raises(ZeroDivisionError):
+        subtract_baseline_counts(
+            counts, efficiency, 0.0, baseline_counts, 50.0
+        )
+
+
+def test_zero_baseline_live_time_behaviour():
+    counts = 10
+    baseline_counts = 0
+    efficiency = 1.0
+    # baseline_live_time zero -> divide by zero
+    with pytest.raises(ZeroDivisionError):
+        subtract_baseline_counts(
+            counts, efficiency, 100.0, baseline_counts, 0.0
+        )
+
