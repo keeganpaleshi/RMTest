@@ -7,6 +7,51 @@ from io_utils import parse_datetime
 __all__ = ["rate_histogram", "subtract_baseline"]
 
 
+def _scaling_factor(dt_window: float, dt_baseline: float,
+                    err_window: float = 0.0,
+                    err_baseline: float = 0.0) -> tuple[float, float]:
+    """Return scaling factor between analysis and baseline durations.
+
+    This helper computes ``dt_window / dt_baseline`` and propagates the
+    1-sigma uncertainty from ``err_window`` and ``err_baseline`` assuming they
+    are independent.  A ``ValueError`` is raised when ``dt_baseline`` is zero
+    to avoid division by zero.
+
+    Parameters
+    ----------
+    dt_window : float
+        Duration of the analysis window in seconds.
+    dt_baseline : float
+        Duration of the baseline interval in seconds.
+    err_window : float, optional
+        Uncertainty on ``dt_window``. Default is ``0.0``.
+    err_baseline : float, optional
+        Uncertainty on ``dt_baseline``. Default is ``0.0``.
+
+    Returns
+    -------
+    float
+        The scaling factor ``dt_window / dt_baseline``.
+    float
+        Propagated uncertainty on the scaling factor.
+
+    Examples
+    --------
+    >>> _scaling_factor(10.0, 5.0)
+    (2.0, 0.0)
+    >>> _scaling_factor(10.0, 5.0, 0.1, 0.2)
+    (2.0, 0.0894427191)
+    """
+
+    if dt_baseline == 0:
+        raise ValueError("dt_baseline must be non-zero")
+
+    scale = float(dt_window) / float(dt_baseline)
+    var = (err_window / dt_baseline) ** 2
+    var += ((dt_window * err_baseline) / dt_baseline**2) ** 2
+    return scale, float(np.sqrt(var))
+
+
 def _seconds(col):
     """Return timestamp column as seconds from epoch."""
     ts = col
