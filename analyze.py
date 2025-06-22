@@ -1752,21 +1752,25 @@ def main(argv=None):
     corrected_rates = {}
     corrected_unc = {}
 
-    for iso, rate in baseline_rates.items():
-        fit = time_fit_results.get(iso)
+    for iso, fit in time_fit_results.items():
         params = _fit_params(fit)
         if params and (f"E_{iso}" in params):
+            eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
+            live = iso_live_time.get(iso, 0.0)
+            counts = iso_counts_raw.get(iso, 0.0)
+            base_counts = baseline_counts.get(iso, 0.0)
             s = scales.get(iso, 1.0)
             err_fit = params.get(f"dE_{iso}", 0.0)
-            if iso_live_time.get(iso, 0) > 0 and baseline_live_time > 0:
-                params["E_corrected"] = params[f"E_{iso}"] - s * rate
-                sigma_rate = 0.0
-                count = iso_counts_raw.get(iso, baseline_counts.get(iso, 0.0))
-                eff = cfg["time_fit"].get(
-                    f"eff_{iso.lower()}", [1.0]
-                )[0]
-                if eff > 0:
-                    sigma_rate = math.sqrt(count) / (baseline_live_time * eff)
+            if eff > 0 and live > 0 and baseline_live_time > 0:
+                _, sigma_rate = subtract_baseline_counts(
+                    counts,
+                    eff,
+                    live,
+                    base_counts,
+                    baseline_live_time,
+                )
+                rate_bl = base_counts / (baseline_live_time * eff)
+                params["E_corrected"] = params[f"E_{iso}"] - s * rate_bl
                 dE_corr = float(math.hypot(err_fit, sigma_rate * s))
             else:
                 params["E_corrected"] = params[f"E_{iso}"]
