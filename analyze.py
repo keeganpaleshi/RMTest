@@ -1325,7 +1325,7 @@ def main(argv=None):
     priors_time_all = {}
     time_plot_data = {}
     iso_live_time = {}
-    iso_t_start_fit = {}
+    t_start_map = {}
     iso_counts = {}
     iso_counts_raw = {}
     if cfg.get("time_fit", {}).get("do_time_fit", False):
@@ -1351,12 +1351,14 @@ def main(argv=None):
                 print(f"WARNING: No events found for {iso} in [{lo}, {hi}] MeV.")
                 continue
 
-            # Determine time-series start relative to the global analysis start
-            ts_start = t0_global
-            if args.settle_s is not None:
-                ts_start = t0_global + float(args.settle_s)
-            iso_t_start_fit[iso] = ts_start
-            iso_live_time[iso] = t_end_global_ts - ts_start
+            first_ts = iso_events["timestamp"].iloc[0]
+            if hasattr(first_ts, "to_datetime64"):
+                first_sec = first_ts.to_datetime64().view("int64") / 1e9
+            else:
+                first_sec = float(first_ts)
+            t_start_fit = max(first_sec, t0_global + float(args.settle_s or 0))
+            t_start_map[iso] = t_start_fit
+            iso_live_time[iso] = t_end_global_ts - t_start_fit
 
         # Build priors for time fit
         priors_time = {}
@@ -1505,7 +1507,7 @@ def main(argv=None):
         # Run time-series fit
         decay_out = None  # fresh variable each iteration
         try:
-            t_start_fit = iso_t_start_fit.get(iso, t0_global)
+            t_start_fit = t_start_map.get(iso, t0_global)
             try:
                 decay_out = fit_time_series(
                     times_dict,
