@@ -4,7 +4,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from constants import PO210, PO214, PO218, load_nuclide_overrides, load_half_life_overrides
+from constants import PO210, load_nuclide_overrides, load_half_life_overrides
 
 
 def test_po210_default():
