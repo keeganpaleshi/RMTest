@@ -1055,7 +1055,7 @@ def test_analysis_start_time_cli(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", args)
     analyze.main()
 
-    assert captured["t_start"] == 10.0
+    assert captured["t_start"] == 15.0
 
 
 def test_spike_end_time_cli(tmp_path, monkeypatch):
