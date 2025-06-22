@@ -1,7 +1,7 @@
 import math
 import copy
 import numpy as np
-from typing import Callable, Dict, Tuple, List
+from typing import Callable, Dict, Tuple
 
 
 def apply_linear_adc_shift(

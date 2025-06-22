@@ -1,4 +1,5 @@
-import sys, json
+import sys
+import json
 from pathlib import Path
 import pandas as pd
 import pytest

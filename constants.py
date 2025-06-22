@@ -2,7 +2,7 @@
 """Shared constants for analysis modules."""
 
 import numpy as np
-import math
+from dataclasses import dataclass
 
 # Minimum allowed value for the exponential tail constant used in EMG fits.
 _TAU_MIN = 1e-6
@@ -44,8 +44,6 @@ DEFAULT_KNOWN_ENERGIES = {
     "Po218": 6.002,  # MeV
     "Po214": 7.687,  # MeV
 }
-
-from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
