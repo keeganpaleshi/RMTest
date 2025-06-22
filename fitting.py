@@ -626,6 +626,10 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
             out[pname] = val
             out["d" + pname] = err
         cov = np.zeros((len(ordered_params), len(ordered_params)))
+        if "E_Po214" in ordered_params and "N0_Po214" in ordered_params:
+            i1 = ordered_params.index("E_Po214")
+            i2 = ordered_params.index("N0_Po214")
+            out["cov_E_Po214_N0_Po214"] = float(cov[i1, i2])
         return FitResult(out, cov, int(ndf))
 
     m.hesse()  # compute uncertainties
@@ -658,6 +662,11 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
     for i, pname in enumerate(ordered_params):
         out[pname] = float(m.values[pname])
         out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
+
+    if "E_Po214" in ordered_params and "N0_Po214" in ordered_params:
+        i1 = ordered_params.index("E_Po214")
+        i2 = ordered_params.index("N0_Po214")
+        out["cov_E_Po214_N0_Po214"] = float(cov[i1, i2])
 
     return FitResult(out, cov, int(ndf))
 

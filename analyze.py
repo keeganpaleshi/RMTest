@@ -265,10 +265,13 @@ def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
     dN0 = params.get(f"dN0_{iso}", 0.0)
     dB = params.get(f"dB_{iso}", params.get("dB", 0.0))
     cov = 0.0
-    try:
-        cov = _cov_entry(fit_obj, f"E_{iso}", f"N0_{iso}")
-    except Exception:
-        cov = 0.0
+    if iso == "Po214":
+        cov = params.get("cov_E_Po214_N0_Po214", 0.0)
+    else:
+        try:
+            cov = _cov_entry(fit_obj, f"E_{iso}", f"N0_{iso}")
+        except Exception:
+            cov = 0.0
     t = np.asarray(centers, dtype=float)
     exp_term = np.exp(-lam * t)
     dR_dE = eff * (1.0 - exp_term)
@@ -1842,7 +1845,7 @@ def main(argv=None):
             default_const = cfg.get("nuclide_constants", {})
             default_hl = default_const.get("Po214", PO214).half_life_s
             hl = cfg.get("time_fit", {}).get("hl_po214", [default_hl])[0]
-            cov = _cov_entry(fit_result, "E_Po214", "N0_Po214")
+            cov = fit.get("cov_E_Po214_N0_Po214", 0.0)
             delta214, err_delta214 = radon_delta(
                 t_start_rel,
                 t_end_rel,
@@ -2069,7 +2072,7 @@ def main(argv=None):
             default_const = cfg.get("nuclide_constants", {})
             default_hl = default_const.get("Po214", PO214).half_life_s
             hl = cfg.get("time_fit", {}).get("hl_po214", [default_hl])[0]
-            cov = _cov_entry(fit_result, "E_Po214", "N0_Po214")
+            cov = fit.get("cov_E_Po214_N0_Po214", 0.0)
             A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
             plot_radon_activity(
                 times,
@@ -2141,7 +2144,7 @@ def main(argv=None):
                 default_const = cfg.get("nuclide_constants", {})
                 default_hl = default_const.get("Po214", PO214).half_life_s
                 hl214 = cfg.get("time_fit", {}).get("hl_po214", [default_hl])[0]
-                cov214 = _cov_entry(fit_result, "E_Po214", "N0_Po214")
+                cov214 = fit.get("cov_E_Po214_N0_Po214", 0.0)
                 A214_tr, _ = radon_activity_curve(
                     rel_trend, E214, dE214, N0214, dN0214, hl214, cov214
                 )
