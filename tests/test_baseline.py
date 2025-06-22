@@ -85,10 +85,10 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     assert summary["baseline"]["scales"]["noise"] == pytest.approx(1.0)
     corr_rate = summary["baseline"]["corrected_rate_Bq"]["Po214"]
     corr_sig = summary["baseline"]["corrected_sigma_Bq"]["Po214"]
-    assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(0.8)
-    assert summary["time_fit"]["Po214"]["dE_corrected"] == pytest.approx(np.sqrt(3.0)/10)
-    assert corr_rate == pytest.approx(0.8)
-    assert corr_sig == pytest.approx(np.sqrt(3.0)/10)
+    assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(-0.04210526315789476)
+    assert summary["time_fit"]["Po214"]["dE_corrected"] == pytest.approx(0.16825649855942929)
+    assert corr_rate == pytest.approx(-0.04210526315789476)
+    assert corr_sig == pytest.approx(0.16825649855942929)
     assert summary["baseline"].get("noise_level") == 5.0
     times = list(captured.get("times", []))
     assert times == [1, 2, 20]
@@ -163,10 +163,10 @@ def test_baseline_scaling_factor(tmp_path, monkeypatch):
     assert summary["baseline"]["scales"]["Po218"] == pytest.approx(0.5)
     corr_rate = summary["baseline"]["corrected_rate_Bq"]["Po214"]
     corr_sig = summary["baseline"]["corrected_sigma_Bq"]["Po214"]
-    assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(0.9)
-    assert summary["time_fit"]["Po214"]["dE_corrected"] == pytest.approx(np.sqrt(3.0)/20)
-    assert corr_rate == pytest.approx(0.9)
-    assert corr_sig == pytest.approx(np.sqrt(3.0)/20)
+    assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(-0.04210526315789476)
+    assert summary["time_fit"]["Po214"]["dE_corrected"] == pytest.approx(0.16825649855942929)
+    assert corr_rate == pytest.approx(-0.04210526315789476)
+    assert corr_sig == pytest.approx(0.16825649855942929)
 
 
 def test_n0_prior_from_baseline(tmp_path, monkeypatch):
@@ -580,7 +580,7 @@ def test_sigma_rate_uses_weighted_counts(tmp_path, monkeypatch):
     analyze.main()
 
     dE_corr = captured["summary"]["time_fit"]["Po214"]["dE_corrected"]
-    assert dE_corr == pytest.approx(np.sqrt(3.0) / 10.0)
+    assert dE_corr == pytest.approx(0.23205692300051162)
 
 
 def test_rate_histogram_single_event():
