@@ -1752,36 +1752,39 @@ def main(argv=None):
     corrected_rates = {}
     corrected_unc = {}
 
-    for iso, rate in baseline_rates.items():
-        fit = time_fit_results.get(iso)
+    for iso, fit in time_fit_results.items():
         params = _fit_params(fit)
-        if params and (f"E_{iso}" in params):
-            s = scales.get(iso, 1.0)
-            err_fit = params.get(f"dE_{iso}", 0.0)
-            live_time_iso = iso_live_time.get(iso, 0.0)
-            if live_time_iso > 0 and baseline_live_time > 0:
-                params["E_corrected"] = params[f"E_{iso}"] - s * rate
-                count = iso_counts_raw.get(iso, baseline_counts.get(iso, 0.0))
-                eff = cfg["time_fit"].get(
-                    f"eff_{iso.lower()}", [1.0]
-                )[0]
-                if eff > 0:
-                    _, sigma_rate = subtract_baseline_counts(
-                        count,
-                        eff,
-                        live_time_iso,
-                        baseline_counts.get(iso, 0.0),
-                        baseline_live_time,
-                    )
-                else:
-                    sigma_rate = 0.0
-                dE_corr = float(math.hypot(err_fit, sigma_rate * s))
-            else:
-                params["E_corrected"] = params[f"E_{iso}"]
-                dE_corr = err_fit
-            params["dE_corrected"] = dE_corr
-            corrected_rates[iso] = params["E_corrected"]
-            corrected_unc[iso] = dE_corr
+        if not params or f"E_{iso}" not in params:
+            continue
+
+        if iso not in isotopes_to_subtract or baseline_live_time <= 0:
+            continue
+
+        err_fit = params.get(f"dE_{iso}", 0.0)
+        live_time_iso = iso_live_time.get(iso, 0.0)
+        count = iso_counts_raw.get(iso, baseline_counts.get(iso, 0.0))
+        eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
+        base_cnt = baseline_counts.get(iso, 0.0)
+        rate = baseline_rates.get(iso, 0.0)
+        s = scales.get(iso, 1.0)
+
+        if live_time_iso > 0 and eff > 0:
+            _, sigma_rate = subtract_baseline_counts(
+                count,
+                eff,
+                live_time_iso,
+                base_cnt,
+                baseline_live_time,
+            )
+            sigma_term = sigma_rate * s
+        else:
+            sigma_term = 0.0
+
+        params["E_corrected"] = params[f"E_{iso}"] - s * rate
+        dE_corr = float(math.hypot(err_fit, sigma_term))
+        params["dE_corrected"] = dE_corr
+        corrected_rates[iso] = params["E_corrected"]
+        corrected_unc[iso] = dE_corr
 
     if baseline_rates:
         baseline_info["rate_Bq"] = baseline_rates
