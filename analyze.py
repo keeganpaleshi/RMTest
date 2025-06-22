@@ -1783,10 +1783,13 @@ def main(argv=None):
         baseline_info["rate_Bq"] = baseline_rates
         baseline_info["rate_unc_Bq"] = baseline_unc
         baseline_info["dilution_factor"] = dilution_factor
-    if corrected_rates:
-        baseline_info["corrected_rate_Bq"] = corrected_rates
-    if corrected_unc:
-        baseline_info["corrected_sigma_Bq"] = corrected_unc
+    if baseline_info.get("corrected_activity"):
+        baseline_info["corrected_rate_Bq"] = {
+            iso: vals["value"] for iso, vals in baseline_info["corrected_activity"].items()
+        }
+        baseline_info["corrected_sigma_Bq"] = {
+            iso: vals["uncertainty"] for iso, vals in baseline_info["corrected_activity"].items()
+        }
 
     # ────────────────────────────────────────────────────────────
     # Radon activity extrapolation
