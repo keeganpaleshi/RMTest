@@ -2,7 +2,6 @@ import numpy as np
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 from scipy.stats import exponnorm
-import logging
 from constants import (
     _TAU_MIN,
     DEFAULT_NOISE_CUTOFF,

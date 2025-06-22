@@ -464,10 +464,9 @@ def test_fit_spectrum_covariance_checks(monkeypatch):
 def test_fit_time_series_covariance_checks(monkeypatch):
     """Minuit covariance validity should propagate to fit_valid."""
     T = 3600
-    E_true = 0.5
     eff = 0.4
     t_half = 164e-6
-    event_times = simulate_decay(E_true, eff, T)
+    event_times = simulate_decay(0.5, eff, T)
 
     times_dict = {"Po214": event_times}
     cfg = {
@@ -539,7 +538,6 @@ def test_fit_time_series_covariance_output():
     rng = np.random.default_rng(0)
     T = 10.0
     t_half = 164e-6
-    E_true = 0.1
     eff = 0.5
     times = np.sort(rng.uniform(0, T, 50))
     times_dict = {"Po214": times}
