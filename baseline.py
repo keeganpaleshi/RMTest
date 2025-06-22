@@ -4,7 +4,7 @@ import pandas as pd
 from utils import parse_time
 from io_utils import parse_datetime
 
-__all__ = ["rate_histogram", "subtract_baseline"]
+__all__ = ["rate_histogram", "subtract_baseline", "_scaling_factor"]
 
 
 def _seconds(col):
@@ -27,6 +27,30 @@ def rate_histogram(df, bins):
     if live <= 0:
         return np.zeros_like(hist, dtype=float), live
     return hist / live, live
+
+
+def _scaling_factor(baseline_start, baseline_stop, window_start, window_stop):
+    """Return the factor mapping baseline counts to the analysis window.
+
+    The returned scale converts counts from a baseline interval into the
+    time-normalised space of the analysis window:
+
+        scale = live_time_window / live_time_baseline
+
+    so that::
+
+        N_scaled = scale * N_baseline
+
+    Propagated uncertainty follows::
+
+        sigma^2 = N_sig + scale**2 * N_base
+    """
+
+    dt_baseline = (baseline_stop - baseline_start).total_seconds()
+    dt_window = (window_stop - window_start).total_seconds()
+    if dt_baseline == 0:
+        raise ValueError("Baseline duration is zero")
+    return dt_window / dt_baseline
 
 
 def subtract_baseline(df_analysis, df_full, bins, t_base0, t_base1,
