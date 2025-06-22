@@ -1326,6 +1326,7 @@ def main(argv=None):
     time_plot_data = {}
     iso_live_time = {}
     iso_counts_raw = {}
+    iso_t_start_fit = {}
     if cfg.get("time_fit", {}).get("do_time_fit", False):
         for iso in ("Po218", "Po214"):
             win_key = f"window_{iso.lower()}"
@@ -1345,9 +1346,16 @@ def main(argv=None):
             iso_mask = probs > 0
             iso_events = df_analysis[iso_mask].copy()
             iso_events["weight"] = probs[iso_mask]
+            if args.settle_s is not None:
+                cut = pd.to_datetime(t0_global + float(args.settle_s), unit="s", utc=True)
+                iso_events = iso_events[iso_events["timestamp"] >= cut]
             if iso_events.empty:
                 print(f"WARNING: No events found for {iso} in [{lo}, {hi}] MeV.")
                 continue
+
+            first_ts = iso_events["timestamp"].min()
+            iso_t_start_fit[iso] = parse_time(first_ts)
+            iso_live_time[iso] = t_end_global_ts - iso_t_start_fit[iso]
 
         # Build priors for time fit
         priors_time = {}
@@ -1401,8 +1409,6 @@ def main(argv=None):
 
             analysis_counts = float(np.sum(iso_events["weight"]))
             iso_counts_raw[iso] = analysis_counts
-            live_time_analysis = (analysis_end - analysis_start).total_seconds()
-            iso_live_time[iso] = live_time_analysis
             if (
                 iso in isotopes_to_subtract
                 and iso_live_time[iso] > 0
@@ -1442,8 +1448,6 @@ def main(argv=None):
 
             analysis_counts = float(np.sum(iso_events["weight"]))
             iso_counts_raw[iso] = analysis_counts
-            live_time_analysis = (analysis_end - analysis_start).total_seconds()
-            iso_live_time[iso] = live_time_analysis
             eff = cfg["time_fit"].get(
                 f"eff_{iso.lower()}", [1.0]
             )[0]
@@ -1466,9 +1470,6 @@ def main(argv=None):
         priors_time_all[iso] = priors_time
 
         # Build configuration for fit_time_series
-        if args.settle_s is not None:
-            cut = pd.to_datetime(t0_global + float(args.settle_s), unit="s", utc=True)
-            iso_events = iso_events[iso_events["timestamp"] >= cut]
         ts_vals = iso_events["timestamp"]
         if pd.api.types.is_datetime64_any_dtype(ts_vals):
             ts_vals = ts_vals.view("int64").to_numpy() / 1e9
@@ -1498,9 +1499,9 @@ def main(argv=None):
         # Run time-series fit
         decay_out = None  # fresh variable each iteration
         try:
-            t_start_fit = t0_global
+            t_start_fit = iso_t_start_fit.get(iso, t0_global)
             if args.settle_s is not None:
-                t_start_fit = t0_global + float(args.settle_s)
+                t_start_fit = max(t_start_fit, t0_global + float(args.settle_s))
             try:
                 decay_out = fit_time_series(
                     times_dict,
