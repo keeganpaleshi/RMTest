@@ -498,6 +498,28 @@ python analyze.py --config assay.json --input run.csv --output_dir results \
     --baseline-mode none
 ```
 
+### Baseline Subtraction Details
+
+Baseline subtraction relies on ``radon.baseline.subtract_baseline_counts``.
+This helper expects the raw event counts from the analysis window, the
+corresponding live time, the number of counts observed during the baseline
+interval and its live time, together with the detection efficiency.  The
+function validates that the live times and efficiency are positive.  It
+scales the baseline counts by the live‑time ratio before subtracting them
+and returns the corrected rate and its statistical uncertainty which
+includes contributions from both count sets.
+
+`summary.json` records these values under the ``baseline`` key:
+
+- ``analysis_counts`` – unweighted counts for each isotope in the analysis
+  window.
+- ``rate_Bq`` and ``rate_unc_Bq`` – baseline decay rates and associated
+  uncertainties.
+- ``dilution_factor`` – scale factor applied before subtracting the
+  baseline rates from the fit.
+- ``corrected_rate_Bq`` and ``corrected_sigma_Bq`` – baseline-subtracted
+  rates from the time-series fit and their uncertainties.
+
 ### Baseline Noise Cut
 
 The helper `baseline_noise.estimate_baseline_noise` extracts the electronic
