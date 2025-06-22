@@ -5,7 +5,8 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from fitting import fit_time_series, fit_spectrum, _TAU_MIN
+from fitting import fit_time_series, fit_spectrum, FitResult, _TAU_MIN
+import analyze
 
 
 def simulate_decay(E_true, eff, T, n_events=1000):
@@ -532,3 +533,45 @@ def test_fit_time_series_efficiency_zero_raises():
     }
     with pytest.raises(ValueError):
         fit_time_series(times_dict, 0.0, 10.0, cfg)
+
+
+def test_fit_time_series_covariance_output():
+    rng = np.random.default_rng(0)
+    T = 10.0
+    t_half = 164e-6
+    E_true = 0.1
+    eff = 0.5
+    times = np.sort(rng.uniform(0, T, 50))
+    times_dict = {"Po214": times}
+    cfg = {
+        "isotopes": {"Po214": {"half_life_s": t_half, "efficiency": eff}},
+        "fit_background": True,
+        "fit_initial": True,
+    }
+    res = fit_time_series(times_dict, 0.0, T, cfg)
+    assert "cov_E_Po214_N0_Po214" in res.params
+    cov_exp = analyze._cov_entry(res, "E_Po214", "N0_Po214")
+    assert res.params["cov_E_Po214_N0_Po214"] == pytest.approx(cov_exp)
+
+
+def test_model_uncertainty_uses_covariance():
+    centers = np.array([0.0, 1.0])
+    widths = np.array([1.0, 1.0])
+    params = {
+        "E_Po214": 1.0,
+        "dE_Po214": 0.1,
+        "N0_Po214": 2.0,
+        "dN0_Po214": 0.2,
+        "B_Po214": 0.0,
+        "dB_Po214": 0.0,
+        "cov_E_Po214_N0_Po214": 0.05,
+        "fit_valid": True,
+    }
+    fr = FitResult(params, np.zeros((3, 3)), 0)
+    params_nc = dict(params)
+    params_nc.pop("cov_E_Po214_N0_Po214")
+    fr_nc = FitResult(params_nc, np.zeros((3, 3)), 0)
+    cfg = {"time_fit": {"hl_po214": [10.0], "eff_po214": [1.0]}}
+    with_cov = analyze._model_uncertainty(centers, widths, fr, "Po214", cfg, True)
+    no_cov = analyze._model_uncertainty(centers, widths, fr_nc, "Po214", cfg, True)
+    assert np.any(with_cov > no_cov)
