@@ -1323,6 +1323,7 @@ def main(argv=None):
     time_plot_data = {}
     iso_live_time = {}
     iso_counts = {}
+    iso_counts_raw = {}
     if cfg.get("time_fit", {}).get("do_time_fit", False):
         for iso in ("Po218", "Po214"):
             win_key = f"window_{iso.lower()}"
@@ -1397,7 +1398,7 @@ def main(argv=None):
             )
 
             analysis_counts = float(np.sum(iso_events["weight"]))
-            iso_counts[iso] = analysis_counts
+            iso_counts_raw[iso] = analysis_counts
             live_time_analysis = (analysis_end - analysis_start).total_seconds()
             iso_live_time[iso] = live_time_analysis
             if (
@@ -1439,7 +1440,7 @@ def main(argv=None):
             )
 
             analysis_counts = float(np.sum(iso_events["weight"]))
-            iso_counts[iso] = analysis_counts
+            iso_counts_raw[iso] = analysis_counts
             live_time_analysis = (analysis_end - analysis_start).total_seconds()
             iso_live_time[iso] = live_time_analysis
             eff = cfg["time_fit"].get(
@@ -1733,7 +1734,7 @@ def main(argv=None):
         "noise": 1.0,
     }
     baseline_info["scales"] = scales
-    baseline_info["analysis_counts"] = iso_counts
+    baseline_info["analysis_counts"] = iso_counts_raw
 
     corrected_rates = {}
     corrected_unc = {}
@@ -1747,7 +1748,7 @@ def main(argv=None):
             if iso_live_time.get(iso, 0) > 0 and baseline_live_time > 0:
                 params["E_corrected"] = params[f"E_{iso}"] - s * rate
                 sigma_rate = 0.0
-                count = iso_counts.get(iso, baseline_counts.get(iso, 0.0))
+                count = iso_counts_raw.get(iso, baseline_counts.get(iso, 0.0))
                 eff = cfg["time_fit"].get(
                     f"eff_{iso.lower()}", [1.0]
                 )[0]
