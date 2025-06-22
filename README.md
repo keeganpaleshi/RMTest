@@ -462,8 +462,9 @@ The `--baseline-mode` option selects the background removal strategy.
 Valid modes are `none`, `electronics`, `radon` and `all` (default).
 
 The uncertainty on each baseline-corrected rate is calculated from the
-unweighted analysis counts.  The quantity ``sigma_rate`` therefore
-reflects the raw statistics of the analysis window rather than the
+unweighted analysis counts using ``radon.baseline.subtract_baseline_counts``.
+This helper propagates Poisson errors with the analysis live time so the
+variance reflects the raw event statistics rather than the
 BLUE-weighted totals.
 
 

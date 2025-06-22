@@ -1715,10 +1715,10 @@ def main(argv=None):
     """Apply baseline correction and compute associated uncertainties.
 
     The counts from the baseline interval are converted to rates and
-    subtracted from the fitted activities.  The error term ``sigma_rate``
-    used for this correction is derived from the **unweighted** analysis
-    counts so that the statistical uncertainty reflects the raw event
-    totals prior to any BLUE weighting.
+    subtracted from the fitted activities.  Uncertainties are now
+    computed with :func:`radon.baseline.subtract_baseline_counts`, which
+    uses the analysis live time to propagate Poisson statistics from the
+    unweighted event totals.
     """
     baseline_rates = {}
     baseline_unc   = {}
@@ -1756,16 +1756,23 @@ def main(argv=None):
         if params and (f"E_{iso}" in params):
             s = scales.get(iso, 1.0)
             err_fit = params.get(f"dE_{iso}", 0.0)
-            if iso_live_time.get(iso, 0) > 0 and baseline_live_time > 0:
+            eff = cfg["time_fit"].get(
+                f"eff_{iso.lower()}", [1.0]
+            )[0]
+            if (
+                iso_live_time.get(iso, 0) > 0
+                and baseline_live_time > 0
+                and eff > 0
+            ):
                 params["E_corrected"] = params[f"E_{iso}"] - s * rate
-                sigma_rate = 0.0
-                count = iso_counts_raw.get(iso, baseline_counts.get(iso, 0.0))
-                eff = cfg["time_fit"].get(
-                    f"eff_{iso.lower()}", [1.0]
-                )[0]
-                if eff > 0:
-                    sigma_rate = math.sqrt(count) / (baseline_live_time * eff)
-                dE_corr = float(math.hypot(err_fit, sigma_rate * s))
+                _, sigma_corr = subtract_baseline_counts(
+                    iso_counts_raw.get(iso, baseline_counts.get(iso, 0.0)),
+                    eff,
+                    iso_live_time[iso],
+                    baseline_counts.get(iso, 0.0),
+                    baseline_live_time,
+                )
+                dE_corr = float(math.hypot(err_fit, sigma_corr * s))
             else:
                 params["E_corrected"] = params[f"E_{iso}"]
                 dE_corr = err_fit
