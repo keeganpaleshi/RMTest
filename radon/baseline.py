@@ -35,11 +35,11 @@ def subtract_baseline_counts(
     **not** intended for DataFrame-based spectra or time series.
     """
 
-    if live_time == 0:
-        raise ValueError("live_time must be nonzero for baseline correction")
-    if baseline_live_time == 0:
+    if live_time <= 0:
+        raise ValueError("live_time must be positive for baseline correction")
+    if baseline_live_time <= 0:
         raise ValueError(
-            "baseline_live_time must be nonzero for baseline correction"
+            "baseline_live_time must be positive for baseline correction"
         )
     if efficiency <= 0:
         raise ValueError("efficiency must be positive for baseline correction")
