@@ -1721,29 +1721,15 @@ def main(argv=None):
     totals prior to any BLUE weighting.
     """
     baseline_rates = {}
-    baseline_unc   = {}
-
-    if baseline_live_time > 0:  # only if we had a baseline section
+    baseline_unc = {}
+    if baseline_live_time > 0:
         for iso, n in baseline_counts.items():
             eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
-            baseline_rates[iso] = (
-                n / (baseline_live_time * eff) if eff > 0 else 0.0
-            )
-            baseline_unc[iso] = (
-                np.sqrt(n) / (baseline_live_time * eff) if eff > 0 else 0.0
-            )
+            baseline_rates[iso] = n / (baseline_live_time * eff) if eff > 0 else 0.0
+            baseline_unc[iso] = np.sqrt(n) / (baseline_live_time * eff) if eff > 0 else 0.0
 
-    dilution_factor = (
-        monitor_vol / (monitor_vol + sample_vol)
-        if (monitor_vol + sample_vol) > 0
-        else 0.0
-    )
-    scales = {
-        "Po214": dilution_factor,
-        "Po218": dilution_factor,
-        "Po210": 1.0,
-        "noise": 1.0,
-    }
+    dilution_factor = monitor_vol / (monitor_vol + sample_vol) if (monitor_vol + sample_vol) > 0 else 0.0
+    scales = {"Po214": dilution_factor, "Po218": dilution_factor, "Po210": 1.0, "noise": 1.0}
     baseline_info["scales"] = scales
     baseline_info["analysis_counts"] = iso_counts_raw
 
