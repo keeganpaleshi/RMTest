@@ -1707,6 +1707,14 @@ def main(argv=None):
     # ────────────────────────────────────────────────────────────
     # Baseline subtraction
     # ────────────────────────────────────────────────────────────
+    """Apply baseline correction and compute associated uncertainties.
+
+    The counts from the baseline interval are converted to rates and
+    subtracted from the fitted activities.  The error term ``sigma_rate``
+    used for this correction is derived from the **unweighted** analysis
+    counts so that the statistical uncertainty reflects the raw event
+    totals prior to any BLUE weighting.
+    """
     baseline_rates = {}
     baseline_unc = {}
     if baseline_live_time > 0:
