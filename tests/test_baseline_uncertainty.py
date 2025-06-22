@@ -49,3 +49,23 @@ def test_zero_baseline_live_time_behaviour():
             counts, efficiency, 100.0, baseline_counts, 0.0
         )
 
+
+def test_zero_efficiency_behaviour():
+    counts = 10
+    baseline_counts = 2
+    efficiency = 0.0
+    with pytest.raises(ValueError):
+        subtract_baseline_counts(
+            counts, efficiency, 100.0, baseline_counts, 50.0
+        )
+
+
+def test_negative_efficiency_behaviour():
+    counts = 10
+    baseline_counts = 2
+    efficiency = -0.1
+    with pytest.raises(ValueError):
+        subtract_baseline_counts(
+            counts, efficiency, 100.0, baseline_counts, 50.0
+        )
+

@@ -39,6 +39,8 @@ def subtract_baseline_counts(
         raise ValueError(
             "baseline_live_time must be nonzero for baseline correction"
         )
+    if efficiency <= 0:
+        raise ValueError("efficiency must be positive for baseline correction")
 
     rate = counts / live_time / efficiency
     sigma_sq = counts / live_time**2 / efficiency**2
