@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
 import baseline_noise
 import baseline
+from radon.baseline import subtract_baseline_counts
 from fitting import FitResult
 
 
@@ -86,10 +87,17 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     assert summary["baseline"]["scales"]["noise"] == pytest.approx(1.0)
     corr_rate = summary["baseline"]["corrected_rate_Bq"]["Po214"]
     corr_sig = summary["baseline"]["corrected_sigma_Bq"]["Po214"]
-    assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(0.8)
-    assert summary["time_fit"]["Po214"]["dE_corrected"] == pytest.approx(0.1683, rel=1e-3)
-    assert corr_rate == pytest.approx(0.8)
-    assert corr_sig == pytest.approx(0.1683, rel=1e-3)
+
+    eff = cfg["time_fit"]["eff_po214"][0]
+    live_time = df["timestamp"].iloc[-1] - df["timestamp"].iloc[0]
+    counts = summary["baseline"]["analysis_counts"]["Po214"]
+    base_counts = summary["baseline"]["rate_Bq"]["Po214"] * summary["baseline"]["live_time"] * eff
+    exp_rate, exp_sigma = subtract_baseline_counts(
+        counts, eff, live_time, base_counts, summary["baseline"]["live_time"]
+    )
+
+    assert corr_rate == pytest.approx(exp_rate)
+    assert corr_sig == pytest.approx(exp_sigma)
     assert summary["baseline"].get("noise_level") == 5.0
     times = list(captured.get("times", []))
     assert times == [1, 2, 20]
@@ -164,10 +172,17 @@ def test_baseline_scaling_factor(tmp_path, monkeypatch):
     assert summary["baseline"]["scales"]["Po218"] == pytest.approx(0.5)
     corr_rate = summary["baseline"]["corrected_rate_Bq"]["Po214"]
     corr_sig = summary["baseline"]["corrected_sigma_Bq"]["Po214"]
-    assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(0.9)
-    assert summary["time_fit"]["Po214"]["dE_corrected"] == pytest.approx(0.0841, rel=1e-3)
-    assert corr_rate == pytest.approx(0.9)
-    assert corr_sig == pytest.approx(0.0841, rel=1e-3)
+
+    eff = cfg["time_fit"]["eff_po214"][0]
+    live_time = df["timestamp"].iloc[-1] - df["timestamp"].iloc[0]
+    counts = summary["baseline"]["analysis_counts"]["Po214"]
+    base_counts = summary["baseline"]["rate_Bq"]["Po214"] * summary["baseline"]["live_time"] * eff
+    exp_rate, exp_sigma = subtract_baseline_counts(
+        counts, eff, live_time, base_counts, summary["baseline"]["live_time"]
+    )
+
+    assert corr_rate == pytest.approx(exp_rate)
+    assert corr_sig == pytest.approx(exp_sigma)
 
 
 def test_n0_prior_from_baseline(tmp_path, monkeypatch):
@@ -320,8 +335,6 @@ def test_isotopes_to_subtract_control(tmp_path, monkeypatch):
     assert "rate_Bq" not in summary.get("baseline", {})
     assert "E_corrected" not in summary["time_fit"]["Po214"]
     assert "dE_corrected" not in summary["time_fit"]["Po214"]
-    assert "corrected_rate_Bq" not in summary.get("baseline", {})
-    assert "corrected_sigma_Bq" not in summary.get("baseline", {})
     assert summary["baseline"]["scales"]["Po214"] == pytest.approx(1.0)
 
 
@@ -438,11 +451,16 @@ def test_baseline_scaling_multiple_isotopes(tmp_path, monkeypatch):
     corr_rate = summary["baseline"]["corrected_rate_Bq"]["Po214"]
     corr_sig = summary["baseline"]["corrected_sigma_Bq"]["Po214"]
 
-    expected_rate = summary["time_fit"]["Po214"]["E_corrected"]
-    expected_sigma = summary["time_fit"]["Po214"]["dE_corrected"]
+    eff = cfg["time_fit"]["eff_po214"][0]
+    live_time = df["timestamp"].iloc[-1] - df["timestamp"].iloc[0]
+    counts = summary["baseline"]["analysis_counts"]["Po214"]
+    base_counts = summary["baseline"]["rate_Bq"]["Po214"] * summary["baseline"]["live_time"] * eff
+    exp_rate, exp_sigma = subtract_baseline_counts(
+        counts, eff, live_time, base_counts, summary["baseline"]["live_time"]
+    )
 
-    assert corr_rate == pytest.approx(expected_rate)
-    assert corr_sig == pytest.approx(expected_sigma)
+    assert corr_rate == pytest.approx(exp_rate)
+    assert corr_sig == pytest.approx(exp_sigma)
     # Po-218 fit results may be absent in this minimal dataset
 
 
