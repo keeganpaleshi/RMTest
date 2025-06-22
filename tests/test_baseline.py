@@ -85,9 +85,9 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     assert summary["baseline"]["scales"]["noise"] == pytest.approx(1.0)
     corr_rate = summary["baseline"]["corrected_rate_Bq"]["Po214"]
     corr_sig = summary["baseline"]["corrected_sigma_Bq"]["Po214"]
-    assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(0.8)
+    assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(-0.0421, rel=1e-3)
     assert summary["time_fit"]["Po214"]["dE_corrected"] == pytest.approx(0.1683, rel=1e-3)
-    assert corr_rate == pytest.approx(0.8)
+    assert corr_rate == pytest.approx(-0.0421, rel=1e-3)
     assert corr_sig == pytest.approx(0.1683, rel=1e-3)
     assert summary["baseline"].get("noise_level") == 5.0
     times = list(captured.get("times", []))
@@ -163,9 +163,9 @@ def test_baseline_scaling_factor(tmp_path, monkeypatch):
     assert summary["baseline"]["scales"]["Po218"] == pytest.approx(0.5)
     corr_rate = summary["baseline"]["corrected_rate_Bq"]["Po214"]
     corr_sig = summary["baseline"]["corrected_sigma_Bq"]["Po214"]
-    assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(0.9)
+    assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(-0.0211, rel=1e-3)
     assert summary["time_fit"]["Po214"]["dE_corrected"] == pytest.approx(0.0841, rel=1e-3)
-    assert corr_rate == pytest.approx(0.9)
+    assert corr_rate == pytest.approx(-0.0211, rel=1e-3)
     assert corr_sig == pytest.approx(0.0841, rel=1e-3)
 
 

@@ -461,11 +461,12 @@ configuration's interval is ignored in favour of the CLI value.
 The `--baseline-mode` option selects the background removal strategy.
 Valid modes are `none`, `electronics`, `radon` and `all` (default).
 
-The uncertainty on each baseline-corrected rate is obtained with
+Both the corrected rate and its uncertainty are obtained with
 ``radon.baseline.subtract_baseline_counts`` using the unweighted analysis
-counts, the analysis live time and the baseline live time.  This reflects
-the raw statistics of the analysis window rather than the BLUE-weighted
-totals.
+counts, the analysis live time and the baseline live time.  The returned
+values are scaled by the dilution factor before being stored in
+``summary.json``.  This reflects the raw statistics of the analysis
+window rather than the BLUE-weighted totals.
 
 
 Example snippet:
