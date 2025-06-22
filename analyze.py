@@ -1752,35 +1752,34 @@ def main(argv=None):
     corrected_rates = {}
     corrected_unc = {}
 
-    for iso, rate in baseline_rates.items():
-        fit = time_fit_results.get(iso)
+    for iso, fit in time_fit_results.items():
         params = _fit_params(fit)
         if params and (f"E_{iso}" in params):
-            s = scales.get(iso, 1.0)
-            err_fit = params.get(f"dE_{iso}", 0.0)
+            eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
             live_time_iso = iso_live_time.get(iso, 0.0)
-            if live_time_iso > 0 and baseline_live_time > 0:
-                params["E_corrected"] = params[f"E_{iso}"] - s * rate
-                count = iso_counts_raw.get(iso, baseline_counts.get(iso, 0.0))
-                eff = cfg["time_fit"].get(
-                    f"eff_{iso.lower()}", [1.0]
-                )[0]
-                if eff > 0:
-                    _, sigma_rate = subtract_baseline_counts(
-                        count,
-                        eff,
-                        live_time_iso,
-                        baseline_counts.get(iso, 0.0),
-                        baseline_live_time,
-                    )
-                else:
-                    sigma_rate = 0.0
-                dE_corr = float(math.hypot(err_fit, sigma_rate * s))
+            counts = iso_counts_raw.get(iso, 0.0)
+            base_n = baseline_counts.get(iso, 0.0)
+            if (
+                live_time_iso > 0
+                and eff > 0
+                and baseline_live_time > 0
+            ):
+                E_corr, dE_corr = subtract_baseline_counts(
+                    counts,
+                    eff,
+                    live_time_iso,
+                    base_n,
+                    baseline_live_time,
+                )
+            elif live_time_iso > 0 and eff > 0:
+                E_corr = counts / (live_time_iso * eff)
+                dE_corr = math.sqrt(counts) / (live_time_iso * eff)
             else:
-                params["E_corrected"] = params[f"E_{iso}"]
-                dE_corr = err_fit
+                E_corr = 0.0
+                dE_corr = 0.0
+            params["E_corrected"] = E_corr
             params["dE_corrected"] = dE_corr
-            corrected_rates[iso] = params["E_corrected"]
+            corrected_rates[iso] = E_corr
             corrected_unc[iso] = dE_corr
 
     if baseline_rates:
