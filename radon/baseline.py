@@ -33,6 +33,13 @@ def subtract_baseline_counts(
     **not** intended for DataFrame-based spectra or time series.
     """
 
+    if live_time == 0:
+        raise ValueError("live_time must be nonzero for baseline correction")
+    if baseline_live_time == 0:
+        raise ValueError(
+            "baseline_live_time must be nonzero for baseline correction"
+        )
+
     rate = counts / live_time / efficiency
     sigma_sq = counts / live_time**2 / efficiency**2
     baseline_rate = baseline_counts / baseline_live_time / efficiency
