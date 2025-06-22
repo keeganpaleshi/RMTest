@@ -185,8 +185,6 @@ def compute_total_radon(
         raise ValueError("sample_volume must be non-negative")
     if err_bq < 0:
         raise ValueError("err_bq must be non-negative")
-    if activity_bq < 0:
-        raise ValueError("activity_bq must be non-negative")
     conc = activity_bq / monitor_volume
     sigma_conc = err_bq / monitor_volume
 

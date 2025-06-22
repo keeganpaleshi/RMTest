@@ -1751,25 +1751,26 @@ def main(argv=None):
         count = iso_counts_raw.get(iso, baseline_counts.get(iso, 0.0))
         eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
         base_cnt = baseline_counts.get(iso, 0.0)
-        rate = baseline_rates.get(iso, 0.0)
         s = scales.get(iso, 1.0)
 
         if live_time_iso > 0 and eff > 0:
-            _, sigma_rate = subtract_baseline_counts(
+            corr_rate, corr_sigma = subtract_baseline_counts(
                 count,
                 eff,
                 live_time_iso,
                 base_cnt,
                 baseline_live_time,
             )
-            sigma_term = sigma_rate * s
+            corr_rate *= s
+            corr_sigma *= s
         else:
-            sigma_term = 0.0
+            corr_rate = 0.0
+            corr_sigma = 0.0
 
-        params["E_corrected"] = params[f"E_{iso}"] - s * rate
-        dE_corr = float(math.hypot(err_fit, sigma_term))
+        dE_corr = float(math.hypot(err_fit, corr_sigma))
+        params["E_corrected"] = corr_rate
         params["dE_corrected"] = dE_corr
-        corrected_rates[iso] = params["E_corrected"]
+        corrected_rates[iso] = corr_rate
         corrected_unc[iso] = dE_corr
 
     if baseline_rates:
