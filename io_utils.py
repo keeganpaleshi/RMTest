@@ -237,18 +237,44 @@ def parse_datetime(value):
     return np.datetime64(ns, "ns")
 
 
+def _merge_dicts(base: dict, override: dict) -> dict:
+    """Recursively merge ``override`` into ``base`` and return ``base``."""
+    for key, value in override.items():
+        if (
+            key in base
+            and isinstance(base[key], dict)
+            and isinstance(value, dict)
+        ):
+            _merge_dicts(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
 def load_config(config_path):
     """
-    Load and validate JSON configuration.
-    Returns a dict.
-    Raises FileNotFoundError or json.JSONDecodeError on failure.
+    Load ``config_path`` and merge it with ``config_defaults.json`` if present.
+    The resulting dictionary is validated against ``CONFIG_SCHEMA``.
+
+    Returns the merged configuration dictionary.
+    Raises ``FileNotFoundError`` or ``json.JSONDecodeError`` on failure.
     """
     path = Path(config_path)
     if not path.is_file():
         raise FileNotFoundError(f"Config file not found: {config_path}")
 
+    defaults_path = Path(__file__).resolve().with_name("config_defaults.json")
+    defaults: dict = {}
+    if defaults_path.is_file():
+        with open(defaults_path, "r", encoding="utf-8") as f:
+            defaults = json.load(f, object_pairs_hook=_no_duplicates_object_pairs_hook)
+
     with open(path, "r", encoding="utf-8") as f:
         cfg = json.load(f, object_pairs_hook=_no_duplicates_object_pairs_hook)
+
+    if defaults:
+        cfg = _merge_dicts(defaults, cfg)
+
 
     try:
         jsonschema.validate(cfg, CONFIG_SCHEMA)
