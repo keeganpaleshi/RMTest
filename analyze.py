@@ -1325,6 +1325,8 @@ def main(argv=None):
     priors_time_all = {}
     time_plot_data = {}
     iso_live_time = {}
+    iso_t_start_fit = {}
+    iso_counts = {}
     iso_counts_raw = {}
     if cfg.get("time_fit", {}).get("do_time_fit", False):
         for iso in ("Po218", "Po214"):
@@ -1348,6 +1350,13 @@ def main(argv=None):
             if iso_events.empty:
                 print(f"WARNING: No events found for {iso} in [{lo}, {hi}] MeV.")
                 continue
+
+            # Determine time-series start relative to the global analysis start
+            ts_start = t0_global
+            if args.settle_s is not None:
+                ts_start = t0_global + float(args.settle_s)
+            iso_t_start_fit[iso] = ts_start
+            iso_live_time[iso] = t_end_global_ts - ts_start
 
         # Build priors for time fit
         priors_time = {}
@@ -1401,26 +1410,25 @@ def main(argv=None):
 
             analysis_counts = float(np.sum(iso_events["weight"]))
             iso_counts_raw[iso] = analysis_counts
-            live_time_analysis = (analysis_end - analysis_start).total_seconds()
-            iso_live_time[iso] = live_time_analysis
+            live_time_iso = iso_live_time.get(iso, 0.0)
             if (
                 iso in isotopes_to_subtract
-                and iso_live_time[iso] > 0
+                and live_time_iso > 0
                 and baseline_live_time > 0
                 and eff > 0
             ):
                 c_rate, c_sigma = subtract_baseline_counts(
                     analysis_counts,
                     eff,
-                    iso_live_time[iso],
+                    live_time_iso,
                     baseline_counts.get(iso, 0.0),
                     baseline_live_time,
                 )
             else:
-                if eff > 0 and iso_live_time[iso] > 0:
-                    c_rate = analysis_counts / (iso_live_time[iso] * eff)
+                if eff > 0 and live_time_iso > 0:
+                    c_rate = analysis_counts / (live_time_iso * eff)
                     c_sigma = math.sqrt(analysis_counts) / (
-                        iso_live_time[iso] * eff
+                        live_time_iso * eff
                     )
                 else:
                     c_rate = 0.0
@@ -1442,15 +1450,14 @@ def main(argv=None):
 
             analysis_counts = float(np.sum(iso_events["weight"]))
             iso_counts_raw[iso] = analysis_counts
-            live_time_analysis = (analysis_end - analysis_start).total_seconds()
-            iso_live_time[iso] = live_time_analysis
             eff = cfg["time_fit"].get(
                 f"eff_{iso.lower()}", [1.0]
             )[0]
-            if eff > 0 and iso_live_time[iso] > 0:
-                c_rate = analysis_counts / (iso_live_time[iso] * eff)
+            live_time_iso = iso_live_time.get(iso, 0.0)
+            if eff > 0 and live_time_iso > 0:
+                c_rate = analysis_counts / (live_time_iso * eff)
                 c_sigma = math.sqrt(analysis_counts) / (
-                    iso_live_time[iso] * eff
+                    live_time_iso * eff
                 )
             else:
                 c_rate = 0.0
@@ -1498,9 +1505,7 @@ def main(argv=None):
         # Run time-series fit
         decay_out = None  # fresh variable each iteration
         try:
-            t_start_fit = t0_global
-            if args.settle_s is not None:
-                t_start_fit = t0_global + float(args.settle_s)
+            t_start_fit = iso_t_start_fit.get(iso, t0_global)
             try:
                 decay_out = fit_time_series(
                     times_dict,
