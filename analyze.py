@@ -1749,10 +1749,20 @@ def main(argv=None):
         count = iso_counts_raw.get(iso, baseline_counts.get(iso, 0.0))
         eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
         base_cnt = baseline_counts.get(iso, 0.0)
-        rate = baseline_rates.get(iso, 0.0)
         s = scales.get(iso, 1.0)
 
         if live_time_iso > 0 and eff > 0:
+            # Correct fitted rate using the baseline scaled by dilution factor
+            fit_counts = params[f"E_{iso}"] * eff * live_time_iso
+            E_corr, _ = subtract_baseline_counts(
+                fit_counts,
+                eff,
+                live_time_iso,
+                base_cnt * s,
+                baseline_live_time,
+            )
+
+            # Propagate raw counting statistics for the baseline uncertainty
             _, sigma_rate = subtract_baseline_counts(
                 count,
                 eff,
@@ -1762,12 +1772,13 @@ def main(argv=None):
             )
             sigma_term = sigma_rate * s
         else:
+            E_corr = 0.0
             sigma_term = 0.0
 
-        params["E_corrected"] = params[f"E_{iso}"] - s * rate
         dE_corr = float(math.hypot(err_fit, sigma_term))
+        params["E_corrected"] = E_corr
         params["dE_corrected"] = dE_corr
-        corrected_rates[iso] = params["E_corrected"]
+        corrected_rates[iso] = E_corr
         corrected_unc[iso] = dE_corr
 
     if baseline_rates:
