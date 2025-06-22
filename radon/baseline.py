@@ -2,6 +2,8 @@
 
 import numpy as np
 
+from baseline import _scaling_factor
+
 __all__ = ["subtract_baseline_counts"]
 
 
@@ -40,10 +42,12 @@ def subtract_baseline_counts(
             "baseline_live_time must be nonzero for baseline correction"
         )
 
-    rate = counts / live_time / efficiency
+    scale, _ = _scaling_factor(live_time, baseline_live_time)
+
+    net = counts - scale * baseline_counts
+    corrected_rate = net / live_time / efficiency
+
     sigma_sq = counts / live_time**2 / efficiency**2
-    baseline_rate = baseline_counts / baseline_live_time / efficiency
-    baseline_sigma_sq = baseline_counts / baseline_live_time**2 / efficiency**2
-    corrected_rate = rate - baseline_rate
+    baseline_sigma_sq = baseline_counts * scale**2 / live_time**2 / efficiency**2
     corrected_sigma = np.sqrt(sigma_sq + baseline_sigma_sq)
     return corrected_rate, corrected_sigma
