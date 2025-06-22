@@ -106,7 +106,7 @@ from utils import (
 )
 from io_utils import parse_datetime
 from radmon.baseline import subtract_baseline
-from radon.baseline import subtract_baseline_counts
+from radon.baseline import subtract_baseline_counts, subtract_baseline_rate
 
 
 def _fit_params(obj):
@@ -1725,8 +1725,12 @@ def main(argv=None):
     if baseline_live_time > 0:
         for iso, n in baseline_counts.items():
             eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
-            baseline_rates[iso] = n / (baseline_live_time * eff) if eff > 0 else 0.0
-            baseline_unc[iso] = np.sqrt(n) / (baseline_live_time * eff) if eff > 0 else 0.0
+            if eff > 0:
+                baseline_rates[iso] = n / (baseline_live_time * eff)
+                baseline_unc[iso] = np.sqrt(n) / (baseline_live_time * eff)
+            else:
+                baseline_rates[iso] = 0.0
+                baseline_unc[iso] = 0.0
 
     dilution_factor = monitor_vol / (monitor_vol + sample_vol) if (monitor_vol + sample_vol) > 0 else 0.0
     scales = {"Po214": dilution_factor, "Po218": dilution_factor, "Po210": 1.0, "noise": 1.0}
@@ -1749,26 +1753,31 @@ def main(argv=None):
         count = iso_counts_raw.get(iso, baseline_counts.get(iso, 0.0))
         eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
         base_cnt = baseline_counts.get(iso, 0.0)
-        rate = baseline_rates.get(iso, 0.0)
         s = scales.get(iso, 1.0)
 
         if live_time_iso > 0 and eff > 0:
-            _, sigma_rate = subtract_baseline_counts(
+            corr_rate, corr_sigma, base_rate, base_sigma = subtract_baseline_rate(
+                params[f"E_{iso}"],
+                err_fit,
                 count,
                 eff,
                 live_time_iso,
                 base_cnt,
                 baseline_live_time,
+                s,
             )
-            sigma_term = sigma_rate * s
         else:
-            sigma_term = 0.0
+            corr_rate = params[f"E_{iso}"]
+            corr_sigma = err_fit
+            base_rate = 0.0
+            base_sigma = 0.0
 
-        params["E_corrected"] = params[f"E_{iso}"] - s * rate
-        dE_corr = float(math.hypot(err_fit, sigma_term))
-        params["dE_corrected"] = dE_corr
-        corrected_rates[iso] = params["E_corrected"]
-        corrected_unc[iso] = dE_corr
+        params["E_corrected"] = corr_rate
+        params["dE_corrected"] = corr_sigma
+        baseline_rates[iso] = base_rate
+        baseline_unc[iso] = base_sigma
+        corrected_rates[iso] = corr_rate
+        corrected_unc[iso] = corr_sigma
 
     if baseline_rates:
         baseline_info["rate_Bq"] = baseline_rates

@@ -461,11 +461,11 @@ configuration's interval is ignored in favour of the CLI value.
 The `--baseline-mode` option selects the background removal strategy.
 Valid modes are `none`, `electronics`, `radon` and `all` (default).
 
-The uncertainty on each baseline-corrected rate is obtained with
-``radon.baseline.subtract_baseline_counts`` using the unweighted analysis
-counts, the analysis live time and the baseline live time.  This reflects
-the raw statistics of the analysis window rather than the BLUE-weighted
-totals.
+Baseline subtraction for each isotope is handled by
+``radon.baseline.subtract_baseline_rate`` which combines the fitted rate
+with the raw baseline counts.  Internally it uses
+``subtract_baseline_counts`` so that the propagated uncertainty reflects
+the unweighted event statistics of the analysis window.
 
 
 Example snippet:
