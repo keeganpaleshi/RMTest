@@ -317,10 +317,11 @@ def test_isotopes_to_subtract_control(tmp_path, monkeypatch):
 
     summary = captured["summary"]
     assert "rate_Bq" not in summary.get("baseline", {})
-    assert "E_corrected" not in summary["time_fit"]["Po214"]
-    assert "dE_corrected" not in summary["time_fit"]["Po214"]
-    assert "corrected_rate_Bq" not in summary.get("baseline", {})
-    assert "corrected_sigma_Bq" not in summary.get("baseline", {})
+    assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(1.0)
+    assert summary["baseline"]["corrected_rate_Bq"]["Po214"] == pytest.approx(1.0)
+    assert summary["baseline"]["corrected_sigma_Bq"]["Po214"] == pytest.approx(
+        summary["time_fit"]["Po214"]["dE_corrected"],
+    )
     assert summary["baseline"]["scales"]["Po214"] == pytest.approx(1.0)
 
 

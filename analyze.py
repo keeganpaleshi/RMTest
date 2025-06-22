@@ -1752,19 +1752,17 @@ def main(argv=None):
     corrected_rates = {}
     corrected_unc = {}
 
-    for iso, rate in baseline_rates.items():
-        fit = time_fit_results.get(iso)
+    for iso, fit in time_fit_results.items():
         params = _fit_params(fit)
         if params and (f"E_{iso}" in params):
             s = scales.get(iso, 1.0)
             err_fit = params.get(f"dE_{iso}", 0.0)
             live_time_iso = iso_live_time.get(iso, 0.0)
+            rate = baseline_rates.get(iso, 0.0)
             if live_time_iso > 0 and baseline_live_time > 0:
                 params["E_corrected"] = params[f"E_{iso}"] - s * rate
                 count = iso_counts_raw.get(iso, baseline_counts.get(iso, 0.0))
-                eff = cfg["time_fit"].get(
-                    f"eff_{iso.lower()}", [1.0]
-                )[0]
+                eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
                 if eff > 0:
                     _, sigma_rate = subtract_baseline_counts(
                         count,
