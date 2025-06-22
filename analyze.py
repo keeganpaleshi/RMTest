@@ -1758,15 +1758,23 @@ def main(argv=None):
         if params and (f"E_{iso}" in params):
             s = scales.get(iso, 1.0)
             err_fit = params.get(f"dE_{iso}", 0.0)
-            if iso_live_time.get(iso, 0) > 0 and baseline_live_time > 0:
+            live_time_iso = iso_live_time.get(iso, 0.0)
+            if live_time_iso > 0 and baseline_live_time > 0:
                 params["E_corrected"] = params[f"E_{iso}"] - s * rate
-                sigma_rate = 0.0
                 count = iso_counts_raw.get(iso, baseline_counts.get(iso, 0.0))
                 eff = cfg["time_fit"].get(
                     f"eff_{iso.lower()}", [1.0]
                 )[0]
                 if eff > 0:
-                    sigma_rate = math.sqrt(count) / (baseline_live_time * eff)
+                    _, sigma_rate = subtract_baseline_counts(
+                        count,
+                        eff,
+                        live_time_iso,
+                        baseline_counts.get(iso, 0.0),
+                        baseline_live_time,
+                    )
+                else:
+                    sigma_rate = 0.0
                 dE_corr = float(math.hypot(err_fit, sigma_rate * s))
             else:
                 params["E_corrected"] = params[f"E_{iso}"]
