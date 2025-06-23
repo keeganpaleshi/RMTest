@@ -1756,21 +1756,16 @@ def main(argv=None):
         s = scales.get(iso, 1.0)
 
         if live_time_iso > 0 and eff > 0:
-            # Use subtract_baseline_counts to propagate the statistical
-            # uncertainty from the unweighted event totals.
-            _, sigma_rate = subtract_baseline_counts(
+            corr_rate, corr_sigma, base_rate, base_sigma = subtract_baseline_rate(
+                params[f"E_{iso}"],
+                err_fit,
                 count,
                 eff,
                 live_time_iso,
                 base_cnt,
                 baseline_live_time,
+                scale=s,
             )
-
-            base_rate = base_cnt / (baseline_live_time * eff)
-            base_sigma = np.sqrt(base_cnt) / (baseline_live_time * eff)
-
-            corr_rate = params[f"E_{iso}"] - s * base_rate
-            corr_sigma = float(np.hypot(err_fit, sigma_rate * s))
         else:
             corr_rate = params[f"E_{iso}"]
             corr_sigma = err_fit
