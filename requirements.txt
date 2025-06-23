@@ -4,7 +4,7 @@ matplotlib>=3.3
 pytest>=6.0
 pandas==1.5.3
 iminuit>=2.0
-pymc
+pymc==5.23.0
 jsonschema>=4.0
 python-dateutil>=2.8.0
 pytest-mpl>=0.16
