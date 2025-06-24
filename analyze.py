@@ -991,14 +991,14 @@ def main(argv=None):
     if radon_interval_cfg:
         try:
             start_r, end_r = radon_interval_cfg
-            start_r_dt = pd.to_datetime(parse_datetime(start_r), utc=True)
-            end_r_dt = pd.to_datetime(parse_datetime(end_r), utc=True)
+            start_r_dt = pd.to_datetime(parse_datetime(start_r), utc=True).to_pydatetime()
+            end_r_dt = pd.to_datetime(parse_datetime(end_r), utc=True).to_pydatetime()
             if end_r_dt <= start_r_dt:
                 raise ValueError("end <= start")
             radon_interval = (start_r_dt, end_r_dt)
             cfg.setdefault("analysis", {})["radon_interval"] = [
-                parse_timestamp(start_r_dt),
-                parse_timestamp(end_r_dt),
+                start_r_dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                end_r_dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             ]
         except Exception as e:
             logging.warning(f"Invalid radon_interval {radon_interval_cfg} -> {e}")
