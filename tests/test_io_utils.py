@@ -81,11 +81,13 @@ def test_load_events(tmp_path, caplog):
     df.to_csv(p, index=False)
     with caplog.at_level(logging.INFO):
         loaded = load_events(p)
-    assert str(loaded["timestamp"].dtype) == "datetime64[ns, UTC]"
-    expected_ts = pd.to_datetime([1000, 1005, 1010], unit="s", utc=True)
-    assert np.array_equal(
-        loaded["timestamp"].view("int64"), expected_ts.view("int64")
-    )
+    assert loaded["timestamp"].dtype == "datetime64[ns, UTC]"
+    expected_ts = np.array([
+        pd.Timestamp(1000, unit="s", tz="UTC"),
+        pd.Timestamp(1005, unit="s", tz="UTC"),
+        pd.Timestamp(1010, unit="s", tz="UTC"),
+    ])
+    assert np.array_equal(loaded["timestamp"].to_numpy(), expected_ts)
     assert np.array_equal(loaded["adc"].values, np.array([1200, 1300, 1250]))
     assert "0 discarded" in caplog.text
 
@@ -105,11 +107,13 @@ def test_load_events_drop_bad_rows(tmp_path, caplog):
     with caplog.at_level(logging.INFO):
         loaded = load_events(p)
     # Expect rows with NaN/inf removed and duplicate dropped
-    assert str(loaded["timestamp"].dtype) == "datetime64[ns, UTC]"
-    expected_ts = pd.to_datetime([1000, 1005, 1020], unit="s", utc=True)
-    assert np.array_equal(
-        loaded["timestamp"].view("int64"), expected_ts.view("int64")
-    )
+    assert loaded["timestamp"].dtype == "datetime64[ns, UTC]"
+    expected_ts = np.array([
+        pd.Timestamp(1000, unit="s", tz="UTC"),
+        pd.Timestamp(1005, unit="s", tz="UTC"),
+        pd.Timestamp(1020, unit="s", tz="UTC"),
+    ])
+    assert np.array_equal(loaded["timestamp"].to_numpy(), expected_ts)
     assert "3 discarded" in caplog.text
 
 
@@ -126,8 +130,8 @@ def test_load_events_column_aliases(tmp_path):
     p = tmp_path / "alias.csv"
     df.to_csv(p, index=False)
     loaded = load_events(p)
-    assert str(loaded["timestamp"].dtype) == "datetime64[ns, UTC]"
-    assert list(loaded["timestamp"])[0] == pd.to_datetime(parse_datetime(1000), utc=True)
+    assert loaded["timestamp"].dtype == "datetime64[ns, UTC]"
+    assert list(loaded["timestamp"])[0] == pd.Timestamp(1000, unit="s", tz="UTC")
     assert list(loaded["adc"])[0] == 1250
     assert "time" not in loaded.columns
     assert "adc_ch" not in loaded.columns
@@ -153,8 +157,8 @@ def test_load_events_custom_columns(tmp_path):
         "fchannel": "chan",
     }
     loaded = load_events(p, column_map=column_map)
-    assert str(loaded["timestamp"].dtype) == "datetime64[ns, UTC]"
-    assert list(loaded["timestamp"])[0] == pd.to_datetime(parse_datetime(1000), utc=True)
+    assert loaded["timestamp"].dtype == "datetime64[ns, UTC]"
+    assert list(loaded["timestamp"])[0] == pd.Timestamp(1000, unit="s", tz="UTC")
     assert list(loaded["adc"])[0] == 1250
     assert "ftimestamps" not in loaded.columns
 
@@ -189,7 +193,7 @@ def test_load_events_string_nan(tmp_path):
     df.to_csv(p, index=False)
     loaded = load_events(p)
     assert len(loaded) == 1
-    assert loaded["timestamp"].iloc[0] == pd.to_datetime(parse_datetime(1000), utc=True)
+    assert loaded["timestamp"].iloc[0] == pd.Timestamp(1000, unit="s", tz="UTC")
 
 
 def test_write_summary_and_copy_config(tmp_path):
