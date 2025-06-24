@@ -696,33 +696,33 @@ def main(argv=None):
 
     if args.analysis_end_time is not None:
         _log_override("analysis", "analysis_end_time", args.analysis_end_time)
-        cfg.setdefault("analysis", {})["analysis_end_time"] = args.analysis_end_time.timestamp()
+        cfg.setdefault("analysis", {})["analysis_end_time"] = args.analysis_end_time
 
     if args.analysis_start_time is not None:
         _log_override("analysis", "analysis_start_time", args.analysis_start_time)
-        cfg.setdefault("analysis", {})["analysis_start_time"] = args.analysis_start_time.timestamp()
+        cfg.setdefault("analysis", {})["analysis_start_time"] = args.analysis_start_time
 
     if args.spike_end_time is not None:
         _log_override("analysis", "spike_end_time", args.spike_end_time)
-        cfg.setdefault("analysis", {})["spike_end_time"] = args.spike_end_time.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        cfg.setdefault("analysis", {})["spike_end_time"] = args.spike_end_time
 
     if args.spike_period:
         _log_override("analysis", "spike_periods", args.spike_period)
         cfg.setdefault("analysis", {})["spike_periods"] = [
-            [s.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), e.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")] for s, e in args.spike_period
+            [s, e] for s, e in args.spike_period
         ]
 
     if args.run_period:
         _log_override("analysis", "run_periods", args.run_period)
         cfg.setdefault("analysis", {})["run_periods"] = [
-            [s.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), e.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")] for s, e in args.run_period
+            [s, e] for s, e in args.run_period
         ]
 
     if args.radon_interval:
         _log_override("analysis", "radon_interval", args.radon_interval)
         cfg.setdefault("analysis", {})["radon_interval"] = [
-            args.radon_interval[0].astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            args.radon_interval[1].astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            args.radon_interval[0],
+            args.radon_interval[1],
         ]
 
     if args.settle_s is not None:
