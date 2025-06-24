@@ -901,12 +901,15 @@ def main(argv=None):
     if radon_interval_cfg:
         try:
             start_r, end_r = radon_interval_cfg
-            start_r_ts = parse_timestamp(start_r)
-            end_r_ts = parse_timestamp(end_r)
-            if end_r_ts <= start_r_ts:
+            start_dt = pd.to_datetime(parse_datetime(start_r), utc=True).to_pydatetime()
+            end_dt = pd.to_datetime(parse_datetime(end_r), utc=True).to_pydatetime()
+            if end_dt <= start_dt:
                 raise ValueError("end <= start")
-            radon_interval = (start_r_ts, end_r_ts)
-            cfg.setdefault("analysis", {})["radon_interval"] = [start_r_ts, end_r_ts]
+            radon_interval = (start_dt, end_dt)
+            cfg.setdefault("analysis", {})["radon_interval"] = [
+                parse_timestamp(start_dt),
+                parse_timestamp(end_dt),
+            ]
         except Exception as e:
             logging.warning(f"Invalid radon_interval {radon_interval_cfg} -> {e}")
             radon_interval = None
@@ -1036,15 +1039,19 @@ def main(argv=None):
     baseline_range = None
     if args.baseline_range:
         _log_override("baseline", "range", args.baseline_range)
-        t0_epoch = args.baseline_range[0].timestamp()
-        t1_epoch = args.baseline_range[1].timestamp()
+        baseline_range = tuple(args.baseline_range)
+        t0_epoch = baseline_range[0].timestamp()
+        t1_epoch = baseline_range[1].timestamp()
         logging.info(
             f"Baseline window (epoch seconds): {t0_epoch} \u2192 {t1_epoch}"
         )
         cfg.setdefault("baseline", {})["range"] = [t0_epoch, t1_epoch]
-        baseline_range = [t0_epoch, t1_epoch]
     elif "range" in baseline_cfg:
-        baseline_range = baseline_cfg.get("range")
+        start_cfg, end_cfg = baseline_cfg.get("range")
+        baseline_range = (
+            pd.to_datetime(parse_datetime(start_cfg), utc=True).to_pydatetime(),
+            pd.to_datetime(parse_datetime(end_cfg), utc=True).to_pydatetime(),
+        )
 
     monitor_vol = float(baseline_cfg.get("monitor_volume_l", 605.0))
     sample_vol = float(baseline_cfg.get("sample_volume_l", 0.0))
@@ -1053,8 +1060,9 @@ def main(argv=None):
     mask_base = None
 
     if baseline_range:
-        t_start_base = pd.to_datetime(parse_datetime(baseline_range[0]), utc=True)
-        t_end_base = pd.to_datetime(parse_datetime(baseline_range[1]), utc=True)
+        t_start_base, t_end_base = baseline_range
+        t_start_base = pd.to_datetime(t_start_base, utc=True)
+        t_end_base = pd.to_datetime(t_end_base, utc=True)
         if t_end_base <= t_start_base:
             raise ValueError("baseline_range end time must be greater than start time")
         events_all_ts = pd.to_datetime(events_all["timestamp"], unit="s", utc=True)
@@ -1843,8 +1851,8 @@ def main(argv=None):
     if radon_interval is not None:
         from radon_activity import radon_delta
 
-        t_start_rel = radon_interval[0] - t0_global
-        t_end_rel = radon_interval[1] - t0_global
+        t_start_rel = radon_interval[0].timestamp() - t0_global
+        t_end_rel = radon_interval[1].timestamp() - t0_global
 
         delta214 = err_delta214 = None
         if "Po214" in time_fit_results:
@@ -2143,7 +2151,9 @@ def main(argv=None):
         )
 
         if radon_interval is not None:
-            times_trend = np.linspace(radon_interval[0], radon_interval[1], 50)
+            t0_tr = radon_interval[0].timestamp()
+            t1_tr = radon_interval[1].timestamp()
+            times_trend = np.linspace(t0_tr, t1_tr, 50)
             rel_trend = times_trend - t0_global
             A214_tr = None
             if "Po214" in time_fit_results:
