@@ -25,8 +25,8 @@ def test_baseline_none():
         t_base1=pd.Timestamp(5, unit="s", tz="UTC"),
         mode="none",
     )
-    hist_before, _ = baseline.rate_histogram(df, bins)
-    hist_after, _ = baseline.rate_histogram(out, bins)
+    hist_before, _ = baseline.compute_rate_histogram(df, bins)
+    hist_after, _ = baseline.compute_rate_histogram(out, bins)
     assert np.allclose(hist_before, hist_after)
 
 
@@ -67,8 +67,8 @@ def test_baseline_none_datetime():
         t_base1=datetime.fromtimestamp(5, tz=timezone.utc),
         mode="none",
     )
-    hist_before, _ = baseline.rate_histogram(df, bins)
-    hist_after, _ = baseline.rate_histogram(out, bins)
+    hist_before, _ = baseline.compute_rate_histogram(df, bins)
+    hist_after, _ = baseline.compute_rate_histogram(out, bins)
     assert np.allclose(hist_before, hist_after)
 
 
