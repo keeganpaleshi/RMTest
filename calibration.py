@@ -16,30 +16,29 @@ from constants import (
 class CalibrationResult:
     """Container for calibration coefficients and uncertainties."""
 
-    slope: float
-    intercept: float
-    slope_uncertainty: float = 0.0
-    intercept_uncertainty: float = 0.0
-    quadratic: float = 0.0
-    quadratic_uncertainty: float = 0.0
-    cov_ac: float = 0.0
-    cov_a_a2: float = 0.0
+    coeffs: list[float]
+    covariance: np.ndarray
+    sigma_E: float = 0.0
+    sigma_E_error: float = 0.0
+    peaks: dict | None = None
 
     def apply(self, adc_values):
         """Return calibrated energies for ``adc_values``."""
-        return apply_calibration(adc_values, self.slope, self.intercept, quadratic_coeff=self.quadratic)
+        a2 = self.coeffs[2] if len(self.coeffs) == 3 else 0.0
+        a = self.coeffs[1]
+        c = self.coeffs[0]
+        return apply_calibration(adc_values, a, c, quadratic_coeff=a2)
 
     def uncertainty(self, adc_values):
         """Return propagated 1-sigma energy uncertainty for ``adc_values``."""
-        adc_arr = np.asarray(adc_values, dtype=float)
-        var = (
-            (adc_arr * self.slope_uncertainty) ** 2
-            + (adc_arr ** 2 * self.quadratic_uncertainty) ** 2
-            + self.intercept_uncertainty ** 2
-            + 2 * adc_arr * self.cov_ac
-            + 2 * adc_arr ** 3 * self.cov_a_a2
-        )
-        return np.sqrt(np.clip(var, 0, None))
+        adc_arr = np.atleast_1d(np.asarray(adc_values, dtype=float))
+        cov = np.asarray(self.covariance, dtype=float)
+        n = cov.shape[0]
+        vecs = []
+        for x in adc_arr:
+            v = np.array([1.0, x, x ** 2])[:n]
+            vecs.append(v @ cov @ v)
+        return np.sqrt(np.clip(vecs, 0, None))
 
 def emg_left(x, mu, sigma, tau):
     """Exponentially modified Gaussian (left-skewed) PDF.
@@ -326,42 +325,38 @@ def calibrate_run(adc_values, config, hist_bins=None):
     var_sigma_E = (sigma_adc214 ** 2) * var_slope_local + (slope_local ** 2) * var_sigma_adc
     dsigma_E = float(np.sqrt(max(var_sigma_E, 0.0)))
 
-    # 8) Build result dict:
-    calib_dict = {
+    # 8) Build result object:
+    if quadratic:
+        coeffs = [c, a, a2]
+        cov = np.array(
+            [
+                [var_c, cov_ac, cov_a2_c],
+                [cov_ac, var_a, cov_a_a2],
+                [cov_a2_c, cov_a_a2, var_a2],
+            ]
+        )
+    else:
+        coeffs = [c, a]
+        cov = np.array(
+            [
+                [var_c, cov_ac],
+                [cov_ac, var_a],
+            ]
+        )
 
-        "slope_MeV_per_ch": a,  # linear calibration slope [MeV/ADC]
-        "quadratic_MeV_per_ch2": a2,
-        "intercept": c,
-        "sigma_E": float(sigma_E),
-        "sigma_E_error": dsigma_E,
-        "ac_covariance": [[float(var_a), float(cov_ac)], [float(cov_ac), float(var_c)]],
-        "a2_variance": float(var_a2),
-        "cov_a_a2": float(cov_a_a2),
-        "cov_a2_c": float(cov_a2_c),
-        "peaks": peak_fits,
-    }
-    return calib_dict
+    result = CalibrationResult(
+        coeffs=coeffs,
+        covariance=cov,
+        sigma_E=float(sigma_E),
+        sigma_E_error=dsigma_E,
+        peaks=peak_fits,
+    )
+    return result
 
 
 def derive_calibration_constants(adc_values, config):
-    """Wrapper returning calibration constants in legacy format."""
-    res = calibrate_run(adc_values, config)
-    cov = np.asarray(res.get("ac_covariance", [[0.0, 0.0], [0.0, 0.0]]), dtype=float)
-    a_err = float(np.sqrt(cov[0, 0]))
-    c_err = float(np.sqrt(cov[1, 1]))
-    a2_err = float(np.sqrt(max(res.get("a2_variance", 0.0), 0.0)))
-    sigE_err = float(res.get("sigma_E_error", 0.0))
-    out = {
-        "a": (float(res["slope_MeV_per_ch"]), a_err),
-        "a2": (float(res.get("quadratic_MeV_per_ch2", 0.0)), a2_err),
-        "c": (float(res["intercept"]), c_err),
-        "sigma_E": (float(res["sigma_E"]), sigE_err),
-        "peaks": res.get("peaks", {}),
-        "ac_covariance": cov.tolist(),
-        "cov_a_a2": float(res.get("cov_a_a2", 0.0)),
-        "cov_a2_c": float(res.get("cov_a2_c", 0.0)),
-    }
-    return out
+    """Return :class:`CalibrationResult` for ``adc_values`` with ``config``."""
+    return calibrate_run(adc_values, config)
 
 
 def derive_calibration_constants_auto(
@@ -418,24 +413,8 @@ def derive_calibration_constants_auto(
     if nominal_adc is not None:
         config["calibration"]["nominal_adc"] = dict(nominal_adc)
 
-    # Run calibration with custom histogram binning and convert to legacy format
-    res = calibrate_run(adc_arr, config, hist_bins=hist_bins)
-    cov = np.asarray(res.get("ac_covariance", [[0.0, 0.0], [0.0, 0.0]]), dtype=float)
-    a_err = float(np.sqrt(cov[0, 0]))
-    c_err = float(np.sqrt(cov[1, 1]))
-    a2_err = float(np.sqrt(max(res.get("a2_variance", 0.0), 0.0)))
-    sigE_err = float(res.get("sigma_E_error", 0.0))
-    out = {
-        "a": (float(res["slope_MeV_per_ch"]), a_err),
-        "a2": (float(res.get("quadratic_MeV_per_ch2", 0.0)), a2_err),
-        "c": (float(res["intercept"]), c_err),
-        "sigma_E": (float(res["sigma_E"]), sigE_err),
-        "peaks": res.get("peaks", {}),
-        "ac_covariance": cov.tolist(),
-        "cov_a_a2": float(res.get("cov_a_a2", 0.0)),
-        "cov_a2_c": float(res.get("cov_a2_c", 0.0)),
-    }
-    return out
+    # Run calibration with custom histogram binning
+    return calibrate_run(adc_arr, config, hist_bins=hist_bins)
 
 
 __all__ = [
