@@ -2071,7 +2071,10 @@ def test_time_fields_written_back(tmp_path, monkeypatch):
     assert used["analysis"]["spike_periods"] == [[2.0, 3.0]]
     assert used["analysis"]["run_periods"] == [[0.0, 10.0]]
 
-    assert used["analysis"]["radon_interval"] == [3.0, 5.0]
+    assert used["analysis"]["radon_interval"] == [
+        "1970-01-01T00:00:03+00:00",
+        "1970-01-01T00:00:05+00:00",
+    ]
     exp_start = datetime(1970, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
     exp_end = datetime(1970, 1, 1, 0, 0, 1, tzinfo=timezone.utc)
 
