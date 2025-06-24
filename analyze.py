@@ -696,33 +696,33 @@ def main(argv=None):
 
     if args.analysis_end_time is not None:
         _log_override("analysis", "analysis_end_time", args.analysis_end_time)
-        cfg.setdefault("analysis", {})["analysis_end_time"] = args.analysis_end_time.timestamp()
+        cfg.setdefault("analysis", {})["analysis_end_time"] = args.analysis_end_time
 
     if args.analysis_start_time is not None:
         _log_override("analysis", "analysis_start_time", args.analysis_start_time)
-        cfg.setdefault("analysis", {})["analysis_start_time"] = args.analysis_start_time.timestamp()
+        cfg.setdefault("analysis", {})["analysis_start_time"] = args.analysis_start_time
 
     if args.spike_end_time is not None:
         _log_override("analysis", "spike_end_time", args.spike_end_time)
-        cfg.setdefault("analysis", {})["spike_end_time"] = args.spike_end_time.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        cfg.setdefault("analysis", {})["spike_end_time"] = args.spike_end_time.astimezone(UTC)
 
     if args.spike_period:
         _log_override("analysis", "spike_periods", args.spike_period)
         cfg.setdefault("analysis", {})["spike_periods"] = [
-            [s.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), e.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")] for s, e in args.spike_period
+            [s.astimezone(UTC), e.astimezone(UTC)] for s, e in args.spike_period
         ]
 
     if args.run_period:
         _log_override("analysis", "run_periods", args.run_period)
         cfg.setdefault("analysis", {})["run_periods"] = [
-            [s.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), e.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")] for s, e in args.run_period
+            [s.astimezone(UTC), e.astimezone(UTC)] for s, e in args.run_period
         ]
 
     if args.radon_interval:
         _log_override("analysis", "radon_interval", args.radon_interval)
         cfg.setdefault("analysis", {})["radon_interval"] = [
-            args.radon_interval[0].astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            args.radon_interval[1].astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            args.radon_interval[0].astimezone(UTC),
+            args.radon_interval[1].astimezone(UTC),
         ]
 
     if args.settle_s is not None:
@@ -906,14 +906,19 @@ def main(argv=None):
     if t0_cfg is not None:
         try:
             t0_global = parse_timestamp(t0_cfg)
-            cfg.setdefault("analysis", {})["analysis_start_time"] = t0_global
+            t0_dt = datetime.fromtimestamp(t0_global, tz=timezone.utc)
+            cfg.setdefault("analysis", {})["analysis_start_time"] = t0_dt
         except Exception:
             logging.warning(
                 f"Invalid analysis_start_time '{t0_cfg}' - using first event"
             )
             t0_global = events_filtered["timestamp"].min()
+            t0_dt = datetime.fromtimestamp(t0_global, tz=timezone.utc)
+            cfg.setdefault("analysis", {})["analysis_start_time"] = t0_dt
     else:
         t0_global = events_filtered["timestamp"].min()
+        t0_dt = datetime.fromtimestamp(t0_global, tz=timezone.utc)
+        cfg.setdefault("analysis", {})["analysis_start_time"] = t0_dt
 
     if not isinstance(t0_global, (int, float)):
         t0_global = parse_timestamp(t0_global)
@@ -925,7 +930,7 @@ def main(argv=None):
         try:
             t_end_global_ts = parse_timestamp(t_end_cfg)
             t_end_global = pd.to_datetime(t_end_global_ts, unit="s", utc=True)
-            cfg.setdefault("analysis", {})["analysis_end_time"] = t_end_global_ts
+            cfg.setdefault("analysis", {})["analysis_end_time"] = t_end_global.to_pydatetime()
         except Exception:
             logging.warning(
                 f"Invalid analysis_end_time '{t_end_cfg}' - using last event"
@@ -939,7 +944,7 @@ def main(argv=None):
         try:
             t_spike_end_ts = parse_timestamp(spike_end_cfg)
             t_spike_end = pd.to_datetime(t_spike_end_ts, unit="s", utc=True)
-            cfg.setdefault("analysis", {})["spike_end_time"] = t_spike_end_ts
+            cfg.setdefault("analysis", {})["spike_end_time"] = t_spike_end.to_pydatetime()
         except Exception:
             logging.warning(f"Invalid spike_end_time '{spike_end_cfg}' - ignoring")
             t_spike_end = None
@@ -948,7 +953,6 @@ def main(argv=None):
     if spike_periods_cfg is None:
         spike_periods_cfg = []
     spike_periods = []
-    spike_secs = []
     for period in spike_periods_cfg:
         try:
             start, end = period
@@ -959,17 +963,15 @@ def main(argv=None):
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
             spike_periods.append((start_ts, end_ts))
-            spike_secs.append((start_sec, end_sec))
         except Exception as e:
             logging.warning(f"Invalid spike_period {period} -> {e}")
     if spike_periods:
-        cfg.setdefault("analysis", {})["spike_periods"] = [list(p) for p in spike_secs]
+        cfg.setdefault("analysis", {})["spike_periods"] = [list(p) for p in spike_periods]
 
     run_periods_cfg = cfg.get("analysis", {}).get("run_periods", [])
     if run_periods_cfg is None:
         run_periods_cfg = []
     run_periods = []
-    run_secs = []
     for period in run_periods_cfg:
         try:
             start, end = period
@@ -980,11 +982,10 @@ def main(argv=None):
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
             run_periods.append((start_ts, end_ts))
-            run_secs.append((start_sec, end_sec))
         except Exception as e:
             logging.warning(f"Invalid run_period {period} -> {e}")
     if run_periods:
-        cfg.setdefault("analysis", {})["run_periods"] = [list(p) for p in run_secs]
+        cfg.setdefault("analysis", {})["run_periods"] = [list(p) for p in run_periods]
 
     radon_interval_cfg = cfg.get("analysis", {}).get("radon_interval")
     radon_interval = None
@@ -1000,7 +1001,10 @@ def main(argv=None):
                 start_r_dt.isoformat(),
                 end_r_dt.isoformat(),
             ]
-            cfg.setdefault("analysis", {})["radon_interval"] = radon_interval_cfg
+            cfg.setdefault("analysis", {})["radon_interval"] = [
+                start_r_dt.to_pydatetime(),
+                end_r_dt.to_pydatetime(),
+            ]
         except Exception as e:
             logging.warning(f"Invalid radon_interval {radon_interval_cfg} -> {e}")
             radon_interval = None
@@ -2072,11 +2076,27 @@ def main(argv=None):
         "cli_sha256": cli_sha256,
         "cli_args": cli_args,
         "analysis": {
-            "analysis_start_time": t0_cfg,
-            "analysis_end_time": t_end_cfg,
-            "spike_end_time": spike_end_cfg,
-            "spike_periods": spike_periods_cfg,
-            "run_periods": run_periods_cfg,
+            "analysis_start_time": (
+                cfg.get("analysis", {}).get("analysis_start_time").isoformat()
+                if cfg.get("analysis", {}).get("analysis_start_time") is not None
+                else None
+            ),
+            "analysis_end_time": (
+                cfg.get("analysis", {}).get("analysis_end_time").isoformat()
+                if cfg.get("analysis", {}).get("analysis_end_time") is not None
+                else None
+            ),
+            "spike_end_time": (
+                cfg.get("analysis", {}).get("spike_end_time").isoformat()
+                if cfg.get("analysis", {}).get("spike_end_time") is not None
+                else None
+            ),
+            "spike_periods": [
+                [s.isoformat(), e.isoformat()] for s, e in cfg.get("analysis", {}).get("spike_periods", [])
+            ],
+            "run_periods": [
+                [s.isoformat(), e.isoformat()] for s, e in cfg.get("analysis", {}).get("run_periods", [])
+            ],
             "radon_interval": radon_interval_cfg,
             "ambient_concentration": cfg.get("analysis", {}).get(
                 "ambient_concentration"

@@ -2066,12 +2066,19 @@ def test_time_fields_written_back(tmp_path, monkeypatch):
     analyze.main()
 
     used = captured.get("cfg", {})
-    assert used["analysis"]["analysis_end_time"] == 5.0
-    assert used["analysis"]["spike_end_time"] == 0.0
-    assert used["analysis"]["spike_periods"] == [[2.0, 3.0]]
-    assert used["analysis"]["run_periods"] == [[0.0, 10.0]]
+    assert used["analysis"]["analysis_end_time"] == datetime(1970, 1, 1, 0, 0, 5, tzinfo=timezone.utc)
+    assert used["analysis"]["spike_end_time"] == datetime(1970, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    assert used["analysis"]["spike_periods"] == [
+        [datetime(1970, 1, 1, 0, 0, 2, tzinfo=timezone.utc), datetime(1970, 1, 1, 0, 0, 3, tzinfo=timezone.utc)]
+    ]
+    assert used["analysis"]["run_periods"] == [
+        [datetime(1970, 1, 1, 0, 0, 0, tzinfo=timezone.utc), datetime(1970, 1, 1, 0, 0, 10, tzinfo=timezone.utc)]
+    ]
 
-    assert used["analysis"]["radon_interval"] == [3.0, 5.0]
+    assert used["analysis"]["radon_interval"] == [
+        datetime(1970, 1, 1, 0, 0, 3, tzinfo=timezone.utc),
+        datetime(1970, 1, 1, 0, 0, 5, tzinfo=timezone.utc),
+    ]
     exp_start = datetime(1970, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
     exp_end = datetime(1970, 1, 1, 0, 0, 1, tzinfo=timezone.utc)
 
