@@ -15,6 +15,7 @@ __all__ = [
     "adc_hist_edges",
     "cps_to_cpd",
     "cps_to_bq",
+    "to_utc_datetime",
     "parse_time_arg",
     "parse_timestamp",
     "parse_datetime",
@@ -216,6 +217,35 @@ def parse_timestamp(s) -> float:
     raise argparse.ArgumentTypeError(f"could not parse time: {s!r}")
 
 
+def to_utc_datetime(value, tz="UTC") -> datetime:
+    """Return ``value`` converted to a UTC ``datetime`` object."""
+
+    tzinfo_obj = tz if isinstance(tz, tzinfo) else gettz(tz)
+    if tzinfo_obj is None:
+        tzinfo_obj = timezone.utc
+
+    if isinstance(value, datetime):
+        dt = value
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=tzinfo_obj)
+    elif isinstance(value, str):
+        try:
+            ts = float(value)
+            return datetime.fromtimestamp(ts, tz=timezone.utc)
+        except ValueError:
+            try:
+                dt = date_parser.isoparse(value)
+            except (ValueError, OverflowError) as e:
+                raise ValueError(f"invalid datetime: {value!r}") from e
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=tzinfo_obj)
+    elif isinstance(value, (int, float)):
+        dt = datetime.fromtimestamp(float(value), tz=timezone.utc)
+    else:
+        raise ValueError(f"invalid datetime: {value!r}")
+
+    return dt.astimezone(timezone.utc)
+
 
 def parse_datetime(value):
     """Parse an ISO-8601 string or numeric epoch value to ``numpy.datetime64``.
@@ -228,14 +258,14 @@ def parse_datetime(value):
     """
 
     try:
-        ts = parse_timestamp(value)
-    except argparse.ArgumentTypeError as e:
+        dt = to_utc_datetime(value)
+    except ValueError as e:
         raise ValueError(f"invalid datetime: {value!r}") from e
 
     if pd is None:
         raise RuntimeError("pandas is required for parse_datetime")
 
-    return pd.to_datetime(ts, unit="s", utc=True).to_datetime64()
+    return pd.Timestamp(dt).to_datetime64()
 
 
 def parse_time(s, tz="UTC") -> float:
@@ -256,30 +286,10 @@ def parse_time_arg(val, tz="UTC") -> datetime:
     ``tz`` specifies the timezone for naïve inputs.
     """
 
-    tzinfo_obj = tz if isinstance(tz, tzinfo) else gettz(tz)
-    if tzinfo_obj is None:
-        tzinfo_obj = timezone.utc
-
-    if isinstance(val, datetime):
-        dt = val
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=tzinfo_obj)
-    elif isinstance(val, str):
-        try:
-            ts = float(val)
-            return datetime.fromtimestamp(ts, tz=timezone.utc)
-        except ValueError:
-            try:
-                dt = date_parser.isoparse(val)
-            except (ValueError, OverflowError) as e:
-                raise argparse.ArgumentTypeError(f"could not parse time: {val!r}") from e
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=tzinfo_obj)
-    else:
-        return datetime.fromtimestamp(parse_timestamp(val), tz=timezone.utc)
-
-    ts = parse_timestamp(dt)
-    return datetime.fromtimestamp(ts, tz=timezone.utc)
+    try:
+        return to_utc_datetime(val, tz=tz)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e)) from e
 
 
 if __name__ == "__main__":
