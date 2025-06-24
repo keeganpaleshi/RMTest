@@ -89,6 +89,17 @@ class FitResult:
             self.param_index = {name: i for i, name in enumerate(ordered)}
         if self.cov is not None:
             self.cov = np.asarray(self.cov, dtype=float)
+            if (
+                self.param_index is not None
+                and (
+                    self.cov.ndim != 2
+                    or self.cov.shape[0] != self.cov.shape[1]
+                    or self.cov.shape[0] != len(self.param_index)
+                )
+            ):
+                raise ValueError(
+                    "Covariance matrix shape inconsistent with parameters"
+                )
 
     def get_cov(self, name1: str, name2: str) -> float:
         """Return covariance entry for two parameters."""
