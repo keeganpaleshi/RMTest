@@ -304,7 +304,9 @@ def load_events(csv_path, *, column_map=None):
             except Exception:
                 return pd.NaT
 
-        df["timestamp"] = df["timestamp"].map(_safe_parse)
+        df["timestamp"] = pd.to_datetime(
+            df["timestamp"].map(_safe_parse), utc=True
+        )
 
     # Check required columns after renaming
     required_cols = ["fUniqueID", "fBits", "timestamp", "adc", "fchannel"]
@@ -387,8 +389,10 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
     ts = out_df["timestamp"]
     if not pd.api.types.is_datetime64_any_dtype(ts):
         ts = ts.map(parse_datetime)
-        out_df["timestamp"] = ts
-    times_sec = ts.view("int64").to_numpy() / 1e9
+        out_df["timestamp"] = pd.to_datetime(ts, utc=True)
+    else:
+        out_df["timestamp"] = pd.to_datetime(ts, utc=True)
+    times_sec = out_df["timestamp"].view("int64").to_numpy() / 1e9
 
     # ───── micro-burst veto ─────
     if mode in ("micro", "both"):
@@ -427,8 +431,10 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
             ts = out_df["timestamp"]
             if not pd.api.types.is_datetime64_any_dtype(ts):
                 ts = ts.map(parse_datetime)
-                out_df["timestamp"] = ts
-            times_sec = ts.view("int64").to_numpy() / 1e9
+                out_df["timestamp"] = pd.to_datetime(ts, utc=True)
+            else:
+                out_df["timestamp"] = pd.to_datetime(ts, utc=True)
+            times_sec = out_df["timestamp"].view("int64").to_numpy() / 1e9
 
     # ───── rate-based veto ─────
     if mode in ("rate", "both"):

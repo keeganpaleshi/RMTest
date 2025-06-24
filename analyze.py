@@ -302,9 +302,11 @@ def _ts_bin_centers_widths(times, cfg, t_start, t_end):
     """Return bin centers and widths matching :func:`plot_time_series`."""
     arr = np.asarray(times)
     if np.issubdtype(arr.dtype, "datetime64"):
-        arr = arr.view("int64") / 1e9
-    arr = arr.astype(float)
-    times_rel = arr - float(t_start)
+        arr_sec = arr.view("int64") / 1e9
+    else:
+        arr_sec = arr.astype(float)
+    arr_float = arr_sec.astype(float)
+    times_rel = arr_float - float(t_start)
     bin_mode = str(
         cfg.get("plot_time_binning_mode", cfg.get("time_bin_mode", "fixed"))
     ).lower()

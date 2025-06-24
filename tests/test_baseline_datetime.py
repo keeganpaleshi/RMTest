@@ -33,6 +33,7 @@ def test_subtract_baseline_datetime_column():
         t_base1=datetime(1970,1,2,0,0,40,tzinfo=timezone.utc),
         mode="all",
     )
+    assert str(out["timestamp"].dtype) == "datetime64[ns, UTC]"
     integral = out["subtracted_adc_hist"].iloc[0].sum()
     assert integral == pytest.approx(0.0, rel=1e-6)
 
