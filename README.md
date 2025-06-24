@@ -2,7 +2,7 @@
 
 This repository provides a complete pipeline to analyze electrostatic radon monitor data.
 
-**Note:** All time quantities are expressed in seconds and all energies are given in MeV throughout the documentation and code. Input timestamps are parsed with `parse_timestamp` which accepts ISO‑8601 strings (with or without timezone), numeric epoch seconds and `datetime` objects. The wrapper `parse_datetime` converts the parsed value to a UTC `numpy.datetime64`. Command-line options that take timestamps (such as `--analysis-start-time`) use these helpers, so both ISO‑8601 strings and Unix seconds work interchangeably. A global `--timezone` option controls which zone naïve times are interpreted in (default: `UTC`). Event timestamps are stored internally as UTC `numpy.datetime64` objects throughout the pipeline.
+**Note:** All time quantities are expressed in seconds and all energies are given in MeV throughout the documentation and code. Input timestamps are parsed with `parse_timestamp` which accepts ISO‑8601 strings (with or without timezone), numeric epoch seconds and `datetime` objects and converts them to Unix seconds. The wrapper `parse_datetime` converts the parsed value to a UTC `numpy.datetime64`. These helpers are available from `utils.py`. Command-line options that take timestamps (such as `--analysis-start-time`) use them so both ISO‑8601 strings and Unix seconds work interchangeably. A global `--timezone` option controls which zone naïve times are interpreted in (default: `UTC`). Event timestamps are stored internally as UTC `numpy.datetime64` objects throughout the pipeline.
 
 ## Structure
 
@@ -14,8 +14,9 @@ This repository provides a complete pipeline to analyze electrostatic radon moni
 - `efficiency.py`: Efficiency calculations and BLUE combination helpers.
 - `systematics.py`: Scan for systematic uncertainties (optional).
 - `plot_utils.py`: Plotting routines for spectrum and time-series.
-- `utils.py`: Miscellaneous utilities (time conversion, JSON validation,
-  count-rate conversions).
+- `utils.py`: Miscellaneous utilities providing `parse_timestamp` and
+  `parse_datetime` for time conversion, JSON validation, and count-rate
+  conversions.
 - `tests/`: `pytest` unit tests for calibration, fitting, and I/O.
 
 ## Installation
@@ -111,6 +112,8 @@ For example:
 ```python
 from utils import cps_to_bq
 activity_bq_m3 = cps_to_bq(fit_result["E_Po214"], volume_liters=10.0)
+from utils import parse_datetime
+t0 = parse_datetime("2023-07-31T00:00:00Z")
 ```
 
 When using ``compute_radon_activity`` you should pass the fitted rates
@@ -538,12 +541,16 @@ Example configuration to tighten the cut (set it to `null` to disable):
 
 ## Utility Conversions
 
-`utils.py` provides simple helpers to convert count rates and to search for
-peak centroids:
+`utils.py` provides simple helpers to convert count rates, parse times and
+search for peak centroids:
 
 - `cps_to_cpd(rate_cps)` converts counts/s to counts/day.
 - `cps_to_bq(rate_cps, volume_liters=None)` returns the activity in Bq, or
   Bq/m^3 when a detector volume is supplied.
+- `parse_timestamp(value)` converts ISO‑8601 strings, numeric seconds or
+  `datetime` objects to Unix seconds.
+- `parse_datetime(value)` returns the same input as a UTC
+  `numpy.datetime64` object.
 - `find_adc_bin_peaks(adc_values, expected, window=50, prominence=0.0, width=None)`
   histogramises the raw ADC spectrum, searches for maxima near each expected
   centroid and returns a `{peak: adc_centroid}` mapping in ADC units.
