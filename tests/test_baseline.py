@@ -644,6 +644,6 @@ def test_sigma_rate_uses_weighted_counts(tmp_path, monkeypatch):
 def test_rate_histogram_single_event():
     df = pd.DataFrame({"timestamp": [1.0], "adc": [10.0]})
     bins = np.array([0, 20])
-    rate, live = baseline.rate_histogram(df, bins)
+    rate, live = baseline.compute_rate_histogram(df, bins)
     assert live == 0.0
     assert np.all(rate == 0.0)

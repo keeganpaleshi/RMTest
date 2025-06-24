@@ -5,7 +5,7 @@ from utils import parse_datetime
 
 from baseline_utils import subtract_baseline_dataframe
 
-__all__ = ["rate_histogram", "subtract_baseline", "subtract_baseline_dataframe"]
+__all__ = ["compute_rate_histogram", "subtract_baseline_df", "subtract_baseline_dataframe"]
 
 
 def _seconds(col):
@@ -21,7 +21,7 @@ def _seconds(col):
     return np.asarray(ts)
 
 
-def rate_histogram(df, bins):
+def compute_rate_histogram(df, bins):
     """Return (histogram in counts/s, live_time_s)."""
     if df.empty:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
@@ -34,8 +34,8 @@ def rate_histogram(df, bins):
     return hist / live, live
 
 
-def subtract_baseline(df_analysis, df_full, bins, t_base0, t_base1,
-                      mode="all", live_time_analysis=None):
+def subtract_baseline_df(df_analysis, df_full, bins, t_base0, t_base1,
+                         mode="all", live_time_analysis=None):
     """Wrapper for :func:`baseline_utils.subtract_baseline_dataframe`."""
 
     return subtract_baseline_dataframe(
