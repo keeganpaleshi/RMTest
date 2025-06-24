@@ -77,6 +77,7 @@ from calibration import (
     derive_calibration_constants,
     derive_calibration_constants_auto,
     apply_calibration,
+    CalibrationResult,
 )
 
 from fitting import fit_spectrum, fit_time_series, FitResult
@@ -1012,19 +1013,24 @@ def main(argv=None):
     cov_a_a2 = float(cal_params.get("cov_a_a2", 0.0))
     cov_a2_c = float(cal_params.get("cov_a2_c", 0.0))
 
-    # Apply calibration -> new column “energy_MeV” and its uncertainty
-    df_analysis["energy_MeV"] = apply_calibration(df_analysis["adc"], a, c, quadratic_coeff=a2)
-
-    adc_vals = df_analysis["adc"].astype(float)
-    var_energy = (
-        (adc_vals * a_sig) ** 2
-        + (adc_vals ** 2 * a2_sig) ** 2
-        + c_sig ** 2
-        + 2 * adc_vals * cov_ac
-        + 2 * adc_vals ** 3 * cov_a_a2
-        + 2 * adc_vals ** 2 * cov_a2_c
+    # Build CalibrationResult for convenience
+    cal_result = CalibrationResult(
+        slope=a,
+        intercept=c,
+        slope_uncertainty=a_sig,
+        intercept_uncertainty=c_sig,
+        quadratic=a2,
+        quadratic_uncertainty=a2_sig,
+        cov_ac=cov_ac,
+        cov_a_a2=cov_a_a2,
+        cov_a2_c=cov_a2_c,
+        peaks=cal_params.get("peaks", {}),
     )
-    df_analysis["denergy_MeV"] = np.sqrt(np.clip(var_energy, 0, None))
+
+    # Apply calibration -> new column “energy_MeV” and its uncertainty
+    energies = cal_result.predict(df_analysis["adc"])
+    df_analysis["energy_MeV"] = energies
+    df_analysis["denergy_MeV"] = cal_result.uncertainty(df_analysis["adc"])
 
     # ────────────────────────────────────────────────────────────
     # 4. Baseline run (optional)
@@ -1067,19 +1073,8 @@ def main(argv=None):
         base_events = events_all[mask_base_full].copy()
         # Apply calibration to the baseline events
         if not base_events.empty:
-            base_events["energy_MeV"] = apply_calibration(
-                base_events["adc"], a, c, quadratic_coeff=a2
-            )
-            adc_b = base_events["adc"].astype(float)
-            var_base = (
-                (adc_b * a_sig) ** 2
-                + (adc_b ** 2 * a2_sig) ** 2
-                + c_sig ** 2
-                + 2 * adc_b * cov_ac
-                + 2 * adc_b ** 3 * cov_a_a2
-                + 2 * adc_b ** 2 * cov_a2_c
-            )
-            base_events["denergy_MeV"] = np.sqrt(np.clip(var_base, 0, None))
+            base_events["energy_MeV"] = cal_result.predict(base_events["adc"])
+            base_events["denergy_MeV"] = cal_result.uncertainty(base_events["adc"])
         else:
             base_events["energy_MeV"] = np.array([], dtype=float)
             base_events["denergy_MeV"] = np.array([], dtype=float)
@@ -1106,7 +1101,7 @@ def main(argv=None):
         try:
             from baseline_noise import estimate_baseline_noise
 
-            peak_adc = cal_params.get("peaks", {}).get("Po210", {}).get("centroid_adc")
+            peak_adc = (cal_result.peaks or {}).get("Po210", {}).get("centroid_adc")
             if peak_adc is not None:
                 result = estimate_baseline_noise(
                     base_events["adc"].values,
@@ -1198,7 +1193,7 @@ def main(argv=None):
 
             # Build edges in ADC units then convert to energy for plotting
             bin_edges_adc = np.arange(adc_min, adc_min + bins * width + 1, width)
-            bin_edges = apply_calibration(bin_edges_adc, a, c, quadratic_coeff=a2)
+            bin_edges = cal_result.predict(bin_edges_adc)
 
         # Find approximate ADC centroids for Po‐210, Po‐218, Po‐214
 
@@ -1224,7 +1219,7 @@ def main(argv=None):
         )
 
         for peak, centroid_adc in adc_peaks.items():
-            mu = apply_calibration(centroid_adc, a, c, quadratic_coeff=a2)
+            mu = cal_result.predict(centroid_adc)
             bounds_cfg = cfg["spectral_fit"].get("mu_bounds", {})
             bounds = bounds_cfg.get(peak)
             if bounds is not None:

@@ -24,10 +24,18 @@ class CalibrationResult:
     quadratic_uncertainty: float = 0.0
     cov_ac: float = 0.0
     cov_a_a2: float = 0.0
+    cov_a2_c: float = 0.0
+    peaks: dict | None = None
+
+    def predict(self, adc_values):
+        """Return calibrated energies for ``adc_values``."""
+        return apply_calibration(
+            adc_values, self.slope, self.intercept, quadratic_coeff=self.quadratic
+        )
 
     def apply(self, adc_values):
-        """Return calibrated energies for ``adc_values``."""
-        return apply_calibration(adc_values, self.slope, self.intercept, quadratic_coeff=self.quadratic)
+        """Backward compatible alias of :meth:`predict`."""
+        return self.predict(adc_values)
 
     def uncertainty(self, adc_values):
         """Return propagated 1-sigma energy uncertainty for ``adc_values``."""
@@ -38,6 +46,7 @@ class CalibrationResult:
             + self.intercept_uncertainty ** 2
             + 2 * adc_arr * self.cov_ac
             + 2 * adc_arr ** 3 * self.cov_a_a2
+            + 2 * adc_arr ** 2 * self.cov_a2_c
         )
         return np.sqrt(np.clip(var, 0, None))
 
@@ -440,9 +449,9 @@ def derive_calibration_constants_auto(
 
 __all__ = [
     "CalibrationResult",
-    "two_point_calibration",
     "apply_calibration",
     "calibrate_run",
     "derive_calibration_constants",
     "derive_calibration_constants_auto",
+    "two_point_calibration",
 ]
