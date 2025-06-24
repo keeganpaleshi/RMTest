@@ -1091,7 +1091,7 @@ def main(argv=None):
 
         return CalibrationResult(
             coeffs=coeffs,
-            covariance=cov,
+            cov=cov,
             sigma_E=obj.get("sigma_E", (0.0, 0.0))[0],
             sigma_E_error=obj.get("sigma_E", (0.0, 0.0))[1],
             peaks=obj.get("peaks"),
@@ -1149,15 +1149,16 @@ def main(argv=None):
             baseline_range[1].isoformat(),
         )
         cfg.setdefault("baseline", {})["range"] = [
-            baseline_range[0].isoformat(),
-            baseline_range[1].isoformat(),
+            baseline_range[0],
+            baseline_range[1],
         ]
     elif "range" in baseline_cfg:
         try:
             b0, b1 = baseline_cfg.get("range")
-            start_dt = pd.to_datetime(parse_datetime(b0), utc=True)
-            end_dt = pd.to_datetime(parse_datetime(b1), utc=True)
+            start_dt = pd.to_datetime(parse_datetime(b0), utc=True).to_pydatetime()
+            end_dt = pd.to_datetime(parse_datetime(b1), utc=True).to_pydatetime()
             baseline_range = (start_dt, end_dt)
+            baseline_cfg["range"] = [start_dt, end_dt]
         except Exception as e:
             logging.warning(
                 "Invalid baseline.range %r -> %s", baseline_cfg.get("range"), e
@@ -1199,8 +1200,8 @@ def main(argv=None):
         else:
             baseline_live_time = float((t_end_base - t_start_base) / np.timedelta64(1, "s"))
         cfg.setdefault("baseline", {})["range"] = [
-            t_start_base.isoformat(),
-            t_end_base.isoformat(),
+            t_start_base.to_pydatetime(),
+            t_end_base.to_pydatetime(),
         ]
         baseline_info = {
             "start": t_start_base,
