@@ -1,5 +1,6 @@
 import numpy as np
 from dataclasses import dataclass
+from collections.abc import Sequence, Mapping
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 from scipy.stats import exponnorm
@@ -14,35 +15,44 @@ from constants import (
 
 @dataclass
 class CalibrationResult:
-    """Container for calibration coefficients and uncertainties."""
+    """Polynomial calibration coefficients and covariance."""
 
-    coeffs: list[float]
-    covariance: np.ndarray
+    coeffs: Sequence[float] | Mapping[int, float]
+    cov: np.ndarray
+    peaks: dict | None = None
     sigma_E: float = 0.0
     sigma_E_error: float = 0.0
-    peaks: dict | None = None
+
+    def __post_init__(self):
+        if isinstance(self.coeffs, Mapping):
+            items = sorted(self.coeffs.items())
+            self._exponents = [int(k) for k, _ in items]
+            self.coeffs = [float(v) for _, v in items]
+        else:
+            self._exponents = list(range(len(self.coeffs)))
+            self.coeffs = [float(v) for v in self.coeffs]
+        self.cov = np.asarray(self.cov, dtype=float)
+
+    def predict(self, x):
+        """Return calibrated energies for ``x``."""
+        x_arr = np.atleast_1d(np.asarray(x, dtype=float))
+        powers = np.stack([x_arr ** p for p in self._exponents], axis=-1)
+        out = powers @ np.asarray(self.coeffs, dtype=float)
+        return out[0] if np.ndim(x) == 0 else out
 
     def apply(self, adc_values):
-        """Return calibrated energies for ``adc_values``."""
-        a2 = self.coeffs[2] if len(self.coeffs) == 3 else 0.0
-        a = self.coeffs[1]
-        c = self.coeffs[0]
-        return apply_calibration(adc_values, a, c, quadratic_coeff=a2)
+        """Alias for :py:meth:`predict`."""
+        return self.predict(adc_values)
 
-    def predict(self, adc_values):
-        """Alias for :py:meth:`apply`. Use for scikit-learn style APIs."""
-        return self.apply(adc_values)
-
-    def uncertainty(self, adc_values):
-        """Return propagated 1-sigma energy uncertainty for ``adc_values``."""
-        adc_arr = np.atleast_1d(np.asarray(adc_values, dtype=float))
-        cov = np.asarray(self.covariance, dtype=float)
-        n = cov.shape[0]
-        vecs = []
-        for x in adc_arr:
-            v = np.array([1.0, x, x ** 2])[:n]
-            vecs.append(v @ cov @ v)
-        return np.sqrt(np.clip(vecs, 0, None))
+    def uncertainty(self, x):
+        """Return propagated 1-sigma energy uncertainty for ``x``."""
+        x_arr = np.atleast_1d(np.asarray(x, dtype=float))
+        sig2 = []
+        for val in x_arr:
+            J = np.array([val ** p for p in self._exponents], dtype=float)
+            sig2.append(J @ self.cov @ J)
+        out = np.sqrt(np.clip(sig2, 0, None))
+        return out[0] if np.ndim(x) == 0 else out
 
 def emg_left(x, mu, sigma, tau):
     """Exponentially modified Gaussian (left-skewed) PDF.
@@ -358,7 +368,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
     result = CalibrationResult(
         coeffs=coeffs,
-        covariance=cov,
+        cov=cov,
         sigma_E=float(sigma_E),
         sigma_E_error=dsigma_E,
         peaks=peak_fits,
