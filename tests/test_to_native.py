@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 import pytest
@@ -23,6 +24,11 @@ def test_to_native_pandas_objects():
     assert to_native(ts) == ts.isoformat()
     assert to_native(td) == td.isoformat()
     assert to_native(pd.NA) is None
+
+
+def test_to_native_datetime_object():
+    dt = datetime(2023, 1, 1, tzinfo=timezone.utc)
+    assert to_native(dt) == dt.isoformat()
 
 
 @dataclass
