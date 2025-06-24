@@ -2069,8 +2069,10 @@ def test_time_fields_written_back(tmp_path, monkeypatch):
     analyze.main()
 
     used = captured.get("cfg", {})
-    assert used["analysis"]["analysis_end_time"] == 5.0
-    assert used["analysis"]["spike_end_time"] == 0.0
+    exp_end_time = datetime(1970, 1, 1, 0, 0, 5, tzinfo=timezone.utc)
+    exp_spike_end = datetime(1970, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    assert used["analysis"]["analysis_end_time"] == exp_end_time
+    assert used["analysis"]["spike_end_time"] == exp_spike_end
     assert used["analysis"]["spike_periods"] == [
         ["1970-01-01T00:00:02+00:00", "1970-01-01T00:00:03+00:00"]
     ]
