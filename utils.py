@@ -18,6 +18,7 @@ __all__ = [
     "parse_time_arg",
     "parse_timestamp",
     "parse_time",
+    "parse_datetime",
     "LITERS_PER_M3",
 ]
 
@@ -177,10 +178,11 @@ def cps_to_bq(rate_cps, volume_liters=None):
 
 
 def parse_timestamp(s) -> float:
-    """Parse an ISO-8601 string, numeric seconds, or ``datetime``.
+    """Convert various time inputs to Unix seconds.
 
-    Any string without timezone information is interpreted as UTC.
-    The return value is the Unix epoch time in seconds (UTC).
+    ISO-8601 strings, numeric values and ``datetime`` objects are accepted.
+    Any string lacking timezone information is interpreted as UTC. The return
+    value is always the Unix epoch time in seconds (UTC).
     """
 
     if isinstance(s, (int, float)):
@@ -264,6 +266,20 @@ def parse_time(s, tz="UTC") -> float:
         return float(dt.timestamp())
 
     raise argparse.ArgumentTypeError(f"could not parse time: {s!r}")
+
+
+def parse_datetime(value):
+    """Return a UTC ``numpy.datetime64`` parsed from various inputs."""
+
+    try:
+        ts = parse_timestamp(value)
+    except argparse.ArgumentTypeError as e:
+        raise ValueError(f"invalid datetime: {value!r}") from e
+
+    if pd is None:
+        raise RuntimeError("pandas is required for parse_datetime")
+
+    return pd.to_datetime(ts, unit="s", utc=True).to_datetime64()
 
 
 def parse_time_arg(val, tz="UTC") -> datetime:
