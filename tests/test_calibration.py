@@ -80,7 +80,7 @@ def test_derive_calibration_constants_peak_search_radius():
     cfg_ok["calibration"]["peak_search_radius"] = 5
 
     out = derive_calibration_constants(adc, cfg_ok)
-    assert set(out["peaks"].keys()) == {"Po210", "Po218", "Po214"}
+    assert set(out.peaks.keys()) == {"Po210", "Po218", "Po214"}
 
     cfg_bad = {"calibration": dict(base_cfg["calibration"])}
     cfg_bad["calibration"]["peak_search_radius"] = 1
@@ -115,11 +115,8 @@ def test_calibration_uses_known_energies_from_config():
 
     out = derive_calibration_constants(adc, cfg)
 
-    a, _ = out["a"]
-    c, _ = out["c"]
-
-    assert pytest.approx(a * 1000 + c, rel=1e-3) == 5.1
-    assert pytest.approx(a * 2000 + c, rel=1e-3) == 8.2
+    assert pytest.approx(out.predict([1000])[0], rel=1e-3) == 5.1
+    assert pytest.approx(out.predict([2000])[0], rel=1e-3) == 8.2
 
 
 def test_calibration_sanity_check_triggers_error():
@@ -177,12 +174,8 @@ def test_calibrate_run_quadratic_option(caplog):
 
     out = derive_calibration_constants(adc, cfg)
 
-    a, _ = out["a"]
-    a2, _ = out["a2"]
-    c, _ = out["c"]
-
     adc_test = np.array([1000, 1500, 2000])
-    energies = apply_calibration(adc_test, a, c, quadratic_coeff=a2)
+    energies = out.predict(adc_test)
     assert np.allclose(
         energies,
         [

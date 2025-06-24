@@ -74,6 +74,7 @@ from io_utils import (
     apply_burst_filter,
 )
 from calibration import (
+    CalibrationResult,
     derive_calibration_constants,
     derive_calibration_constants_auto,
     apply_calibration,
@@ -1003,14 +1004,27 @@ def main(argv=None):
         cal_params = {"a": (0.005, 0.001), "c": (0.02, 0.005), "sigma_E": (0.3, 0.1)}
 
     # Save “a, c, sigma_E” so we can reconstruct energies
-    a, a_sig = cal_params["a"]
-    a2, a2_sig = cal_params.get("a2", (0.0, 0.0))
-    c, c_sig = cal_params["c"]
-    sigE_mean, sigE_sigma = cal_params["sigma_E"]
-    cov_mat = np.asarray(cal_params.get("ac_covariance", [[0.0, 0.0], [0.0, 0.0]]), dtype=float)
-    cov_ac = float(cov_mat[0, 1])
-    cov_a_a2 = float(cal_params.get("cov_a_a2", 0.0))
-    cov_a2_c = float(cal_params.get("cov_a2_c", 0.0))
+    if isinstance(cal_params, CalibrationResult):
+        a = cal_params.slope
+        a_sig = cal_params.slope_uncertainty
+        a2 = cal_params.quadratic
+        a2_sig = cal_params.quadratic_uncertainty
+        c = cal_params.intercept
+        c_sig = cal_params.intercept_uncertainty
+        sigE_mean = cal_params.sigma_E
+        sigE_sigma = cal_params.sigma_E_uncertainty
+        cov_ac = cal_params.cov_ac
+        cov_a_a2 = cal_params.cov_a_a2
+        cov_a2_c = cal_params.cov_a2_c
+    else:
+        a, a_sig = cal_params["a"]
+        a2, a2_sig = cal_params.get("a2", (0.0, 0.0))
+        c, c_sig = cal_params["c"]
+        sigE_mean, sigE_sigma = cal_params.get("sigma_E", (0.0, 0.0))
+        cov_mat = np.asarray(cal_params.get("ac_covariance", [[0.0, 0.0], [0.0, 0.0]]), dtype=float)
+        cov_ac = float(cov_mat[0, 1])
+        cov_a_a2 = float(cal_params.get("cov_a_a2", 0.0))
+        cov_a2_c = float(cal_params.get("cov_a2_c", 0.0))
 
     # Apply calibration -> new column “energy_MeV” and its uncertainty
     df_analysis["energy_MeV"] = apply_calibration(df_analysis["adc"], a, c, quadratic_coeff=a2)

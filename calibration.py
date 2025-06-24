@@ -24,10 +24,19 @@ class CalibrationResult:
     quadratic_uncertainty: float = 0.0
     cov_ac: float = 0.0
     cov_a_a2: float = 0.0
+    cov_a2_c: float = 0.0
+    sigma_E: float = 0.0
+    sigma_E_uncertainty: float = 0.0
+    peaks: dict | None = None
 
     def apply(self, adc_values):
         """Return calibrated energies for ``adc_values``."""
         return apply_calibration(adc_values, self.slope, self.intercept, quadratic_coeff=self.quadratic)
+
+    # Backwards compatible alias
+    def predict(self, adc_values):
+        """Alias for :meth:`apply`."""
+        return self.apply(adc_values)
 
     def uncertainty(self, adc_values):
         """Return propagated 1-sigma energy uncertainty for ``adc_values``."""
@@ -344,24 +353,25 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
 
 def derive_calibration_constants(adc_values, config):
-    """Wrapper returning calibration constants in legacy format."""
+    """Return calibration constants as :class:`CalibrationResult`."""
     res = calibrate_run(adc_values, config)
     cov = np.asarray(res.get("ac_covariance", [[0.0, 0.0], [0.0, 0.0]]), dtype=float)
-    a_err = float(np.sqrt(cov[0, 0]))
-    c_err = float(np.sqrt(cov[1, 1]))
-    a2_err = float(np.sqrt(max(res.get("a2_variance", 0.0), 0.0)))
-    sigE_err = float(res.get("sigma_E_error", 0.0))
-    out = {
-        "a": (float(res["slope_MeV_per_ch"]), a_err),
-        "a2": (float(res.get("quadratic_MeV_per_ch2", 0.0)), a2_err),
-        "c": (float(res["intercept"]), c_err),
-        "sigma_E": (float(res["sigma_E"]), sigE_err),
-        "peaks": res.get("peaks", {}),
-        "ac_covariance": cov.tolist(),
-        "cov_a_a2": float(res.get("cov_a_a2", 0.0)),
-        "cov_a2_c": float(res.get("cov_a2_c", 0.0)),
-    }
-    return out
+
+    calib = CalibrationResult(
+        slope=float(res["slope_MeV_per_ch"]),
+        intercept=float(res["intercept"]),
+        slope_uncertainty=float(np.sqrt(cov[0, 0])),
+        intercept_uncertainty=float(np.sqrt(cov[1, 1])),
+        quadratic=float(res.get("quadratic_MeV_per_ch2", 0.0)),
+        quadratic_uncertainty=float(np.sqrt(max(res.get("a2_variance", 0.0), 0.0))),
+        cov_ac=float(cov[0, 1]),
+        cov_a_a2=float(res.get("cov_a_a2", 0.0)),
+        cov_a2_c=float(res.get("cov_a2_c", 0.0)),
+        sigma_E=float(res["sigma_E"]),
+        sigma_E_uncertainty=float(res.get("sigma_E_error", 0.0)),
+        peaks=res.get("peaks", {}),
+    )
+    return calib
 
 
 def derive_calibration_constants_auto(
@@ -418,24 +428,25 @@ def derive_calibration_constants_auto(
     if nominal_adc is not None:
         config["calibration"]["nominal_adc"] = dict(nominal_adc)
 
-    # Run calibration with custom histogram binning and convert to legacy format
+    # Run calibration with custom histogram binning and convert to CalibrationResult
     res = calibrate_run(adc_arr, config, hist_bins=hist_bins)
     cov = np.asarray(res.get("ac_covariance", [[0.0, 0.0], [0.0, 0.0]]), dtype=float)
-    a_err = float(np.sqrt(cov[0, 0]))
-    c_err = float(np.sqrt(cov[1, 1]))
-    a2_err = float(np.sqrt(max(res.get("a2_variance", 0.0), 0.0)))
-    sigE_err = float(res.get("sigma_E_error", 0.0))
-    out = {
-        "a": (float(res["slope_MeV_per_ch"]), a_err),
-        "a2": (float(res.get("quadratic_MeV_per_ch2", 0.0)), a2_err),
-        "c": (float(res["intercept"]), c_err),
-        "sigma_E": (float(res["sigma_E"]), sigE_err),
-        "peaks": res.get("peaks", {}),
-        "ac_covariance": cov.tolist(),
-        "cov_a_a2": float(res.get("cov_a_a2", 0.0)),
-        "cov_a2_c": float(res.get("cov_a2_c", 0.0)),
-    }
-    return out
+
+    calib = CalibrationResult(
+        slope=float(res["slope_MeV_per_ch"]),
+        intercept=float(res["intercept"]),
+        slope_uncertainty=float(np.sqrt(cov[0, 0])),
+        intercept_uncertainty=float(np.sqrt(cov[1, 1])),
+        quadratic=float(res.get("quadratic_MeV_per_ch2", 0.0)),
+        quadratic_uncertainty=float(np.sqrt(max(res.get("a2_variance", 0.0), 0.0))),
+        cov_ac=float(cov[0, 1]),
+        cov_a_a2=float(res.get("cov_a_a2", 0.0)),
+        cov_a2_c=float(res.get("cov_a2_c", 0.0)),
+        sigma_E=float(res["sigma_E"]),
+        sigma_E_uncertainty=float(res.get("sigma_E_error", 0.0)),
+        peaks=res.get("peaks", {}),
+    )
+    return calib
 
 
 __all__ = [
