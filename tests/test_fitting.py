@@ -548,7 +548,7 @@ def test_fit_time_series_covariance_output():
     }
     res = fit_time_series(times_dict, 0.0, T, cfg)
     assert "cov_E_Po214_N0_Po214" in res.params
-    cov_exp = analyze._cov_entry(res, "E_Po214", "N0_Po214")
+    cov_exp = res.get_cov("E_Po214", "N0_Po214")
     assert res.params["cov_E_Po214_N0_Po214"] == pytest.approx(cov_exp)
 
 
