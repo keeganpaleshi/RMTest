@@ -50,7 +50,7 @@ import argparse
 import sys
 import logging
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import subprocess
 import hashlib
 import json
@@ -291,7 +291,11 @@ def prepare_analysis_df(
 
 def _ts_bin_centers_widths(times, cfg, t_start, t_end):
     """Return bin centers and widths matching :func:`plot_time_series`."""
-    times_rel = np.asarray(times, dtype=float) - float(t_start)
+    arr = np.asarray(times)
+    if np.issubdtype(arr.dtype, "datetime64"):
+        arr = arr.view("int64") / 1e9
+    arr = arr.astype(float)
+    times_rel = arr - float(t_start)
     bin_mode = str(
         cfg.get("plot_time_binning_mode", cfg.get("time_bin_mode", "fixed"))
     ).lower()
@@ -948,43 +952,43 @@ def main(argv=None):
     if spike_periods_cfg is None:
         spike_periods_cfg = []
     spike_periods = []
-    spike_secs = []
+    spike_iso = []
     for period in spike_periods_cfg:
         try:
             start, end = period
-            start_sec = parse_timestamp(start)
-            end_sec = parse_timestamp(end)
-            start_ts = pd.to_datetime(start_sec, unit="s", utc=True)
-            end_ts = pd.to_datetime(end_sec, unit="s", utc=True)
+            start_ts = pd.to_datetime(parse_datetime(start), utc=True)
+            end_ts = pd.to_datetime(parse_datetime(end), utc=True)
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
             spike_periods.append((start_ts, end_ts))
-            spike_secs.append((start_sec, end_sec))
+            spike_iso.append((start_ts, end_ts))
         except Exception as e:
             logging.warning(f"Invalid spike_period {period} -> {e}")
     if spike_periods:
-        cfg.setdefault("analysis", {})["spike_periods"] = [list(p) for p in spike_secs]
+        cfg.setdefault("analysis", {})["spike_periods"] = [
+            [s.isoformat(), e.isoformat()] for s, e in spike_iso
+        ]
 
     run_periods_cfg = cfg.get("analysis", {}).get("run_periods", [])
     if run_periods_cfg is None:
         run_periods_cfg = []
     run_periods = []
-    run_secs = []
+    run_iso = []
     for period in run_periods_cfg:
         try:
             start, end = period
-            start_sec = parse_timestamp(start)
-            end_sec = parse_timestamp(end)
-            start_ts = pd.to_datetime(start_sec, unit="s", utc=True)
-            end_ts = pd.to_datetime(end_sec, unit="s", utc=True)
+            start_ts = pd.to_datetime(parse_datetime(start), utc=True)
+            end_ts = pd.to_datetime(parse_datetime(end), utc=True)
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
             run_periods.append((start_ts, end_ts))
-            run_secs.append((start_sec, end_sec))
+            run_iso.append((start_ts, end_ts))
         except Exception as e:
             logging.warning(f"Invalid run_period {period} -> {e}")
     if run_periods:
-        cfg.setdefault("analysis", {})["run_periods"] = [list(p) for p in run_secs]
+        cfg.setdefault("analysis", {})["run_periods"] = [
+            [s.isoformat(), e.isoformat()] for s, e in run_iso
+        ]
 
     radon_interval_cfg = cfg.get("analysis", {}).get("radon_interval")
     radon_interval = None
@@ -1463,14 +1467,12 @@ def main(argv=None):
                 print(f"WARNING: No events found for {iso} in [{lo}, {hi}] MeV.")
                 continue
 
-            first_ts = iso_events["timestamp"].iloc[0]
-            if hasattr(first_ts, "to_datetime64"):
-                first_sec = first_ts.to_datetime64().view("int64") / 1e9
-            else:
-                first_sec = float(first_ts)
-            t_start_fit = max(first_sec, t0_global + float(args.settle_s or 0))
-            t_start_map[iso] = t_start_fit
-            iso_live_time[iso] = t_end_global_ts - t_start_fit
+            first_ts = pd.to_datetime(iso_events["timestamp"].iloc[0], utc=True)
+            t0_dt = datetime.fromtimestamp(t0_global, tz=timezone.utc)
+            settle = timedelta(seconds=float(args.settle_s or 0))
+            t_start_fit_dt = max(first_ts, t0_dt + settle)
+            t_start_map[iso] = t_start_fit_dt
+            iso_live_time[iso] = (t_end_global - t_start_fit_dt).total_seconds()
 
         # Build priors for time fit
         priors_time = {}
@@ -1588,7 +1590,8 @@ def main(argv=None):
 
         # Build configuration for fit_time_series
         if args.settle_s is not None:
-            cut = pd.to_datetime(t0_global + float(args.settle_s), unit="s", utc=True)
+            t0_dt = datetime.fromtimestamp(t0_global, tz=timezone.utc)
+            cut = t0_dt + timedelta(seconds=float(args.settle_s))
             iso_events = iso_events[iso_events["timestamp"] >= cut]
         ts_vals = iso_events["timestamp"]
         if pd.api.types.is_datetime64_any_dtype(ts_vals):
@@ -1619,7 +1622,11 @@ def main(argv=None):
         # Run time-series fit
         decay_out = None  # fresh variable each iteration
         try:
-            t_start_fit = t_start_map.get(iso, t0_global)
+            t_start_val = t_start_map.get(iso)
+            if isinstance(t_start_val, datetime):
+                t_start_fit = t_start_val.timestamp()
+            else:
+                t_start_fit = float(t_start_val if t_start_val is not None else t0_global)
             try:
                 decay_out = fit_time_series(
                     times_dict,
@@ -2135,8 +2142,6 @@ def main(argv=None):
                     if obj:
                         fit_dict.update(_fit_params(obj))
 
-            if np.issubdtype(ts_times.dtype, "datetime64"):
-                ts_times = ts_times.view("int64") / 1e9
             centers, widths = _ts_bin_centers_widths(
                 ts_times, plot_cfg, t0_global, t_end_global_ts
             )
