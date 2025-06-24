@@ -1,5 +1,5 @@
-from dataclasses import dataclass, field, asdict
-from typing import Any, Mapping, MutableMapping
+from dataclasses import dataclass
+from typing import Any, Mapping
 
 @dataclass
 class Summary:

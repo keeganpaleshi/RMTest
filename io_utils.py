@@ -464,7 +464,6 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
 
 
 from typing import Mapping, Any
-from dataclasses import is_dataclass
 from summary import Summary
 
 
