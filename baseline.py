@@ -11,13 +11,12 @@ __all__ = ["rate_histogram", "subtract_baseline", "subtract_baseline_dataframe"]
 def _seconds(col):
     """Return timestamp column as ``numpy.datetime64`` values."""
 
-    if pd.api.types.is_datetime64_any_dtype(col):
-        ser = col
-        if getattr(ser.dtype, "tz", None) is not None:
-            ser = ser.dt.tz_convert("UTC").dt.tz_localize(None)
-        ts = ser.astype("datetime64[ns]").to_numpy()
-    else:
-        ts = col.map(parse_datetime).astype("datetime64[ns]").to_numpy()
+    ser = col
+    if not pd.api.types.is_datetime64_any_dtype(ser):
+        ser = ser.map(parse_datetime)
+    if getattr(ser.dtype, "tz", None) is not None:
+        ser = ser.dt.tz_convert("UTC").dt.tz_localize(None)
+    ts = ser.astype("datetime64[ns]").to_numpy()
     return np.asarray(ts)
 
 

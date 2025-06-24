@@ -296,7 +296,7 @@ def load_events(csv_path, *, column_map=None):
 
     df = df.rename(columns=rename, errors="ignore")
 
-    # Parse timestamps directly to ``datetime64`` values
+    # Parse timestamps directly to timezone-aware ``Timestamp`` values
     if "timestamp" in df.columns:
         def _safe_parse(val):
             try:

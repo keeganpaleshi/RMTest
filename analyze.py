@@ -1182,7 +1182,7 @@ def main(argv=None):
         t_end_base = baseline_range[1]
         if t_end_base <= t_start_base:
             raise ValueError("baseline_range end time must be greater than start time")
-        events_all_ts = pd.to_datetime(events_all["timestamp"], utc=True)
+        events_all_ts = events_all["timestamp"]
         mask_base_full = (events_all_ts >= t_start_base) & (events_all_ts < t_end_base)
         mask_base = (df_analysis["timestamp"] >= t_start_base) & (
             df_analysis["timestamp"] < t_end_base
@@ -1466,7 +1466,7 @@ def main(argv=None):
                 print(f"WARNING: No events found for {iso} in [{lo}, {hi}] MeV.")
                 continue
 
-            first_ts = pd.to_datetime(iso_events["timestamp"].iloc[0], utc=True)
+            first_ts = iso_events["timestamp"].iloc[0]
             t0_dt = to_utc_datetime(t0_global)
             settle = timedelta(seconds=float(args.settle_s or 0))
             t_start_fit_dt = max(first_ts, t0_dt + settle)
@@ -1663,7 +1663,7 @@ def main(argv=None):
         mask210 = (
             (df_analysis["energy_MeV"] >= lo)
             & (df_analysis["energy_MeV"] <= hi)
-            & (df_analysis["timestamp"] >= pd.to_datetime(t0_global, utc=True))
+            & (df_analysis["timestamp"] >= pd.Timestamp(t0_global))
             & (df_analysis["timestamp"] <= t_end_global)
         )
         events_p210 = df_analysis[mask210]

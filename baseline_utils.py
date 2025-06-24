@@ -51,13 +51,12 @@ def compute_dilution_factor(monitor_volume: float, sample_volume: float) -> floa
 def _seconds(col: pd.Series) -> np.ndarray:
     """Return timestamp column as ``numpy.datetime64`` values."""
 
-    if pd.api.types.is_datetime64_any_dtype(col):
-        ser = col
-        if getattr(ser.dtype, "tz", None) is not None:
-            ser = ser.dt.tz_convert("UTC").dt.tz_localize(None)
-        ts = ser.astype("datetime64[ns]").to_numpy()
-    else:
-        ts = col.map(parse_datetime).astype("datetime64[ns]").to_numpy()
+    ser = col
+    if not pd.api.types.is_datetime64_any_dtype(ser):
+        ser = ser.map(parse_datetime)
+    if getattr(ser.dtype, "tz", None) is not None:
+        ser = ser.dt.tz_convert("UTC").dt.tz_localize(None)
+    ts = ser.astype("datetime64[ns]").to_numpy()
     return np.asarray(ts)
 
 
@@ -95,8 +94,8 @@ def subtract_baseline_dataframe(
     if live_time_analysis is None:
         live_time_analysis = live_an
 
-    t0 = parse_datetime(t_base0)
-    t1 = parse_datetime(t_base1)
+    t0 = parse_datetime(t_base0).to_datetime64()
+    t1 = parse_datetime(t_base1).to_datetime64()
     ts_full = _seconds(df_full["timestamp"])
     mask = (ts_full >= t0) & (ts_full <= t1)
     if not mask.any():
