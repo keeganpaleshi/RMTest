@@ -56,6 +56,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+from typing import Any
 
 import math
 import numpy as np
@@ -205,6 +206,87 @@ def get_spike_efficiency(spike_cfg):
 
         _spike_eff_cache[key] = calc_spike_efficiency(key[0], key[1], key[2])
     return _spike_eff_cache[key]
+
+
+def prepare_analysis_df(
+    df: pd.DataFrame,
+    spike_end: pd.Timestamp | None,
+    spike_periods: list[tuple[pd.Timestamp, pd.Timestamp]],
+    run_periods: list[tuple[pd.Timestamp, pd.Timestamp]],
+    analysis_end: pd.Timestamp | int | float | None,
+    *,
+    t0_global: float,
+    cfg: dict,
+    args,
+) -> tuple[
+    pd.DataFrame,
+    datetime,
+    datetime,
+    float,
+    float,
+    str | None,
+    Any,
+    pd.Timestamp | int | float | None,
+]:
+    """Apply time window cuts and derive drift parameters."""
+
+    df_analysis = df.copy()
+    df_analysis["timestamp"] = pd.to_datetime(df_analysis["timestamp"], unit="s", utc=True)
+
+    if spike_end is not None:
+        df_analysis = df_analysis[df_analysis["timestamp"] >= spike_end].reset_index(drop=True)
+
+    for start_ts, end_ts in spike_periods:
+        mask = (df_analysis["timestamp"] >= start_ts) & (df_analysis["timestamp"] < end_ts)
+        if mask.any():
+            df_analysis = df_analysis[~mask].reset_index(drop=True)
+
+    if run_periods:
+        keep_mask = np.zeros(len(df_analysis), dtype=bool)
+        for start_ts, end_ts in run_periods:
+            keep_mask |= (df_analysis["timestamp"] >= start_ts) & (
+                df_analysis["timestamp"] < end_ts
+            )
+        df_analysis = df_analysis[keep_mask].reset_index(drop=True)
+        if analysis_end is None and len(df_analysis) > 0:
+            analysis_end = df_analysis["timestamp"].max()
+
+    if analysis_end is not None:
+        df_analysis = df_analysis[df_analysis["timestamp"] <= analysis_end].reset_index(drop=True)
+    else:
+        analysis_end = df_analysis["timestamp"].max()
+
+    if not isinstance(analysis_end, (int, float)):
+        t_end_global_ts = parse_timestamp(analysis_end)
+    else:
+        t_end_global_ts = float(analysis_end)
+
+    _ensure_events(df_analysis, "time-window selection")
+
+    analysis_start = datetime.fromtimestamp(t0_global, tz=timezone.utc)
+    analysis_end_dt = datetime.fromtimestamp(t_end_global_ts, tz=timezone.utc)
+
+    drift_cfg = cfg.get("systematics", {})
+    drift_rate = (
+        float(args.slope)
+        if args.slope is not None
+        else float(drift_cfg.get("adc_drift_rate", 0.0))
+    )
+    drift_mode = "linear" if args.slope is not None else drift_cfg.get(
+        "adc_drift_mode", "linear"
+    )
+    drift_params = drift_cfg.get("adc_drift_params")
+
+    return (
+        df_analysis,
+        analysis_start,
+        analysis_end_dt,
+        t_end_global_ts,
+        drift_rate,
+        drift_mode,
+        drift_params,
+        analysis_end,
+    )
 
 
 def _ts_bin_centers_widths(times, cfg, t_start, t_end):
@@ -919,56 +1001,25 @@ def main(argv=None):
             logging.warning(f"Invalid radon_interval {radon_interval_cfg} -> {e}")
             radon_interval = None
 
-    # Apply optional time window cuts before any baseline or fit operations
-    df_analysis = events_filtered.copy()
-    # Ensure timestamps are timezone-aware for comparisons
-    df_analysis["timestamp"] = pd.to_datetime(
-        df_analysis["timestamp"], unit="s", utc=True
+    (
+        df_analysis,
+        analysis_start,
+        analysis_end,
+        t_end_global_ts,
+        drift_rate,
+        drift_mode,
+        drift_params,
+        t_end_global,
+    ) = prepare_analysis_df(
+        events_filtered,
+        t_spike_end,
+        spike_periods,
+        run_periods,
+        t_end_global,
+        t0_global=t0_global,
+        cfg=cfg,
+        args=args,
     )
-    if t_spike_end is not None:
-        df_analysis = df_analysis[df_analysis["timestamp"] >= t_spike_end].reset_index(drop=True)
-    for start_ts, end_ts in spike_periods:
-        mask = (df_analysis["timestamp"] >= start_ts) & (
-            df_analysis["timestamp"] < end_ts
-        )
-        if mask.any():
-            df_analysis = df_analysis[~mask].reset_index(drop=True)
-    if run_periods:
-        keep_mask = np.zeros(len(df_analysis), dtype=bool)
-        for start_ts, end_ts in run_periods:
-            keep_mask |= (df_analysis["timestamp"] >= start_ts) & (
-                df_analysis["timestamp"] < end_ts
-            )
-        df_analysis = df_analysis[keep_mask].reset_index(drop=True)
-        if t_end_cfg is None and len(df_analysis) > 0:
-            t_end_global = df_analysis["timestamp"].max()
-    if t_end_global is not None:
-        df_analysis = df_analysis[df_analysis["timestamp"] <= t_end_global].reset_index(drop=True)
-    else:
-        t_end_global = df_analysis["timestamp"].max()
-
-    if not isinstance(t_end_global, (int, float)):
-        t_end_global_ts = parse_timestamp(t_end_global)
-    else:
-        t_end_global_ts = float(t_end_global)
-
-    _ensure_events(df_analysis, "time-window selection")
-
-    analysis_start = datetime.fromtimestamp(t0_global, tz=timezone.utc)
-    analysis_end = datetime.fromtimestamp(t_end_global_ts, tz=timezone.utc)
-
-    # Optional ADC drift correction before calibration
-    # Applied once using either the CLI value or the config default.
-    drift_cfg = cfg.get("systematics", {})
-    drift_rate = (
-        float(args.slope)
-        if args.slope is not None
-        else float(drift_cfg.get("adc_drift_rate", 0.0))
-    )
-    drift_mode = "linear" if args.slope is not None else drift_cfg.get(
-        "adc_drift_mode", "linear"
-    )
-    drift_params = drift_cfg.get("adc_drift_params")
 
     if drift_rate != 0.0 or drift_mode != "linear" or drift_params is not None:
         try:
