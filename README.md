@@ -2,7 +2,7 @@
 
 This repository provides a complete pipeline to analyze electrostatic radon monitor data.
 
-**Note:** All time quantities are expressed in seconds and all energies are given in MeV throughout the documentation and code. Input timestamps are parsed with `parse_timestamp` which accepts ISO‑8601 strings (with or without timezone), numeric epoch seconds and `datetime` objects. The wrapper `parse_datetime` converts the parsed value to a UTC `numpy.datetime64`. Command-line options that take timestamps (such as `--analysis-start-time`) use these helpers, so both ISO‑8601 strings and Unix seconds work interchangeably. A global `--timezone` option controls which zone naïve times are interpreted in (default: `UTC`). Event timestamps are stored internally as UTC `numpy.datetime64` objects throughout the pipeline.
+**Note:** All time quantities are expressed in seconds and all energies are given in MeV throughout the documentation and code. Input timestamps are parsed with `parse_timestamp` from `utils.py`.  This helper accepts ISO‑8601 strings (with or without timezone), numeric epoch seconds and `datetime` objects and converts them to Unix seconds. The companion `parse_datetime` function, also provided by `utils.py`, turns the parsed value into a UTC `numpy.datetime64`. Command-line options that take timestamps (such as `--analysis-start-time`) use these helpers, so both ISO‑8601 strings and Unix seconds work interchangeably. A global `--timezone` option controls which zone naïve times are interpreted in (default: `UTC`). Event timestamps are stored internally as UTC `numpy.datetime64` objects throughout the pipeline.
 
 ## Structure
 
@@ -15,7 +15,8 @@ This repository provides a complete pipeline to analyze electrostatic radon moni
 - `systematics.py`: Scan for systematic uncertainties (optional).
 - `plot_utils.py`: Plotting routines for spectrum and time-series.
 - `utils.py`: Miscellaneous utilities (time conversion, JSON validation,
-  count-rate conversions).
+  count-rate conversions). This module also provides the `parse_timestamp`
+  and `parse_datetime` helpers used throughout the documentation.
 - `tests/`: `pytest` unit tests for calibration, fitting, and I/O.
 
 ## Installation
@@ -57,7 +58,8 @@ The input file must be a comma-separated table with these columns:
 - `fBits` – status bits or flags
 - `timestamp` – event timestamp in seconds
   (either numeric Unix seconds or an ISO‑8601 string; parsed with
-  `parse_timestamp` and converted to `numpy.datetime64[ns, UTC]` by `parse_datetime`)
+  `parse_timestamp` from `utils.py` and converted to `numpy.datetime64[ns, UTC]`
+  by `parse_datetime`)
 - `adc` – raw ADC value
 - `fchannel` – acquisition channel
 
@@ -178,8 +180,8 @@ All other time-related fields (`analysis_end_time`, `spike_end_time`,
 `spike_periods`, `run_periods`, `radon_interval` and
 `baseline.range`) likewise accept absolute timestamps in ISO 8601
 format or numeric seconds.  All of these values are parsed with
-`parse_timestamp` (wrapped by `parse_datetime` when a `numpy.datetime64`
-object is required) so the same formats apply everywhere.
+`parse_timestamp` from `utils.py` (wrapped by `parse_datetime` when a
+`numpy.datetime64` object is required) so the same formats apply everywhere.
 
 `analysis_end_time` may be specified to stop processing after the given
 timestamp while `spike_end_time` discards all events before its value.
