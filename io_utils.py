@@ -4,9 +4,7 @@ import shutil
 import json
 import logging
 import warnings
-from datetime import datetime, timezone
-from dateutil import parser as date_parser
-import argparse
+from datetime import datetime
 import pandas as pd
 from constants import load_nuclide_overrides
 
@@ -47,7 +45,9 @@ def extract_time_series_events(events, cfg):
         lo, hi = win
         mask = (events["energy_MeV"] >= lo) & (events["energy_MeV"] <= hi)
         out[iso] = events.loc[mask, "timestamp"].values.astype(float)
+
     return out
+
 
 logger = logging.getLogger(__name__)
 
@@ -263,13 +263,14 @@ def load_config(config_path):
 def load_events(csv_path, *, column_map=None):
     """
     Read event CSV into a DataFrame with columns:
-       ['fUniqueID','fBits','timestamp','adc','fchannel']
+       ['fUniqueID', 'fBits', 'timestamp', 'adc', 'fchannel']
+
     Column aliases like ``time`` or ``adc_ch`` are automatically renamed to
-    their canonical form.  A mapping of canonical column names to the
-    actual CSV headers may be supplied via ``column_map``. The ``timestamp``
-    column is parsed to ``datetime64[ns, UTC]`` while ``adc`` is returned as a
-    floating point number. The DataFrame is sorted by ``timestamp`` before being
-    returned.
+    their canonical form.  A mapping of canonical column names to the actual
+    CSV headers may be supplied via ``column_map``.  Timestamps are parsed to
+    timezone-aware ``datetime64[ns, UTC]`` values and ``adc`` is returned as a
+    floating point number.  The DataFrame is sorted by ``timestamp`` before
+    being returned.
     """
     path = Path(csv_path)
     if not path.is_file():
@@ -354,10 +355,10 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
     ----------
     df : pandas.DataFrame
         Event data containing a ``timestamp`` column. Values may be numeric
-        epoch seconds or ``datetime64`` objects. All timestamps are first
-        converted to ``datetime64`` using :func:`parse_datetime` and the
-        DataFrame is updated accordingly. Seconds are only used internally for
-        histogram calculations.
+        epoch seconds or ``datetime64`` objects.  All timestamps are converted
+        to timezone-aware ``datetime64[ns, UTC]`` values using
+        :func:`parse_datetime` and the DataFrame is updated accordingly.
+        Seconds are only used internally for histogram calculations.
     cfg : dict, optional
         Configuration dictionary. Expected keys under ``burst_filter`` are
         ``burst_window_size_s``, ``rolling_median_window`` and

@@ -84,7 +84,11 @@ def subtract_baseline_dataframe(
     mode: str = "all",
     live_time_analysis: float | None = None,
 ) -> pd.DataFrame:
-    """Return new ``DataFrame`` with baseline-subtracted spectra."""
+    """Return new ``DataFrame`` with baseline-subtracted spectra.
+
+    The returned frame preserves the ``timestamp`` column as
+    ``datetime64[ns, UTC]`` when present in ``df_analysis``.
+    """
 
     assert mode in ("none", "electronics", "radon", "all")
 
