@@ -51,6 +51,8 @@ def to_native(obj):
             return obj.isoformat()
         elif isinstance(obj, (pd.Series, pd.Index)):
             return [to_native(x) for x in obj.tolist()]
+    if isinstance(obj, datetime):
+        return obj.isoformat()
     if isinstance(obj, np.ndarray):
         # Convert array into list of native types
         return [to_native(x) for x in obj.tolist()]

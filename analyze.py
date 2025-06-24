@@ -231,7 +231,10 @@ def prepare_analysis_df(
     """Apply time window cuts and derive drift parameters."""
 
     df_analysis = df.copy()
-    df_analysis["timestamp"] = pd.to_datetime(df_analysis["timestamp"], unit="s", utc=True)
+    if not pd.api.types.is_datetime64_any_dtype(df_analysis["timestamp"]):
+        df_analysis["timestamp"] = pd.to_datetime(
+            df_analysis["timestamp"], unit="s", utc=True
+        )
 
     if spike_end is not None:
         df_analysis = df_analysis[df_analysis["timestamp"] >= spike_end].reset_index(drop=True)
@@ -291,7 +294,12 @@ def prepare_analysis_df(
 
 def _ts_bin_centers_widths(times, cfg, t_start, t_end):
     """Return bin centers and widths matching :func:`plot_time_series`."""
-    times_rel = np.asarray(times, dtype=float) - float(t_start)
+    times_arr = np.asarray(times)
+    if np.issubdtype(times_arr.dtype, "datetime64"):
+        times_sec = times_arr.view("int64") / 1e9
+    else:
+        times_sec = times_arr.astype(float)
+    times_rel = times_sec - float(t_start)
     bin_mode = str(
         cfg.get("plot_time_binning_mode", cfg.get("time_bin_mode", "fixed"))
     ).lower()
@@ -831,9 +839,7 @@ def main(argv=None):
         else:
             events_all["timestamp"] = events_all["timestamp"].dt.tz_convert(tzinfo)
 
-        # 3) Convert to epoch seconds (float)
-        #    astype(int) gives nanoseconds since epoch, so divide by 1e9
-        events_all["timestamp"] = events_all["timestamp"].astype("int64") / 1e9
+        # 3) Keep timezone-aware datetimes for downstream analysis
 
     except Exception as e:
         print(f"ERROR: Could not load events from '{args.input}': {e}")
@@ -843,8 +849,7 @@ def main(argv=None):
         print("No events found in the input CSV. Exiting.")
         sys.exit(0)
 
-    # ``load_events()`` now returns timezone-aware datetimes; convert to epoch
-    # seconds for internal calculations.
+    # ``load_events()`` now returns timezone-aware datetimes for all events.
 
     # ───────────────────────────────────────────────
     # 2a. Pedestal / electronic-noise cut (integer ADC)
@@ -1027,7 +1032,11 @@ def main(argv=None):
 
     if drift_rate != 0.0 or drift_mode != "linear" or drift_params is not None:
         try:
-            ts_seconds = df_analysis["timestamp"].astype("int64").to_numpy() / 1e9
+            ts_col = df_analysis["timestamp"]
+            if pd.api.types.is_datetime64_any_dtype(ts_col):
+                ts_seconds = ts_col.view("int64").to_numpy() / 1e9
+            else:
+                ts_seconds = ts_col.astype(float).to_numpy()
             df_analysis["adc"] = apply_linear_adc_shift(
                 df_analysis["adc"].values,
                 ts_seconds,
@@ -1148,10 +1157,7 @@ def main(argv=None):
             baseline_range[0].isoformat(),
             baseline_range[1].isoformat(),
         )
-        cfg.setdefault("baseline", {})["range"] = [
-            baseline_range[0],
-            baseline_range[1],
-        ]
+        cfg.setdefault("baseline", {})["range"] = [baseline_range[0], baseline_range[1]]
     elif "range" in baseline_cfg:
         try:
             b0, b1 = baseline_cfg.get("range")
@@ -1171,16 +1177,12 @@ def main(argv=None):
     mask_base = None
 
     if baseline_range:
-        t_start_base_sec = baseline_range[0].timestamp()
-        t_end_base_sec = baseline_range[1].timestamp()
-        t_start_base = pd.to_datetime(t_start_base_sec, unit="s", utc=True)
-        t_end_base = pd.to_datetime(t_end_base_sec, unit="s", utc=True)
+        t_start_base = baseline_range[0]
+        t_end_base = baseline_range[1]
         if t_end_base <= t_start_base:
             raise ValueError("baseline_range end time must be greater than start time")
-        events_all_ts = pd.to_datetime(events_all["timestamp"], unit="s", utc=True)
-        mask_base_full = (events_all_ts >= t_start_base) & (
-            events_all_ts < t_end_base
-        )
+        events_all_ts = events_all["timestamp"]
+        mask_base_full = (events_all_ts >= t_start_base) & (events_all_ts < t_end_base)
         mask_base = (df_analysis["timestamp"] >= t_start_base) & (
             df_analysis["timestamp"] < t_end_base
         )
@@ -1198,11 +1200,8 @@ def main(argv=None):
             )
             baseline_live_time = 0.0
         else:
-            baseline_live_time = float((t_end_base - t_start_base) / np.timedelta64(1, "s"))
-        cfg.setdefault("baseline", {})["range"] = [
-            t_start_base.to_pydatetime(),
-            t_end_base.to_pydatetime(),
-        ]
+            baseline_live_time = float((t_end_base - t_start_base).total_seconds())
+        cfg.setdefault("baseline", {})["range"] = [t_start_base, t_end_base]
         baseline_info = {
             "start": t_start_base,
             "end": t_end_base,

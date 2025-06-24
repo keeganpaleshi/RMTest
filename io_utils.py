@@ -46,7 +46,11 @@ def extract_time_series_events(events, cfg):
             continue
         lo, hi = win
         mask = (events["energy_MeV"] >= lo) & (events["energy_MeV"] <= hi)
-        out[iso] = events.loc[mask, "timestamp"].values.astype(float)
+        ts = events.loc[mask, "timestamp"].values
+        if np.issubdtype(ts.dtype, "datetime64"):
+            out[iso] = ts.view("int64") / 1e9
+        else:
+            out[iso] = ts.astype(float)
     return out
 
 logger = logging.getLogger(__name__)
