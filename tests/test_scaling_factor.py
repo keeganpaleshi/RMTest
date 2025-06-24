@@ -22,3 +22,10 @@ def test_scaling_factor_uncertainty():
 def test_scaling_factor_zero_baseline():
     with pytest.raises(ValueError):
         baseline._scaling_factor(1.0, 0.0)
+
+
+def test_compute_dilution_factor():
+    d = baseline.compute_dilution_factor(10.0, 5.0)
+    assert d == pytest.approx(10.0 / 15.0)
+    d_zero = baseline.compute_dilution_factor(0.0, 0.0)
+    assert d_zero == pytest.approx(0.0)

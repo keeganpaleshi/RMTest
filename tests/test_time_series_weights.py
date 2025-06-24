@@ -124,7 +124,7 @@ def test_corrected_sigma_weighting():
     res_std = fit_time_series({"Po214": times}, 0.0, T, cfg, weights={"Po214": np.ones_like(times)})
 
     # Expected uncertainty from baseline subtraction
-    from radon.baseline import subtract_baseline_counts
+    from baseline_utils import subtract_baseline_counts
 
     _, corrected_sigma = subtract_baseline_counts(
         n,

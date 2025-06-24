@@ -3,8 +3,9 @@ import logging
 import pandas as pd
 from utils import parse_datetime
 
-from baseline_utils import _scaling_factor
-__all__ = ["rate_histogram", "subtract_baseline"]
+from baseline_utils import subtract_baseline_dataframe
+
+__all__ = ["rate_histogram", "subtract_baseline", "subtract_baseline_dataframe"]
 
 
 def _seconds(col):
@@ -35,51 +36,14 @@ def rate_histogram(df, bins):
 
 def subtract_baseline(df_analysis, df_full, bins, t_base0, t_base1,
                       mode="all", live_time_analysis=None):
-    """Subtract baseline from ``df_analysis`` and return a new ``DataFrame``.
+    """Wrapper for :func:`baseline_utils.subtract_baseline_dataframe`."""
 
-    Parameters
-    ----------
-    df_analysis : pandas.DataFrame
-        Data to be baseline corrected.
-    df_full : pandas.DataFrame
-        Full dataset used to extract the baseline slice.
-    bins : array-like
-        Histogram bin edges.
-    t_base0, t_base1 : datetime.datetime
-        Start and end of the baseline range (UTC assumed for naive datetimes).
-    mode : {"none", "electronics", "radon", "all"}
-        Type of subtraction to perform.
-    live_time_analysis : float, optional
-        Seconds represented by ``df_analysis``; if ``None`` it is calculated
-        internally.
-    """
-    assert mode in ("none", "electronics", "radon", "all")
-
-    if mode == "none":
-        return df_analysis.copy()
-
-    # analysis spectrum (counts/s)
-    rate_an, live_an = rate_histogram(df_analysis, bins)
-    if live_time_analysis is None:
-        live_time_analysis = live_an
-
-    # baseline slice
-    t0 = parse_datetime(t_base0)
-    t1 = parse_datetime(t_base1)
-    ts_full = _seconds(df_full["timestamp"])
-    mask = (ts_full >= t0) & (ts_full <= t1)
-    if not mask.any():
-        logging.warning("baseline_range matched no events – skipping subtraction")
-        return df_analysis.copy()
-
-    rate_bl, live_bl = rate_histogram(df_full.loc[mask], bins)
-
-    # currently electronics vs radon use same subtraction; future hooks can differ
-    if mode in ("electronics", "radon", "all"):
-        net_counts = (rate_an - rate_bl) * live_time_analysis
-    else:  # mode == "none"
-        net_counts = rate_an * live_time_analysis
-
-    df_out = df_analysis.copy()
-    df_out["subtracted_adc_hist"] = [net_counts] * len(df_out)
-    return df_out
+    return subtract_baseline_dataframe(
+        df_analysis,
+        df_full,
+        bins,
+        t_base0,
+        t_base1,
+        mode=mode,
+        live_time_analysis=live_time_analysis,
+    )

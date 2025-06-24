@@ -10,7 +10,7 @@ import analyze
 import baseline_noise
 from calibration import CalibrationResult
 import baseline
-from radon.baseline import subtract_baseline_counts
+from baseline_utils import subtract_baseline_counts
 from fitting import FitResult
 
 
