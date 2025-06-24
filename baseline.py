@@ -53,11 +53,12 @@ def _scaling_factor(dt_window: float, dt_baseline: float,
 
 def _seconds(col):
     """Return timestamp column as seconds from epoch."""
-    ts = col
-    if not pd.api.types.is_datetime64_any_dtype(ts):
-        ts = ts.map(parse_datetime)
-    ts = pd.to_datetime(ts, utc=True)
-    return ts.view("int64").to_numpy() / 1e9
+    ts = (
+        col.map(parse_timestamp)
+        if not pd.api.types.is_datetime64_any_dtype(col)
+        else col.view("int64") / 1e9
+    )
+    return np.asarray(ts, dtype=float)
 
 
 def rate_histogram(df, bins):
