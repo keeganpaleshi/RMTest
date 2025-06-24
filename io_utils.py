@@ -296,7 +296,7 @@ def load_events(csv_path, *, column_map=None):
 
     df = df.rename(columns=rename, errors="ignore")
 
-    # Parse timestamps directly to ``datetime64`` values
+    # Parse timestamps directly to timezone-aware ``datetime64`` values
     if "timestamp" in df.columns:
         def _safe_parse(val):
             try:
@@ -305,6 +305,7 @@ def load_events(csv_path, *, column_map=None):
                 return pd.NaT
 
         df["timestamp"] = df["timestamp"].map(_safe_parse)
+        df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
 
     # Check required columns after renaming
     required_cols = ["fUniqueID", "fBits", "timestamp", "adc", "fchannel"]
@@ -378,16 +379,17 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
         category=DeprecationWarning,
     )
 
-    if mode == "none" or len(df) == 0:
-        return df.copy(), 0
-
-    removed_total = 0
     out_df = df.copy()
-
     ts = out_df["timestamp"]
     if not pd.api.types.is_datetime64_any_dtype(ts):
         ts = ts.map(parse_datetime)
-        out_df["timestamp"] = ts
+    ts = pd.to_datetime(ts, utc=True)
+    out_df["timestamp"] = ts
+    if mode == "none" or len(out_df) == 0:
+        return out_df, 0
+
+    removed_total = 0
+
     times_sec = ts.view("int64").to_numpy() / 1e9
 
     # ───── micro-burst veto ─────
@@ -427,7 +429,8 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
             ts = out_df["timestamp"]
             if not pd.api.types.is_datetime64_any_dtype(ts):
                 ts = ts.map(parse_datetime)
-                out_df["timestamp"] = ts
+            ts = pd.to_datetime(ts, utc=True)
+            out_df["timestamp"] = ts
             times_sec = ts.view("int64").to_numpy() / 1e9
 
     # ───── rate-based veto ─────

@@ -81,11 +81,9 @@ def test_load_events(tmp_path, caplog):
     df.to_csv(p, index=False)
     with caplog.at_level(logging.INFO):
         loaded = load_events(p)
-    assert loaded["timestamp"].dtype == "datetime64[ns]"
-    expected_ts = np.array(
-        [parse_datetime(t) for t in (1000, 1005, 1010)], dtype="datetime64[ns]"
-    )
-    assert np.array_equal(loaded["timestamp"].values, expected_ts)
+    assert loaded["timestamp"].dtype == "datetime64[ns, UTC]"
+    expected_ts = pd.to_datetime([1000, 1005, 1010], unit="s", utc=True)
+    assert list(loaded["timestamp"]) == list(expected_ts)
     assert np.array_equal(loaded["adc"].values, np.array([1200, 1300, 1250]))
     assert "0 discarded" in caplog.text
 
@@ -105,11 +103,9 @@ def test_load_events_drop_bad_rows(tmp_path, caplog):
     with caplog.at_level(logging.INFO):
         loaded = load_events(p)
     # Expect rows with NaN/inf removed and duplicate dropped
-    assert loaded["timestamp"].dtype == "datetime64[ns]"
-    expected_ts = np.array(
-        [parse_datetime(t) for t in (1000, 1005, 1020)], dtype="datetime64[ns]"
-    )
-    assert np.array_equal(loaded["timestamp"].values, expected_ts)
+    assert loaded["timestamp"].dtype == "datetime64[ns, UTC]"
+    expected_ts = pd.to_datetime([1000, 1005, 1020], unit="s", utc=True)
+    assert list(loaded["timestamp"]) == list(expected_ts)
     assert "3 discarded" in caplog.text
 
 
@@ -126,8 +122,8 @@ def test_load_events_column_aliases(tmp_path):
     p = tmp_path / "alias.csv"
     df.to_csv(p, index=False)
     loaded = load_events(p)
-    assert loaded["timestamp"].dtype == "datetime64[ns]"
-    assert list(loaded["timestamp"])[0] == pd.Timestamp(parse_datetime(1000))
+    assert loaded["timestamp"].dtype == "datetime64[ns, UTC]"
+    assert list(loaded["timestamp"])[0] == pd.Timestamp(1000, unit="s", tz="UTC")
     assert list(loaded["adc"])[0] == 1250
     assert "time" not in loaded.columns
     assert "adc_ch" not in loaded.columns
@@ -153,7 +149,8 @@ def test_load_events_custom_columns(tmp_path):
         "fchannel": "chan",
     }
     loaded = load_events(p, column_map=column_map)
-    assert list(loaded["timestamp"])[0] == pd.Timestamp(parse_datetime(1000))
+    assert loaded["timestamp"].dtype == "datetime64[ns, UTC]"
+    assert list(loaded["timestamp"])[0] == pd.Timestamp(1000, unit="s", tz="UTC")
     assert list(loaded["adc"])[0] == 1250
     assert "ftimestamps" not in loaded.columns
 
@@ -188,7 +185,29 @@ def test_load_events_string_nan(tmp_path):
     df.to_csv(p, index=False)
     loaded = load_events(p)
     assert len(loaded) == 1
-    assert loaded["timestamp"].iloc[0] == pd.Timestamp(parse_datetime(1000))
+    assert loaded["timestamp"].dtype == "datetime64[ns, UTC]"
+    assert loaded["timestamp"].iloc[0] == pd.Timestamp(1000, unit="s", tz="UTC")
+
+
+def test_load_events_timezone_input(tmp_path):
+    df = pd.DataFrame(
+        {
+            "fUniqueID": [1, 2],
+            "fBits": [0, 0],
+            "timestamp": [
+                "1970-01-01T00:00:10Z",
+                "1970-01-01T00:00:20Z",
+            ],
+            "adc": [1200, 1250],
+            "fchannel": [1, 1],
+        }
+    )
+    p = tmp_path / "tz.csv"
+    df.to_csv(p, index=False)
+    loaded = load_events(p)
+    assert loaded["timestamp"].dtype == "datetime64[ns, UTC]"
+    expected = pd.to_datetime(df["timestamp"], utc=True)
+    assert loaded["timestamp"].equals(expected)
 
 
 def test_write_summary_and_copy_config(tmp_path):
@@ -247,6 +266,7 @@ def test_apply_burst_filter_no_removal():
     )
     cfg = {"burst_filter": {"burst_window_size_s": 10, "rolling_median_window": 3, "burst_multiplier": 3}}
     filtered, removed = apply_burst_filter(df, cfg)
+    assert filtered["timestamp"].dtype == "datetime64[ns, UTC]"
     assert len(filtered) == 100
     assert removed == 0
 
@@ -266,6 +286,7 @@ def test_apply_burst_filter_with_burst():
     )
     cfg = {"burst_filter": {"burst_window_size_s": 10, "rolling_median_window": 3, "burst_multiplier": 3}}
     filtered, removed = apply_burst_filter(df, cfg)
+    assert filtered["timestamp"].dtype == "datetime64[ns, UTC]"
     assert removed == 60
     assert len(filtered) == len(times) - 60
 
@@ -290,6 +311,7 @@ def test_apply_burst_filter_mode_none():
         }
     }
     filtered, removed = apply_burst_filter(df, cfg, mode="none")
+    assert filtered["timestamp"].dtype == "datetime64[ns, UTC]"
     assert len(filtered) == len(df)
     assert removed == 0
 
@@ -312,6 +334,7 @@ def test_apply_burst_filter_micro_burst():
         }
     }
     filtered, removed = apply_burst_filter(df, cfg, mode="micro")
+    assert filtered["timestamp"].dtype == "datetime64[ns, UTC]"
     assert removed == 4
     assert len(filtered) == len(times) - 4
 
@@ -342,8 +365,25 @@ def test_apply_burst_filter_histogram_called(monkeypatch):
         return orig_hist(*args, **kwargs)
 
     monkeypatch.setattr(np, "histogram", wrapped)
-    apply_burst_filter(df, cfg, mode="micro")
+    filtered, _ = apply_burst_filter(df, cfg, mode="micro")
+    assert filtered["timestamp"].dtype == "datetime64[ns, UTC]"
     assert calls["n"] == 1
+
+
+def test_apply_burst_filter_timezone_input():
+    df = pd.DataFrame(
+        {
+            "fUniqueID": range(5),
+            "fBits": [0] * 5,
+            "timestamp": pd.date_range("1970-01-01", periods=5, freq="s", tz="US/Eastern"),
+            "adc": [1000] * 5,
+            "fchannel": [1] * 5,
+        }
+    )
+    cfg = {"burst_filter": {"burst_window_size_s": 1, "rolling_median_window": 1, "burst_multiplier": 2}}
+    filtered, removed = apply_burst_filter(df, cfg)
+    assert filtered["timestamp"].dtype == "datetime64[ns, UTC]"
+    assert removed == 0
 
 
 def test_apply_burst_filter_both_matches_sequential():
@@ -376,6 +416,7 @@ def test_apply_burst_filter_both_matches_sequential():
     seq, rem1 = apply_burst_filter(df, cfg, mode="micro")
     seq, rem2 = apply_burst_filter(seq, cfg, mode="rate")
     both, total = apply_burst_filter(df, cfg, mode="both")
+    assert both["timestamp"].dtype == "datetime64[ns, UTC]"
     assert total == rem1 + rem2
     assert both.reset_index(drop=True).equals(seq.reset_index(drop=True))
 
