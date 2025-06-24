@@ -7,6 +7,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
 from fitting import FitResult
+from calibration import CalibrationResult
 
 
 def _write_basic(tmp_path, drift_rate, mode="linear", params=None):
@@ -52,7 +53,13 @@ def test_adc_drift_applied(tmp_path, monkeypatch):
 
     def fake_cal(adc_vals, config=None):
         captured["cal_adc"] = np.array(adc_vals)
-        return {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)}
+        return CalibrationResult(
+            coeffs=[0.0, 1.0],
+            cov=np.zeros((2, 2)),
+            peaks={},
+            sigma_E=1.0,
+            sigma_E_error=0.0,
+        )
 
     monkeypatch.setattr(analyze, "apply_linear_adc_shift", fake_shift)
     monkeypatch.setattr(analyze, "derive_calibration_constants", fake_cal)
@@ -100,7 +107,13 @@ def test_adc_drift_zero_noop(tmp_path, monkeypatch):
 
     def fake_cal(adc_vals, config=None):
         captured["cal_adc"] = np.array(adc_vals)
-        return {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)}
+        return CalibrationResult(
+            coeffs=[0.0, 1.0],
+            cov=np.zeros((2, 2)),
+            peaks={},
+            sigma_E=1.0,
+            sigma_E_error=0.0,
+        )
 
     monkeypatch.setattr(analyze, "apply_linear_adc_shift", fake_shift)
     monkeypatch.setattr(analyze, "derive_calibration_constants", fake_cal)
@@ -148,16 +161,15 @@ def test_adc_drift_quadratic_cfg(tmp_path, monkeypatch):
         return adc
 
     monkeypatch.setattr(analyze, "apply_linear_adc_shift", fake_shift)
-    monkeypatch.setattr(
-        analyze,
-        "derive_calibration_constants",
-        lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)},
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0],
+        cov=np.zeros((2, 2)),
+        peaks={},
+        sigma_E=1.0,
+        sigma_E_error=0.0,
     )
-    monkeypatch.setattr(
-        analyze,
-        "derive_calibration_constants_auto",
-        lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)},
-    )
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
@@ -195,16 +207,15 @@ def test_adc_drift_piecewise_cfg(tmp_path, monkeypatch):
         return adc
 
     monkeypatch.setattr(analyze, "apply_linear_adc_shift", fake_shift)
-    monkeypatch.setattr(
-        analyze,
-        "derive_calibration_constants",
-        lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)},
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0],
+        cov=np.zeros((2, 2)),
+        peaks={},
+        sigma_E=1.0,
+        sigma_E_error=0.0,
     )
-    monkeypatch.setattr(
-        analyze,
-        "derive_calibration_constants_auto",
-        lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)},
-    )
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
@@ -234,7 +245,13 @@ def test_adc_drift_warning_on_failure(tmp_path, monkeypatch, capsys):
         raise ValueError("boom")
 
     def fake_cal(adc_vals, config=None):
-        return {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)}
+        return CalibrationResult(
+            coeffs=[0.0, 1.0],
+            cov=np.zeros((2, 2)),
+            peaks={},
+            sigma_E=1.0,
+            sigma_E_error=0.0,
+        )
 
     monkeypatch.setattr(analyze, "apply_linear_adc_shift", bad_shift)
     monkeypatch.setattr(analyze, "derive_calibration_constants", fake_cal)

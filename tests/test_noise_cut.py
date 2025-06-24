@@ -2,6 +2,7 @@ import json
 import sys
 from pathlib import Path
 import pandas as pd
+from calibration import CalibrationResult
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
@@ -42,9 +43,23 @@ def test_noise_cutoff_cli_overrides(tmp_path, monkeypatch):
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
-    cal_mock = {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0), "peaks": {}}
-    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
-    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0],
+        cov=np.zeros((2, 2)),
+        peaks={},
+        sigma_E=1.0,
+        sigma_E_error=0.0,
+    )
+    monkeypatch.setattr(
+        analyze,
+        "derive_calibration_constants",
+        lambda *a, **k: cal_mock,
+    )
+    monkeypatch.setattr(
+        analyze,
+        "derive_calibration_constants_auto",
+        lambda *a, **k: cal_mock,
+    )
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
