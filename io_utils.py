@@ -202,21 +202,19 @@ def ensure_dir(path):
         p.mkdir(parents=True, exist_ok=True)
 
 
-def parse_datetime(value):
-    """Parse an ISO-8601 string or numeric epoch value to ``numpy.datetime64``.
+def parse_timestamp(value):
+    """Parse an ISO-8601 string, numeric epoch value or ``datetime`` object.
 
-    The function accepts strings like ``"2023-09-28T13:45:00-04:00"`` or
-    numeric Unix timestamps (as ``int``, ``float`` or numeric ``str``).  Any
-    parsed time lacking a timezone is interpreted as UTC.  On success a
-    ``numpy.datetime64`` object in UTC (nanosecond resolution) is returned.
-    ``ValueError`` is raised if the input cannot be parsed.
+    The function returns seconds since the Unix epoch as ``float``. Strings
+    lacking a timezone are interpreted as UTC. ``ValueError`` is raised when
+    the input cannot be parsed.
     """
 
     if isinstance(value, (int, float)):
-        ts = float(value)
-    elif isinstance(value, str):
+        return float(value)
+    if isinstance(value, str):
         try:
-            ts = float(value)
+            return float(value)
         except ValueError:
             try:
                 dt = date_parser.isoparse(value)
@@ -224,15 +222,22 @@ def parse_datetime(value):
                 raise ValueError(f"invalid datetime: {value!r}") from e
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
-            ts = dt.timestamp()
-    elif isinstance(value, datetime):
+            return dt.timestamp()
+    if isinstance(value, datetime):
         dt = value
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
-        ts = dt.timestamp()
-    else:
-        raise ValueError(f"invalid datetime: {value!r}")
+        return dt.timestamp()
+    raise ValueError(f"invalid datetime: {value!r}")
 
+
+def parse_datetime(value):
+    """Return ``numpy.datetime64`` parsed from ``value``.
+
+    This is a thin wrapper around :func:`parse_timestamp` that converts the
+    resulting seconds to a ``datetime64[ns, UTC]`` object.
+    """
+    ts = parse_timestamp(value)
     ns = int(round(ts * 1e9))
     return np.datetime64(ns, "ns")
 
