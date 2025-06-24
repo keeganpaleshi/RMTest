@@ -226,7 +226,6 @@ def prepare_analysis_df(
     float,
     str | None,
     Any,
-    datetime,
 ]:
     """Apply time window cuts and derive drift parameters."""
 
@@ -292,7 +291,6 @@ def prepare_analysis_df(
         drift_rate,
         drift_mode,
         drift_params,
-        analysis_end_dt,
     )
 
 
@@ -1010,7 +1008,6 @@ def main(argv=None):
         drift_rate,
         drift_mode,
         drift_params,
-        t_end_global,
     ) = prepare_analysis_df(
         events_filtered,
         t_spike_end,
@@ -1021,6 +1018,7 @@ def main(argv=None):
         cfg=cfg,
         args=args,
     )
+    t_end_global = analysis_end
 
     if drift_rate != 0.0 or drift_mode != "linear" or drift_params is not None:
         try:
