@@ -1112,19 +1112,36 @@ def main(argv=None):
         from calibration import CalibrationResult
 
         assert isinstance(cal_params, CalibrationResult)
-        coeffs = cal_params.coeffs
-        cov = np.asarray(cal_params.cov, dtype=float)
-        c = coeffs[0]
-        a = coeffs[1]
-        a2 = coeffs[2] if len(coeffs) == 3 else 0.0
-        c_sig = float(np.sqrt(cov[0, 0]))
-        a_sig = float(np.sqrt(cov[1, 1]))
-        a2_sig = float(np.sqrt(cov[2, 2])) if cov.shape[0] == 3 else 0.0
+        idx = {exp: i for i, exp in enumerate(cal_params._exponents)}
+        c = cal_params.coeffs[idx.get(0, 0)] if 0 in idx else 0.0
+        a = cal_params.coeffs[idx.get(1, 0)] if 1 in idx else 0.0
+        a2 = cal_params.coeffs[idx.get(2, 0)] if 2 in idx else 0.0
         sigE_mean = cal_params.sigma_E
         sigE_sigma = cal_params.sigma_E_error
-        cov_ac = float(cov[1, 0])
-        cov_a_a2 = float(cov[1, 2]) if cov.shape[0] == 3 else 0.0
-        cov_a2_c = float(cov[2, 0]) if cov.shape[0] == 3 else 0.0
+        try:
+            c_sig = float(np.sqrt(cal_params.get_cov("c", "c")))
+        except KeyError:
+            c_sig = 0.0
+        try:
+            a_sig = float(np.sqrt(cal_params.get_cov("a", "a")))
+        except KeyError:
+            a_sig = 0.0
+        try:
+            a2_sig = float(np.sqrt(cal_params.get_cov("a2", "a2")))
+        except KeyError:
+            a2_sig = 0.0
+        try:
+            cov_ac = cal_params.get_cov("a", "c")
+        except KeyError:
+            cov_ac = 0.0
+        try:
+            cov_a_a2 = cal_params.get_cov("a", "a2")
+        except KeyError:
+            cov_a_a2 = 0.0
+        try:
+            cov_a2_c = cal_params.get_cov("a2", "c")
+        except KeyError:
+            cov_a2_c = 0.0
 
     # Apply calibration -> new column “energy_MeV” and its uncertainty
     energies = cal_result.predict(df_analysis["adc"])
