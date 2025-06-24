@@ -1010,6 +1010,7 @@ def main(argv=None):
     cov_mat = np.asarray(cal_params.get("ac_covariance", [[0.0, 0.0], [0.0, 0.0]]), dtype=float)
     cov_ac = float(cov_mat[0, 1])
     cov_a_a2 = float(cal_params.get("cov_a_a2", 0.0))
+    cov_a2_c = float(cal_params.get("cov_a2_c", 0.0))
 
     # Apply calibration -> new column “energy_MeV” and its uncertainty
     df_analysis["energy_MeV"] = apply_calibration(df_analysis["adc"], a, c, quadratic_coeff=a2)
@@ -1021,6 +1022,7 @@ def main(argv=None):
         + c_sig ** 2
         + 2 * adc_vals * cov_ac
         + 2 * adc_vals ** 3 * cov_a_a2
+        + 2 * adc_vals ** 2 * cov_a2_c
     )
     df_analysis["denergy_MeV"] = np.sqrt(np.clip(var_energy, 0, None))
 
@@ -1075,6 +1077,7 @@ def main(argv=None):
                 + c_sig ** 2
                 + 2 * adc_b * cov_ac
                 + 2 * adc_b ** 3 * cov_a_a2
+                + 2 * adc_b ** 2 * cov_a2_c
             )
             base_events["denergy_MeV"] = np.sqrt(np.clip(var_base, 0, None))
         else:

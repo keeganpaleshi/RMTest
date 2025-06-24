@@ -205,6 +205,7 @@ def test_energy_uncertainty_clipping():
     c_sig = 0.02
     cov_ac = -0.1
     cov_a_a2 = -0.05
+    cov_a2_c = -0.02
 
     var_energy = (
         (events["adc"] * a_sig) ** 2
@@ -212,6 +213,7 @@ def test_energy_uncertainty_clipping():
         + c_sig ** 2
         + 2 * events["adc"] * cov_ac
         + 2 * events["adc"] ** 3 * cov_a_a2
+        + 2 * events["adc"] ** 2 * cov_a2_c
     )
     assert var_energy.iloc[0] < 0
 
