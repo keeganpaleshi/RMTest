@@ -112,6 +112,8 @@ def subtract_baseline_dataframe(
 
     df_out = df_analysis.copy()
     df_out["subtracted_adc_hist"] = [net_counts] * len(df_out)
+    if "timestamp" in df_out.columns:
+        df_out["timestamp"] = pd.to_datetime(df_out["timestamp"], utc=True)
     return df_out
 
 

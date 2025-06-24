@@ -34,5 +34,23 @@ def test_subtract_baseline_datetime_column():
         mode="all",
     )
     integral = out["subtracted_adc_hist"].iloc[0].sum()
+    assert out["timestamp"].dtype == "datetime64[ns, UTC]"
     assert integral == pytest.approx(0.0, rel=1e-6)
+
+
+def test_subtract_baseline_seconds_input():
+    df_an = pd.DataFrame({"timestamp": np.arange(5), "adc": [1, 2, 3, 4, 5]})
+    ts_bl = np.linspace(100, 140, 50)
+    df_bl = pd.DataFrame({"timestamp": ts_bl, "adc": np.tile([1, 2, 3, 4, 5], 10)})
+    df_full = pd.concat([df_an, df_bl], ignore_index=True)
+    bins = np.arange(0, 7)
+    out = baseline.subtract_baseline(
+        df_an,
+        df_full,
+        bins=bins,
+        t_base0=pd.Timestamp(100, unit="s", tz="UTC"),
+        t_base1=pd.Timestamp(140, unit="s", tz="UTC"),
+        mode="all",
+    )
+    assert out["timestamp"].dtype == "datetime64[ns, UTC]"
 
