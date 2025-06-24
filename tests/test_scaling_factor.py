@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import baseline
+import baseline_utils as baseline
 
 
 def test_scaling_factor_basic():
