@@ -240,6 +240,19 @@ ambient concentration in Bq/L.  These values are linearly interpolated
 to the radon-activity timestamps and override any constant value when
 calling `plot_equivalent_air`.
 
+### Event Filtering
+
+The new `EventFilter` class centralises noise cuts, burst removal and
+period selection:
+
+```python
+from event_filter import EventFilter
+events, baseline = EventFilter(cfg).apply(events)
+```
+
+Command-line options still override configuration values, but the
+filtering logic is now centralised in this helper.
+
 `burst_filter` controls removal of short high-rate clusters.  The
 `burst_mode` key selects the default strategy which can be overridden by
 the command-line option `--burst-mode`.  `none` disables the filter,
