@@ -11,6 +11,7 @@ import baseline_noise
 import baseline
 from radon.baseline import subtract_baseline_counts
 from fitting import FitResult
+from calibration import CalibrationResult
 
 
 def test_simple_baseline_subtraction(tmp_path, monkeypatch):
@@ -43,7 +44,9 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
-    cal_mock = {"a": (1.0,0.0), "c": (0.0,0.0), "sigma_E": (1.0,0.0), "peaks": {"Po210": {"centroid_adc": 10}}}
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={"Po210": {"centroid_adc": 10}}
+    )
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
     captured = {}
@@ -134,7 +137,9 @@ def test_baseline_scaling_factor(tmp_path, monkeypatch):
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
-    cal_mock = {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0), "peaks": {"Po210": {"centroid_adc": 10}}}
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={"Po210": {"centroid_adc": 10}}
+    )
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({"E_Po214": 1.0}, np.zeros((1,1)), 0))
@@ -216,7 +221,9 @@ def test_n0_prior_from_baseline(tmp_path, monkeypatch):
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
-    cal_mock = {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0), "peaks": {"Po210": {"centroid_adc": 10}}}
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={"Po210": {"centroid_adc": 10}}
+    )
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
 
@@ -300,7 +307,9 @@ def test_isotopes_to_subtract_control(tmp_path, monkeypatch):
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
-    cal_mock = {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0), "peaks": {"Po210": {"centroid_adc": 10}}}
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={"Po210": {"centroid_adc": 10}}
+    )
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({"E_Po214": 1.0}, np.zeros((1,1)), 0))
@@ -380,12 +389,9 @@ def test_baseline_scaling_multiple_isotopes(tmp_path, monkeypatch):
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
-    cal_mock = {
-        "a": (1.0, 0.0),
-        "c": (0.0, 0.0),
-        "sigma_E": (1.0, 0.0),
-        "peaks": {"Po210": {"centroid_adc": 10}},
-    }
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={"Po210": {"centroid_adc": 10}}
+    )
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
 
@@ -494,7 +500,9 @@ def test_noise_level_none_not_recorded(tmp_path, monkeypatch):
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
-    cal_mock = {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0), "peaks": {"Po210": {"centroid_adc": 10}}}
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={"Po210": {"centroid_adc": 10}}
+    )
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({"E_Po214": 1.0}, np.zeros((1,1)), 0))
@@ -559,7 +567,9 @@ def test_sigma_rate_uses_weighted_counts(tmp_path, monkeypatch):
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
-    cal_mock = {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0), "peaks": {"Po210": {"centroid_adc": 10}}}
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={"Po210": {"centroid_adc": 10}}
+    )
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({"E_Po214": 1.0}, np.zeros((1,1)), 0))
