@@ -11,7 +11,7 @@ import baseline_noise
 from calibration import CalibrationResult
 import baseline
 from radon.baseline import subtract_baseline_counts
-from fitting import FitResult
+from fitting import FitResult, FitParams
 
 
 def test_simple_baseline_subtraction(tmp_path, monkeypatch):
@@ -57,7 +57,7 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
 
     def fake_fit_time_series(times_dict, t_start, t_end, cfg, **kwargs):
         captured["times"] = times_dict.get("Po214")
-        return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
+        return FitResult(FitParams({"E_Po214": 1.0}), np.zeros((1, 1)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit_time_series)
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
@@ -150,7 +150,7 @@ def test_baseline_scaling_factor(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({"E_Po214": 1.0}, np.zeros((1,1)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({"E_Po214": 1.0}), np.zeros((1,1)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
@@ -242,7 +242,7 @@ def test_n0_prior_from_baseline(tmp_path, monkeypatch):
     captured = {}
 
     def fake_fit_time_series(times_dict, t_start, t_end, cfg, **kwargs):
-        return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
+        return FitResult(FitParams({"E_Po214": 1.0}), np.zeros((1, 1)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit_time_series)
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
@@ -328,7 +328,7 @@ def test_isotopes_to_subtract_control(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({"E_Po214": 1.0}, np.zeros((1,1)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({"E_Po214": 1.0}), np.zeros((1,1)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
@@ -529,7 +529,7 @@ def test_noise_level_none_not_recorded(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({"E_Po214": 1.0}, np.zeros((1,1)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({"E_Po214": 1.0}), np.zeros((1,1)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
@@ -600,7 +600,7 @@ def test_sigma_rate_uses_weighted_counts(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({"E_Po214": 1.0}, np.zeros((1,1)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({"E_Po214": 1.0}), np.zeros((1,1)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())

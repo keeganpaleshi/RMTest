@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from background import estimate_linear_background
 import analyze
 from calibration import CalibrationResult
-from fitting import FitResult
+from fitting import FitResult, FitParams
 
 
 def generate_spectrum():
@@ -89,7 +89,7 @@ def test_auto_background_priors(monkeypatch, tmp_path):
 
     def fake_fit_spectrum(energies, priors, **kw):
         captured.update(priors)
-        return FitResult({}, np.zeros((0, 0)), 0)
+        return FitResult(FitParams({}), np.zeros((0, 0)), 0)
 
     monkeypatch.setattr(analyze, "fit_spectrum", fake_fit_spectrum)
     cal_mock = CalibrationResult(
@@ -107,7 +107,7 @@ def test_auto_background_priors(monkeypatch, tmp_path):
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "write_summary", lambda *a, **k: str(tmp_path))
     monkeypatch.setattr(analyze, "copy_config", lambda *a, **k: None)
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
 
     args = [
         "analyze.py",

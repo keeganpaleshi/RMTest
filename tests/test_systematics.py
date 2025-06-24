@@ -9,7 +9,7 @@ import json
 import pandas as pd
 import analyze
 from calibration import CalibrationResult
-from fitting import FitResult
+from fitting import FitResult, FitParams
 from systematics import scan_systematics, apply_linear_adc_shift
 
 
@@ -164,7 +164,7 @@ def test_analyze_systematics_skip_unknown(tmp_path, monkeypatch):
     monkeypatch.setattr(
         analyze,
         "fit_time_series",
-        lambda *a, **k: FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0),
+        lambda *a, **k: FitResult(FitParams({"E_Po214": 1.0}), np.zeros((1, 1)), 0),
     )
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
