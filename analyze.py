@@ -996,10 +996,8 @@ def main(argv=None):
             if end_r_dt <= start_r_dt:
                 raise ValueError("end <= start")
             radon_interval = (start_r_dt, end_r_dt)
-            cfg.setdefault("analysis", {})["radon_interval"] = [
-                parse_timestamp(start_r_dt),
-                parse_timestamp(end_r_dt),
-            ]
+            radon_interval_cfg = [start_r_dt.isoformat(), end_r_dt.isoformat()]
+            cfg.setdefault("analysis", {})["radon_interval"] = radon_interval_cfg
         except Exception as e:
             logging.warning(f"Invalid radon_interval {radon_interval_cfg} -> {e}")
             radon_interval = None
@@ -1090,7 +1088,7 @@ def main(argv=None):
 
         return CalibrationResult(
             coeffs=coeffs,
-            covariance=cov,
+            cov=cov,
             sigma_E=obj.get("sigma_E", (0.0, 0.0))[0],
             sigma_E_error=obj.get("sigma_E", (0.0, 0.0))[1],
             peaks=obj.get("peaks"),

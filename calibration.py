@@ -13,7 +13,7 @@ from constants import (
 )
 
 
-@dataclass
+@dataclass(init=False)
 class CalibrationResult:
     """Polynomial calibration coefficients and covariance."""
 
@@ -22,6 +22,27 @@ class CalibrationResult:
     peaks: dict | None = None
     sigma_E: float = 0.0
     sigma_E_error: float = 0.0
+
+    def __init__(
+        self,
+        coeffs,
+        cov=None,
+        *,
+        covariance=None,
+        peaks=None,
+        sigma_E=0.0,
+        sigma_E_error=0.0,
+    ):
+        if cov is None:
+            cov = covariance
+        elif covariance is not None:
+            raise TypeError("Specify at most one of cov or covariance")
+        self.coeffs = coeffs
+        self.cov = cov
+        self.peaks = peaks
+        self.sigma_E = sigma_E
+        self.sigma_E_error = sigma_E_error
+        self.__post_init__()
 
     def __post_init__(self):
         if isinstance(self.coeffs, Mapping):
