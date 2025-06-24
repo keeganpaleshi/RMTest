@@ -953,7 +953,6 @@ def main(argv=None):
     if spike_periods_cfg is None:
         spike_periods_cfg = []
     spike_periods = []
-    spike_iso = []
     for period in spike_periods_cfg:
         try:
             start, end = period
@@ -961,20 +960,17 @@ def main(argv=None):
             end_ts = pd.to_datetime(parse_datetime(end), utc=True)
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
-            spike_periods.append((start_ts, end_ts))
-            spike_iso.append((start_ts, end_ts))
+            spike_periods.append([start_ts, end_ts])
         except Exception as e:
             logging.warning(f"Invalid spike_period {period} -> {e}")
     if spike_periods:
-        cfg.setdefault("analysis", {})["spike_periods"] = [
-            [s.isoformat(), e.isoformat()] for s, e in spike_iso
-        ]
+        cfg.setdefault("analysis", {})["spike_periods"] = spike_periods
+        spike_periods_cfg = spike_periods
 
     run_periods_cfg = cfg.get("analysis", {}).get("run_periods", [])
     if run_periods_cfg is None:
         run_periods_cfg = []
     run_periods = []
-    run_iso = []
     for period in run_periods_cfg:
         try:
             start, end = period
@@ -982,14 +978,12 @@ def main(argv=None):
             end_ts = pd.to_datetime(parse_datetime(end), utc=True)
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
-            run_periods.append((start_ts, end_ts))
-            run_iso.append((start_ts, end_ts))
+            run_periods.append([start_ts, end_ts])
         except Exception as e:
             logging.warning(f"Invalid run_period {period} -> {e}")
     if run_periods:
-        cfg.setdefault("analysis", {})["run_periods"] = [
-            [s.isoformat(), e.isoformat()] for s, e in run_iso
-        ]
+        cfg.setdefault("analysis", {})["run_periods"] = run_periods
+        run_periods_cfg = run_periods
 
     radon_interval_cfg = cfg.get("analysis", {}).get("radon_interval")
     radon_interval = None
@@ -1000,12 +994,9 @@ def main(argv=None):
             end_r_dt = pd.to_datetime(parse_datetime(end_r), utc=True)
             if end_r_dt <= start_r_dt:
                 raise ValueError("end <= start")
-            radon_interval = (start_r_dt, end_r_dt)
-            radon_interval_cfg = [
-                start_r_dt.isoformat(),
-                end_r_dt.isoformat(),
-            ]
-            cfg.setdefault("analysis", {})["radon_interval"] = radon_interval_cfg
+            radon_interval = [start_r_dt, end_r_dt]
+            cfg.setdefault("analysis", {})["radon_interval"] = radon_interval
+            radon_interval_cfg = radon_interval
         except Exception as e:
             logging.warning(f"Invalid radon_interval {radon_interval_cfg} -> {e}")
             radon_interval = None
