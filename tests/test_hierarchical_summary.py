@@ -7,7 +7,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
 from calibration import CalibrationResult
-from fitting import FitResult
+from fitting import FitResult, FitParams
 import numpy as np
 
 
@@ -54,7 +54,7 @@ def test_hierarchical_summary(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, None, 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), None, 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())

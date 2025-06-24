@@ -9,7 +9,7 @@ import logging
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
 from calibration import CalibrationResult
-from fitting import FitResult
+from fitting import FitResult, FitParams
 
 
 def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
@@ -52,9 +52,29 @@ def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
     df.to_csv(data_path, index=False)
 
     # Patch heavy functions with no-op versions
-    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(
+        analyze,
+        "derive_calibration_constants",
+        lambda *a, **k: CalibrationResult(
+            coeffs=[0.0, 1.0],
+            cov=np.zeros((2, 2)),
+            peaks={},
+            sigma_E=1.0,
+            sigma_E_error=0.0,
+        ),
+    )
+    monkeypatch.setattr(
+        analyze,
+        "derive_calibration_constants_auto",
+        lambda *a, **k: CalibrationResult(
+            coeffs=[0.0, 1.0],
+            cov=np.zeros((2, 2)),
+            peaks={},
+            sigma_E=1.0,
+            sigma_E_error=0.0,
+        ),
+    )
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
 
     received = {}
@@ -126,7 +146,7 @@ def test_analysis_start_time_applied(tmp_path, monkeypatch):
 
     def fake_fit_time_series(times_dict, t_start, t_end, config, **kwargs):
         captured["t_start"] = t_start
-        return FitResult({}, np.zeros((0, 0)), 0)
+        return FitResult(FitParams({}), np.zeros((0, 0)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit_time_series)
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
@@ -188,7 +208,7 @@ def test_job_id_overrides_results_folder(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "apply_burst_filter", lambda df, cfg, mode="rate": (df, 0))
@@ -252,7 +272,7 @@ def test_efficiency_json_cli(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
 
@@ -309,7 +329,7 @@ def test_systematics_json_cli(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
 
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({"E":0.0}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({"E":0.0}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
@@ -364,7 +384,7 @@ def test_time_bin_cli(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
 
     captured = {}
@@ -470,7 +490,7 @@ def test_po210_time_series_plot_generated(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
 
     outputs = []
@@ -519,7 +539,7 @@ def test_spike_count_cli(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
 
@@ -586,7 +606,7 @@ def test_spike_count_single_call(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
 
@@ -645,7 +665,7 @@ def test_assay_efficiency_list(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
@@ -726,7 +746,7 @@ def test_spike_efficiency_list(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
@@ -803,7 +823,7 @@ def test_debug_flag_sets_log_level(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
 
@@ -868,7 +888,7 @@ def test_settle_s_cli(tmp_path, monkeypatch):
 
     def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
         captured["times"] = ts_dict["Po214"].tolist()
-        return FitResult({}, np.zeros((0, 0)), 0)
+        return FitResult(FitParams({}), np.zeros((0, 0)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
@@ -908,7 +928,7 @@ def test_settle_s_summary(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
@@ -980,7 +1000,7 @@ def test_analysis_end_time_cli(tmp_path, monkeypatch):
 
     def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
         captured["times"] = ts_dict["Po214"].tolist()
-        return FitResult({}, np.zeros((0, 0)), 0)
+        return FitResult(FitParams({}), np.zeros((0, 0)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
@@ -1039,7 +1059,7 @@ def test_analysis_start_time_cli(tmp_path, monkeypatch):
 
     def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
         captured["t_start"] = t_start
-        return FitResult({}, np.zeros((0, 0)), 0)
+        return FitResult(FitParams({}), np.zeros((0, 0)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
@@ -1098,7 +1118,7 @@ def test_spike_end_time_cli(tmp_path, monkeypatch):
 
     def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
         captured["times"] = ts_dict["Po214"].tolist()
-        return FitResult({}, np.zeros((0, 0)), 0)
+        return FitResult(FitParams({}), np.zeros((0, 0)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
@@ -1157,7 +1177,7 @@ def test_spike_period_cli(tmp_path, monkeypatch):
 
     def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
         captured["times"] = ts_dict["Po214"].tolist()
-        return FitResult({}, np.zeros((0, 0)), 0)
+        return FitResult(FitParams({}), np.zeros((0, 0)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
@@ -1219,7 +1239,7 @@ def test_seed_cli_sets_random_seed(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
@@ -1272,7 +1292,7 @@ def test_ambient_concentration_recorded(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
@@ -1332,7 +1352,7 @@ def test_ambient_concentration_from_config(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
@@ -1398,7 +1418,7 @@ def test_ambient_file_interpolation(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
@@ -1479,7 +1499,7 @@ def test_burst_mode_from_config(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "apply_burst_filter", fake_burst)
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
@@ -1527,7 +1547,7 @@ def test_burst_mode_micro_config(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "apply_burst_filter", fake_burst)
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
@@ -1575,7 +1595,7 @@ def test_burst_mode_cli_overrides(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "apply_burst_filter", fake_burst)
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
@@ -1618,7 +1638,7 @@ def test_burst_mode_summary_config(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "apply_burst_filter", lambda df, cfg, mode="rate": (df, 0))
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
@@ -1696,7 +1716,7 @@ def test_burst_filter_auto_disabled(tmp_path, monkeypatch):
         lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0),
     )
     monkeypatch.setattr(
-        analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0, 0)), 0)
+        analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0, 0)), 0)
     )
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
@@ -1737,7 +1757,7 @@ def test_ambient_concentration_default_none(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
@@ -1789,7 +1809,7 @@ def test_ambient_concentration_written_to_summary_file(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
@@ -1854,7 +1874,7 @@ def test_spike_periods_null_config(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
 
@@ -1922,7 +1942,7 @@ def test_hl_po214_cli_overrides(tmp_path, monkeypatch):
     def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
         iso = list(ts_dict.keys())[0]
         calls.append((iso, config))
-        return FitResult({}, np.zeros((0, 0)), 0)
+        return FitResult(FitParams({}), np.zeros((0, 0)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
@@ -1979,7 +1999,7 @@ def test_hl_po210_default_used(tmp_path, monkeypatch):
         return None
 
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0, 0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0, 0)), 0))
     monkeypatch.setattr(analyze, "plot_time_series", fake_plot_time_series)
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
@@ -2048,7 +2068,7 @@ def test_time_fields_written_back(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0, 0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0, 0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())

@@ -5,6 +5,7 @@
 import logging
 import warnings
 from dataclasses import dataclass
+from typing import TypedDict, NotRequired
 
 import numpy as np
 from iminuit import Minuit
@@ -16,12 +17,65 @@ from constants import _TAU_MIN, CURVE_FIT_MAX_EVALS, safe_exp as _safe_exp
 __all__ = ["fit_time_series", "fit_decay", "fit_spectrum"]
 
 
+class FitParams(TypedDict, total=False):
+    """Typed mapping of fit parameter names to values."""
+
+    # Time-series parameters
+    E_Po214: NotRequired[float]
+    dE_Po214: NotRequired[float]
+    B_Po214: NotRequired[float]
+    dB_Po214: NotRequired[float]
+    N0_Po214: NotRequired[float]
+    dN0_Po214: NotRequired[float]
+
+    E_Po218: NotRequired[float]
+    dE_Po218: NotRequired[float]
+    B_Po218: NotRequired[float]
+    dB_Po218: NotRequired[float]
+    N0_Po218: NotRequired[float]
+    dN0_Po218: NotRequired[float]
+
+    E_corrected: NotRequired[float]
+    dE_corrected: NotRequired[float]
+
+    cov_E_Po214_N0_Po214: NotRequired[float]
+    fit_valid: NotRequired[bool]
+
+    # Spectrum parameters
+    sigma0: NotRequired[float]
+    dsigma0: NotRequired[float]
+    F: NotRequired[float]
+    dF: NotRequired[float]
+    mu_Po210: NotRequired[float]
+    dmu_Po210: NotRequired[float]
+    S_Po210: NotRequired[float]
+    dS_Po210: NotRequired[float]
+    mu_Po218: NotRequired[float]
+    dmu_Po218: NotRequired[float]
+    S_Po218: NotRequired[float]
+    dS_Po218: NotRequired[float]
+    tau_Po218: NotRequired[float]
+    dtau_Po218: NotRequired[float]
+    mu_Po214: NotRequired[float]
+    dmu_Po214: NotRequired[float]
+    S_Po214: NotRequired[float]
+    dS_Po214: NotRequired[float]
+    tau_Po214: NotRequired[float]
+    dtau_Po214: NotRequired[float]
+    tau_Po210: NotRequired[float]
+    dtau_Po210: NotRequired[float]
+    b0: NotRequired[float]
+    db0: NotRequired[float]
+    b1: NotRequired[float]
+    db1: NotRequired[float]
+
 @dataclass
 class FitResult:
     """Container for fit output."""
 
     params: dict[str, float]
     cov: np.ndarray | None
+
     ndf: int
     param_index: dict[str, int] | None = None
 

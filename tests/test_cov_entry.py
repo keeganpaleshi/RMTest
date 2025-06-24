@@ -4,7 +4,10 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from fitting import FitResult
+
+import analyze
+from fitting import FitResult, FitParams
+
 
 
 def test_cov_entry_valid_params():

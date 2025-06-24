@@ -9,7 +9,7 @@ import analyze
 import radon_activity
 import numpy as np
 from calibration import CalibrationResult
-from fitting import FitResult
+from fitting import FitResult, FitParams
 
 
 def test_total_radon_uses_sample_volume(tmp_path, monkeypatch):
@@ -46,7 +46,7 @@ def test_total_radon_uses_sample_volume(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())

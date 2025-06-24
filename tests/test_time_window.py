@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from fitting import FitResult
+from fitting import FitResult, FitParams
 
 import analyze
 import baseline_noise
@@ -61,7 +61,7 @@ def test_time_window_filters_events(tmp_path, monkeypatch):
 
     def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
         captured["times"] = ts_dict.get("Po214", []).tolist()
-        return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
+        return FitResult(FitParams({"E_Po214": 1.0}), np.zeros((1, 1)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
@@ -201,7 +201,7 @@ def test_time_window_filters_events_config(tmp_path, monkeypatch):
 
     def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
         captured["times"] = ts_dict.get("Po214", []).tolist()
-        return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
+        return FitResult(FitParams({"E_Po214": 1.0}), np.zeros((1, 1)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
@@ -281,7 +281,7 @@ def test_run_period_filters_events(tmp_path, monkeypatch):
 
     def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
         captured["times"] = ts_dict.get("Po214", []).tolist()
-        return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
+        return FitResult(FitParams({"E_Po214": 1.0}), np.zeros((1, 1)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
@@ -369,7 +369,7 @@ def test_baseline_range_iso_strings(tmp_path, monkeypatch, start, end):
 
     def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
         captured["times"] = ts_dict.get("Po214", []).tolist()
-        return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
+        return FitResult(FitParams({"E_Po214": 1.0}), np.zeros((1, 1)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
@@ -453,7 +453,7 @@ def test_unified_filter_combined_windows(tmp_path, monkeypatch):
 
     def fake_fit(ts_dict, t_start, t_end, cfg, **kwargs):
         captured["times"] = ts_dict.get("Po214", []).tolist()
-        return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
+        return FitResult(FitParams({"E_Po214": 1.0}), np.zeros((1, 1)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 

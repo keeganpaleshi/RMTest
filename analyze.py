@@ -56,7 +56,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
-from typing import Any
+from typing import Any, Mapping
 
 import math
 import numpy as np
@@ -80,7 +80,7 @@ from calibration import (
     apply_calibration,
 )
 
-from fitting import fit_spectrum, fit_time_series, FitResult
+from fitting import fit_spectrum, fit_time_series, FitResult, FitParams
 
 from constants import (
     DEFAULT_NOISE_CUTOFF,
@@ -110,12 +110,12 @@ from baseline import subtract_baseline
 from radon.baseline import subtract_baseline_counts, subtract_baseline_rate
 
 
-def _fit_params(obj):
-    """Return fit parameters dictionary from either a FitResult or mapping."""
+def _fit_params(obj: FitResult | Mapping[str, float] | None) -> FitParams:
+    """Return fit parameters mapping from a ``FitResult`` or dictionary."""
     if isinstance(obj, FitResult):
         return obj.params
-    if isinstance(obj, dict):
-        return obj
+    if isinstance(obj, Mapping):
+        return obj  # type: ignore[return-value]
     return {}
 
 
