@@ -27,6 +27,7 @@ def test_baseline_none():
     hist_before, _ = baseline.rate_histogram(df, bins)
     hist_after, _ = baseline.rate_histogram(out, bins)
     assert np.allclose(hist_before, hist_after)
+    assert out["timestamp"].dtype == "datetime64[ns, UTC]"
 
 
 def test_baseline_time_norm():
@@ -50,6 +51,7 @@ def test_baseline_time_norm():
     )
     integral = out["subtracted_adc_hist"].iloc[0].sum()
     assert integral == pytest.approx(0.0, rel=1e-6)
+    assert out["timestamp"].dtype == "datetime64[ns, UTC]"
 
 
 def test_baseline_none_datetime():
@@ -69,6 +71,7 @@ def test_baseline_none_datetime():
     hist_before, _ = baseline.rate_histogram(df, bins)
     hist_after, _ = baseline.rate_histogram(out, bins)
     assert np.allclose(hist_before, hist_after)
+    assert out["timestamp"].dtype == "datetime64[ns, UTC]"
 
 
 def test_baseline_time_norm_datetime():
@@ -92,4 +95,5 @@ def test_baseline_time_norm_datetime():
     )
     integral = out["subtracted_adc_hist"].iloc[0].sum()
     assert integral == pytest.approx(0.0, rel=1e-6)
+    assert out["timestamp"].dtype == "datetime64[ns, UTC]"
 
