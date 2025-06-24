@@ -16,6 +16,7 @@ __all__ = [
     "cps_to_cpd",
     "cps_to_bq",
     "parse_time_arg",
+    "to_utc_datetime",
     "parse_timestamp",
     "parse_time",
     "LITERS_PER_M3",
@@ -49,6 +50,10 @@ def to_native(obj):
             return obj.isoformat()
         elif isinstance(obj, (pd.Series, pd.Index)):
             return [to_native(x) for x in obj.tolist()]
+    if isinstance(obj, datetime):
+        if obj.tzinfo is None:
+            obj = obj.replace(tzinfo=timezone.utc)
+        return obj.isoformat()
     if isinstance(obj, np.ndarray):
         # Convert array into list of native types
         return [to_native(x) for x in obj.tolist()]
@@ -271,6 +276,11 @@ def parse_time_arg(val, tz="UTC") -> datetime:
 
     ``tz`` specifies the timezone for naïve inputs.
     """
+    return to_utc_datetime(val, tz=tz)
+
+
+def to_utc_datetime(val, tz="UTC") -> datetime:
+    """Return ``val`` parsed as a timezone-aware UTC ``datetime``."""
 
     ts = parse_time(val, tz=tz)
     return datetime.fromtimestamp(ts, tz=timezone.utc)
