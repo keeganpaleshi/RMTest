@@ -11,7 +11,7 @@ import pandas as pd
 from constants import load_nuclide_overrides
 
 import numpy as np
-from utils import to_native, parse_timestamp
+from utils import to_native, parse_timestamp, parse_datetime
 import jsonschema
 
 
@@ -203,22 +203,8 @@ def ensure_dir(path):
         p.mkdir(parents=True, exist_ok=True)
 
 
-def parse_datetime(value):
-    """Parse an ISO-8601 string or numeric epoch value to ``numpy.datetime64``.
-
-    The function accepts strings like ``"2023-09-28T13:45:00-04:00"`` or
-    numeric Unix timestamps (as ``int``, ``float`` or numeric ``str``).  Any
-    parsed time lacking a timezone is interpreted as UTC.  On success a
-    ``numpy.datetime64`` object in UTC (nanosecond resolution) is returned.
-    ``ValueError`` is raised if the input cannot be parsed.
-    """
-
-    try:
-        ts = parse_timestamp(value)
-    except argparse.ArgumentTypeError as e:
-        raise ValueError(f"invalid datetime: {value!r}") from e
-
-    return pd.to_datetime(ts, unit="s", utc=True).to_datetime64()
+# parse_datetime is re-exported from utils for backward compatibility
+# The implementation now lives in utils.parse_datetime
 
 
 def _merge_dicts(base: dict, override: dict) -> dict:
