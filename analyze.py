@@ -957,8 +957,8 @@ def main(argv=None):
     for period in spike_periods_cfg:
         try:
             start, end = period
-            start_ts = pd.to_datetime(parse_datetime(start), utc=True)
-            end_ts = pd.to_datetime(parse_datetime(end), utc=True)
+            start_ts = to_utc_datetime(start)
+            end_ts = to_utc_datetime(end)
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
             spike_periods.append([start_ts, end_ts])
@@ -975,8 +975,8 @@ def main(argv=None):
     for period in run_periods_cfg:
         try:
             start, end = period
-            start_ts = pd.to_datetime(parse_datetime(start), utc=True)
-            end_ts = pd.to_datetime(parse_datetime(end), utc=True)
+            start_ts = to_utc_datetime(start)
+            end_ts = to_utc_datetime(end)
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
             run_periods.append([start_ts, end_ts])
@@ -991,8 +991,8 @@ def main(argv=None):
     if radon_interval_cfg:
         try:
             start_r, end_r = radon_interval_cfg
-            start_r_dt = pd.to_datetime(parse_datetime(start_r), utc=True)
-            end_r_dt = pd.to_datetime(parse_datetime(end_r), utc=True)
+            start_r_dt = to_utc_datetime(start_r)
+            end_r_dt = to_utc_datetime(end_r)
             if end_r_dt <= start_r_dt:
                 raise ValueError("end <= start")
             radon_interval = [start_r_dt, end_r_dt]
@@ -1156,8 +1156,8 @@ def main(argv=None):
     elif "range" in baseline_cfg:
         try:
             b0, b1 = baseline_cfg.get("range")
-            start_dt = pd.to_datetime(parse_datetime(b0), utc=True).to_pydatetime()
-            end_dt = pd.to_datetime(parse_datetime(b1), utc=True).to_pydatetime()
+            start_dt = to_utc_datetime(b0)
+            end_dt = to_utc_datetime(b1)
             baseline_range = (start_dt, end_dt)
             baseline_cfg["range"] = [start_dt, end_dt]
         except Exception as e:
