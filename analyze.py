@@ -1116,15 +1116,26 @@ def main(argv=None):
     baseline_range = None
     if args.baseline_range:
         _log_override("baseline", "range", args.baseline_range)
-        t0_epoch = args.baseline_range[0].timestamp()
-        t1_epoch = args.baseline_range[1].timestamp()
+        baseline_range = (args.baseline_range[0], args.baseline_range[1])
         logging.info(
-            f"Baseline window (epoch seconds): {t0_epoch} \u2192 {t1_epoch}"
+            "Baseline window: %s \u2192 %s",
+            baseline_range[0].isoformat(),
+            baseline_range[1].isoformat(),
         )
-        cfg.setdefault("baseline", {})["range"] = [t0_epoch, t1_epoch]
-        baseline_range = [t0_epoch, t1_epoch]
+        cfg.setdefault("baseline", {})["range"] = [
+            baseline_range[0].isoformat(),
+            baseline_range[1].isoformat(),
+        ]
     elif "range" in baseline_cfg:
-        baseline_range = baseline_cfg.get("range")
+        try:
+            b0, b1 = baseline_cfg.get("range")
+            start_dt = pd.to_datetime(parse_datetime(b0), utc=True)
+            end_dt = pd.to_datetime(parse_datetime(b1), utc=True)
+            baseline_range = (start_dt, end_dt)
+        except Exception as e:
+            logging.warning(
+                "Invalid baseline.range %r -> %s", baseline_cfg.get("range"), e
+            )
 
     monitor_vol = float(baseline_cfg.get("monitor_volume_l", 605.0))
     sample_vol = float(baseline_cfg.get("sample_volume_l", 0.0))
@@ -1133,8 +1144,8 @@ def main(argv=None):
     mask_base = None
 
     if baseline_range:
-        t_start_base_sec = parse_timestamp(baseline_range[0])
-        t_end_base_sec = parse_timestamp(baseline_range[1])
+        t_start_base_sec = baseline_range[0].timestamp()
+        t_end_base_sec = baseline_range[1].timestamp()
         t_start_base = pd.to_datetime(t_start_base_sec, unit="s", utc=True)
         t_end_base = pd.to_datetime(t_end_base_sec, unit="s", utc=True)
         if t_end_base <= t_start_base:
@@ -1173,8 +1184,8 @@ def main(argv=None):
         else:
             baseline_live_time = float((t_end_base - t_start_base) / np.timedelta64(1, "s"))
         cfg.setdefault("baseline", {})["range"] = [
-            parse_timestamp(t_start_base),
-            parse_timestamp(t_end_base),
+            t_start_base.isoformat(),
+            t_end_base.isoformat(),
         ]
         baseline_info = {
             "start": t_start_base,
