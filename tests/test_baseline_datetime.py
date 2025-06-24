@@ -13,7 +13,7 @@ def test_rate_histogram_datetime_column():
     ts = pd.date_range("1970-01-01", periods=5, freq="s", tz="UTC")
     df = pd.DataFrame({"timestamp": ts, "adc": np.arange(5)})
     bins = np.arange(0, 7)
-    rate, live = baseline.compute_rate_histogram(df, bins)
+    rate, live = baseline.rate_histogram(df, bins)
     assert live == pytest.approx(4.0)
     assert np.allclose(rate, np.histogram(df["adc"], bins=bins)[0] / live)
     assert df["timestamp"].dtype == "datetime64[ns, UTC]"
@@ -26,7 +26,7 @@ def test_subtract_baseline_datetime_column():
     df_bl = pd.DataFrame({"timestamp": ts_bl, "adc": np.tile([1,2,3,4,5],10)})
     df_full = pd.concat([df_an, df_bl], ignore_index=True)
     bins = np.arange(0, 7)
-    out = baseline.subtract_baseline_df(
+    out = baseline.subtract_baseline(
         df_an,
         df_full,
         bins=bins,
