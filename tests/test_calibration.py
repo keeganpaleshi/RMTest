@@ -218,3 +218,63 @@ def test_energy_uncertainty_clipping():
     events["denergy_MeV"] = np.sqrt(np.clip(var_energy, 0, None))
 
     assert np.isfinite(events["denergy_MeV"]).all()
+
+
+def test_calibrationresult_uncertainty_linear():
+    """CalibrationResult.uncertainty should match analytic propagation."""
+    from calibration import CalibrationResult
+
+    calib = CalibrationResult(
+        slope=2.0,
+        intercept=1.0,
+        slope_uncertainty=0.1,
+        intercept_uncertainty=0.2,
+    )
+
+    adc = np.array([5.0])
+    expected = np.sqrt((adc * 0.1) ** 2 + 0.2 ** 2)
+
+    assert np.allclose(calib.uncertainty(adc), expected)
+
+
+def test_calibrationresult_uncertainty_quadratic():
+    """Quadratic coefficient and covariance should propagate correctly."""
+    from calibration import CalibrationResult
+
+    calib = CalibrationResult(
+        slope=1.0,
+        intercept=0.5,
+        quadratic=0.05,
+        slope_uncertainty=0.1,
+        intercept_uncertainty=0.1,
+        quadratic_uncertainty=0.02,
+        cov_a_a2=0.005,
+    )
+
+    adc = 2.0
+    var = (
+        (adc * 0.1) ** 2
+        + (adc ** 2 * 0.02) ** 2
+        + 0.1 ** 2
+        + 2 * adc * 0.0
+        + 2 * adc ** 3 * 0.005
+    )
+    expected = np.sqrt(var)
+
+    assert np.allclose(calib.uncertainty(adc), expected)
+
+
+def test_calibrationresult_uncertainty_negative_covariance():
+    """Non-positive covariance should not yield NaN uncertainties."""
+    from calibration import CalibrationResult
+
+    calib = CalibrationResult(
+        slope=1.0,
+        intercept=0.0,
+        slope_uncertainty=0.001,
+        intercept_uncertainty=0.02,
+        cov_ac=-0.5,
+    )
+
+    sigma = calib.uncertainty([1.0])
+    assert np.isfinite(sigma).all()
