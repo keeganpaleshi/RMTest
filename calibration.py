@@ -13,15 +13,35 @@ from constants import (
 )
 
 
-@dataclass
+@dataclass(init=False)
 class CalibrationResult:
-    """Polynomial calibration coefficients and covariance."""
+    """Polynomial calibration coefficients and covariance.
+
+    The ``cov`` argument may also be provided as ``covariance`` for backward
+    compatibility. Only one of the two may be given.
+    """
 
     coeffs: Sequence[float] | Mapping[int, float]
     cov: np.ndarray
     peaks: dict | None = None
     sigma_E: float = 0.0
     sigma_E_error: float = 0.0
+
+    def __init__(self, *, coeffs, cov=None, peaks=None,
+                 sigma_E=0.0, sigma_E_error=0.0, covariance=None):
+        if covariance is not None:
+            if cov is not None:
+                raise TypeError("Specify either 'cov' or 'covariance', not both")
+            cov = covariance
+
+        self.coeffs = coeffs
+        if cov is None:
+            raise TypeError("Missing required argument 'cov'")
+        self.cov = cov
+        self.peaks = peaks
+        self.sigma_E = sigma_E
+        self.sigma_E_error = sigma_E_error
+        self.__post_init__()
 
     def __post_init__(self):
         if isinstance(self.coeffs, Mapping):
