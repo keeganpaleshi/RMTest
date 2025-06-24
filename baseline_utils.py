@@ -48,16 +48,23 @@ def compute_dilution_factor(monitor_volume: float, sample_volume: float) -> floa
     return float(monitor_volume) / float(total)
 
 
-def _seconds(col: pd.Series) -> np.ndarray:
-    """Return timestamp column as ``numpy.datetime64`` values."""
+def _to_datetime64(col: pd.Series) -> np.ndarray:
+    """Return timestamp column as an array of ``datetime64[ns, UTC]``."""
 
     if pd.api.types.is_datetime64_any_dtype(col):
         ser = col
-        if getattr(ser.dtype, "tz", None) is not None:
-            ser = ser.dt.tz_convert("UTC").dt.tz_localize(None)
-        ts = ser.astype("datetime64[ns]").to_numpy()
+        if getattr(ser.dtype, "tz", None) is None:
+            ser = ser.dt.tz_localize("UTC")
+        else:
+            ser = ser.dt.tz_convert("UTC")
+        ts = ser.astype("datetime64[ns, UTC]").array
     else:
-        ts = col.map(parse_datetime).astype("datetime64[ns]").to_numpy()
+        ts = (
+            col.map(parse_datetime)
+            .pipe(pd.to_datetime, utc=True)
+            .astype("datetime64[ns, UTC]")
+            .array
+        )
     return np.asarray(ts)
 
 
@@ -66,7 +73,7 @@ def _rate_histogram(df: pd.DataFrame, bins) -> tuple[np.ndarray, float]:
 
     if df.empty:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
-    ts = _seconds(df["timestamp"])
+    ts = _to_datetime64(df["timestamp"])
     live = float((ts[-1] - ts[0]) / np.timedelta64(1, "s"))
     hist_src = df.get("subtracted_adc_hist", df["adc"]).to_numpy()
     hist, _ = np.histogram(hist_src, bins=bins)
@@ -95,9 +102,9 @@ def subtract_baseline_dataframe(
     if live_time_analysis is None:
         live_time_analysis = live_an
 
-    t0 = parse_datetime(t_base0)
-    t1 = parse_datetime(t_base1)
-    ts_full = _seconds(df_full["timestamp"])
+    t0 = pd.Timestamp(parse_datetime(t_base0)).tz_localize("UTC")
+    t1 = pd.Timestamp(parse_datetime(t_base1)).tz_localize("UTC")
+    ts_full = _to_datetime64(df_full["timestamp"])
     mask = (ts_full >= t0) & (ts_full <= t1)
     if not mask.any():
         logging.warning("baseline_range matched no events – skipping subtraction")
