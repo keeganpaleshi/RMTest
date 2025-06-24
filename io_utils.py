@@ -312,6 +312,7 @@ def load_events(csv_path, *, column_map=None):
 
     # Parse timestamps (epoch seconds) into timezone-aware datetimes
     if "timestamp" in df.columns:
+        df["timestamp"] = df["timestamp"].map(parse_timestamp)
         df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s", utc=True, errors="coerce")
 
     # Check required columns after renaming
