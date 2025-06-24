@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import analyze
 from fitting import FitResult
 
 
@@ -24,9 +23,9 @@ def test_cov_entry_valid_params():
         ]
     )
     fr = FitResult(params, cov, 0)
-    assert analyze._cov_entry(fr, "A", "B") == pytest.approx(0.1)
-    assert analyze._cov_entry(fr, "C", "A") == pytest.approx(0.2)
-    assert analyze._cov_entry(fr, "B", "C") == pytest.approx(0.3)
+    assert fr.get_cov("A", "B") == pytest.approx(0.1)
+    assert fr.get_cov("C", "A") == pytest.approx(0.2)
+    assert fr.get_cov("B", "C") == pytest.approx(0.3)
 
 
 def test_cov_entry_missing_params():
@@ -36,11 +35,11 @@ def test_cov_entry_missing_params():
 
     # One missing
     with pytest.raises(KeyError):
-        analyze._cov_entry(fr, "A", "C")
+        fr.get_cov("A", "C")
 
     # Both missing should still raise
     with pytest.raises(KeyError):
-        analyze._cov_entry(fr, "C", "D")
+        fr.get_cov("C", "D")
 
     fr_none = FitResult(params, None, 0)
-    assert analyze._cov_entry(fr_none, "A", "B") == 0.0
+    assert fr_none.get_cov("A", "B") == 0.0
