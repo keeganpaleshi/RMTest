@@ -231,7 +231,7 @@ def prepare_analysis_df(
     """Apply time window cuts and derive drift parameters."""
 
     df_analysis = df.copy()
-    df_analysis["timestamp"] = pd.to_datetime(df_analysis["timestamp"], unit="s", utc=True)
+    df_analysis["timestamp"] = pd.to_datetime(df_analysis["timestamp"], utc=True)
 
     if spike_end is not None:
         df_analysis = df_analysis[df_analysis["timestamp"] >= spike_end].reset_index(drop=True)
@@ -835,9 +835,7 @@ def main(argv=None):
         else:
             events_all["timestamp"] = events_all["timestamp"].dt.tz_convert(tzinfo)
 
-        # 3) Convert to epoch seconds (float)
-        #    astype(int) gives nanoseconds since epoch, so divide by 1e9
-        events_all["timestamp"] = events_all["timestamp"].astype("int64") / 1e9
+        # Events now carry timezone-aware datetimes for further processing
 
     except Exception as e:
         print(f"ERROR: Could not load events from '{args.input}': {e}")
@@ -847,8 +845,8 @@ def main(argv=None):
         print("No events found in the input CSV. Exiting.")
         sys.exit(0)
 
-    # ``load_events()`` now returns timezone-aware datetimes; convert to epoch
-    # seconds for internal calculations.
+    # ``load_events()`` now returns timezone-aware datetimes which are used
+    # directly in the subsequent analysis stages.
 
     # ───────────────────────────────────────────────
     # 2a. Pedestal / electronic-noise cut (integer ADC)
@@ -1175,13 +1173,11 @@ def main(argv=None):
     mask_base = None
 
     if baseline_range:
-        t_start_base_sec = baseline_range[0].timestamp()
-        t_end_base_sec = baseline_range[1].timestamp()
-        t_start_base = pd.to_datetime(t_start_base_sec, unit="s", utc=True)
-        t_end_base = pd.to_datetime(t_end_base_sec, unit="s", utc=True)
+        t_start_base = pd.to_datetime(baseline_range[0], utc=True)
+        t_end_base = pd.to_datetime(baseline_range[1], utc=True)
         if t_end_base <= t_start_base:
             raise ValueError("baseline_range end time must be greater than start time")
-        events_all_ts = pd.to_datetime(events_all["timestamp"], unit="s", utc=True)
+        events_all_ts = pd.to_datetime(events_all["timestamp"], utc=True)
         mask_base_full = (events_all_ts >= t_start_base) & (
             events_all_ts < t_end_base
         )
