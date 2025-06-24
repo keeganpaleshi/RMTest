@@ -86,7 +86,7 @@ The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--j
 - `summary.json` – calibration and fit summary.
 - `config_used.json` – copy of the configuration used.
   Any timestamps overridden on the command line are written
-  back to this file in Unix seconds.
+  back to this file as ISO timestamps.
 - `spectrum.png` – spectrum plot with fitted peaks.
 - `time_series_Po214.png` and `time_series_Po218.png` – decay time-series plots.
 - `time_series_Po210.png` when `window_po210` is set.

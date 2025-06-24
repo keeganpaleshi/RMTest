@@ -97,6 +97,6 @@ def test_cli_baseline_range_empty(tmp_path, monkeypatch):
     assert summary.get("baseline", {}).get("n_events") == 0
     assert summary.get("baseline", {}).get("live_time") == 0.0
     assert captured.get("cfg", {}).get("baseline", {}).get("range") == [
-        "1970-01-01T00:00:10+00:00",
-        "1970-01-01T00:00:20+00:00",
+        exp_start,
+        exp_end,
     ]
