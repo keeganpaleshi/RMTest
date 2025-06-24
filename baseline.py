@@ -1,8 +1,7 @@
 import numpy as np
 import logging
 import pandas as pd
-from utils import parse_timestamp
-from io_utils import parse_datetime
+from utils import parse_timestamp, parse_datetime
 
 __all__ = ["rate_histogram", "subtract_baseline"]
 

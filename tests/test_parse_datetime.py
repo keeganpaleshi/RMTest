@@ -5,7 +5,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from io_utils import parse_datetime
+from utils import parse_datetime
 
 
 def test_parse_datetime_iso_string():

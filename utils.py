@@ -17,6 +17,7 @@ __all__ = [
     "cps_to_bq",
     "parse_time_arg",
     "parse_timestamp",
+    "parse_datetime",
     "parse_time",
     "LITERS_PER_M3",
 ]
@@ -215,6 +216,30 @@ def parse_timestamp(s) -> float:
     raise argparse.ArgumentTypeError(f"could not parse time: {s!r}")
 
 
+
+def parse_datetime(value):
+    """Parse an ISO-8601 string or numeric epoch value to ``numpy.datetime64``.
+
+    The function accepts strings like ``"2023-09-28T13:45:00-04:00"`` or
+    numeric Unix timestamps (as ``int``, ``float`` or numeric ``str``). Any
+    parsed time lacking a timezone is interpreted as UTC. On success a
+    ``numpy.datetime64`` object in UTC (nanosecond resolution) is returned.
+    ``ValueError`` is raised if the input cannot be parsed.
+    """
+
+    try:
+        ts = parse_timestamp(value)
+    except argparse.ArgumentTypeError as e:
+        raise ValueError(f"invalid datetime: {value!r}") from e
+
+    if pd is None:
+        raise RuntimeError("pandas is required for parse_datetime")
+
+    return pd.to_datetime(ts, unit="s", utc=True).to_datetime64()
+
+
+def parse_time(s, tz="UTC") -> float:
+    """Parse a timestamp string, number, or ``datetime`` into Unix epoch seconds."""
 def parse_time(s) -> float:
     """Parse a timestamp string, number or ``datetime`` into Unix epoch seconds.
 
