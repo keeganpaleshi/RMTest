@@ -1,7 +1,7 @@
 import numpy as np
 import logging
 import pandas as pd
-from utils import parse_timestamp, parse_datetime
+from utils import parse_datetime
 
 __all__ = ["rate_histogram", "subtract_baseline"]
 
@@ -52,13 +52,16 @@ def _scaling_factor(dt_window: float, dt_baseline: float,
 
 
 def _seconds(col):
-    """Return timestamp column as seconds from epoch."""
-    ts = (
-        col.map(parse_timestamp)
-        if not pd.api.types.is_datetime64_any_dtype(col)
-        else col.view("int64") / 1e9
-    )
-    return np.asarray(ts, dtype=float)
+    """Return timestamp column as ``numpy.datetime64`` values."""
+
+    if pd.api.types.is_datetime64_any_dtype(col):
+        ser = col
+        if getattr(ser.dtype, "tz", None) is not None:
+            ser = ser.dt.tz_convert("UTC").dt.tz_localize(None)
+        ts = ser.astype("datetime64[ns]").to_numpy()
+    else:
+        ts = col.map(parse_datetime).astype("datetime64[ns]").to_numpy()
+    return np.asarray(ts)
 
 
 def rate_histogram(df, bins):
@@ -66,7 +69,7 @@ def rate_histogram(df, bins):
     if df.empty:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
     ts = _seconds(df["timestamp"])
-    live = float(ts[-1] - ts[0])
+    live = float((ts[-1] - ts[0]) / np.timedelta64(1, "s"))
     hist_src = df.get("subtracted_adc_hist", df["adc"]).to_numpy()
     hist, _ = np.histogram(hist_src, bins=bins)
     if live <= 0:
@@ -105,8 +108,8 @@ def subtract_baseline(df_analysis, df_full, bins, t_base0, t_base1,
         live_time_analysis = live_an
 
     # baseline slice
-    t0 = parse_timestamp(t_base0)
-    t1 = parse_timestamp(t_base1)
+    t0 = parse_datetime(t_base0)
+    t1 = parse_datetime(t_base1)
     ts_full = _seconds(df_full["timestamp"])
     mask = (ts_full >= t0) & (ts_full <= t1)
     if not mask.any():
