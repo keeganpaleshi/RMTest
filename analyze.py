@@ -101,7 +101,7 @@ from visualize import cov_heatmap, efficiency_bar
 from utils import (
     find_adc_bin_peaks,
     adc_hist_edges,
-    parse_time,
+    parse_timestamp,
     parse_time_arg,
 )
 from io_utils import parse_datetime
@@ -823,7 +823,7 @@ def main(argv=None):
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
     if t0_cfg is not None:
         try:
-            t0_global = parse_time(t0_cfg)
+            t0_global = parse_timestamp(t0_cfg)
             cfg.setdefault("analysis", {})["analysis_start_time"] = t0_global
         except Exception:
             logging.warning(
@@ -834,14 +834,14 @@ def main(argv=None):
         t0_global = events_filtered["timestamp"].min()
 
     if not isinstance(t0_global, (int, float)):
-        t0_global = parse_time(t0_global)
+        t0_global = parse_timestamp(t0_global)
 
     t_end_cfg = cfg.get("analysis", {}).get("analysis_end_time")
     t_end_global = None
     if t_end_cfg is not None:
         try:
             t_end_global = pd.to_datetime(parse_datetime(t_end_cfg), utc=True)
-            cfg.setdefault("analysis", {})["analysis_end_time"] = parse_time(t_end_global)
+            cfg.setdefault("analysis", {})["analysis_end_time"] = parse_timestamp(t_end_global)
         except Exception:
             logging.warning(
                 f"Invalid analysis_end_time '{t_end_cfg}' - using last event"
@@ -853,7 +853,7 @@ def main(argv=None):
     if spike_end_cfg is not None:
         try:
             t_spike_end = pd.to_datetime(parse_datetime(spike_end_cfg), utc=True)
-            cfg.setdefault("analysis", {})["spike_end_time"] = parse_time(t_spike_end)
+            cfg.setdefault("analysis", {})["spike_end_time"] = parse_timestamp(t_spike_end)
         except Exception:
             logging.warning(f"Invalid spike_end_time '{spike_end_cfg}' - ignoring")
             t_spike_end = None
@@ -874,7 +874,7 @@ def main(argv=None):
             logging.warning(f"Invalid spike_period {period} -> {e}")
     if spike_periods:
         cfg.setdefault("analysis", {})["spike_periods"] = [
-            [parse_time(s), parse_time(e)] for s, e in spike_periods
+            [parse_timestamp(s), parse_timestamp(e)] for s, e in spike_periods
         ]
 
     run_periods_cfg = cfg.get("analysis", {}).get("run_periods", [])
@@ -893,7 +893,7 @@ def main(argv=None):
             logging.warning(f"Invalid run_period {period} -> {e}")
     if run_periods:
         cfg.setdefault("analysis", {})["run_periods"] = [
-            [parse_time(s), parse_time(e)] for s, e in run_periods
+            [parse_timestamp(s), parse_timestamp(e)] for s, e in run_periods
         ]
 
     radon_interval_cfg = cfg.get("analysis", {}).get("radon_interval")
@@ -901,8 +901,8 @@ def main(argv=None):
     if radon_interval_cfg:
         try:
             start_r, end_r = radon_interval_cfg
-            start_r_ts = parse_time(start_r)
-            end_r_ts = parse_time(end_r)
+            start_r_ts = parse_timestamp(start_r)
+            end_r_ts = parse_timestamp(end_r)
             if end_r_ts <= start_r_ts:
                 raise ValueError("end <= start")
             radon_interval = (start_r_ts, end_r_ts)
@@ -940,7 +940,7 @@ def main(argv=None):
         t_end_global = df_analysis["timestamp"].max()
 
     if not isinstance(t_end_global, (int, float)):
-        t_end_global_ts = parse_time(t_end_global)
+        t_end_global_ts = parse_timestamp(t_end_global)
     else:
         t_end_global_ts = float(t_end_global)
 
@@ -1091,12 +1091,12 @@ def main(argv=None):
         else:
             baseline_live_time = float((t_end_base - t_start_base) / np.timedelta64(1, "s"))
         cfg.setdefault("baseline", {})["range"] = [
-            parse_time(t_start_base),
-            parse_time(t_end_base),
+            parse_timestamp(t_start_base),
+            parse_timestamp(t_end_base),
         ]
         baseline_info = {
-            "start": parse_time(t_start_base),
-            "end": parse_time(t_end_base),
+            "start": parse_timestamp(t_start_base),
+            "end": parse_timestamp(t_end_base),
             "n_events": len(base_events),
             "live_time": baseline_live_time,
         }

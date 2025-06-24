@@ -16,6 +16,7 @@ __all__ = [
     "cps_to_cpd",
     "cps_to_bq",
     "parse_time_arg",
+    "parse_timestamp",
     "parse_time",
     "LITERS_PER_M3",
 ]
@@ -175,6 +176,45 @@ def cps_to_bq(rate_cps, volume_liters=None):
     return float(rate_cps) / volume_m3
 
 
+def parse_timestamp(s) -> float:
+    """Parse an ISO-8601 string, numeric seconds, or ``datetime``.
+
+    Any string without timezone information is interpreted as UTC.
+    The return value is the Unix epoch time in seconds (UTC).
+    """
+
+    if isinstance(s, (int, float)):
+        return float(s)
+
+    if isinstance(s, datetime):
+        dt = s
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return float(dt.timestamp())
+
+    if isinstance(s, str):
+        try:
+            return float(s)
+        except ValueError:
+            pass
+
+        try:
+            dt = date_parser.isoparse(s)
+        except (ValueError, OverflowError) as e:
+            raise argparse.ArgumentTypeError(f"could not parse time: {s!r}") from e
+
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+
+        return float(dt.timestamp())
+
+    raise argparse.ArgumentTypeError(f"could not parse time: {s!r}")
+
+
 def parse_time(s, tz="UTC") -> float:
     """Parse a timestamp string, number, or ``datetime`` into Unix epoch seconds.
 
@@ -190,6 +230,9 @@ def parse_time(s, tz="UTC") -> float:
     tzinfo_obj = tz if isinstance(tz, tzinfo) else gettz(tz)
     if tzinfo_obj is None:
         tzinfo_obj = timezone.utc
+
+    if tzinfo_obj.tzname(None) == "UTC":
+        return parse_timestamp(s)
 
     if isinstance(s, (int, float)):
         return float(s)
