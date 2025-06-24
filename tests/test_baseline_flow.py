@@ -8,6 +8,7 @@ import analyze
 import baseline_noise
 import numpy as np
 from calibration import CalibrationResult
+from dataclasses import asdict
 
 
 def test_baseline_event_from_unfiltered_data(tmp_path, monkeypatch):
@@ -54,7 +55,7 @@ def test_baseline_event_from_unfiltered_data(tmp_path, monkeypatch):
     captured = {}
 
     def fake_write(out_dir, summary, timestamp=None):
-        captured["summary"] = summary
+        captured["summary"] = asdict(summary)
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
         return str(d)

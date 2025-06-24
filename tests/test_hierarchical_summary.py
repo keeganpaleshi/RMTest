@@ -9,6 +9,7 @@ import analyze
 from calibration import CalibrationResult
 from fitting import FitResult
 import numpy as np
+from dataclasses import asdict
 
 
 def test_hierarchical_summary(tmp_path, monkeypatch):

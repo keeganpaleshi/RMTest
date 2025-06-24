@@ -10,6 +10,7 @@ import radon_activity
 import numpy as np
 from calibration import CalibrationResult
 from fitting import FitResult
+from dataclasses import asdict
 
 
 def test_total_radon_uses_sample_volume(tmp_path, monkeypatch):
@@ -57,7 +58,7 @@ def test_total_radon_uses_sample_volume(tmp_path, monkeypatch):
     captured = {}
 
     def fake_write(out_dir, summary, timestamp=None):
-        captured["summary"] = summary
+        captured["summary"] = asdict(summary)
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
         return str(d)

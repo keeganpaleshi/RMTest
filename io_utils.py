@@ -463,8 +463,12 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
     return out_df, removed_total
 
 
-def write_summary(output_dir, summary_dict, timestamp=None):
-    """Write ``summary_dict`` to ``summary.json`` and return the results folder."""
+def write_summary(output_dir, summary, timestamp=None):
+    """Write ``summary`` to ``summary.json`` and return the results folder.
+
+    ``summary`` may be a plain dictionary or an instance of
+    :class:`summary_types.Summary`.
+    """
 
     output_path = Path(output_dir)
 
@@ -480,7 +484,7 @@ def write_summary(output_dir, summary_dict, timestamp=None):
 
     summary_path = results_folder / "summary.json"
 
-    sanitized = to_native(summary_dict)
+    sanitized = to_native(summary)
 
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(sanitized, f, indent=4)
