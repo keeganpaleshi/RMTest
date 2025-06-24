@@ -303,6 +303,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
         var_a2, var_a, var_c = np.diag(cov_coeff)
         cov_a_a2 = cov_coeff[1, 0]
         cov_ac = cov_coeff[1, 2]
+        cov_a2_c = cov_coeff[0, 2]
     else:
         delta = adc214 - adc210
         var_a = (a / delta) ** 2 * (mu_err_210 ** 2 + mu_err_214 ** 2)
@@ -313,6 +314,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
         cov_ac = (a ** 2 / delta ** 2) * (adc214 * mu_err_210 ** 2 + adc210 * mu_err_214 ** 2)
         var_a2 = 0.0
         cov_a_a2 = 0.0
+        cov_a2_c = 0.0
 
     # 8) Convert σADC -> σE (MeV) using local derivative at the Po-214 peak.
     slope_local = 2 * a2 * adc214 + a
@@ -335,6 +337,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
         "ac_covariance": [[float(var_a), float(cov_ac)], [float(cov_ac), float(var_c)]],
         "a2_variance": float(var_a2),
         "cov_a_a2": float(cov_a_a2),
+        "cov_a2_c": float(cov_a2_c),
         "peaks": peak_fits,
     }
     return calib_dict
@@ -356,6 +359,7 @@ def derive_calibration_constants(adc_values, config):
         "peaks": res.get("peaks", {}),
         "ac_covariance": cov.tolist(),
         "cov_a_a2": float(res.get("cov_a_a2", 0.0)),
+        "cov_a2_c": float(res.get("cov_a2_c", 0.0)),
     }
     return out
 
@@ -429,6 +433,7 @@ def derive_calibration_constants_auto(
         "peaks": res.get("peaks", {}),
         "ac_covariance": cov.tolist(),
         "cov_a_a2": float(res.get("cov_a_a2", 0.0)),
+        "cov_a2_c": float(res.get("cov_a2_c", 0.0)),
     }
     return out
 
