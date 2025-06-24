@@ -1218,12 +1218,13 @@ def main(argv=None):
             )
             baseline_live_time = 0.0
         else:
+
             baseline_live_time = float(
                 (t_end_base - t_start_base) / np.timedelta64(1, "s")
             )
         cfg.setdefault("baseline", {})["range"] = [
-            t_start_base.to_pydatetime(),
-            t_end_base.to_pydatetime(),
+            t_start_base,
+            t_end_base,
         ]
         baseline_info = {
             "start": t_start_base,
