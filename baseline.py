@@ -1,32 +1,26 @@
 import numpy as np
 import logging
 import pandas as pd
-from utils import parse_datetime
 
 from baseline_utils import subtract_baseline_dataframe
 
 __all__ = ["rate_histogram", "subtract_baseline", "subtract_baseline_dataframe"]
 
 
-def _seconds(col):
-    """Return timestamp column as ``numpy.datetime64`` values."""
+def _to_datetime64(col):
+    """Return timestamp column as ``datetime64[ns, UTC]`` values."""
 
-    if pd.api.types.is_datetime64_any_dtype(col):
-        ser = col
-        if getattr(ser.dtype, "tz", None) is not None:
-            ser = ser.dt.tz_convert("UTC").dt.tz_localize(None)
-        ts = ser.astype("datetime64[ns]").to_numpy()
-    else:
-        ts = col.map(parse_datetime).astype("datetime64[ns]").to_numpy()
-    return np.asarray(ts)
+    return pd.to_datetime(col, utc=True)
 
 
 def rate_histogram(df, bins):
     """Return (histogram in counts/s, live_time_s)."""
     if df.empty:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
-    ts = _seconds(df["timestamp"])
-    live = float((ts[-1] - ts[0]) / np.timedelta64(1, "s"))
+    ts = _to_datetime64(df["timestamp"])
+    t_start = ts.iloc[0] if hasattr(ts, "iloc") else ts[0]
+    t_end = ts.iloc[-1] if hasattr(ts, "iloc") else ts[-1]
+    live = float((t_end - t_start).total_seconds())
     hist_src = df.get("subtracted_adc_hist", df["adc"]).to_numpy()
     hist, _ = np.histogram(hist_src, bins=bins)
     if live <= 0:
