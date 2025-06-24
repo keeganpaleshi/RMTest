@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from baseline import _scaling_factor
+from baseline_utils import _scaling_factor
 
 __all__ = ["subtract_baseline_counts", "subtract_baseline_rate"]
 
