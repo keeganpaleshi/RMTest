@@ -102,7 +102,6 @@ from visualize import cov_heatmap, efficiency_bar
 from utils import (
     find_adc_bin_peaks,
     adc_hist_edges,
-    parse_timestamp,
     parse_time_arg,
     to_utc_datetime,
 )
@@ -216,7 +215,7 @@ def prepare_analysis_df(
     run_periods: list[tuple[pd.Timestamp, pd.Timestamp]],
     analysis_end: pd.Timestamp | int | float | None,
     *,
-    t0_global: float,
+    t0_global: datetime,
     cfg: dict,
     args,
 ) -> tuple[
@@ -227,7 +226,7 @@ def prepare_analysis_df(
     float,
     str | None,
     Any,
-    pd.Timestamp | int | float | None,
+    datetime,
 ]:
     """Apply time window cuts and derive drift parameters."""
 
@@ -257,15 +256,15 @@ def prepare_analysis_df(
     else:
         analysis_end = df_analysis["timestamp"].max()
 
-    if not isinstance(analysis_end, (int, float)):
-        t_end_global_ts = parse_timestamp(analysis_end)
+    if isinstance(analysis_end, (int, float)):
+        analysis_end_dt = datetime.fromtimestamp(float(analysis_end), tz=timezone.utc)
     else:
-        t_end_global_ts = float(analysis_end)
+        analysis_end_dt = to_utc_datetime(analysis_end)
+    t_end_global_ts = analysis_end_dt.timestamp()
 
     _ensure_events(df_analysis, "time-window selection")
 
-    analysis_start = datetime.fromtimestamp(t0_global, tz=timezone.utc)
-    analysis_end_dt = datetime.fromtimestamp(t_end_global_ts, tz=timezone.utc)
+    analysis_start = to_utc_datetime(t0_global)
 
     drift_cfg = cfg.get("systematics", {})
     drift_rate = (
@@ -286,7 +285,7 @@ def prepare_analysis_df(
         drift_rate,
         drift_mode,
         drift_params,
-        analysis_end,
+        analysis_end_dt,
     )
 
 
@@ -908,19 +907,15 @@ def main(argv=None):
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
     if t0_cfg is not None:
         try:
-            t0_dt = to_utc_datetime(t0_cfg)
-            t0_global = t0_dt.timestamp()
-            cfg.setdefault("analysis", {})["analysis_start_time"] = t0_dt
+            t0_global = to_utc_datetime(t0_cfg)
+            cfg.setdefault("analysis", {})["analysis_start_time"] = t0_global
         except Exception:
             logging.warning(
                 f"Invalid analysis_start_time '{t0_cfg}' - using first event"
             )
-            t0_global = events_filtered["timestamp"].min()
+            t0_global = to_utc_datetime(events_filtered["timestamp"].min())
     else:
-        t0_global = events_filtered["timestamp"].min()
-
-    if not isinstance(t0_global, (int, float)):
-        t0_global = to_utc_datetime(t0_global).timestamp()
+        t0_global = to_utc_datetime(events_filtered["timestamp"].min())
 
     t_end_cfg = cfg.get("analysis", {}).get("analysis_end_time")
     t_end_global = None
@@ -1037,7 +1032,7 @@ def main(argv=None):
                 df_analysis["adc"].values,
                 ts_seconds,
                 float(drift_rate),
-                t_ref=t0_global,
+                t_ref=t0_global.timestamp(),
                 mode=drift_mode,
                 params=drift_params,
             )
@@ -1465,7 +1460,7 @@ def main(argv=None):
                 continue
 
             first_ts = pd.to_datetime(iso_events["timestamp"].iloc[0], utc=True)
-            t0_dt = datetime.fromtimestamp(t0_global, tz=timezone.utc)
+            t0_dt = to_utc_datetime(t0_global)
             settle = timedelta(seconds=float(args.settle_s or 0))
             t_start_fit_dt = max(first_ts, t0_dt + settle)
             t_start_map[iso] = t_start_fit_dt
@@ -1587,7 +1582,7 @@ def main(argv=None):
 
         # Build configuration for fit_time_series
         if args.settle_s is not None:
-            t0_dt = datetime.fromtimestamp(t0_global, tz=timezone.utc)
+            t0_dt = to_utc_datetime(t0_global)
             cut = t0_dt + timedelta(seconds=float(args.settle_s))
             iso_events = iso_events[iso_events["timestamp"] >= cut]
         ts_vals = iso_events["timestamp"]
@@ -1623,7 +1618,9 @@ def main(argv=None):
             if isinstance(t_start_val, datetime):
                 t_start_fit = t_start_val.timestamp()
             else:
-                t_start_fit = float(t_start_val if t_start_val is not None else t0_global)
+                t_start_fit = to_utc_datetime(
+                    t_start_val if t_start_val is not None else t0_global
+                ).timestamp()
             try:
                 decay_out = fit_time_series(
                     times_dict,
@@ -1659,7 +1656,7 @@ def main(argv=None):
         mask210 = (
             (df_analysis["energy_MeV"] >= lo)
             & (df_analysis["energy_MeV"] <= hi)
-            & (df_analysis["timestamp"] >= pd.to_datetime(t0_global, unit="s", utc=True))
+            & (df_analysis["timestamp"] >= pd.to_datetime(t0_global, utc=True))
             & (df_analysis["timestamp"] <= t_end_global)
         )
         events_p210 = df_analysis[mask210]
@@ -1727,7 +1724,7 @@ def main(argv=None):
                 try:
                     out = fit_time_series(
                         times_dict,
-                        t0_global,
+                        t0_global.timestamp(),
                         t_end_global_ts,
                         cfg_fit,
                         weights=weights_local,
@@ -1736,7 +1733,7 @@ def main(argv=None):
                 except TypeError:
                     out = fit_time_series(
                         times_dict,
-                        t0_global,
+                        t0_global.timestamp(),
                         t_end_global_ts,
                         cfg_fit,
                         strict=args.strict_covariance,
@@ -2140,7 +2137,7 @@ def main(argv=None):
                         fit_dict.update(_fit_params(obj))
 
             centers, widths = _ts_bin_centers_widths(
-                ts_times, plot_cfg, t0_global, t_end_global_ts
+                ts_times, plot_cfg, t0_global.timestamp(), t_end_global_ts
             )
             normalise = bool(plot_cfg.get("plot_time_normalise_rate", False))
             model_errs = {}
@@ -2160,7 +2157,7 @@ def main(argv=None):
                 all_timestamps=ts_times,
                 all_energies=ts_energy,
                 fit_results=fit_dict,
-                t_start=t0_global,
+                t_start=t0_global.timestamp(),
                 t_end=t_end_global_ts,
                 config=plot_cfg,
                 out_png=Path(out_dir) / f"time_series_{iso}.png",
@@ -2194,7 +2191,7 @@ def main(argv=None):
     try:
         from radon_activity import radon_activity_curve
 
-        times = np.linspace(t0_global, t_end_global_ts, 100)
+        times = np.linspace(t0_global.timestamp(), t_end_global_ts, 100)
         times_dt = pd.to_datetime(times, unit="s", utc=True)
         t_rel = (times_dt - analysis_start).total_seconds()
 
