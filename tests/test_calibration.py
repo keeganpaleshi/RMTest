@@ -115,11 +115,8 @@ def test_calibration_uses_known_energies_from_config():
 
     res = derive_calibration_constants(adc, cfg)
 
-    a = res.coeffs[1]
-    c = res.coeffs[0]
-
-    assert pytest.approx(a * 1000 + c, rel=1e-3) == 5.1
-    assert pytest.approx(a * 2000 + c, rel=1e-3) == 8.2
+    assert pytest.approx(res.predict(1000), rel=1e-3) == 5.1
+    assert pytest.approx(res.predict(2000), rel=1e-3) == 8.2
 
 
 def test_calibration_sanity_check_triggers_error():
@@ -177,12 +174,8 @@ def test_calibrate_run_quadratic_option(caplog):
 
     out = derive_calibration_constants(adc, cfg)
 
-    a2 = out.coeffs[2]
-    a = out.coeffs[1]
-    c = out.coeffs[0]
-
     adc_test = np.array([1000, 1500, 2000])
-    energies = apply_calibration(adc_test, a, c, quadratic_coeff=a2)
+    energies = out.predict(adc_test)
     assert np.allclose(
         energies,
         [
@@ -192,12 +185,13 @@ def test_calibrate_run_quadratic_option(caplog):
         ],
         rtol=1e-3,
     )
-    assert a2 != 0.0
+    assert out.coeffs[2] != 0.0
 
 
 def test_energy_uncertainty_clipping():
     """Negative covariance should not produce NaNs in uncertainty."""
     import pandas as pd
+    from calibration import CalibrationResult
 
     events = pd.DataFrame({"adc": [1.0]})
     a_sig = 0.001
@@ -217,8 +211,17 @@ def test_energy_uncertainty_clipping():
     )
     assert var_energy.iloc[0] < 0
 
-    events["denergy_MeV"] = np.sqrt(np.clip(var_energy, 0, None))
+    cov = np.array([
+        [c_sig ** 2, cov_ac, cov_a2_c],
+        [cov_ac, a_sig ** 2, cov_a_a2],
+        [cov_a2_c, cov_a_a2, a2_sig ** 2],
+    ])
+    calib = CalibrationResult(coeffs=[0.0, 1.0, 0.0], covariance=cov)
 
+    expected = np.sqrt(np.clip(var_energy, 0, None))
+    events["denergy_MeV"] = calib.uncertainty(events["adc"])
+
+    assert np.allclose(events["denergy_MeV"], expected)
     assert np.isfinite(events["denergy_MeV"]).all()
 
 
