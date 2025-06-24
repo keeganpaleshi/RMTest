@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from background import estimate_linear_background
 import analyze
+from calibration import CalibrationResult
 from fitting import FitResult
 
 
@@ -91,8 +92,8 @@ def test_auto_background_priors(monkeypatch, tmp_path):
         return FitResult({}, np.zeros((0, 0)), 0)
 
     monkeypatch.setattr(analyze, "fit_spectrum", fake_fit_spectrum)
-    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (0.001, 0.0), "c": (0.0, 0.0), "sigma_E": (0.05, 0.01)})
-    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (0.001, 0.0), "c": (0.0, 0.0), "sigma_E": (0.05, 0.01)})
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 0.001], cov=np.array([[0.0, 0.0],[0.0, 0.0]]), peaks={}, sigma_E=0.05, sigma_E_error=0.01))
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 0.001], cov=np.array([[0.0, 0.0],[0.0, 0.0]]), peaks={}, sigma_E=0.05, sigma_E_error=0.01))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: None)
