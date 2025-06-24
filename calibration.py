@@ -29,6 +29,10 @@ class CalibrationResult:
         c = self.coeffs[0]
         return apply_calibration(adc_values, a, c, quadratic_coeff=a2)
 
+    def predict(self, adc_values):
+        """Alias for :py:meth:`apply`. Use for scikit-learn style APIs."""
+        return self.apply(adc_values)
+
     def uncertainty(self, adc_values):
         """Return propagated 1-sigma energy uncertainty for ``adc_values``."""
         adc_arr = np.atleast_1d(np.asarray(adc_values, dtype=float))
@@ -99,14 +103,22 @@ def apply_calibration(adc_values, slope, intercept, quadratic_coeff=0.0):
 def calibrate_run(adc_values, config, hist_bins=None):
     """
     Main entry to derive calibration constants for a single run:
-      - Build histogram of ADC values.
-        By default each ADC channel is its own bin.
-        If ``hist_bins`` is provided the range is divided into that
-        many bins instead.
-      - Identify approximate peak locations (Po-210, Po-218, Po-214).
-      - Fit each peak with (EMG or Gaussian) depending on config flags.
-      - Compute two-point linear calibration (using Po-210 & Po-214).
-      - Return a dict with {a, c, sigma_E, peak_centroids_ADC, peak_sigmas_ADC, tau_ADC (if any)}.
+      - Build a histogram of the ADC spectrum. By default each ADC
+        channel forms its own bin. When ``hist_bins`` is given the
+        range is divided into that many bins instead.
+      - Locate the approximate Po-210, Po-218 and Po-214 peaks.
+      - Fit each peak with an EMG or Gaussian depending on the
+        configuration flags.
+      - Compute the two-point calibration using Po-210 and Po-214.
+
+    Returns
+    -------
+    dict
+        Dictionary with calibration results. Keys include ``slope_MeV_per_ch``,
+        ``quadratic_MeV_per_ch2``, ``intercept``, ``sigma_E`` and
+        ``sigma_E_error`` together with the covariance terms
+        ``ac_covariance``, ``a2_variance``, ``cov_a_a2``, ``cov_a2_c`` and the
+        fitted ``peaks`` mapping.
     """
     # 1) Build histogram
     min_adc = int(np.min(adc_values))

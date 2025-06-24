@@ -562,6 +562,26 @@ python utils.py 0.5 --to cpd
 python utils.py 0.5 --to bq --volume_liters 10
 ```
 
+## CalibrationResult Usage
+
+`calibration.CalibrationResult` stores the energy calibration
+parameters.  Use `predict()` to convert ADC values to MeV and
+`uncertainty()` to propagate the 1‑σ error:
+
+```python
+from calibration import CalibrationResult
+
+cal = CalibrationResult(
+    slope=0.001,
+    intercept=0.0,
+    slope_uncertainty=5e-5,
+    intercept_uncertainty=0.1,
+)
+
+energies = cal.predict([1500, 1700])
+sigmas = cal.uncertainty([1500, 1700])
+```
+
 ## Radon Activity Output
 
 After the decay fits a weighted average of the Po‑218 and Po‑214 rates is
