@@ -1171,10 +1171,7 @@ def main(argv=None):
     mask_base = None
 
     if baseline_range:
-        t_start_base_sec = baseline_range[0].timestamp()
-        t_end_base_sec = baseline_range[1].timestamp()
-        t_start_base = pd.to_datetime(t_start_base_sec, unit="s", utc=True)
-        t_end_base = pd.to_datetime(t_end_base_sec, unit="s", utc=True)
+        t_start_base, t_end_base = baseline_range
         if t_end_base <= t_start_base:
             raise ValueError("baseline_range end time must be greater than start time")
         events_all_ts = pd.to_datetime(events_all["timestamp"], unit="s", utc=True)
