@@ -1,4 +1,5 @@
 import numpy as np
+from dataclasses import dataclass
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 from scipy.stats import exponnorm
@@ -9,6 +10,36 @@ from constants import (
     DEFAULT_KNOWN_ENERGIES,
     safe_exp as _safe_exp,
 )
+
+
+@dataclass
+class CalibrationResult:
+    """Container for calibration coefficients and uncertainties."""
+
+    slope: float
+    intercept: float
+    slope_uncertainty: float = 0.0
+    intercept_uncertainty: float = 0.0
+    quadratic: float = 0.0
+    quadratic_uncertainty: float = 0.0
+    cov_ac: float = 0.0
+    cov_a_a2: float = 0.0
+
+    def apply(self, adc_values):
+        """Return calibrated energies for ``adc_values``."""
+        return apply_calibration(adc_values, self.slope, self.intercept, quadratic_coeff=self.quadratic)
+
+    def uncertainty(self, adc_values):
+        """Return propagated 1-sigma energy uncertainty for ``adc_values``."""
+        adc_arr = np.asarray(adc_values, dtype=float)
+        var = (
+            (adc_arr * self.slope_uncertainty) ** 2
+            + (adc_arr ** 2 * self.quadratic_uncertainty) ** 2
+            + self.intercept_uncertainty ** 2
+            + 2 * adc_arr * self.cov_ac
+            + 2 * adc_arr ** 3 * self.cov_a_a2
+        )
+        return np.sqrt(np.clip(var, 0, None))
 
 def emg_left(x, mu, sigma, tau):
     """Exponentially modified Gaussian (left-skewed) PDF.
@@ -403,6 +434,7 @@ def derive_calibration_constants_auto(
 
 
 __all__ = [
+    "CalibrationResult",
     "two_point_calibration",
     "apply_calibration",
     "calibrate_run",
