@@ -269,13 +269,7 @@ def parse_datetime(value):
 
 
 def parse_time(s, tz="UTC") -> float:
-    """Parse a timestamp string, number, or ``datetime`` into Unix epoch seconds."""
-def parse_time(s) -> float:
-    """Parse a timestamp string, number or ``datetime`` into Unix epoch seconds.
-
-    This function simply forwards to :func:`parse_timestamp` and therefore
-    always interprets naïve inputs as UTC.
-    """
+    """Parse a timestamp string, number or ``datetime`` into Unix seconds."""
 
     return parse_timestamp(s)
 
