@@ -1011,14 +1011,32 @@ def main(argv=None):
         cal_params = {"a": (0.005, 0.001), "c": (0.02, 0.005), "sigma_E": (0.3, 0.1)}
 
     # Save “a, c, sigma_E” so we can reconstruct energies
-    a, a_sig = cal_params["a"]
-    a2, a2_sig = cal_params.get("a2", (0.0, 0.0))
-    c, c_sig = cal_params["c"]
-    sigE_mean, sigE_sigma = cal_params["sigma_E"]
-    cov_mat = np.asarray(cal_params.get("ac_covariance", [[0.0, 0.0], [0.0, 0.0]]), dtype=float)
-    cov_ac = float(cov_mat[0, 1])
-    cov_a_a2 = float(cal_params.get("cov_a_a2", 0.0))
-    cov_a2_c = float(cal_params.get("cov_a2_c", 0.0))
+    if isinstance(cal_params, dict):
+        a, a_sig = cal_params["a"]
+        a2, a2_sig = cal_params.get("a2", (0.0, 0.0))
+        c, c_sig = cal_params["c"]
+        sigE_mean, sigE_sigma = cal_params["sigma_E"]
+        cov_mat = np.asarray(cal_params.get("ac_covariance", [[0.0, 0.0], [0.0, 0.0]]), dtype=float)
+        cov_ac = float(cov_mat[0, 1])
+        cov_a_a2 = float(cal_params.get("cov_a_a2", 0.0))
+        cov_a2_c = float(cal_params.get("cov_a2_c", 0.0))
+    else:
+        from calibration import CalibrationResult
+
+        assert isinstance(cal_params, CalibrationResult)
+        coeffs = cal_params.coeffs
+        cov = np.asarray(cal_params.covariance, dtype=float)
+        c = coeffs[0]
+        a = coeffs[1]
+        a2 = coeffs[2] if len(coeffs) == 3 else 0.0
+        c_sig = float(np.sqrt(cov[0, 0]))
+        a_sig = float(np.sqrt(cov[1, 1]))
+        a2_sig = float(np.sqrt(cov[2, 2])) if cov.shape[0] == 3 else 0.0
+        sigE_mean = cal_params.sigma_E
+        sigE_sigma = cal_params.sigma_E_error
+        cov_ac = float(cov[1, 0])
+        cov_a_a2 = float(cov[1, 2]) if cov.shape[0] == 3 else 0.0
+        cov_a2_c = float(cov[2, 0]) if cov.shape[0] == 3 else 0.0
 
     # Apply calibration -> new column “energy_MeV” and its uncertainty
     df_analysis["energy_MeV"] = apply_calibration(df_analysis["adc"], a, c, quadratic_coeff=a2)
@@ -1935,10 +1953,21 @@ def main(argv=None):
             d = {}
         time_fit_serializable[iso] = d
 
+    if isinstance(cal_params, dict):
+        cal_summary = cal_params
+    else:
+        cal_summary = {
+            "coeffs": list(cal_params.coeffs),
+            "covariance": np.asarray(cal_params.covariance).tolist(),
+            "sigma_E": cal_params.sigma_E,
+            "sigma_E_error": cal_params.sigma_E_error,
+            "peaks": cal_params.peaks,
+        }
+
     summary = {
         "timestamp": now_str,
         "config_used": args.config.name,
-        "calibration": cal_params,
+        "calibration": cal_summary,
         "calibration_valid": calibration_valid,
         "spectral_fit": spec_dict,
         "time_fit": time_fit_serializable,
