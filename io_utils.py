@@ -267,9 +267,9 @@ def load_events(csv_path, *, column_map=None):
     Column aliases like ``time`` or ``adc_ch`` are automatically renamed to
     their canonical form.  A mapping of canonical column names to the
     actual CSV headers may be supplied via ``column_map``. The ``timestamp``
-    column is parsed to ``datetime64[ns, UTC]`` while ``adc`` is returned as a
-    floating point number. The DataFrame is sorted by ``timestamp`` before being
-    returned.
+    column is parsed and localized to ``datetime64[ns, UTC]`` while ``adc`` is
+    returned as a floating point number. The DataFrame is sorted by
+    ``timestamp`` before being returned.
     """
     path = Path(csv_path)
     if not path.is_file():
@@ -304,7 +304,9 @@ def load_events(csv_path, *, column_map=None):
             except Exception:
                 return pd.NaT
 
-        df["timestamp"] = df["timestamp"].map(_safe_parse)
+        df["timestamp"] = (
+            pd.to_datetime(df["timestamp"].map(_safe_parse), utc=True)
+        )
 
     # Check required columns after renaming
     required_cols = ["fUniqueID", "fBits", "timestamp", "adc", "fchannel"]
