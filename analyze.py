@@ -350,7 +350,7 @@ def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
             cov = _cov_entry(fit_obj, "E_Po214", "N0_Po214")
         else:
             cov = _cov_entry(fit_obj, f"E_{iso}", f"N0_{iso}")
-    except Exception:
+    except KeyError:
         cov = 0.0
     t = np.asarray(centers, dtype=float)
     exp_term = np.exp(-lam * t)
