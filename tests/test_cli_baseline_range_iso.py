@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
 import baseline_noise
-from fitting import FitResult
+from fitting import FitResult, FitParams
 
 
 def test_cli_baseline_range_iso_strings(tmp_path, monkeypatch):
@@ -73,7 +73,7 @@ def test_cli_baseline_range_iso_strings(tmp_path, monkeypatch):
 
     def fake_fit(ts_dict, t_start, t_end, cfg):
         captured["times"] = ts_dict.get("Po214", []).tolist()
-        return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
+        return FitResult(FitParams({"E_Po214": 1.0}), np.zeros((1, 1)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
@@ -153,7 +153,7 @@ def test_cli_baseline_range_timezone(tmp_path, monkeypatch):
 
     def fake_fit(ts_dict, t_start, t_end, cfg):
         captured["times"] = ts_dict.get("Po214", []).tolist()
-        return FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0)
+        return FitResult(FitParams({"E_Po214": 1.0}), np.zeros((1, 1)), 0)
 
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
