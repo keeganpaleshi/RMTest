@@ -252,13 +252,13 @@ def to_utc_datetime(value, tz="UTC") -> datetime:
 
 
 def parse_datetime(value):
-    """Parse an ISO-8601 string or numeric epoch value to ``numpy.datetime64``.
+    """Parse an ISO-8601 string or numeric epoch value to ``datetime64[ns, UTC]``.
 
-    The function accepts strings like ``"2023-09-28T13:45:00-04:00"`` or
-    numeric Unix timestamps (as ``int``, ``float`` or numeric ``str``). Any
-    parsed time lacking a timezone is interpreted as UTC. On success a
-    ``numpy.datetime64`` object in UTC (nanosecond resolution) is returned.
-    ``ValueError`` is raised if the input cannot be parsed.
+    The function accepts strings like ``"2023-09-28T13:45:00-04:00"`` or numeric
+    Unix timestamps (as ``int``, ``float`` or numeric ``str``). Any parsed time
+    lacking a timezone is interpreted as UTC.  The returned value is a
+    timezone-aware :class:`pandas.Timestamp` which preserves nanosecond
+    precision. ``ValueError`` is raised if the input cannot be parsed.
     """
 
     try:
@@ -269,7 +269,8 @@ def parse_datetime(value):
     if pd is None:
         raise RuntimeError("pandas is required for parse_datetime")
 
-    return pd.Timestamp(dt).to_datetime64()
+    # Retain timezone information so callers receive ``datetime64[ns, UTC]``
+    return pd.Timestamp(dt)
 
 
 def parse_time(s, tz="UTC") -> float:
