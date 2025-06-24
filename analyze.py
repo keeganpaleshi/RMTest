@@ -104,6 +104,7 @@ from utils import (
     adc_hist_edges,
     parse_timestamp,
     parse_time_arg,
+    to_utc_datetime,
 )
 from utils import parse_datetime
 from radmon.baseline import subtract_baseline
@@ -909,8 +910,9 @@ def main(argv=None):
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
     if t0_cfg is not None:
         try:
-            t0_global = parse_timestamp(t0_cfg)
-            cfg.setdefault("analysis", {})["analysis_start_time"] = t0_global
+            t0_dt = to_utc_datetime(t0_cfg)
+            t0_global = t0_dt.timestamp()
+            cfg.setdefault("analysis", {})["analysis_start_time"] = t0_dt
         except Exception:
             logging.warning(
                 f"Invalid analysis_start_time '{t0_cfg}' - using first event"
@@ -920,16 +922,17 @@ def main(argv=None):
         t0_global = events_filtered["timestamp"].min()
 
     if not isinstance(t0_global, (int, float)):
-        t0_global = parse_timestamp(t0_global)
+        t0_global = to_utc_datetime(t0_global).timestamp()
 
     t_end_cfg = cfg.get("analysis", {}).get("analysis_end_time")
     t_end_global = None
     t_end_global_ts = None
     if t_end_cfg is not None:
         try:
-            t_end_global_ts = parse_timestamp(t_end_cfg)
-            t_end_global = pd.to_datetime(t_end_global_ts, unit="s", utc=True)
-            cfg.setdefault("analysis", {})["analysis_end_time"] = t_end_global_ts
+            t_end_dt = to_utc_datetime(t_end_cfg)
+            t_end_global = t_end_dt
+            t_end_global_ts = t_end_dt.timestamp()
+            cfg.setdefault("analysis", {})["analysis_end_time"] = t_end_dt
         except Exception:
             logging.warning(
                 f"Invalid analysis_end_time '{t_end_cfg}' - using last event"
@@ -941,9 +944,9 @@ def main(argv=None):
     t_spike_end = None
     if spike_end_cfg is not None:
         try:
-            t_spike_end_ts = parse_timestamp(spike_end_cfg)
-            t_spike_end = pd.to_datetime(t_spike_end_ts, unit="s", utc=True)
-            cfg.setdefault("analysis", {})["spike_end_time"] = t_spike_end_ts
+            t_spike_end_dt = to_utc_datetime(spike_end_cfg)
+            t_spike_end = t_spike_end_dt
+            cfg.setdefault("analysis", {})["spike_end_time"] = t_spike_end_dt
         except Exception:
             logging.warning(f"Invalid spike_end_time '{spike_end_cfg}' - ignoring")
             t_spike_end = None
