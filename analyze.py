@@ -263,11 +263,11 @@ def prepare_analysis_df(
     else:
         analysis_end = df_analysis["timestamp"].max()
 
-    if isinstance(analysis_end, (int, float)):
-        analysis_end_dt = datetime.fromtimestamp(float(analysis_end), tz=timezone.utc)
+    if not isinstance(analysis_end, (int, float)):
+        t_end_global_ts = to_utc_datetime(analysis_end).timestamp()
     else:
-        analysis_end_dt = to_utc_datetime(analysis_end)
-    t_end_global_ts = analysis_end_dt.timestamp()
+        t_end_global_ts = float(analysis_end)
+    analysis_end_dt = datetime.fromtimestamp(t_end_global_ts, tz=timezone.utc)
 
     _ensure_events(df_analysis, "time-window selection")
 
