@@ -74,8 +74,29 @@ class FitResult:
     """Container for fit output."""
 
     params: FitParams
-    cov: np.ndarray
+    cov: np.ndarray | None
     ndf: int
+    param_index: dict[str, int] = None
+
+    def __post_init__(self):
+        if self.param_index is None:
+            self.param_index = {}
+
+    def get_cov(self, name1, name2):
+        """Return covariance entry for two fit parameters."""
+        if self.cov is None:
+            return 0.0
+
+        if name1 not in self.param_index or name2 not in self.param_index:
+            raise KeyError(f"Parameter(s) missing in covariance: {name1}, {name2}")
+
+        i1 = self.param_index[name1]
+        i2 = self.param_index[name2]
+        cov = np.asarray(self.cov, dtype=float)
+        if cov.ndim >= 2 and i1 < cov.shape[0] and i2 < cov.shape[1]:
+            return float(cov[i1, i2])
+
+        raise KeyError(f"Parameter(s) missing in covariance: {name1}, {name2}")
 
 
 def fit_decay(times, priors, t0=0.0, t_end=None, flags=None):
@@ -234,6 +255,8 @@ def fit_spectrum(
             param_order.append(f"tau_{iso}")
     param_order.extend(["b0", "b1"])
 
+    param_index = {name: i for i, name in enumerate(param_order)}
+
     p0 = []
     bounds_lo, bounds_hi = [], []
     eps = 1e-12
@@ -362,7 +385,7 @@ def fit_spectrum(
                 err = float(m.errors[pname]) if pname in m.errors else np.nan
                 out["d" + pname] = err
             cov = np.zeros((len(param_order), len(param_order)))
-            return FitResult(out, cov, int(ndf))
+            return FitResult(out, cov, int(ndf), param_index)
 
         m.hesse()
         cov = np.array(m.covariance)
@@ -394,7 +417,7 @@ def fit_spectrum(
         for i, pname in enumerate(param_order):
             out[pname] = float(m.values[pname])
             out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
-        return FitResult(out, cov, int(ndf))
+        return FitResult(out, cov, int(ndf), param_index)
 
     perr = np.sqrt(np.clip(np.diag(pcov), 0, None))
     try:
@@ -428,7 +451,7 @@ def fit_spectrum(
     out["fit_valid"] = fit_valid
 
     ndf = hist.size - len(popt)
-    return FitResult(out, pcov, int(ndf))
+    return FitResult(out, pcov, int(ndf), param_index)
 
 
 def _integral_model(E, N0, B, lam, eff, T):
@@ -683,7 +706,7 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
             i1 = ordered_params.index("E_Po214")
             i2 = ordered_params.index("N0_Po214")
             out["cov_E_Po214_N0_Po214"] = float(cov[i1, i2])
-        return FitResult(out, cov, int(ndf))
+        return FitResult(out, cov, int(ndf), param_indices)
 
     m.hesse()  # compute uncertainties
     cov = np.array(m.covariance)
@@ -721,7 +744,7 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
         i2 = ordered_params.index("N0_Po214")
         out["cov_E_Po214_N0_Po214"] = float(cov[i1, i2])
 
-    return FitResult(out, cov, int(ndf))
+    return FitResult(out, cov, int(ndf), param_indices)
 
 
 # -----------------------------------------------------

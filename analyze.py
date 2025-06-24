@@ -128,23 +128,10 @@ def _cov_entry(fit: FitResult | dict, p1: str, p2: str) -> float:
         If either ``p1`` or ``p2`` is not present in the covariance matrix.
     """
 
-    if not isinstance(fit, FitResult) or fit.cov is None:
+    if not isinstance(fit, FitResult):
         return 0.0
 
-    ordered = [
-        k for k in fit.params.keys() if k != "fit_valid" and not k.startswith("d")
-    ]
-
-    if p1 not in ordered or p2 not in ordered:
-        raise KeyError(f"Parameter(s) missing in covariance: {p1}, {p2}")
-
-    i1 = ordered.index(p1)
-    i2 = ordered.index(p2)
-    cov = np.asarray(fit.cov, dtype=float)
-    if cov.ndim >= 2 and i1 < cov.shape[0] and i2 < cov.shape[1]:
-        return float(cov[i1, i2])
-
-    raise KeyError(f"Parameter(s) missing in covariance: {p1}, {p2}")
+    return fit.get_cov(p1, p2)
 
 
 def _ensure_events(events: pd.DataFrame, stage: str) -> None:
