@@ -7,6 +7,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
 import numpy as np
+from calibration import CalibrationResult
 from fitting import FitResult
 
 
@@ -39,7 +40,13 @@ def test_noise_cutoff_filters_events(tmp_path, monkeypatch):
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
-    cal_mock = {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0), "peaks": {}}
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0],
+        cov=np.zeros((2, 2)),
+        peaks={},
+        sigma_E=1.0,
+        sigma_E_error=0.0,
+    )
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
@@ -107,7 +114,13 @@ def test_invalid_noise_cutoff_skips_cut(tmp_path, monkeypatch, caplog):
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
-    cal_mock = {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0), "peaks": {}}
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0],
+        cov=np.zeros((2, 2)),
+        peaks={},
+        sigma_E=1.0,
+        sigma_E_error=0.0,
+    )
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
