@@ -824,12 +824,11 @@ def main(argv=None):
         if not pd.api.types.is_datetime64_any_dtype(events_all["timestamp"]):
             events_all["timestamp"] = events_all["timestamp"].map(parse_datetime)
 
-        # 2) Localize naive datetimes, or convert existing tz to target
-        #    Assume tzinfo is a pytz timezone or dateutil tzinfo
+        # 2) Ensure timestamps are interpreted as UTC
         if events_all["timestamp"].dt.tz is None:
-            events_all["timestamp"] = events_all["timestamp"].dt.tz_localize(tzinfo)
+            events_all["timestamp"] = events_all["timestamp"].dt.tz_localize("UTC")
         else:
-            events_all["timestamp"] = events_all["timestamp"].dt.tz_convert(tzinfo)
+            events_all["timestamp"] = events_all["timestamp"].dt.tz_convert("UTC")
 
         # 3) Convert to epoch seconds (float)
         #    astype(int) gives nanoseconds since epoch, so divide by 1e9
@@ -843,7 +842,7 @@ def main(argv=None):
         print("No events found in the input CSV. Exiting.")
         sys.exit(0)
 
-    # ``load_events()`` now returns timezone-aware datetimes; convert to epoch
+    # ``load_events()`` now returns ``datetime64`` values; convert to epoch
     # seconds for internal calculations.
 
     # ───────────────────────────────────────────────
@@ -997,8 +996,8 @@ def main(argv=None):
                 raise ValueError("end <= start")
             radon_interval = (start_r_dt, end_r_dt)
             radon_interval_cfg = [
-                start_r_dt.isoformat(),
-                end_r_dt.isoformat(),
+                float(start_r_dt.timestamp()),
+                float(end_r_dt.timestamp()),
             ]
             cfg.setdefault("analysis", {})["radon_interval"] = radon_interval_cfg
         except Exception as e:

@@ -11,7 +11,7 @@ import pandas as pd
 from constants import load_nuclide_overrides
 
 import numpy as np
-from utils import to_native, parse_timestamp, parse_datetime
+from utils import to_native, parse_datetime
 import jsonschema
 
 
@@ -267,7 +267,7 @@ def load_events(csv_path, *, column_map=None):
     Column aliases like ``time`` or ``adc_ch`` are automatically renamed to
     their canonical form.  A mapping of canonical column names to the
     actual CSV headers may be supplied via ``column_map``. The ``timestamp``
-    column is parsed to ``datetime64[ns, UTC]`` while ``adc`` is returned as a
+    column is parsed to ``datetime64[ns]`` while ``adc`` is returned as a
     floating point number. The DataFrame is sorted by ``timestamp`` before being
     returned.
     """
@@ -296,10 +296,15 @@ def load_events(csv_path, *, column_map=None):
 
     df = df.rename(columns=rename, errors="ignore")
 
-    # Parse timestamps (epoch seconds) into timezone-aware datetimes
+    # Parse timestamps into ``datetime64`` values; invalid entries become ``NaT``
     if "timestamp" in df.columns:
-        df["timestamp"] = df["timestamp"].map(parse_timestamp)
-        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s", utc=True)
+        def _coerce(val):
+            try:
+                return parse_datetime(val)
+            except Exception:
+                return pd.NaT
+
+        df["timestamp"] = df["timestamp"].map(_coerce)
 
     # Check required columns after renaming
     required_cols = ["fUniqueID", "fBits", "timestamp", "adc", "fchannel"]

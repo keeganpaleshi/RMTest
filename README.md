@@ -14,8 +14,8 @@ This repository provides a complete pipeline to analyze electrostatic radon moni
 - `efficiency.py`: Efficiency calculations and BLUE combination helpers.
 - `systematics.py`: Scan for systematic uncertainties (optional).
 - `plot_utils.py`: Plotting routines for spectrum and time-series.
-- `utils.py`: Miscellaneous utilities providing `parse_timestamp` and
-  `parse_datetime` for time conversion, JSON validation, and count-rate
+- `utils.py`: Miscellaneous utilities providing `parse_datetime` for time
+  conversion, JSON validation, and count-rate
   conversions.
 - `tests/`: `pytest` unit tests for calibration, fitting, and I/O.
 
@@ -58,7 +58,7 @@ The input file must be a comma-separated table with these columns:
 - `fBits` – status bits or flags
 - `timestamp` – event timestamp in seconds
   (either numeric Unix seconds or an ISO‑8601 string; parsed with
-  `parse_timestamp` and converted to `numpy.datetime64[ns, UTC]` by `parse_datetime`)
+  `parse_datetime` to ``numpy.datetime64[ns]``)
 - `adc` – raw ADC value
 - `fchannel` – acquisition channel
 
