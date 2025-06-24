@@ -74,10 +74,11 @@ from io_utils import (
     apply_burst_filter,
 )
 from calibration import (
+    CalibrationResult,
     derive_calibration_constants,
     derive_calibration_constants_auto,
-    apply_calibration,
 )
+from utils import to_native
 
 from fitting import fit_spectrum, fit_time_series, FitResult
 
@@ -1000,29 +1001,32 @@ def main(argv=None):
     except Exception:
         logging.exception("calibration failed – using defaults")
         calibration_valid = False
-        cal_params = {"a": (0.005, 0.001), "c": (0.02, 0.005), "sigma_E": (0.3, 0.1)}
+        cal_params = CalibrationResult.from_dict(
+            {"a": (0.005, 0.001), "c": (0.02, 0.005), "sigma_E": (0.3, 0.1)}
+        )
+    else:
+        cal_params = CalibrationResult.from_dict(cal_params)
 
-    # Save “a, c, sigma_E” so we can reconstruct energies
-    a, a_sig = cal_params["a"]
-    a2, a2_sig = cal_params.get("a2", (0.0, 0.0))
-    c, c_sig = cal_params["c"]
-    sigE_mean, sigE_sigma = cal_params["sigma_E"]
-    cov_mat = np.asarray(cal_params.get("ac_covariance", [[0.0, 0.0], [0.0, 0.0]]), dtype=float)
-    cov_ac = float(cov_mat[0, 1])
-    cov_a_a2 = float(cal_params.get("cov_a_a2", 0.0))
+    # Extract coefficients and errors
+    a = cal_params.coeff(1)
+    a_sig = cal_params.error(1)
+    c = cal_params.coeff(0)
+    c_sig = cal_params.error(0)
+    try:
+        a2 = cal_params.coeff(2)
+        a2_sig = cal_params.error(2)
+    except KeyError:
+        a2 = 0.0
+        a2_sig = 0.0
+
+    sigE_mean = cal_params.sigma_E
+    sigE_sigma = cal_params.sigma_E_error
+    cov_ac = float(cal_params.cov[1, 0])
+    cov_a_a2 = float(cal_params.cov[1, 2]) if cal_params.cov.shape[0] > 2 else 0.0
 
     # Apply calibration -> new column “energy_MeV” and its uncertainty
-    df_analysis["energy_MeV"] = apply_calibration(df_analysis["adc"], a, c, quadratic_coeff=a2)
-
-    adc_vals = df_analysis["adc"].astype(float)
-    var_energy = (
-        (adc_vals * a_sig) ** 2
-        + (adc_vals ** 2 * a2_sig) ** 2
-        + c_sig ** 2
-        + 2 * adc_vals * cov_ac
-        + 2 * adc_vals ** 3 * cov_a_a2
-    )
-    df_analysis["denergy_MeV"] = np.sqrt(np.clip(var_energy, 0, None))
+    df_analysis["energy_MeV"] = cal_params.predict(df_analysis["adc"].values)
+    df_analysis["denergy_MeV"] = cal_params.uncertainty(df_analysis["adc"].values)
 
     # ────────────────────────────────────────────────────────────
     # 4. Baseline run (optional)
@@ -1065,18 +1069,8 @@ def main(argv=None):
         base_events = events_all[mask_base_full].copy()
         # Apply calibration to the baseline events
         if not base_events.empty:
-            base_events["energy_MeV"] = apply_calibration(
-                base_events["adc"], a, c, quadratic_coeff=a2
-            )
-            adc_b = base_events["adc"].astype(float)
-            var_base = (
-                (adc_b * a_sig) ** 2
-                + (adc_b ** 2 * a2_sig) ** 2
-                + c_sig ** 2
-                + 2 * adc_b * cov_ac
-                + 2 * adc_b ** 3 * cov_a_a2
-            )
-            base_events["denergy_MeV"] = np.sqrt(np.clip(var_base, 0, None))
+            base_events["energy_MeV"] = cal_params.predict(base_events["adc"].values)
+            base_events["denergy_MeV"] = cal_params.uncertainty(base_events["adc"].values)
         else:
             base_events["energy_MeV"] = np.array([], dtype=float)
             base_events["denergy_MeV"] = np.array([], dtype=float)
@@ -1103,7 +1097,7 @@ def main(argv=None):
         try:
             from baseline_noise import estimate_baseline_noise
 
-            peak_adc = cal_params.get("peaks", {}).get("Po210", {}).get("centroid_adc")
+            peak_adc = getattr(cal_params, "peaks", {}).get("Po210", {}).get("centroid_adc")
             if peak_adc is not None:
                 result = estimate_baseline_noise(
                     base_events["adc"].values,
@@ -1195,7 +1189,7 @@ def main(argv=None):
 
             # Build edges in ADC units then convert to energy for plotting
             bin_edges_adc = np.arange(adc_min, adc_min + bins * width + 1, width)
-            bin_edges = apply_calibration(bin_edges_adc, a, c, quadratic_coeff=a2)
+            bin_edges = cal_params.predict(bin_edges_adc)
 
         # Find approximate ADC centroids for Po‐210, Po‐218, Po‐214
 
@@ -1221,7 +1215,7 @@ def main(argv=None):
         )
 
         for peak, centroid_adc in adc_peaks.items():
-            mu = apply_calibration(centroid_adc, a, c, quadratic_coeff=a2)
+            mu = cal_params.predict(centroid_adc)
             bounds_cfg = cfg["spectral_fit"].get("mu_bounds", {})
             bounds = bounds_cfg.get(peak)
             if bounds is not None:
@@ -1971,7 +1965,8 @@ def main(argv=None):
             raise FileExistsError(f"Results folder already exists: {results_dir}")
 
     copy_config(results_dir, cfg, exist_ok=args.overwrite)
-    out_dir = write_summary(results_dir, summary)
+    summary_native = to_native(summary)
+    out_dir = write_summary(results_dir, summary_native)
 
     # Generate plots now that the output directory exists
     if spec_plot_data:

@@ -9,7 +9,10 @@ This repository provides a complete pipeline to analyze electrostatic radon moni
 - `analyze.py`: Main entry point to run the full analysis.
 - `config.json`: JSON configuration file containing thresholds and options.
 - `io_utils.py`: Functions to load raw data and write outputs.
-- `calibration.py`: Peak-finding and energy calibration routines.
+- `calibration.py`: Peak-finding and energy calibration routines. The module
+  defines a `CalibrationResult` dataclass whose `predict` and `uncertainty`
+  methods evaluate the calibration polynomial and propagate coefficient
+  covariance.
 - `fitting.py`: Unbinned likelihood fit for Po-214 (and optional Po-218).
 - `efficiency.py`: Efficiency calculations and BLUE combination helpers.
 - `systematics.py`: Scan for systematic uncertainties (optional).
