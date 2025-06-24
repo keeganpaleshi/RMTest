@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -11,6 +11,7 @@ from utils import (
     find_adc_bin_peaks,
     parse_timestamp,
     parse_time,
+    parse_time_arg,
     LITERS_PER_M3,
 )
 
@@ -72,7 +73,7 @@ def test_parse_time_iso_fraction():
 
 
 def test_parse_time_naive_timezone():
-    assert parse_time("1970-01-01T01:00:00", tz="Europe/Berlin") == pytest.approx(0.0)
+    assert parse_time_arg("1970-01-01T01:00:00", tz="Europe/Berlin") == datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 def test_parse_timestamp_numeric():

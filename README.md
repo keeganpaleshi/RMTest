@@ -2,7 +2,7 @@
 
 This repository provides a complete pipeline to analyze electrostatic radon monitor data.
 
-**Note:** All time quantities are expressed in seconds and all energies are given in MeV throughout the documentation and code. Event timestamps are stored as UTC `numpy.datetime64` objects throughout the pipeline. The helper function `parse_datetime` converts input values to this representation and accepts ISO‑8601 strings (with or without timezone), numeric epoch seconds or existing `datetime` objects. Command-line options that take timestamps (such as `--analysis-start-time`) are parsed with this helper, so both ISO‑8601 strings and Unix seconds work interchangeably. A global `--timezone` option controls which zone naïve times are interpreted in (default: `UTC`).
+**Note:** All time quantities are expressed in seconds and all energies are given in MeV throughout the documentation and code. Input timestamps are parsed with `parse_timestamp` which accepts ISO‑8601 strings (with or without timezone), numeric epoch seconds and `datetime` objects. The wrapper `parse_datetime` converts the parsed value to a UTC `numpy.datetime64`. Command-line options that take timestamps (such as `--analysis-start-time`) use these helpers, so both ISO‑8601 strings and Unix seconds work interchangeably. A global `--timezone` option controls which zone naïve times are interpreted in (default: `UTC`). Event timestamps are stored internally as UTC `numpy.datetime64` objects throughout the pipeline.
 
 ## Structure
 
@@ -57,7 +57,7 @@ The input file must be a comma-separated table with these columns:
 - `fBits` – status bits or flags
 - `timestamp` – event timestamp in seconds
   (either numeric Unix seconds or an ISO‑8601 string; parsed with
-  `parse_datetime` to `numpy.datetime64[ns, UTC]`)
+  `parse_timestamp` and converted to `numpy.datetime64[ns, UTC]` by `parse_datetime`)
 - `adc` – raw ADC value
 - `fchannel` – acquisition channel
 
@@ -177,8 +177,9 @@ numeric Unix seconds.  When omitted the first event timestamp is used.
 All other time-related fields (`analysis_end_time`, `spike_end_time`,
 `spike_periods`, `run_periods`, `radon_interval` and
 `baseline.range`) likewise accept absolute timestamps in ISO 8601
-format or numeric seconds.  All of these are parsed with
-`parse_datetime` so the same formats apply everywhere.
+format or numeric seconds.  All of these values are parsed with
+`parse_timestamp` (wrapped by `parse_datetime` when a `numpy.datetime64`
+object is required) so the same formats apply everywhere.
 
 `analysis_end_time` may be specified to stop processing after the given
 timestamp while `spike_end_time` discards all events before its value.
