@@ -95,4 +95,7 @@ def test_cli_baseline_range_overrides_config(tmp_path, monkeypatch):
     assert summary.get("baseline", {}).get("start") == exp_start
     assert summary.get("baseline", {}).get("end") == exp_end
     assert summary.get("baseline", {}).get("n_events") == 1
-    assert captured.get("cfg", {}).get("baseline", {}).get("range") == [1.0, 2.0]
+    assert captured.get("cfg", {}).get("baseline", {}).get("range") == [
+        "1970-01-01T00:00:01+00:00",
+        "1970-01-01T00:00:02+00:00",
+    ]
