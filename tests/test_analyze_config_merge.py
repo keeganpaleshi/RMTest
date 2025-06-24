@@ -1190,10 +1190,13 @@ def test_spike_period_cli(tmp_path, monkeypatch):
     analyze.main()
 
     assert captured["times"] == [6.0]
-    assert saved["summary"]["analysis"]["spike_periods"] == [
-        ["1970-01-01T00:00:00Z", "1970-01-01T00:00:05Z"],
-        ["1970-01-01T00:00:10Z", "1970-01-01T00:00:13Z"],
+    exp = [
+        [datetime(1970, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+         datetime(1970, 1, 1, 0, 0, 5, tzinfo=timezone.utc)],
+        [datetime(1970, 1, 1, 0, 0, 10, tzinfo=timezone.utc),
+         datetime(1970, 1, 1, 0, 0, 13, tzinfo=timezone.utc)],
     ]
+    assert saved["summary"]["analysis"]["spike_periods"] == exp
 
 
 def test_seed_cli_sets_random_seed(tmp_path, monkeypatch):
@@ -2071,7 +2074,10 @@ def test_time_fields_written_back(tmp_path, monkeypatch):
     assert used["analysis"]["spike_periods"] == [[2.0, 3.0]]
     assert used["analysis"]["run_periods"] == [[0.0, 10.0]]
 
-    assert used["analysis"]["radon_interval"] == [3.0, 5.0]
+    assert used["analysis"]["radon_interval"] == [
+        "1970-01-01T00:00:03+00:00",
+        "1970-01-01T00:00:05+00:00",
+    ]
     exp_start = datetime(1970, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
     exp_end = datetime(1970, 1, 1, 0, 0, 1, tzinfo=timezone.utc)
 

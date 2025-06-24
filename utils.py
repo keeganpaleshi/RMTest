@@ -5,7 +5,7 @@ from scipy.signal import find_peaks
 import math
 from dataclasses import is_dataclass, asdict
 import argparse
-from datetime import datetime, timezone, tzinfo
+from datetime import datetime, timezone, tzinfo, timedelta
 from dateutil import parser as date_parser
 from dateutil.tz import gettz
 
@@ -51,6 +51,10 @@ def to_native(obj):
             return obj.isoformat()
         elif isinstance(obj, (pd.Series, pd.Index)):
             return [to_native(x) for x in obj.tolist()]
+    if isinstance(obj, datetime):
+        if obj.tzinfo is not None and obj.tzinfo.utcoffset(obj) == timedelta(0):
+            return obj.strftime("%Y-%m-%dT%H:%M:%SZ")
+        return obj.isoformat()
     if isinstance(obj, np.ndarray):
         # Convert array into list of native types
         return [to_native(x) for x in obj.tolist()]
