@@ -6,6 +6,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
+from calibration import CalibrationResult
 from fitting import FitResult
 
 
@@ -32,8 +33,15 @@ def test_blue_weights_summary(tmp_path, monkeypatch):
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
-    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)})
-    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)})
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0],
+        cov=np.zeros((2, 2)),
+        peaks={},
+        sigma_E=1.0,
+        sigma_E_error=0.0,
+    )
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({}, np.zeros((0, 0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())

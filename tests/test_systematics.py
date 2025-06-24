@@ -8,6 +8,7 @@ import math
 import json
 import pandas as pd
 import analyze
+from calibration import CalibrationResult
 from fitting import FitResult
 from systematics import scan_systematics, apply_linear_adc_shift
 
@@ -142,15 +143,22 @@ def test_analyze_systematics_skip_unknown(tmp_path, monkeypatch):
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0],
+        cov=np.zeros((2, 2)),
+        peaks={},
+        sigma_E=1.0,
+        sigma_E_error=0.0,
+    )
     monkeypatch.setattr(
         analyze,
         "derive_calibration_constants",
-        lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)},
+        lambda *a, **k: cal_mock,
     )
     monkeypatch.setattr(
         analyze,
         "derive_calibration_constants_auto",
-        lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)},
+        lambda *a, **k: cal_mock,
     )
 
     monkeypatch.setattr(

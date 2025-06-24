@@ -9,6 +9,7 @@ from fitting import FitResult
 
 import analyze
 import baseline_noise
+from calibration import CalibrationResult
 
 
 def test_time_window_filters_events(tmp_path, monkeypatch):
@@ -41,12 +42,13 @@ def test_time_window_filters_events(tmp_path, monkeypatch):
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
-    cal_mock = {
-        "a": (1.0, 0.0),
-        "c": (0.0, 0.0),
-        "sigma_E": (1.0, 0.0),
-        "peaks": {"Po210": {"centroid_adc": 10}},
-    }
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0],
+        cov=np.zeros((2, 2)),
+        peaks={"Po210": {"centroid_adc": 10}},
+        sigma_E=1.0,
+        sigma_E_error=0.0,
+    )
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
@@ -119,8 +121,15 @@ def test_invalid_baseline_range_raises(tmp_path, monkeypatch):
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
-    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)})
-    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)})
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0],
+        cov=np.zeros((2, 2)),
+        peaks={},
+        sigma_E=1.0,
+        sigma_E_error=0.0,
+    )
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
@@ -173,12 +182,13 @@ def test_time_window_filters_events_config(tmp_path, monkeypatch):
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
-    cal_mock = {
-        "a": (1.0, 0.0),
-        "c": (0.0, 0.0),
-        "sigma_E": (1.0, 0.0),
-        "peaks": {"Po210": {"centroid_adc": 10}},
-    }
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0],
+        cov=np.zeros((2, 2)),
+        peaks={"Po210": {"centroid_adc": 10}},
+        sigma_E=1.0,
+        sigma_E_error=0.0,
+    )
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
@@ -252,12 +262,13 @@ def test_run_period_filters_events(tmp_path, monkeypatch):
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
-    cal_mock = {
-        "a": (1.0, 0.0),
-        "c": (0.0, 0.0),
-        "sigma_E": (1.0, 0.0),
-        "peaks": {"Po210": {"centroid_adc": 10}},
-    }
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0],
+        cov=np.zeros((2, 2)),
+        peaks={"Po210": {"centroid_adc": 10}},
+        sigma_E=1.0,
+        sigma_E_error=0.0,
+    )
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
@@ -339,12 +350,13 @@ def test_baseline_range_iso_strings(tmp_path, monkeypatch, start, end):
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
-    cal_mock = {
-        "a": (1.0, 0.0),
-        "c": (0.0, 0.0),
-        "sigma_E": (1.0, 0.0),
-        "peaks": {"Po210": {"centroid_adc": 10}},
-    }
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0],
+        cov=np.zeros((2, 2)),
+        peaks={"Po210": {"centroid_adc": 10}},
+        sigma_E=1.0,
+        sigma_E_error=0.0,
+    )
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
@@ -422,7 +434,13 @@ def test_unified_filter_combined_windows(tmp_path, monkeypatch):
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
-    cal_mock = {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0), "peaks": {"Po210": {"centroid_adc": 10}}}
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0],
+        cov=np.zeros((2, 2)),
+        peaks={"Po210": {"centroid_adc": 10}},
+        sigma_E=1.0,
+        sigma_E_error=0.0,
+    )
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
