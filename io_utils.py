@@ -330,8 +330,9 @@ def load_events(csv_path, *, column_map=None):
     # Convert types
     df["adc"] = df["adc"].astype(float)
 
-    # Sort by timestamp
+    # Sort by timestamp and ensure timezone-aware timestamps
     df = df.sort_values("timestamp").reset_index(drop=True)
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
 
     logger.info(
         f"Loaded {len(df)} events from {csv_path} ({discarded} discarded)."
