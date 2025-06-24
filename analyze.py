@@ -108,6 +108,7 @@ from utils import (
 from utils import parse_datetime
 from radmon.baseline import subtract_baseline
 from radon.baseline import subtract_baseline_counts, subtract_baseline_rate
+from baseline_utils import dilution_factor
 
 
 def _fit_params(obj):
@@ -1846,8 +1847,8 @@ def main(argv=None):
                 baseline_rates[iso] = 0.0
                 baseline_unc[iso] = 0.0
 
-    dilution_factor = monitor_vol / (monitor_vol + sample_vol) if (monitor_vol + sample_vol) > 0 else 0.0
-    scales = {"Po214": dilution_factor, "Po218": dilution_factor, "Po210": 1.0, "noise": 1.0}
+    dil_factor = dilution_factor(monitor_vol, sample_vol)
+    scales = {"Po214": dil_factor, "Po218": dil_factor, "Po210": 1.0, "noise": 1.0}
     baseline_info["scales"] = scales
     baseline_info["analysis_counts"] = iso_counts_raw
 
@@ -1896,7 +1897,7 @@ def main(argv=None):
     if baseline_rates:
         baseline_info["rate_Bq"] = baseline_rates
         baseline_info["rate_unc_Bq"] = baseline_unc
-        baseline_info["dilution_factor"] = dilution_factor
+        baseline_info["dilution_factor"] = dil_factor
     if baseline_info.get("corrected_activity"):
         baseline_info["corrected_rate_Bq"] = {
             iso: vals["value"] for iso, vals in baseline_info["corrected_activity"].items()
