@@ -17,6 +17,8 @@ __all__ = [
     "cps_to_bq",
     "parse_time_arg",
     "parse_time",
+    "parse_timestamp",
+    "parse_datetime",
     "LITERS_PER_M3",
 ]
 
@@ -175,7 +177,7 @@ def cps_to_bq(rate_cps, volume_liters=None):
     return float(rate_cps) / volume_m3
 
 
-def parse_time(s, tz="UTC") -> float:
+def parse_timestamp(s, tz="UTC") -> float:
     """Parse a timestamp string, number, or ``datetime`` into Unix epoch seconds.
 
     Parameters
@@ -221,6 +223,18 @@ def parse_time(s, tz="UTC") -> float:
         return float(dt.timestamp())
 
     raise argparse.ArgumentTypeError(f"could not parse time: {s!r}")
+
+
+# ``parse_time`` remains for backward compatibility
+parse_time = parse_timestamp
+
+
+def parse_datetime(value, tz="UTC") -> np.datetime64:
+    """Return ``numpy.datetime64`` parsed from various inputs."""
+
+    ts = parse_timestamp(value, tz=tz)
+    ns = int(round(ts * 1e9))
+    return np.datetime64(ns, "ns")
 
 
 def parse_time_arg(val, tz="UTC") -> datetime:
