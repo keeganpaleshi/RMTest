@@ -226,12 +226,8 @@ def test_calibrationresult_uncertainty_linear():
     """CalibrationResult.uncertainty should match analytic propagation."""
     from calibration import CalibrationResult
 
-    calib = CalibrationResult(
-        slope=2.0,
-        intercept=1.0,
-        slope_uncertainty=0.1,
-        intercept_uncertainty=0.2,
-    )
+    cov = np.array([[0.2 ** 2, 0.0], [0.0, 0.1 ** 2]])
+    calib = CalibrationResult(coeffs=[1.0, 2.0], cov=cov)
 
     adc = np.array([5.0])
     expected = np.sqrt((adc * 0.1) ** 2 + 0.2 ** 2)
@@ -243,15 +239,14 @@ def test_calibrationresult_uncertainty_quadratic():
     """Quadratic coefficient and covariance should propagate correctly."""
     from calibration import CalibrationResult
 
-    calib = CalibrationResult(
-        slope=1.0,
-        intercept=0.5,
-        quadratic=0.05,
-        slope_uncertainty=0.1,
-        intercept_uncertainty=0.1,
-        quadratic_uncertainty=0.02,
-        cov_a_a2=0.005,
+    cov = np.array(
+        [
+            [0.1 ** 2, 0.0, 0.0],
+            [0.0, 0.1 ** 2, 0.005],
+            [0.0, 0.005, 0.02 ** 2],
+        ]
     )
+    calib = CalibrationResult(coeffs=[0.5, 1.0, 0.05], cov=cov)
 
     adc = 2.0
     var = (
@@ -270,13 +265,8 @@ def test_calibrationresult_uncertainty_negative_covariance():
     """Non-positive covariance should not yield NaN uncertainties."""
     from calibration import CalibrationResult
 
-    calib = CalibrationResult(
-        slope=1.0,
-        intercept=0.0,
-        slope_uncertainty=0.001,
-        intercept_uncertainty=0.02,
-        cov_ac=-0.5,
-    )
+    cov = np.array([[0.02 ** 2, -0.5], [-0.5, 0.001 ** 2]])
+    calib = CalibrationResult(coeffs=[0.0, 1.0], cov=cov)
 
     sigma = calib.uncertainty([1.0])
     assert np.isfinite(sigma).all()

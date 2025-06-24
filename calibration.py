@@ -1,5 +1,6 @@
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from collections.abc import Sequence, Mapping
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 from scipy.stats import exponnorm
@@ -14,32 +15,49 @@ from constants import (
 
 @dataclass
 class CalibrationResult:
-    """Container for calibration coefficients and uncertainties."""
+    """Polynomial calibration coefficients with covariance."""
 
-    slope: float
-    intercept: float
-    slope_uncertainty: float = 0.0
-    intercept_uncertainty: float = 0.0
-    quadratic: float = 0.0
-    quadratic_uncertainty: float = 0.0
-    cov_ac: float = 0.0
-    cov_a_a2: float = 0.0
+    coeffs: Sequence | Mapping
+    cov: np.ndarray
+    peaks: dict | None = field(default=None)
+    sigma_E: float | None = None
+    sigma_E_error: float | None = None
+
+    def __post_init__(self) -> None:
+        if isinstance(self.coeffs, Mapping):
+            items = sorted(self.coeffs.items(), key=lambda kv: kv[0])
+            exps, coeffs = zip(*items)
+        else:
+            coeffs = list(self.coeffs)
+            exps = list(range(len(coeffs)))
+        self._exponents = np.asarray(exps, dtype=int)
+        self.coeffs = np.asarray(coeffs, dtype=float)
+        self.cov = np.asarray(self.cov, dtype=float)
+        if self.cov.shape != (len(self.coeffs), len(self.coeffs)):
+            raise ValueError("covariance matrix dimensions must match coeffs")
+
+    def predict(self, x):
+        """Evaluate the calibration polynomial at ``x``."""
+        x_arr = np.asarray(x, dtype=float)
+        result = np.zeros_like(x_arr, dtype=float)
+        for c, n in zip(self.coeffs, self._exponents):
+            result += c * x_arr ** n
+        return result
+
+    def uncertainty(self, x):
+        """Propagate covariance to ``x`` using the Jacobian."""
+        x_arr = np.asarray(x, dtype=float)
+        flat = x_arr.ravel()
+        out = np.empty_like(flat, dtype=float)
+        for i, xi in enumerate(flat):
+            J = xi ** self._exponents
+            var = J @ self.cov @ J.T
+            out[i] = np.sqrt(max(var, 0.0))
+        return out.reshape(x_arr.shape)
 
     def apply(self, adc_values):
         """Return calibrated energies for ``adc_values``."""
-        return apply_calibration(adc_values, self.slope, self.intercept, quadratic_coeff=self.quadratic)
-
-    def uncertainty(self, adc_values):
-        """Return propagated 1-sigma energy uncertainty for ``adc_values``."""
-        adc_arr = np.asarray(adc_values, dtype=float)
-        var = (
-            (adc_arr * self.slope_uncertainty) ** 2
-            + (adc_arr ** 2 * self.quadratic_uncertainty) ** 2
-            + self.intercept_uncertainty ** 2
-            + 2 * adc_arr * self.cov_ac
-            + 2 * adc_arr ** 3 * self.cov_a_a2
-        )
-        return np.sqrt(np.clip(var, 0, None))
+        return self.predict(adc_values)
 
 def emg_left(x, mu, sigma, tau):
     """Exponentially modified Gaussian (left-skewed) PDF.
