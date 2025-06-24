@@ -231,7 +231,14 @@ def prepare_analysis_df(
     """Apply time window cuts and derive drift parameters."""
 
     df_analysis = df.copy()
-    df_analysis["timestamp"] = pd.to_datetime(df_analysis["timestamp"], unit="s", utc=True)
+    ts = df_analysis["timestamp"]
+    if not pd.api.types.is_datetime64_any_dtype(ts):
+        ts = ts.map(parse_datetime)
+    if ts.dt.tz is None:
+        ts = ts.dt.tz_localize(timezone.utc)
+    else:
+        ts = ts.dt.tz_convert(timezone.utc)
+    df_analysis["timestamp"] = ts
 
     if spike_end is not None:
         df_analysis = df_analysis[df_analysis["timestamp"] >= spike_end].reset_index(drop=True)
@@ -835,9 +842,7 @@ def main(argv=None):
         else:
             events_all["timestamp"] = events_all["timestamp"].dt.tz_convert(tzinfo)
 
-        # 3) Convert to epoch seconds (float)
-        #    astype(int) gives nanoseconds since epoch, so divide by 1e9
-        events_all["timestamp"] = events_all["timestamp"].astype("int64") / 1e9
+
 
     except Exception as e:
         print(f"ERROR: Could not load events from '{args.input}': {e}")
@@ -847,8 +852,7 @@ def main(argv=None):
         print("No events found in the input CSV. Exiting.")
         sys.exit(0)
 
-    # ``load_events()`` now returns timezone-aware datetimes; convert to epoch
-    # seconds for internal calculations.
+    # ``load_events()`` now returns timezone-aware datetimes.
 
     # ───────────────────────────────────────────────
     # 2a. Pedestal / electronic-noise cut (integer ADC)
@@ -1031,7 +1035,11 @@ def main(argv=None):
 
     if drift_rate != 0.0 or drift_mode != "linear" or drift_params is not None:
         try:
-            ts_seconds = df_analysis["timestamp"].astype("int64").to_numpy() / 1e9
+            ts_col = df_analysis["timestamp"]
+            if pd.api.types.is_datetime64_any_dtype(ts_col):
+                ts_seconds = ts_col.view("int64").to_numpy() / 1e9
+            else:
+                ts_seconds = ts_col.astype(float).to_numpy()
             df_analysis["adc"] = apply_linear_adc_shift(
                 df_analysis["adc"].values,
                 ts_seconds,
@@ -1179,7 +1187,13 @@ def main(argv=None):
         t_end_base = baseline_range[1]
         if t_end_base <= t_start_base:
             raise ValueError("baseline_range end time must be greater than start time")
-        events_all_ts = pd.to_datetime(events_all["timestamp"], unit="s", utc=True)
+        events_all_ts = events_all["timestamp"]
+        if not pd.api.types.is_datetime64_any_dtype(events_all_ts):
+            events_all_ts = events_all_ts.map(parse_datetime)
+        if events_all_ts.dt.tz is None:
+            events_all_ts = events_all_ts.dt.tz_localize(timezone.utc)
+        else:
+            events_all_ts = events_all_ts.dt.tz_convert(timezone.utc)
         mask_base_full = (events_all_ts >= t_start_base) & (events_all_ts < t_end_base)
         mask_base = (df_analysis["timestamp"] >= t_start_base) & (
             df_analysis["timestamp"] < t_end_base
@@ -1463,7 +1477,11 @@ def main(argv=None):
                 print(f"WARNING: No events found for {iso} in [{lo}, {hi}] MeV.")
                 continue
 
-            first_ts = pd.to_datetime(iso_events["timestamp"].iloc[0], utc=True)
+            first_ts = iso_events["timestamp"].iloc[0]
+            if first_ts.tzinfo is None:
+                first_ts = first_ts.tz_localize(timezone.utc)
+            else:
+                first_ts = first_ts.tz_convert(timezone.utc)
             t0_dt = datetime.fromtimestamp(t0_global, tz=timezone.utc)
             settle = timedelta(seconds=float(args.settle_s or 0))
             t_start_fit_dt = max(first_ts, t0_dt + settle)
