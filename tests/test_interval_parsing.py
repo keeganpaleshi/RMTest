@@ -1,0 +1,40 @@
+import sys
+from pathlib import Path
+from datetime import datetime, timezone, timedelta
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import analyze
+from utils import parse_time_arg, parse_datetime
+from dateutil.tz import gettz
+import pandas as pd
+
+
+def test_cli_interval_parsing_to_datetime():
+    args = analyze.parse_args([
+        "--config", "cfg.json",
+        "--input", "data.csv",
+        "--output_dir", "out",
+        "--baseline_range", "1970-01-01T00:00:01Z", "1970-01-01T00:00:02Z",
+        "--radon-interval", "1970-01-01T00:00:03Z", "1970-01-01T00:00:04Z",
+    ])
+    tzinfo = gettz(args.timezone)
+    args.baseline_range = [parse_time_arg(t, tz=tzinfo) for t in args.baseline_range]
+    args.radon_interval = [parse_time_arg(t, tz=tzinfo) for t in args.radon_interval]
+    for dt in args.baseline_range + args.radon_interval:
+        assert dt.tzinfo is not None
+        assert dt.tzinfo.utcoffset(dt) == timedelta(0)
+
+
+def test_config_interval_parsing_to_datetime():
+    cfg = {
+        "baseline": {"range": ["1970-01-01T00:00:01Z", "1970-01-01T00:00:02Z"]},
+        "analysis": {"radon_interval": ["1970-01-01T00:00:03Z", "1970-01-01T00:00:04Z"]},
+    }
+    b_start = pd.to_datetime(parse_datetime(cfg["baseline"]["range"][0]), utc=True)
+    b_end = pd.to_datetime(parse_datetime(cfg["baseline"]["range"][1]), utc=True)
+    r_start = pd.to_datetime(parse_datetime(cfg["analysis"]["radon_interval"][0]), utc=True)
+    r_end = pd.to_datetime(parse_datetime(cfg["analysis"]["radon_interval"][1]), utc=True)
+    for dt in (b_start, b_end, r_start, r_end):
+        assert dt.tzinfo is not None
+        assert dt.tzinfo.utcoffset(dt) == timedelta(0)

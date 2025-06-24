@@ -901,12 +901,15 @@ def main(argv=None):
     if radon_interval_cfg:
         try:
             start_r, end_r = radon_interval_cfg
-            start_r_ts = parse_timestamp(start_r)
-            end_r_ts = parse_timestamp(end_r)
-            if end_r_ts <= start_r_ts:
+            start_r_dt = pd.to_datetime(parse_datetime(start_r), utc=True)
+            end_r_dt = pd.to_datetime(parse_datetime(end_r), utc=True)
+            if end_r_dt <= start_r_dt:
                 raise ValueError("end <= start")
-            radon_interval = (start_r_ts, end_r_ts)
-            cfg.setdefault("analysis", {})["radon_interval"] = [start_r_ts, end_r_ts]
+            radon_interval = (start_r_dt, end_r_dt)
+            cfg.setdefault("analysis", {})["radon_interval"] = [
+                parse_timestamp(start_r_dt),
+                parse_timestamp(end_r_dt),
+            ]
         except Exception as e:
             logging.warning(f"Invalid radon_interval {radon_interval_cfg} -> {e}")
             radon_interval = None
@@ -1095,8 +1098,8 @@ def main(argv=None):
             parse_timestamp(t_end_base),
         ]
         baseline_info = {
-            "start": parse_timestamp(t_start_base),
-            "end": parse_timestamp(t_end_base),
+            "start": t_start_base,
+            "end": t_end_base,
             "n_events": len(base_events),
             "live_time": baseline_live_time,
         }
@@ -1843,8 +1846,8 @@ def main(argv=None):
     if radon_interval is not None:
         from radon_activity import radon_delta
 
-        t_start_rel = radon_interval[0] - t0_global
-        t_end_rel = radon_interval[1] - t0_global
+        t_start_rel = radon_interval[0].timestamp() - t0_global
+        t_end_rel = radon_interval[1].timestamp() - t0_global
 
         delta214 = err_delta214 = None
         if "Po214" in time_fit_results:
@@ -2143,7 +2146,11 @@ def main(argv=None):
         )
 
         if radon_interval is not None:
-            times_trend = np.linspace(radon_interval[0], radon_interval[1], 50)
+            times_trend = np.linspace(
+                radon_interval[0].timestamp(),
+                radon_interval[1].timestamp(),
+                50,
+            )
             rel_trend = times_trend - t0_global
             A214_tr = None
             if "Po214" in time_fit_results:
