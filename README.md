@@ -72,8 +72,8 @@ The input file must be a comma-separated table with these columns:
 - `fUniqueID` – unique event number
 - `fBits` – status bits or flags
 - `timestamp` – event timestamp in seconds
-  (either numeric Unix seconds or an ISO‑8601 string; parsed with
-  `parse_timestamp` and converted to `numpy.datetime64[ns, UTC]` by `parse_datetime`)
+  (either numeric Unix seconds or an ISO‑8601 string; parsed to
+  `numpy.datetime64[ns, UTC]` by `parse_datetime`)
 - `adc` – raw ADC value
 - `fchannel` – acquisition channel
 

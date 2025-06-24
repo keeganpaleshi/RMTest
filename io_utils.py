@@ -296,10 +296,12 @@ def load_events(csv_path, *, column_map=None):
 
     df = df.rename(columns=rename, errors="ignore")
 
-    # Parse timestamps (epoch seconds) into timezone-aware datetimes
+    # Parse timestamps into timezone-aware datetimes in one step
     if "timestamp" in df.columns:
-        df["timestamp"] = df["timestamp"].map(parse_timestamp)
-        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s", utc=True)
+        ts = df["timestamp"].map(
+            lambda v: parse_datetime(v) if pd.notna(v) else pd.NaT
+        )
+        df["timestamp"] = ts.dt.tz_localize("UTC")
 
     # Check required columns after renaming
     required_cols = ["fUniqueID", "fBits", "timestamp", "adc", "fchannel"]
