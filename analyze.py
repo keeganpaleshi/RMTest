@@ -1064,6 +1064,40 @@ def main(argv=None):
         calibration_valid = False
         cal_params = {"a": (0.005, 0.001), "c": (0.02, 0.005), "sigma_E": (0.3, 0.1)}
 
+    def _as_cal_result(obj):
+        from calibration import CalibrationResult
+
+        if isinstance(obj, CalibrationResult):
+            return obj
+
+        a, a_sig = obj.get("a", (0.0, 0.0))
+        c, c_sig = obj.get("c", (0.0, 0.0))
+        a2, a2_sig = obj.get("a2", (0.0, 0.0))
+
+        coeffs = [c, a]
+        cov = np.array([[c_sig ** 2, 0.0], [0.0, a_sig ** 2]])
+
+        if "ac_covariance" in obj:
+            cov_ac = float(np.asarray(obj["ac_covariance"], dtype=float)[0][1])
+            cov[0, 1] = cov[1, 0] = cov_ac
+
+        if "a2" in obj:
+            coeffs.append(a2)
+            cov = np.pad(cov, ((0, 1), (0, 1)), mode="constant", constant_values=0.0)
+            cov[2, 2] = a2_sig ** 2
+            cov[1, 2] = cov[2, 1] = float(obj.get("cov_a_a2", 0.0))
+            cov[0, 2] = cov[2, 0] = float(obj.get("cov_a2_c", 0.0))
+
+        return CalibrationResult(
+            coeffs=coeffs,
+            covariance=cov,
+            sigma_E=obj.get("sigma_E", (0.0, 0.0))[0],
+            sigma_E_error=obj.get("sigma_E", (0.0, 0.0))[1],
+            peaks=obj.get("peaks"),
+        )
+
+    cal_result = _as_cal_result(cal_params)
+
     # Save “a, c, sigma_E” so we can reconstruct energies
     if isinstance(cal_params, dict):
         a, a_sig = cal_params["a"]
@@ -1093,18 +1127,9 @@ def main(argv=None):
         cov_a2_c = float(cov[2, 0]) if cov.shape[0] == 3 else 0.0
 
     # Apply calibration -> new column “energy_MeV” and its uncertainty
-    df_analysis["energy_MeV"] = apply_calibration(df_analysis["adc"], a, c, quadratic_coeff=a2)
-
-    adc_vals = df_analysis["adc"].astype(float)
-    var_energy = (
-        (adc_vals * a_sig) ** 2
-        + (adc_vals ** 2 * a2_sig) ** 2
-        + c_sig ** 2
-        + 2 * adc_vals * cov_ac
-        + 2 * adc_vals ** 3 * cov_a_a2
-        + 2 * adc_vals ** 2 * cov_a2_c
-    )
-    df_analysis["denergy_MeV"] = np.sqrt(np.clip(var_energy, 0, None))
+    energies = cal_result.predict(df_analysis["adc"])
+    df_analysis["energy_MeV"] = energies
+    df_analysis["denergy_MeV"] = cal_result.uncertainty(df_analysis["adc"])
 
     # ────────────────────────────────────────────────────────────
     # 4. Baseline run (optional)
@@ -1149,19 +1174,8 @@ def main(argv=None):
         base_events = events_all[mask_base_full].copy()
         # Apply calibration to the baseline events
         if not base_events.empty:
-            base_events["energy_MeV"] = apply_calibration(
-                base_events["adc"], a, c, quadratic_coeff=a2
-            )
-            adc_b = base_events["adc"].astype(float)
-            var_base = (
-                (adc_b * a_sig) ** 2
-                + (adc_b ** 2 * a2_sig) ** 2
-                + c_sig ** 2
-                + 2 * adc_b * cov_ac
-                + 2 * adc_b ** 3 * cov_a_a2
-                + 2 * adc_b ** 2 * cov_a2_c
-            )
-            base_events["denergy_MeV"] = np.sqrt(np.clip(var_base, 0, None))
+            base_events["energy_MeV"] = cal_result.predict(base_events["adc"])
+            base_events["denergy_MeV"] = cal_result.uncertainty(base_events["adc"])
         else:
             base_events["energy_MeV"] = np.array([], dtype=float)
             base_events["denergy_MeV"] = np.array([], dtype=float)
@@ -1188,7 +1202,9 @@ def main(argv=None):
         try:
             from baseline_noise import estimate_baseline_noise
 
-            peak_adc = cal_params.get("peaks", {}).get("Po210", {}).get("centroid_adc")
+            peak_adc = None
+            if getattr(cal_result, "peaks", None):
+                peak_adc = cal_result.peaks.get("Po210", {}).get("centroid_adc")
             if peak_adc is not None:
                 result = estimate_baseline_noise(
                     base_events["adc"].values,
