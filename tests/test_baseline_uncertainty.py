@@ -3,7 +3,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pytest
 import numpy as np
-from radon.baseline import subtract_baseline_counts, subtract_baseline_rate
+from baseline_utils import subtract_baseline_counts, subtract_baseline_rate
 
 
 def test_subtract_baseline_uncertainty():
