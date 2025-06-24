@@ -15,6 +15,7 @@ __all__ = [
     "adc_hist_edges",
     "cps_to_cpd",
     "cps_to_bq",
+    "to_utc_datetime",
     "parse_time_arg",
     "parse_timestamp",
     "parse_datetime",
@@ -50,6 +51,16 @@ def to_native(obj):
             return obj.isoformat()
         elif isinstance(obj, (pd.Series, pd.Index)):
             return [to_native(x) for x in obj.tolist()]
+    if isinstance(obj, (np.datetime64, datetime)):
+        if isinstance(obj, np.datetime64):
+            if obj == np.datetime64("NaT"):
+                return None
+            return np.datetime_as_string(obj, timezone="UTC")
+        if obj.tzinfo is None:
+            obj = obj.replace(tzinfo=timezone.utc)
+        else:
+            obj = obj.astimezone(timezone.utc)
+        return obj.isoformat().replace("+00:00", "Z")
     if isinstance(obj, np.ndarray):
         # Convert array into list of native types
         return [to_native(x) for x in obj.tolist()]
@@ -280,6 +291,12 @@ def parse_time_arg(val, tz="UTC") -> datetime:
 
     ts = parse_timestamp(dt)
     return datetime.fromtimestamp(ts, tz=timezone.utc)
+
+
+def to_utc_datetime(val, tz="UTC") -> datetime:
+    """Return ``val`` parsed as a timezone-aware UTC ``datetime``."""
+
+    return parse_time_arg(val, tz=tz)
 
 
 if __name__ == "__main__":

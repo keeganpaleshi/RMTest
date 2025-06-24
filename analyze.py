@@ -101,8 +101,7 @@ from visualize import cov_heatmap, efficiency_bar
 from utils import (
     find_adc_bin_peaks,
     adc_hist_edges,
-    parse_timestamp,
-    parse_time_arg,
+    to_utc_datetime,
 )
 from utils import parse_datetime
 from radmon.baseline import subtract_baseline
@@ -540,25 +539,25 @@ def main(argv=None):
         sys.exit(1)
 
     if args.baseline_range:
-        args.baseline_range = [parse_time_arg(t, tz=tzinfo) for t in args.baseline_range]
+        args.baseline_range = [to_utc_datetime(t, tz=tzinfo) for t in args.baseline_range]
     if args.analysis_end_time is not None:
-        args.analysis_end_time = parse_time_arg(args.analysis_end_time, tz=tzinfo)
+        args.analysis_end_time = to_utc_datetime(args.analysis_end_time, tz=tzinfo)
     if args.analysis_start_time is not None:
-        args.analysis_start_time = parse_time_arg(args.analysis_start_time, tz=tzinfo)
+        args.analysis_start_time = to_utc_datetime(args.analysis_start_time, tz=tzinfo)
     if args.spike_end_time is not None:
-        args.spike_end_time = parse_time_arg(args.spike_end_time, tz=tzinfo)
+        args.spike_end_time = to_utc_datetime(args.spike_end_time, tz=tzinfo)
     if args.spike_period:
         args.spike_period = [
-            [parse_time_arg(s, tz=tzinfo), parse_time_arg(e, tz=tzinfo)] for s, e in args.spike_period
+            [to_utc_datetime(s, tz=tzinfo), to_utc_datetime(e, tz=tzinfo)] for s, e in args.spike_period
         ]
     if args.run_period:
         args.run_period = [
-            [parse_time_arg(s, tz=tzinfo), parse_time_arg(e, tz=tzinfo)] for s, e in args.run_period
+            [to_utc_datetime(s, tz=tzinfo), to_utc_datetime(e, tz=tzinfo)] for s, e in args.run_period
         ]
     if args.radon_interval:
         args.radon_interval = [
-            parse_time_arg(args.radon_interval[0], tz=tzinfo),
-            parse_time_arg(args.radon_interval[1], tz=tzinfo),
+            to_utc_datetime(args.radon_interval[0], tz=tzinfo),
+            to_utc_datetime(args.radon_interval[1], tz=tzinfo),
         ]
 
     # ────────────────────────────────────────────────────────────
@@ -614,33 +613,33 @@ def main(argv=None):
 
     if args.analysis_end_time is not None:
         _log_override("analysis", "analysis_end_time", args.analysis_end_time)
-        cfg.setdefault("analysis", {})["analysis_end_time"] = args.analysis_end_time.timestamp()
+        cfg.setdefault("analysis", {})["analysis_end_time"] = args.analysis_end_time
 
     if args.analysis_start_time is not None:
         _log_override("analysis", "analysis_start_time", args.analysis_start_time)
-        cfg.setdefault("analysis", {})["analysis_start_time"] = args.analysis_start_time.timestamp()
+        cfg.setdefault("analysis", {})["analysis_start_time"] = args.analysis_start_time
 
     if args.spike_end_time is not None:
         _log_override("analysis", "spike_end_time", args.spike_end_time)
-        cfg.setdefault("analysis", {})["spike_end_time"] = args.spike_end_time.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        cfg.setdefault("analysis", {})["spike_end_time"] = args.spike_end_time
 
     if args.spike_period:
         _log_override("analysis", "spike_periods", args.spike_period)
         cfg.setdefault("analysis", {})["spike_periods"] = [
-            [s.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), e.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")] for s, e in args.spike_period
+            [s, e] for s, e in args.spike_period
         ]
 
     if args.run_period:
         _log_override("analysis", "run_periods", args.run_period)
         cfg.setdefault("analysis", {})["run_periods"] = [
-            [s.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"), e.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")] for s, e in args.run_period
+            [s, e] for s, e in args.run_period
         ]
 
     if args.radon_interval:
         _log_override("analysis", "radon_interval", args.radon_interval)
         cfg.setdefault("analysis", {})["radon_interval"] = [
-            args.radon_interval[0].astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            args.radon_interval[1].astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            args.radon_interval[0],
+            args.radon_interval[1],
         ]
 
     if args.settle_s is not None:
@@ -749,9 +748,6 @@ def main(argv=None):
         else:
             events_all["timestamp"] = events_all["timestamp"].dt.tz_convert(tzinfo)
 
-        # 3) Convert to epoch seconds (float)
-        #    astype(int) gives nanoseconds since epoch, so divide by 1e9
-        events_all["timestamp"] = events_all["timestamp"].astype("int64") / 1e9
 
     except Exception as e:
         print(f"ERROR: Could not load events from '{args.input}': {e}")
@@ -823,25 +819,24 @@ def main(argv=None):
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
     if t0_cfg is not None:
         try:
-            t0_global = parse_timestamp(t0_cfg)
+            t0_global = to_utc_datetime(t0_cfg)
             cfg.setdefault("analysis", {})["analysis_start_time"] = t0_global
         except Exception:
             logging.warning(
                 f"Invalid analysis_start_time '{t0_cfg}' - using first event"
             )
-            t0_global = events_filtered["timestamp"].min()
+            t0_global = pd.to_datetime(events_filtered["timestamp"].min(), utc=True).to_pydatetime()
     else:
-        t0_global = events_filtered["timestamp"].min()
+        t0_global = pd.to_datetime(events_filtered["timestamp"].min(), utc=True).to_pydatetime()
 
-    if not isinstance(t0_global, (int, float)):
-        t0_global = parse_timestamp(t0_global)
+    t0_global_ts = t0_global.timestamp()
 
     t_end_cfg = cfg.get("analysis", {}).get("analysis_end_time")
     t_end_global = None
     if t_end_cfg is not None:
         try:
-            t_end_global = pd.to_datetime(parse_datetime(t_end_cfg), utc=True)
-            cfg.setdefault("analysis", {})["analysis_end_time"] = parse_timestamp(t_end_global)
+            t_end_global = to_utc_datetime(t_end_cfg)
+            cfg.setdefault("analysis", {})["analysis_end_time"] = t_end_global
         except Exception:
             logging.warning(
                 f"Invalid analysis_end_time '{t_end_cfg}' - using last event"
@@ -852,8 +847,8 @@ def main(argv=None):
     t_spike_end = None
     if spike_end_cfg is not None:
         try:
-            t_spike_end = pd.to_datetime(parse_datetime(spike_end_cfg), utc=True)
-            cfg.setdefault("analysis", {})["spike_end_time"] = parse_timestamp(t_spike_end)
+            t_spike_end = to_utc_datetime(spike_end_cfg)
+            cfg.setdefault("analysis", {})["spike_end_time"] = t_spike_end
         except Exception:
             logging.warning(f"Invalid spike_end_time '{spike_end_cfg}' - ignoring")
             t_spike_end = None
@@ -865,8 +860,8 @@ def main(argv=None):
     for period in spike_periods_cfg:
         try:
             start, end = period
-            start_ts = pd.to_datetime(parse_datetime(start), utc=True)
-            end_ts = pd.to_datetime(parse_datetime(end), utc=True)
+            start_ts = to_utc_datetime(start)
+            end_ts = to_utc_datetime(end)
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
             spike_periods.append((start_ts, end_ts))
@@ -874,7 +869,7 @@ def main(argv=None):
             logging.warning(f"Invalid spike_period {period} -> {e}")
     if spike_periods:
         cfg.setdefault("analysis", {})["spike_periods"] = [
-            [parse_timestamp(s), parse_timestamp(e)] for s, e in spike_periods
+            [s, e] for s, e in spike_periods
         ]
 
     run_periods_cfg = cfg.get("analysis", {}).get("run_periods", [])
@@ -884,8 +879,8 @@ def main(argv=None):
     for period in run_periods_cfg:
         try:
             start, end = period
-            start_ts = pd.to_datetime(parse_datetime(start), utc=True)
-            end_ts = pd.to_datetime(parse_datetime(end), utc=True)
+            start_ts = to_utc_datetime(start)
+            end_ts = to_utc_datetime(end)
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
             run_periods.append((start_ts, end_ts))
@@ -893,7 +888,7 @@ def main(argv=None):
             logging.warning(f"Invalid run_period {period} -> {e}")
     if run_periods:
         cfg.setdefault("analysis", {})["run_periods"] = [
-            [parse_timestamp(s), parse_timestamp(e)] for s, e in run_periods
+            [s, e] for s, e in run_periods
         ]
 
     radon_interval_cfg = cfg.get("analysis", {}).get("radon_interval")
@@ -901,8 +896,8 @@ def main(argv=None):
     if radon_interval_cfg:
         try:
             start_r, end_r = radon_interval_cfg
-            start_r_ts = parse_timestamp(start_r)
-            end_r_ts = parse_timestamp(end_r)
+            start_r_ts = to_utc_datetime(start_r)
+            end_r_ts = to_utc_datetime(end_r)
             if end_r_ts <= start_r_ts:
                 raise ValueError("end <= start")
             radon_interval = (start_r_ts, end_r_ts)
@@ -913,10 +908,6 @@ def main(argv=None):
 
     # Apply optional time window cuts before any baseline or fit operations
     df_analysis = events_filtered.copy()
-    # Ensure timestamps are timezone-aware for comparisons
-    df_analysis["timestamp"] = pd.to_datetime(
-        df_analysis["timestamp"], unit="s", utc=True
-    )
     if t_spike_end is not None:
         df_analysis = df_analysis[df_analysis["timestamp"] >= t_spike_end].reset_index(drop=True)
     for start_ts, end_ts in spike_periods:
@@ -939,15 +930,12 @@ def main(argv=None):
     else:
         t_end_global = df_analysis["timestamp"].max()
 
-    if not isinstance(t_end_global, (int, float)):
-        t_end_global_ts = parse_timestamp(t_end_global)
-    else:
-        t_end_global_ts = float(t_end_global)
+    t_end_global_ts = t_end_global.timestamp()
 
     _ensure_events(df_analysis, "time-window selection")
 
-    analysis_start = datetime.fromtimestamp(t0_global, tz=timezone.utc)
-    analysis_end = datetime.fromtimestamp(t_end_global_ts, tz=timezone.utc)
+    analysis_start = t0_global
+    analysis_end = t_end_global
 
     # Optional ADC drift correction before calibration
     # Applied once using either the CLI value or the config default.
@@ -1036,15 +1024,16 @@ def main(argv=None):
     baseline_range = None
     if args.baseline_range:
         _log_override("baseline", "range", args.baseline_range)
-        t0_epoch = args.baseline_range[0].timestamp()
-        t1_epoch = args.baseline_range[1].timestamp()
+        baseline_range = args.baseline_range
         logging.info(
-            f"Baseline window (epoch seconds): {t0_epoch} \u2192 {t1_epoch}"
+            f"Baseline window: {baseline_range[0].isoformat()} \u2192 {baseline_range[1].isoformat()}"
         )
-        cfg.setdefault("baseline", {})["range"] = [t0_epoch, t1_epoch]
-        baseline_range = [t0_epoch, t1_epoch]
+        cfg.setdefault("baseline", {})["range"] = baseline_range
     elif "range" in baseline_cfg:
-        baseline_range = baseline_cfg.get("range")
+        baseline_range = [
+            to_utc_datetime(baseline_cfg.get("range")[0]),
+            to_utc_datetime(baseline_cfg.get("range")[1]),
+        ]
 
     monitor_vol = float(baseline_cfg.get("monitor_volume_l", 605.0))
     sample_vol = float(baseline_cfg.get("sample_volume_l", 0.0))
@@ -1053,11 +1042,11 @@ def main(argv=None):
     mask_base = None
 
     if baseline_range:
-        t_start_base = pd.to_datetime(parse_datetime(baseline_range[0]), utc=True)
-        t_end_base = pd.to_datetime(parse_datetime(baseline_range[1]), utc=True)
+        t_start_base = to_utc_datetime(baseline_range[0])
+        t_end_base = to_utc_datetime(baseline_range[1])
         if t_end_base <= t_start_base:
             raise ValueError("baseline_range end time must be greater than start time")
-        events_all_ts = pd.to_datetime(events_all["timestamp"], unit="s", utc=True)
+        events_all_ts = pd.to_datetime(events_all["timestamp"], utc=True)
         mask_base_full = (events_all_ts >= t_start_base) & (
             events_all_ts < t_end_base
         )
@@ -1091,12 +1080,12 @@ def main(argv=None):
         else:
             baseline_live_time = float((t_end_base - t_start_base) / np.timedelta64(1, "s"))
         cfg.setdefault("baseline", {})["range"] = [
-            parse_timestamp(t_start_base),
-            parse_timestamp(t_end_base),
+            t_start_base,
+            t_end_base,
         ]
         baseline_info = {
-            "start": parse_timestamp(t_start_base),
-            "end": parse_timestamp(t_end_base),
+            "start": t_start_base,
+            "end": t_end_base,
             "n_events": len(base_events),
             "live_time": baseline_live_time,
         }
@@ -1357,7 +1346,7 @@ def main(argv=None):
                 first_sec = first_ts.to_datetime64().view("int64") / 1e9
             else:
                 first_sec = float(first_ts)
-            t_start_fit = max(first_sec, t0_global + float(args.settle_s or 0))
+            t_start_fit = max(first_sec, t0_global_ts + float(args.settle_s or 0))
             t_start_map[iso] = t_start_fit
             iso_live_time[iso] = t_end_global_ts - t_start_fit
 
@@ -1477,7 +1466,7 @@ def main(argv=None):
 
         # Build configuration for fit_time_series
         if args.settle_s is not None:
-            cut = pd.to_datetime(t0_global + float(args.settle_s), unit="s", utc=True)
+            cut = pd.to_datetime(t0_global_ts + float(args.settle_s), unit="s", utc=True)
             iso_events = iso_events[iso_events["timestamp"] >= cut]
         ts_vals = iso_events["timestamp"]
         if pd.api.types.is_datetime64_any_dtype(ts_vals):
@@ -1843,8 +1832,8 @@ def main(argv=None):
     if radon_interval is not None:
         from radon_activity import radon_delta
 
-        t_start_rel = radon_interval[0] - t0_global
-        t_end_rel = radon_interval[1] - t0_global
+        t_start_rel = (radon_interval[0] - t0_global).total_seconds()
+        t_end_rel = (radon_interval[1] - t0_global).total_seconds()
 
         delta214 = err_delta214 = None
         if "Po214" in time_fit_results:
@@ -2016,7 +2005,7 @@ def main(argv=None):
             if np.issubdtype(ts_times.dtype, "datetime64"):
                 ts_times = ts_times.view("int64") / 1e9
             centers, widths = _ts_bin_centers_widths(
-                ts_times, plot_cfg, t0_global, t_end_global_ts
+                ts_times, plot_cfg, t0_global_ts, t_end_global_ts
             )
             normalise = bool(plot_cfg.get("plot_time_normalise_rate", False))
             model_errs = {}
@@ -2036,7 +2025,7 @@ def main(argv=None):
                 all_timestamps=ts_times,
                 all_energies=ts_energy,
                 fit_results=fit_dict,
-                t_start=t0_global,
+                t_start=t0_global_ts,
                 t_end=t_end_global_ts,
                 config=plot_cfg,
                 out_png=Path(out_dir) / f"time_series_{iso}.png",

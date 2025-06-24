@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 import pandas as pd
 import numpy as np
+from datetime import datetime, timezone
 import logging
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -2065,12 +2066,22 @@ def test_time_fields_written_back(tmp_path, monkeypatch):
     analyze.main()
 
     used = captured.get("cfg", {})
-    assert used["analysis"]["analysis_end_time"] == 5.0
-    assert used["analysis"]["spike_end_time"] == 0.0
-    assert used["analysis"]["spike_periods"] == [[2.0, 3.0]]
-    assert used["analysis"]["run_periods"] == [[0.0, 10.0]]
-    assert used["analysis"]["radon_interval"] == [3.0, 5.0]
-    assert used["baseline"]["range"] == [0.0, 1.0]
+    assert used["analysis"]["analysis_end_time"] == datetime.fromtimestamp(5, tz=timezone.utc)
+    assert used["analysis"]["spike_end_time"] == datetime.fromtimestamp(0, tz=timezone.utc)
+    assert used["analysis"]["spike_periods"] == [
+        [datetime.fromtimestamp(2, tz=timezone.utc), datetime.fromtimestamp(3, tz=timezone.utc)]
+    ]
+    assert used["analysis"]["run_periods"] == [
+        [datetime.fromtimestamp(0, tz=timezone.utc), datetime.fromtimestamp(10, tz=timezone.utc)]
+    ]
+    assert used["analysis"]["radon_interval"] == [
+        datetime.fromtimestamp(3, tz=timezone.utc),
+        datetime.fromtimestamp(5, tz=timezone.utc),
+    ]
+    assert used["baseline"]["range"] == [
+        datetime.fromtimestamp(0, tz=timezone.utc),
+        datetime.fromtimestamp(1, tz=timezone.utc),
+    ]
 
 
 

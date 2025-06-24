@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 import pandas as pd
 import numpy as np
+from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
@@ -89,7 +90,10 @@ def test_cli_baseline_range_overrides_config_again(tmp_path, monkeypatch):
     analyze.main()
 
     summary = captured.get("summary", {})
-    assert summary.get("baseline", {}).get("start") == 2.0
-    assert summary.get("baseline", {}).get("end") == 3.0
+    assert summary.get("baseline", {}).get("start") == datetime.fromtimestamp(2, tz=timezone.utc)
+    assert summary.get("baseline", {}).get("end") == datetime.fromtimestamp(3, tz=timezone.utc)
     assert summary.get("baseline", {}).get("n_events") == 1
-    assert captured.get("cfg", {}).get("baseline", {}).get("range") == [2.0, 3.0]
+    assert captured.get("cfg", {}).get("baseline", {}).get("range") == [
+        datetime.fromtimestamp(2, tz=timezone.utc),
+        datetime.fromtimestamp(3, tz=timezone.utc),
+    ]

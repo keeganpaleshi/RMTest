@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 import pandas as pd
 import numpy as np
+from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
@@ -89,8 +90,11 @@ def test_cli_baseline_range_empty(tmp_path, monkeypatch):
     analyze.main()
 
     summary = captured.get("summary", {})
-    assert summary.get("baseline", {}).get("start") == 10.0
-    assert summary.get("baseline", {}).get("end") == 20.0
+    assert summary.get("baseline", {}).get("start") == datetime.fromtimestamp(10, tz=timezone.utc)
+    assert summary.get("baseline", {}).get("end") == datetime.fromtimestamp(20, tz=timezone.utc)
     assert summary.get("baseline", {}).get("n_events") == 0
     assert summary.get("baseline", {}).get("live_time") == 0.0
-    assert captured.get("cfg", {}).get("baseline", {}).get("range") == [10.0, 20.0]
+    assert captured.get("cfg", {}).get("baseline", {}).get("range") == [
+        datetime.fromtimestamp(10, tz=timezone.utc),
+        datetime.fromtimestamp(20, tz=timezone.utc),
+    ]
