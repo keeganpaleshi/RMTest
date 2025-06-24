@@ -50,6 +50,19 @@ python analyze.py --config config.json --input merged_data.csv \
 The script exits with an error message if filtering removes all events at any stage
 (noise cut, burst filter, time-window selection or baseline subtraction).
 
+## Event Filtering
+
+All filtering steps—noise cut, burst removal, time-window selection and
+baseline subtraction—are now managed by the `EventFilter` class.
+
+```python
+from event_filter import EventFilter
+events, baseline = EventFilter(cfg).apply(events)
+```
+
+Command-line options continue to override values from the configuration,
+even though the filtering logic is centralized in `EventFilter`.
+
 ## Input CSV Format
 
 The input file must be a comma-separated table with these columns:
