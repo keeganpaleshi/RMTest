@@ -231,7 +231,14 @@ def prepare_analysis_df(
     """Apply time window cuts and derive drift parameters."""
 
     df_analysis = df.copy()
-    df_analysis["timestamp"] = pd.to_datetime(df_analysis["timestamp"], unit="s", utc=True)
+    ts = df_analysis["timestamp"]
+    if not pd.api.types.is_datetime64_any_dtype(ts):
+        df_analysis["timestamp"] = pd.to_datetime(ts, unit="s", utc=True)
+    else:
+        if ts.dt.tz is None:
+            df_analysis["timestamp"] = ts.dt.tz_localize(timezone.utc)
+        else:
+            df_analysis["timestamp"] = ts.dt.tz_convert(timezone.utc)
 
     if spike_end is not None:
         df_analysis = df_analysis[df_analysis["timestamp"] >= spike_end].reset_index(drop=True)
@@ -828,14 +835,12 @@ def main(argv=None):
         if not pd.api.types.is_datetime64_any_dtype(events_all["timestamp"]):
             events_all["timestamp"] = events_all["timestamp"].map(parse_datetime)
 
-        # 2) Localize naïve datetimes to UTC then convert to epoch seconds
+        # 2) Localize naïve datetimes to UTC
         if events_all["timestamp"].dt.tz is None:
             events_all["timestamp"] = events_all["timestamp"].dt.tz_localize(timezone.utc)
         else:
             events_all["timestamp"] = events_all["timestamp"].dt.tz_convert(timezone.utc)
 
-        # 3) Convert to epoch seconds (float)
-        events_all["timestamp"] = events_all["timestamp"].astype("int64") / 1e9
 
     except Exception as e:
         print(f"ERROR: Could not load events from '{args.input}': {e}")
@@ -845,8 +850,9 @@ def main(argv=None):
         print("No events found in the input CSV. Exiting.")
         sys.exit(0)
 
-    # ``load_events()`` returns ``datetime64`` values; convert to epoch seconds
-    # for internal calculations.
+    # ``load_events()`` already returns timezone-aware ``datetime64`` values.
+    # Timestamps are kept in this form and converted to epoch seconds only for
+    # numerical operations.
 
     # ───────────────────────────────────────────────
     # 2a. Pedestal / electronic-noise cut (integer ADC)
@@ -1018,7 +1024,11 @@ def main(argv=None):
 
     if drift_rate != 0.0 or drift_mode != "linear" or drift_params is not None:
         try:
-            ts_seconds = df_analysis["timestamp"].astype("int64").to_numpy() / 1e9
+            ts_vals = df_analysis["timestamp"]
+            if pd.api.types.is_datetime64_any_dtype(ts_vals):
+                ts_seconds = ts_vals.view("int64").to_numpy() / 1e9
+            else:
+                ts_seconds = ts_vals.astype(float).to_numpy()
             df_analysis["adc"] = apply_linear_adc_shift(
                 df_analysis["adc"].values,
                 ts_seconds,
@@ -1166,7 +1176,7 @@ def main(argv=None):
         t_end_base = baseline_range[1]
         if t_end_base <= t_start_base:
             raise ValueError("baseline_range end time must be greater than start time")
-        events_all_ts = pd.to_datetime(events_all["timestamp"], unit="s", utc=True)
+        events_all_ts = pd.to_datetime(events_all["timestamp"], utc=True)
         mask_base_full = (events_all_ts >= t_start_base) & (events_all_ts < t_end_base)
         mask_base = (df_analysis["timestamp"] >= t_start_base) & (
             df_analysis["timestamp"] < t_end_base
