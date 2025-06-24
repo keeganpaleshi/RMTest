@@ -47,8 +47,23 @@ python analyze.py --config config.json --input merged_data.csv \
     [--hierarchical-summary OUT.json]
 ```
 
+
 The script exits with an error message if filtering removes all events at any stage
 (noise cut, burst filter, time-window selection or baseline subtraction).
+
+## Event Filtering
+
+All filtering steps—including the noise cut, burst removal, time-window
+selection and baseline subtraction—are now handled by the dedicated
+`EventFilter` class.  This centralized class applies the full sequence of
+filters while keeping the command-line overrides intact.  Options provided on
+the command line still take precedence over the values specified in the
+configuration file.
+
+```python
+from event_filter import EventFilter
+events, baseline = EventFilter(cfg).apply(events)
+```
 
 ## Input CSV Format
 
