@@ -203,37 +203,12 @@ def ensure_dir(path):
 
 
 def parse_datetime(value):
-    """Parse an ISO-8601 string or numeric epoch value to ``numpy.datetime64``.
+    """Return ``value`` converted to ``numpy.datetime64[ns, UTC]``."""
 
-    The function accepts strings like ``"2023-09-28T13:45:00-04:00"`` or
-    numeric Unix timestamps (as ``int``, ``float`` or numeric ``str``).  Any
-    parsed time lacking a timezone is interpreted as UTC.  On success a
-    ``numpy.datetime64`` object in UTC (nanosecond resolution) is returned.
-    ``ValueError`` is raised if the input cannot be parsed.
-    """
+    from utils import to_utc_datetime
 
-    if isinstance(value, (int, float)):
-        ts = float(value)
-    elif isinstance(value, str):
-        try:
-            ts = float(value)
-        except ValueError:
-            try:
-                dt = date_parser.isoparse(value)
-            except (ValueError, OverflowError) as e:
-                raise ValueError(f"invalid datetime: {value!r}") from e
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            ts = dt.timestamp()
-    elif isinstance(value, datetime):
-        dt = value
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        ts = dt.timestamp()
-    else:
-        raise ValueError(f"invalid datetime: {value!r}")
-
-    ns = int(round(ts * 1e9))
+    dt = to_utc_datetime(value)
+    ns = int(round(dt.timestamp() * 1e9))
     return np.datetime64(ns, "ns")
 
 

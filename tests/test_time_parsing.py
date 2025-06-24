@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from utils import parse_time_arg
+from utils import to_utc_datetime
 
 @pytest.mark.parametrize("inp", [
     0,
@@ -14,7 +14,7 @@ from utils import parse_time_arg
     "1970-01-01T00:00:00+00:00",
 ])
 def test_parse_time_arg_variants(inp):
-    dt = parse_time_arg(inp)
+    dt = to_utc_datetime(inp)
     assert dt == datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
@@ -29,7 +29,7 @@ def test_parse_time_arg_variants(inp):
     ],
 )
 def test_parse_time_arg_iso_offsets(inp, expected):
-    assert parse_time_arg(inp) == expected
+    assert to_utc_datetime(inp) == expected
 
 
 @pytest.mark.parametrize(
@@ -40,15 +40,15 @@ def test_parse_time_arg_iso_offsets(inp, expected):
     ],
 )
 def test_parse_time_arg_numeric(inp, expected):
-    assert parse_time_arg(inp) == expected
+    assert to_utc_datetime(inp) == expected
 
 
 @pytest.mark.parametrize("inp", ["foo", "1970-13-01"])
 def test_parse_time_arg_invalid(inp):
-    with pytest.raises((argparse.ArgumentTypeError, ValueError)):
-        parse_time_arg(inp)
+    with pytest.raises(ValueError):
+        to_utc_datetime(inp)
 
 
 def test_parse_time_arg_naive_timezone():
-    dt = parse_time_arg("1970-01-01T01:00:00", tz="Europe/Berlin")
+    dt = to_utc_datetime("1970-01-01T01:00:00", tz="Europe/Berlin")
     assert dt == datetime(1970, 1, 1, tzinfo=timezone.utc)

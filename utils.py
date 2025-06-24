@@ -15,6 +15,7 @@ __all__ = [
     "adc_hist_edges",
     "cps_to_cpd",
     "cps_to_bq",
+    "to_utc_datetime",
     "parse_time_arg",
     "parse_time",
     "LITERS_PER_M3",
@@ -175,52 +176,47 @@ def cps_to_bq(rate_cps, volume_liters=None):
     return float(rate_cps) / volume_m3
 
 
-def parse_time(s, tz="UTC") -> float:
-    """Parse a timestamp string, number, or ``datetime`` into Unix epoch seconds.
-
-    Parameters
-    ----------
-    s : str | float | int | datetime
-        Input value to parse.
-    tz : str or tzinfo, optional
-        Timezone to assume for naïve inputs. ``dateutil.tz.gettz`` is used to
-        resolve the value. Defaults to ``"UTC"``.
-    """
+def to_utc_datetime(value, tz="UTC") -> datetime:
+    """Convert ``value`` to a timezone-aware ``datetime`` in UTC."""
 
     tzinfo_obj = tz if isinstance(tz, tzinfo) else gettz(tz)
     if tzinfo_obj is None:
         tzinfo_obj = timezone.utc
 
-    if isinstance(s, (int, float)):
-        return float(s)
-
-    if isinstance(s, datetime):
-        dt = s
+    if isinstance(value, datetime):
+        dt = value
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=tzinfo_obj)
-        else:
-            dt = dt.astimezone(tzinfo_obj)
-        return float(dt.timestamp())
+        return dt.astimezone(timezone.utc)
 
-    if isinstance(s, str):
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(float(value), tz=timezone.utc)
+
+    if isinstance(value, str):
         try:
-            return float(s)
+            return datetime.fromtimestamp(float(value), tz=timezone.utc)
         except ValueError:
             pass
-
         try:
-            dt = date_parser.isoparse(s)
+            dt = date_parser.isoparse(value)
         except (ValueError, OverflowError) as e:
-            raise argparse.ArgumentTypeError(f"could not parse time: {s!r}") from e
-
+            raise ValueError(f"invalid datetime: {value!r}") from e
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=tzinfo_obj)
-        else:
-            dt = dt.astimezone(tzinfo_obj)
+        return dt.astimezone(timezone.utc)
 
-        return float(dt.timestamp())
+    raise ValueError(f"invalid datetime: {value!r}")
 
-    raise argparse.ArgumentTypeError(f"could not parse time: {s!r}")
+
+def parse_time(s, tz="UTC") -> float:
+    """Parse ``s`` into Unix epoch seconds using :func:`to_utc_datetime`."""
+
+    try:
+        dt = to_utc_datetime(s, tz=tz)
+    except Exception as e:
+        raise argparse.ArgumentTypeError(f"could not parse time: {s!r}") from e
+
+    return dt.timestamp()
 
 
 def parse_time_arg(val, tz="UTC") -> datetime:
@@ -229,8 +225,10 @@ def parse_time_arg(val, tz="UTC") -> datetime:
     ``tz`` specifies the timezone for naïve inputs.
     """
 
-    ts = parse_time(val, tz=tz)
-    return datetime.fromtimestamp(ts, tz=timezone.utc)
+    try:
+        return to_utc_datetime(val, tz=tz)
+    except Exception as e:
+        raise argparse.ArgumentTypeError(f"could not parse time: {val!r}") from e
 
 
 if __name__ == "__main__":
