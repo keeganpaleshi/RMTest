@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
 from constants import DEFAULT_ADC_CENTROIDS
 from io_utils import load_config
-from fitting import FitResult
+from fitting import FitResult, FitParams
 
 
 def test_expected_peaks_default(tmp_path, monkeypatch):
@@ -65,7 +65,7 @@ def test_expected_peaks_default(tmp_path, monkeypatch):
         "derive_calibration_constants_auto",
         lambda *a, **k: cal_mock,
     )
-    monkeypatch.setattr(analyze, "fit_spectrum", lambda *a, **k: FitResult({}, np.zeros((0, 0)), 0))
+    monkeypatch.setattr(analyze, "fit_spectrum", lambda *a, **k: FitResult(FitParams({}), np.zeros((0, 0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())

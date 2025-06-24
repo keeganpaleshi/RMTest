@@ -6,7 +6,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
-from fitting import FitResult
+from fitting import FitResult, FitParams
 
 
 def test_analyze_systematics_runs(tmp_path, monkeypatch):
@@ -50,7 +50,7 @@ def test_analyze_systematics_runs(tmp_path, monkeypatch):
     monkeypatch.setattr(
         analyze,
         "fit_time_series",
-        lambda *a, **k: FitResult({"E_Po214": 1.0}, np.zeros((1, 1)), 0),
+        lambda *a, **k: FitResult(FitParams({"E_Po214": 1.0}), np.zeros((1, 1)), 0),
     )
 
     called = {}

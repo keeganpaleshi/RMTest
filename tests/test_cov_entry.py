@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
-from fitting import FitResult
+from fitting import FitResult, FitParams
 
 
 def test_cov_entry_valid_params():

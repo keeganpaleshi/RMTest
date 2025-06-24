@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
 import baseline_noise
 from calibration import CalibrationResult
-from fitting import FitResult
+from fitting import FitResult, FitParams
 
 
 def test_baseline_noise_propagation(tmp_path, monkeypatch):
@@ -63,7 +63,7 @@ def test_baseline_noise_propagation(tmp_path, monkeypatch):
         return None, {}
 
     monkeypatch.setattr(baseline_noise, "estimate_baseline_noise", fake_baseline_noise)
-    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult({"E_Po214": 1.0}, np.zeros((1,1)), 0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({"E_Po214": 1.0}), np.zeros((1,1)), 0))
 
     def fake_write(out_dir, summary, timestamp=None):
         captured["summary"] = summary
