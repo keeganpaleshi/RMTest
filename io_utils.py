@@ -11,7 +11,7 @@ import pandas as pd
 from constants import load_nuclide_overrides
 
 import numpy as np
-from utils import to_native, parse_timestamp, parse_datetime
+from utils import to_native, to_utc_datetime, parse_datetime
 import jsonschema
 
 
@@ -296,10 +296,17 @@ def load_events(csv_path, *, column_map=None):
 
     df = df.rename(columns=rename, errors="ignore")
 
-    # Parse timestamps (epoch seconds) into timezone-aware datetimes
+    # Parse timestamps directly to timezone-aware datetimes
     if "timestamp" in df.columns:
-        df["timestamp"] = df["timestamp"].map(parse_timestamp)
-        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s", utc=True)
+        def _ts_or_nat(val):
+            if isinstance(val, str) and val.strip().lower() == "nan":
+                return pd.NaT
+            try:
+                return to_utc_datetime(val)
+            except ValueError:
+                return pd.NaT
+
+        df["timestamp"] = df["timestamp"].map(_ts_or_nat)
 
     # Check required columns after renaming
     required_cols = ["fUniqueID", "fBits", "timestamp", "adc", "fchannel"]
