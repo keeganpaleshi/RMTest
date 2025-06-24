@@ -1,5 +1,4 @@
 import matplotlib
-matplotlib.use("Agg")
 
 import numpy as np
 import pandas as pd
@@ -11,6 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from io_utils import extract_time_series_events
 import plot_utils
 from plot_utils import plot_time_series
+
+matplotlib.use("Agg")
 
 
 def test_extract_time_series_po210_count():
