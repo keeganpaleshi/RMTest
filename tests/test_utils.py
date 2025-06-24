@@ -1,10 +1,18 @@
 import sys
 from pathlib import Path
+from datetime import datetime
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from utils import cps_to_cpd, cps_to_bq, find_adc_bin_peaks, parse_time, LITERS_PER_M3
+from utils import (
+    cps_to_cpd,
+    cps_to_bq,
+    find_adc_bin_peaks,
+    parse_timestamp,
+    parse_time,
+    LITERS_PER_M3,
+)
 
 
 def test_cps_to_cpd():
@@ -65,3 +73,15 @@ def test_parse_time_iso_fraction():
 
 def test_parse_time_naive_timezone():
     assert parse_time("1970-01-01T01:00:00", tz="Europe/Berlin") == pytest.approx(0.0)
+
+
+def test_parse_timestamp_numeric():
+    assert parse_timestamp(42) == pytest.approx(42.0)
+
+
+def test_parse_timestamp_iso():
+    assert parse_timestamp("1970-01-01T00:00:00Z") == pytest.approx(0.0)
+
+
+def test_parse_timestamp_datetime_naive():
+    assert parse_timestamp(datetime(1970, 1, 1)) == pytest.approx(0.0)

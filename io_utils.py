@@ -6,11 +6,12 @@ import logging
 import warnings
 from datetime import datetime, timezone
 from dateutil import parser as date_parser
+import argparse
 import pandas as pd
 from constants import load_nuclide_overrides
 
 import numpy as np
-from utils import to_native
+from utils import to_native, parse_timestamp
 import jsonschema
 
 
@@ -212,29 +213,12 @@ def parse_datetime(value):
     ``ValueError`` is raised if the input cannot be parsed.
     """
 
-    if isinstance(value, (int, float)):
-        ts = float(value)
-    elif isinstance(value, str):
-        try:
-            ts = float(value)
-        except ValueError:
-            try:
-                dt = date_parser.isoparse(value)
-            except (ValueError, OverflowError) as e:
-                raise ValueError(f"invalid datetime: {value!r}") from e
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            ts = dt.timestamp()
-    elif isinstance(value, datetime):
-        dt = value
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        ts = dt.timestamp()
-    else:
-        raise ValueError(f"invalid datetime: {value!r}")
+    try:
+        ts = parse_timestamp(value)
+    except argparse.ArgumentTypeError as e:
+        raise ValueError(f"invalid datetime: {value!r}") from e
 
-    ns = int(round(ts * 1e9))
-    return np.datetime64(ns, "ns")
+    return pd.to_datetime(ts, unit="s", utc=True).to_datetime64()
 
 
 def _merge_dicts(base: dict, override: dict) -> dict:
