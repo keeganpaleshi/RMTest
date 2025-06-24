@@ -3,6 +3,7 @@ import logging
 import pandas as pd
 from utils import parse_datetime
 
+from baseline_utils import _scaling_factor
 __all__ = ["rate_histogram", "subtract_baseline"]
 
 
@@ -52,6 +53,9 @@ def _scaling_factor(dt_window: float, dt_baseline: float,
 
 
 def _to_datetime64(col):
+
+def _seconds(col):
+
     """Return timestamp column as ``numpy.datetime64`` values."""
 
     if pd.api.types.is_datetime64_any_dtype(col):

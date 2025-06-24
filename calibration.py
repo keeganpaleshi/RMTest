@@ -74,6 +74,54 @@ class CalibrationResult:
         out = np.sqrt(np.clip(sig2, 0, None))
         return out[0] if np.ndim(x) == 0 else out
 
+    def _coef_index(self, label):
+        """Return coefficient index for ``label``.
+
+        ``label`` may be an integer exponent or one of ``"c"``, ``"a"`` or
+        ``"a2"``. String representations of integer exponents are also
+        accepted. A :class:`KeyError` is raised if the coefficient is not
+        present.
+        """
+
+        if isinstance(label, str):
+            key = label.lower()
+            mapping = {"c": 0, "a": 1, "a2": 2}
+            if key in mapping:
+                exp = mapping[key]
+            else:
+                try:
+                    exp = int(key)
+                except ValueError:
+                    raise KeyError(f"Unknown coefficient: {label}") from None
+        elif isinstance(label, (int, np.integer)):
+            exp = int(label)
+        else:
+            raise KeyError(f"Invalid coefficient label: {label!r}")
+
+        try:
+            return self._exponents.index(exp)
+        except ValueError as exc:
+            raise KeyError(f"Coefficient not present: {label}") from exc
+
+    def get_cov(self, name1, name2):
+        """Return covariance entry for two coefficients.
+
+        Parameters can be coefficient names (``"a"``, ``"c"``, ``"a2"``) or
+        integer exponents.
+        """
+
+        if self.cov is None:
+            return 0.0
+
+        i1 = self._coef_index(name1)
+        i2 = self._coef_index(name2)
+        cov = np.asarray(self.cov, dtype=float)
+
+        if cov.ndim >= 2 and i1 < cov.shape[0] and i2 < cov.shape[1]:
+            return float(cov[i1, i2])
+
+        raise KeyError(f"Coefficient(s) missing in covariance: {name1}, {name2}")
+
 def emg_left(x, mu, sigma, tau):
     """Exponentially modified Gaussian (left-skewed) PDF.
 
