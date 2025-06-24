@@ -820,15 +820,10 @@ def main(argv=None):
     try:
         events_all = load_events(args.input, column_map=cfg.get("columns"))
 
-        # 1) Parse non-datetime values
-        if not pd.api.types.is_datetime64_any_dtype(events_all["timestamp"]):
-            events_all["timestamp"] = events_all["timestamp"].map(parse_datetime)
-
-        # 2) Localize naïve datetimes to UTC
-        if events_all["timestamp"].dt.tz is None:
-            events_all["timestamp"] = events_all["timestamp"].dt.tz_localize(timezone.utc)
-        else:
-            events_all["timestamp"] = events_all["timestamp"].dt.tz_convert(timezone.utc)
+        ts = events_all["timestamp"]
+        if not pd.api.types.is_datetime64_any_dtype(ts):
+            ts = ts.map(parse_datetime)
+        events_all["timestamp"] = pd.to_datetime(ts, utc=True)
 
 
     except Exception as e:

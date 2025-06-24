@@ -57,7 +57,8 @@ def _seconds(col: pd.Series) -> np.ndarray:
             ser = ser.dt.tz_convert("UTC").dt.tz_localize(None)
         ts = ser.astype("datetime64[ns]").to_numpy()
     else:
-        ts = col.map(parse_datetime).astype("datetime64[ns]").to_numpy()
+        mapped = col.map(parse_datetime)
+        ts = pd.to_datetime(mapped, utc=True).astype("datetime64[ns]").to_numpy()
     return np.asarray(ts)
 
 
@@ -95,8 +96,8 @@ def subtract_baseline_dataframe(
     if live_time_analysis is None:
         live_time_analysis = live_an
 
-    t0 = parse_datetime(t_base0)
-    t1 = parse_datetime(t_base1)
+    t0 = parse_datetime(t_base0).to_datetime64()
+    t1 = parse_datetime(t_base1).to_datetime64()
     ts_full = _seconds(df_full["timestamp"])
     mask = (ts_full >= t0) & (ts_full <= t1)
     if not mask.any():

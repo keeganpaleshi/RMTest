@@ -304,7 +304,8 @@ def load_events(csv_path, *, column_map=None):
             except Exception:
                 return pd.NaT
 
-        df["timestamp"] = df["timestamp"].map(_safe_parse)
+        parsed = df["timestamp"].map(_safe_parse)
+        df["timestamp"] = pd.to_datetime(parsed, utc=True)
 
     # Check required columns after renaming
     required_cols = ["fUniqueID", "fBits", "timestamp", "adc", "fchannel"]
@@ -386,7 +387,7 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
 
     ts = out_df["timestamp"]
     if not pd.api.types.is_datetime64_any_dtype(ts):
-        ts = ts.map(parse_datetime)
+        ts = pd.to_datetime(ts.map(parse_datetime), utc=True)
         out_df["timestamp"] = ts
     times_sec = ts.view("int64").to_numpy() / 1e9
 

@@ -72,7 +72,7 @@ The input file must be a comma-separated table with these columns:
 - `fBits` – status bits or flags
 - `timestamp` – event timestamp in seconds
   (either numeric Unix seconds or an ISO‑8601 string; parsed directly to
-  ``numpy.datetime64`` values via `parse_datetime`)
+  timezone-aware ``datetime64[ns, UTC]`` values via `parse_datetime`)
 - `adc` – raw ADC value
 - `fchannel` – acquisition channel
 
@@ -560,8 +560,8 @@ search for peak centroids:
 - `cps_to_cpd(rate_cps)` converts counts/s to counts/day.
 - `cps_to_bq(rate_cps, volume_liters=None)` returns the activity in Bq, or
   Bq/m^3 when a detector volume is supplied.
-- `parse_datetime(value)` converts ISO‑8601 strings, numeric seconds or
-  `datetime` objects to a UTC `numpy.datetime64` object.
+- `parse_datetime(value)` converts ISO-8601 strings, numeric seconds or
+  `datetime` objects to a UTC `pandas.Timestamp` (`datetime64[ns, UTC]`).
 - `find_adc_bin_peaks(adc_values, expected, window=50, prominence=0.0, width=None)`
   histogramises the raw ADC spectrum, searches for maxima near each expected
   centroid and returns a `{peak: adc_centroid}` mapping in ADC units.

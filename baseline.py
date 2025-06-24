@@ -17,7 +17,8 @@ def _seconds(col):
             ser = ser.dt.tz_convert("UTC").dt.tz_localize(None)
         ts = ser.astype("datetime64[ns]").to_numpy()
     else:
-        ts = col.map(parse_datetime).astype("datetime64[ns]").to_numpy()
+        mapped = col.map(parse_datetime)
+        ts = pd.to_datetime(mapped, utc=True).astype("datetime64[ns]").to_numpy()
     return np.asarray(ts)
 
 

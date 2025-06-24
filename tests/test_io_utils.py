@@ -81,7 +81,7 @@ def test_load_events(tmp_path, caplog):
     df.to_csv(p, index=False)
     with caplog.at_level(logging.INFO):
         loaded = load_events(p)
-    assert loaded["timestamp"].dtype == "datetime64[ns]"
+    assert loaded["timestamp"].dtype == "datetime64[ns, UTC]"
     expected_ts = np.array(
         [parse_datetime(t) for t in (1000, 1005, 1010)], dtype="datetime64[ns]"
     )
@@ -105,7 +105,7 @@ def test_load_events_drop_bad_rows(tmp_path, caplog):
     with caplog.at_level(logging.INFO):
         loaded = load_events(p)
     # Expect rows with NaN/inf removed and duplicate dropped
-    assert loaded["timestamp"].dtype == "datetime64[ns]"
+    assert loaded["timestamp"].dtype == "datetime64[ns, UTC]"
     expected_ts = np.array(
         [parse_datetime(t) for t in (1000, 1005, 1020)], dtype="datetime64[ns]"
     )
@@ -126,7 +126,7 @@ def test_load_events_column_aliases(tmp_path):
     p = tmp_path / "alias.csv"
     df.to_csv(p, index=False)
     loaded = load_events(p)
-    assert loaded["timestamp"].dtype == "datetime64[ns]"
+    assert loaded["timestamp"].dtype == "datetime64[ns, UTC]"
     assert list(loaded["timestamp"])[0] == pd.Timestamp(parse_datetime(1000))
     assert list(loaded["adc"])[0] == 1250
     assert "time" not in loaded.columns
