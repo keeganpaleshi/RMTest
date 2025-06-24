@@ -996,13 +996,16 @@ def main(argv=None):
             if end_r_dt <= start_r_dt:
                 raise ValueError("end <= start")
             radon_interval = (start_r_dt, end_r_dt)
-            cfg.setdefault("analysis", {})["radon_interval"] = [
-                parse_timestamp(start_r_dt),
-                parse_timestamp(end_r_dt),
+            iso_interval = [
+                start_r_dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                end_r_dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
             ]
+            cfg.setdefault("analysis", {})["radon_interval"] = iso_interval
+            radon_interval_cfg = iso_interval
         except Exception as e:
             logging.warning(f"Invalid radon_interval {radon_interval_cfg} -> {e}")
             radon_interval = None
+            radon_interval_cfg = None
 
     (
         df_analysis,
