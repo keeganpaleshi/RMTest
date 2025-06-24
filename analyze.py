@@ -104,6 +104,7 @@ from utils import (
     adc_hist_edges,
     parse_timestamp,
     parse_time_arg,
+    to_utc_datetime,
 )
 from utils import parse_datetime
 from radmon.baseline import subtract_baseline
@@ -905,27 +906,26 @@ def main(argv=None):
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
     if t0_cfg is not None:
         try:
-            t0_global = parse_timestamp(t0_cfg)
-            cfg.setdefault("analysis", {})["analysis_start_time"] = t0_global
+            t0_dt = to_utc_datetime(t0_cfg)
+            cfg.setdefault("analysis", {})["analysis_start_time"] = t0_dt
         except Exception:
             logging.warning(
                 f"Invalid analysis_start_time '{t0_cfg}' - using first event"
             )
-            t0_global = events_filtered["timestamp"].min()
+            t0_dt = datetime.fromtimestamp(events_filtered["timestamp"].min(), tz=timezone.utc)
     else:
-        t0_global = events_filtered["timestamp"].min()
+        t0_dt = datetime.fromtimestamp(events_filtered["timestamp"].min(), tz=timezone.utc)
 
-    if not isinstance(t0_global, (int, float)):
-        t0_global = parse_timestamp(t0_global)
+    t0_global = t0_dt.timestamp()
 
     t_end_cfg = cfg.get("analysis", {}).get("analysis_end_time")
     t_end_global = None
     t_end_global_ts = None
     if t_end_cfg is not None:
         try:
-            t_end_global_ts = parse_timestamp(t_end_cfg)
-            t_end_global = pd.to_datetime(t_end_global_ts, unit="s", utc=True)
-            cfg.setdefault("analysis", {})["analysis_end_time"] = t_end_global_ts
+            t_end_global = to_utc_datetime(t_end_cfg)
+            t_end_global_ts = t_end_global.timestamp()
+            cfg.setdefault("analysis", {})["analysis_end_time"] = t_end_global
         except Exception:
             logging.warning(
                 f"Invalid analysis_end_time '{t_end_cfg}' - using last event"
@@ -937,9 +937,8 @@ def main(argv=None):
     t_spike_end = None
     if spike_end_cfg is not None:
         try:
-            t_spike_end_ts = parse_timestamp(spike_end_cfg)
-            t_spike_end = pd.to_datetime(t_spike_end_ts, unit="s", utc=True)
-            cfg.setdefault("analysis", {})["spike_end_time"] = t_spike_end_ts
+            t_spike_end = to_utc_datetime(spike_end_cfg)
+            cfg.setdefault("analysis", {})["spike_end_time"] = t_spike_end
         except Exception:
             logging.warning(f"Invalid spike_end_time '{spike_end_cfg}' - ignoring")
             t_spike_end = None
@@ -952,14 +951,14 @@ def main(argv=None):
     for period in spike_periods_cfg:
         try:
             start, end = period
-            start_sec = parse_timestamp(start)
-            end_sec = parse_timestamp(end)
-            start_ts = pd.to_datetime(start_sec, unit="s", utc=True)
-            end_ts = pd.to_datetime(end_sec, unit="s", utc=True)
+            start_dt = to_utc_datetime(start)
+            end_dt = to_utc_datetime(end)
+            start_ts = pd.Timestamp(start_dt)
+            end_ts = pd.Timestamp(end_dt)
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
             spike_periods.append((start_ts, end_ts))
-            spike_secs.append((start_sec, end_sec))
+            spike_secs.append((start_dt, end_dt))
         except Exception as e:
             logging.warning(f"Invalid spike_period {period} -> {e}")
     if spike_periods:
@@ -973,14 +972,14 @@ def main(argv=None):
     for period in run_periods_cfg:
         try:
             start, end = period
-            start_sec = parse_timestamp(start)
-            end_sec = parse_timestamp(end)
-            start_ts = pd.to_datetime(start_sec, unit="s", utc=True)
-            end_ts = pd.to_datetime(end_sec, unit="s", utc=True)
+            start_dt = to_utc_datetime(start)
+            end_dt = to_utc_datetime(end)
+            start_ts = pd.Timestamp(start_dt)
+            end_ts = pd.Timestamp(end_dt)
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
             run_periods.append((start_ts, end_ts))
-            run_secs.append((start_sec, end_sec))
+            run_secs.append((start_dt, end_dt))
         except Exception as e:
             logging.warning(f"Invalid run_period {period} -> {e}")
     if run_periods:
