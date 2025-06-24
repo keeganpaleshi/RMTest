@@ -103,8 +103,8 @@ from utils import (
     adc_hist_edges,
     parse_time,
     parse_time_arg,
+    parse_timestamp,
 )
-from io_utils import parse_datetime
 from radmon.baseline import subtract_baseline
 from radon.baseline import subtract_baseline_counts, subtract_baseline_rate
 
@@ -738,20 +738,14 @@ def main(argv=None):
     try:
         events_all = load_events(args.input, column_map=cfg.get("columns"))
 
-        # 1) Parse non-datetime values
-        if not pd.api.types.is_datetime64_any_dtype(events_all["timestamp"]):
-            events_all["timestamp"] = events_all["timestamp"].map(parse_datetime)
-
-        # 2) Localize naive datetimes, or convert existing tz to target
-        #    Assume tzinfo is a pytz timezone or dateutil tzinfo
-        if events_all["timestamp"].dt.tz is None:
-            events_all["timestamp"] = events_all["timestamp"].dt.tz_localize(tzinfo)
+        if pd.api.types.is_datetime64_any_dtype(events_all["timestamp"]):
+            events_all["timestamp"] = (
+                pd.to_datetime(events_all["timestamp"], utc=True)
+                .view("int64")
+                / 1e9
+            )
         else:
-            events_all["timestamp"] = events_all["timestamp"].dt.tz_convert(tzinfo)
-
-        # 3) Convert to epoch seconds (float)
-        #    astype(int) gives nanoseconds since epoch, so divide by 1e9
-        events_all["timestamp"] = events_all["timestamp"].astype("int64") / 1e9
+            events_all["timestamp"] = events_all["timestamp"].map(parse_timestamp)
 
     except Exception as e:
         print(f"ERROR: Could not load events from '{args.input}': {e}")
@@ -761,8 +755,7 @@ def main(argv=None):
         print("No events found in the input CSV. Exiting.")
         sys.exit(0)
 
-    # ``load_events()`` now returns timezone-aware datetimes; convert to epoch
-    # seconds for internal calculations.
+    # ``load_events()`` returns timestamps converted to epoch seconds.
 
     # ───────────────────────────────────────────────
     # 2a. Pedestal / electronic-noise cut (integer ADC)
@@ -840,7 +833,7 @@ def main(argv=None):
     t_end_global = None
     if t_end_cfg is not None:
         try:
-            t_end_global = pd.to_datetime(parse_datetime(t_end_cfg), utc=True)
+            t_end_global = pd.to_datetime(parse_timestamp(t_end_cfg), unit="s", utc=True)
             cfg.setdefault("analysis", {})["analysis_end_time"] = parse_time(t_end_global)
         except Exception:
             logging.warning(
@@ -852,7 +845,7 @@ def main(argv=None):
     t_spike_end = None
     if spike_end_cfg is not None:
         try:
-            t_spike_end = pd.to_datetime(parse_datetime(spike_end_cfg), utc=True)
+            t_spike_end = pd.to_datetime(parse_timestamp(spike_end_cfg), unit="s", utc=True)
             cfg.setdefault("analysis", {})["spike_end_time"] = parse_time(t_spike_end)
         except Exception:
             logging.warning(f"Invalid spike_end_time '{spike_end_cfg}' - ignoring")
@@ -865,8 +858,8 @@ def main(argv=None):
     for period in spike_periods_cfg:
         try:
             start, end = period
-            start_ts = pd.to_datetime(parse_datetime(start), utc=True)
-            end_ts = pd.to_datetime(parse_datetime(end), utc=True)
+            start_ts = pd.to_datetime(parse_timestamp(start), unit="s", utc=True)
+            end_ts = pd.to_datetime(parse_timestamp(end), unit="s", utc=True)
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
             spike_periods.append((start_ts, end_ts))
@@ -884,8 +877,8 @@ def main(argv=None):
     for period in run_periods_cfg:
         try:
             start, end = period
-            start_ts = pd.to_datetime(parse_datetime(start), utc=True)
-            end_ts = pd.to_datetime(parse_datetime(end), utc=True)
+            start_ts = pd.to_datetime(parse_timestamp(start), unit="s", utc=True)
+            end_ts = pd.to_datetime(parse_timestamp(end), unit="s", utc=True)
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
             run_periods.append((start_ts, end_ts))
@@ -1051,8 +1044,8 @@ def main(argv=None):
     mask_base = None
 
     if baseline_range:
-        t_start_base = pd.to_datetime(parse_datetime(baseline_range[0]), utc=True)
-        t_end_base = pd.to_datetime(parse_datetime(baseline_range[1]), utc=True)
+        t_start_base = pd.to_datetime(parse_timestamp(baseline_range[0]), unit="s", utc=True)
+        t_end_base = pd.to_datetime(parse_timestamp(baseline_range[1]), unit="s", utc=True)
         if t_end_base <= t_start_base:
             raise ValueError("baseline_range end time must be greater than start time")
         events_all_ts = pd.to_datetime(events_all["timestamp"], unit="s", utc=True)

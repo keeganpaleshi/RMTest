@@ -1,8 +1,7 @@
 import numpy as np
 import logging
 import pandas as pd
-from utils import parse_time
-from io_utils import parse_datetime
+from utils import parse_time, parse_timestamp
 
 __all__ = ["rate_histogram", "subtract_baseline"]
 
@@ -54,11 +53,12 @@ def _scaling_factor(dt_window: float, dt_baseline: float,
 
 def _seconds(col):
     """Return timestamp column as seconds from epoch."""
-    ts = col
-    if not pd.api.types.is_datetime64_any_dtype(ts):
-        ts = ts.map(parse_datetime)
-    ts = pd.to_datetime(ts, utc=True)
-    return ts.view("int64").to_numpy() / 1e9
+    if pd.api.types.is_datetime64_any_dtype(col):
+        ts = pd.to_datetime(col, utc=True)
+        return ts.view("int64").to_numpy() / 1e9
+
+    ts = col.map(parse_timestamp)
+    return np.asarray(ts, dtype=float)
 
 
 def rate_histogram(df, bins):

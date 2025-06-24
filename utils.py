@@ -17,6 +17,7 @@ __all__ = [
     "cps_to_bq",
     "parse_time_arg",
     "parse_time",
+    "parse_timestamp",
     "LITERS_PER_M3",
 ]
 
@@ -221,6 +222,12 @@ def parse_time(s, tz="UTC") -> float:
         return float(dt.timestamp())
 
     raise argparse.ArgumentTypeError(f"could not parse time: {s!r}")
+
+
+def parse_timestamp(val, tz="UTC") -> float:
+    """Alias of :func:`parse_time` for clarity."""
+
+    return parse_time(val, tz=tz)
 
 
 def parse_time_arg(val, tz="UTC") -> datetime:
