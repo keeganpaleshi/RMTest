@@ -1952,8 +1952,9 @@ def main(argv=None):
     if radon_interval is not None:
         from radon_activity import radon_delta
 
-        t_start_rel = radon_interval[0].timestamp() - t0_global
-        t_end_rel = radon_interval[1].timestamp() - t0_global
+        t0_dt = datetime.fromtimestamp(t0_global, tz=timezone.utc)
+        t_start_rel = (radon_interval[0] - t0_dt).total_seconds()
+        t_end_rel = (radon_interval[1] - t0_dt).total_seconds()
 
         delta214 = err_delta214 = None
         if "Po214" in time_fit_results:
@@ -2268,7 +2269,13 @@ def main(argv=None):
                 radon_interval[1].timestamp(),
                 50,
             )
-            rel_trend = times_trend - t0_global
+            t0_dt = datetime.fromtimestamp(t0_global, tz=timezone.utc)
+            rel_trend = np.array(
+                [
+                    (datetime.fromtimestamp(t, tz=timezone.utc) - t0_dt).total_seconds()
+                    for t in times_trend
+                ]
+            )
             A214_tr = None
             if "Po214" in time_fit_results:
                 fit_result = time_fit_results["Po214"]
