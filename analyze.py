@@ -909,27 +909,30 @@ def main(argv=None):
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
     if t0_cfg is not None:
         try:
-            t0_global = parse_timestamp(t0_cfg)
-            cfg.setdefault("analysis", {})["analysis_start_time"] = t0_global
+            t0_dt = pd.to_datetime(parse_datetime(t0_cfg), utc=True).to_pydatetime()
+            cfg.setdefault("analysis", {})["analysis_start_time"] = t0_dt
+            t0_global = t0_dt.timestamp()
         except Exception:
             logging.warning(
                 f"Invalid analysis_start_time '{t0_cfg}' - using first event"
             )
             t0_global = events_filtered["timestamp"].min()
+            t0_dt = pd.to_datetime(t0_global, unit="s", utc=True).to_pydatetime()
+            cfg.setdefault("analysis", {})["analysis_start_time"] = t0_dt
     else:
         t0_global = events_filtered["timestamp"].min()
-
-    if not isinstance(t0_global, (int, float)):
-        t0_global = parse_timestamp(t0_global)
+        t0_dt = pd.to_datetime(t0_global, unit="s", utc=True).to_pydatetime()
+        cfg.setdefault("analysis", {})["analysis_start_time"] = t0_dt
 
     t_end_cfg = cfg.get("analysis", {}).get("analysis_end_time")
     t_end_global = None
     t_end_global_ts = None
     if t_end_cfg is not None:
         try:
-            t_end_global_ts = parse_timestamp(t_end_cfg)
-            t_end_global = pd.to_datetime(t_end_global_ts, unit="s", utc=True)
-            cfg.setdefault("analysis", {})["analysis_end_time"] = t_end_global_ts
+            t_end_dt = pd.to_datetime(parse_datetime(t_end_cfg), utc=True).to_pydatetime()
+            t_end_global_ts = t_end_dt.timestamp()
+            t_end_global = t_end_dt
+            cfg.setdefault("analysis", {})["analysis_end_time"] = t_end_dt
         except Exception:
             logging.warning(
                 f"Invalid analysis_end_time '{t_end_cfg}' - using last event"
@@ -941,9 +944,8 @@ def main(argv=None):
     t_spike_end = None
     if spike_end_cfg is not None:
         try:
-            t_spike_end_ts = parse_timestamp(spike_end_cfg)
-            t_spike_end = pd.to_datetime(t_spike_end_ts, unit="s", utc=True)
-            cfg.setdefault("analysis", {})["spike_end_time"] = t_spike_end_ts
+            t_spike_end = pd.to_datetime(parse_datetime(spike_end_cfg), utc=True).to_pydatetime()
+            cfg.setdefault("analysis", {})["spike_end_time"] = t_spike_end
         except Exception:
             logging.warning(f"Invalid spike_end_time '{spike_end_cfg}' - ignoring")
             t_spike_end = None
@@ -956,8 +958,8 @@ def main(argv=None):
     for period in spike_periods_cfg:
         try:
             start, end = period
-            start_ts = pd.to_datetime(parse_datetime(start), utc=True)
-            end_ts = pd.to_datetime(parse_datetime(end), utc=True)
+            start_ts = pd.to_datetime(parse_datetime(start), utc=True).to_pydatetime()
+            end_ts = pd.to_datetime(parse_datetime(end), utc=True).to_pydatetime()
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
             spike_periods.append((start_ts, end_ts))
@@ -966,7 +968,7 @@ def main(argv=None):
             logging.warning(f"Invalid spike_period {period} -> {e}")
     if spike_periods:
         cfg.setdefault("analysis", {})["spike_periods"] = [
-            [s.isoformat(), e.isoformat()] for s, e in spike_iso
+            [s, e] for s, e in spike_iso
         ]
 
     run_periods_cfg = cfg.get("analysis", {}).get("run_periods", [])
@@ -977,8 +979,8 @@ def main(argv=None):
     for period in run_periods_cfg:
         try:
             start, end = period
-            start_ts = pd.to_datetime(parse_datetime(start), utc=True)
-            end_ts = pd.to_datetime(parse_datetime(end), utc=True)
+            start_ts = pd.to_datetime(parse_datetime(start), utc=True).to_pydatetime()
+            end_ts = pd.to_datetime(parse_datetime(end), utc=True).to_pydatetime()
             if end_ts <= start_ts:
                 raise ValueError("end <= start")
             run_periods.append((start_ts, end_ts))
@@ -987,7 +989,7 @@ def main(argv=None):
             logging.warning(f"Invalid run_period {period} -> {e}")
     if run_periods:
         cfg.setdefault("analysis", {})["run_periods"] = [
-            [s.isoformat(), e.isoformat()] for s, e in run_iso
+            [s, e] for s, e in run_iso
         ]
 
     radon_interval_cfg = cfg.get("analysis", {}).get("radon_interval")
@@ -995,14 +997,14 @@ def main(argv=None):
     if radon_interval_cfg:
         try:
             start_r, end_r = radon_interval_cfg
-            start_r_dt = pd.to_datetime(parse_datetime(start_r), utc=True)
-            end_r_dt = pd.to_datetime(parse_datetime(end_r), utc=True)
+            start_r_dt = pd.to_datetime(parse_datetime(start_r), utc=True).to_pydatetime()
+            end_r_dt = pd.to_datetime(parse_datetime(end_r), utc=True).to_pydatetime()
             if end_r_dt <= start_r_dt:
                 raise ValueError("end <= start")
             radon_interval = (start_r_dt, end_r_dt)
             radon_interval_cfg = [
-                start_r_dt.isoformat(),
-                end_r_dt.isoformat(),
+                start_r_dt,
+                end_r_dt,
             ]
             cfg.setdefault("analysis", {})["radon_interval"] = radon_interval_cfg
         except Exception as e:
