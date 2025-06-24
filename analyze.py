@@ -102,7 +102,7 @@ from visualize import cov_heatmap, efficiency_bar
 from utils import (
     find_adc_bin_peaks,
     adc_hist_edges,
-    parse_timestamp,
+    to_utc_datetime,
     parse_time_arg,
 )
 from utils import parse_datetime
@@ -215,7 +215,7 @@ def prepare_analysis_df(
     run_periods: list[tuple[pd.Timestamp, pd.Timestamp]],
     analysis_end: pd.Timestamp | int | float | None,
     *,
-    t0_global: float,
+    t0_global: datetime,
     cfg: dict,
     args,
 ) -> tuple[
@@ -231,13 +231,19 @@ def prepare_analysis_df(
     """Apply time window cuts and derive drift parameters."""
 
     df_analysis = df.copy()
-    df_analysis["timestamp"] = pd.to_datetime(df_analysis["timestamp"], unit="s", utc=True)
+    df_analysis["timestamp"] = pd.to_datetime(
+        df_analysis["timestamp"], unit="s", utc=True
+    )
 
     if spike_end is not None:
-        df_analysis = df_analysis[df_analysis["timestamp"] >= spike_end].reset_index(drop=True)
+        df_analysis = df_analysis[df_analysis["timestamp"] >= spike_end].reset_index(
+            drop=True
+        )
 
     for start_ts, end_ts in spike_periods:
-        mask = (df_analysis["timestamp"] >= start_ts) & (df_analysis["timestamp"] < end_ts)
+        mask = (df_analysis["timestamp"] >= start_ts) & (
+            df_analysis["timestamp"] < end_ts
+        )
         if mask.any():
             df_analysis = df_analysis[~mask].reset_index(drop=True)
 
@@ -252,19 +258,22 @@ def prepare_analysis_df(
             analysis_end = df_analysis["timestamp"].max()
 
     if analysis_end is not None:
-        df_analysis = df_analysis[df_analysis["timestamp"] <= analysis_end].reset_index(drop=True)
+        df_analysis = df_analysis[df_analysis["timestamp"] <= analysis_end].reset_index(
+            drop=True
+        )
     else:
         analysis_end = df_analysis["timestamp"].max()
 
     if not isinstance(analysis_end, (int, float)):
-        t_end_global_ts = parse_timestamp(analysis_end)
+        analysis_end_dt = to_utc_datetime(analysis_end)
+        t_end_global_ts = analysis_end_dt.timestamp()
     else:
         t_end_global_ts = float(analysis_end)
+        analysis_end_dt = datetime.fromtimestamp(t_end_global_ts, tz=timezone.utc)
 
     _ensure_events(df_analysis, "time-window selection")
 
-    analysis_start = datetime.fromtimestamp(t0_global, tz=timezone.utc)
-    analysis_end_dt = datetime.fromtimestamp(t_end_global_ts, tz=timezone.utc)
+    analysis_start = to_utc_datetime(t0_global)
 
     drift_cfg = cfg.get("systematics", {})
     drift_rate = (
@@ -272,8 +281,10 @@ def prepare_analysis_df(
         if args.slope is not None
         else float(drift_cfg.get("adc_drift_rate", 0.0))
     )
-    drift_mode = "linear" if args.slope is not None else drift_cfg.get(
-        "adc_drift_mode", "linear"
+    drift_mode = (
+        "linear"
+        if args.slope is not None
+        else drift_cfg.get("adc_drift_mode", "linear")
     )
     drift_params = drift_cfg.get("adc_drift_params")
 
@@ -292,6 +303,10 @@ def prepare_analysis_df(
 def _ts_bin_centers_widths(times, cfg, t_start, t_end):
     """Return bin centers and widths matching :func:`plot_time_series`."""
     arr = np.asarray(times)
+    if isinstance(t_start, datetime):
+        t_start = t_start.timestamp()
+    if isinstance(t_end, datetime):
+        t_end = t_end.timestamp()
     if np.issubdtype(arr.dtype, "datetime64"):
         arr = arr.view("int64") / 1e9
     arr = arr.astype(float)
@@ -483,7 +498,6 @@ def parse_args(argv=None):
         help=(
             "ADC threshold for the noise cut. Providing this option overrides "
             "`calibration.noise_cutoff` in config.json"
-
         ),
     )
     p.add_argument(
@@ -626,7 +640,9 @@ def main(argv=None):
         sys.exit(1)
 
     if args.baseline_range:
-        args.baseline_range = [parse_time_arg(t, tz=tzinfo) for t in args.baseline_range]
+        args.baseline_range = [
+            parse_time_arg(t, tz=tzinfo) for t in args.baseline_range
+        ]
     if args.analysis_end_time is not None:
         args.analysis_end_time = parse_time_arg(args.analysis_end_time, tz=tzinfo)
     if args.analysis_start_time is not None:
@@ -635,11 +651,13 @@ def main(argv=None):
         args.spike_end_time = parse_time_arg(args.spike_end_time, tz=tzinfo)
     if args.spike_period:
         args.spike_period = [
-            [parse_time_arg(s, tz=tzinfo), parse_time_arg(e, tz=tzinfo)] for s, e in args.spike_period
+            [parse_time_arg(s, tz=tzinfo), parse_time_arg(e, tz=tzinfo)]
+            for s, e in args.spike_period
         ]
     if args.run_period:
         args.run_period = [
-            [parse_time_arg(s, tz=tzinfo), parse_time_arg(e, tz=tzinfo)] for s, e in args.run_period
+            [parse_time_arg(s, tz=tzinfo), parse_time_arg(e, tz=tzinfo)]
+            for s, e in args.run_period
         ]
     if args.radon_interval:
         args.radon_interval = [
@@ -751,7 +769,6 @@ def main(argv=None):
         _log_override("time_fit", "hl_po218", [float(args.hl_po218), sig])
         tf["hl_po218"] = [float(args.hl_po218), sig]
 
-
     if args.time_bin_mode:
         _log_override("plotting", "plot_time_binning_mode", args.time_bin_mode)
         cfg.setdefault("plotting", {})["plot_time_binning_mode"] = args.time_bin_mode
@@ -861,13 +878,13 @@ def main(argv=None):
         try:
             noise_thr_val = int(noise_thr)
         except (ValueError, TypeError):
-            logging.warning(
-                f"Invalid noise_cutoff '{noise_thr}' - skipping noise cut"
-            )
+            logging.warning(f"Invalid noise_cutoff '{noise_thr}' - skipping noise cut")
             noise_thr_val = None
         else:
             before = len(events_filtered)
-            events_filtered = events_filtered[events_filtered["adc"] > noise_thr_val].reset_index(drop=True)
+            events_filtered = events_filtered[
+                events_filtered["adc"] > noise_thr_val
+            ].reset_index(drop=True)
             n_removed_noise = before - len(events_filtered)
             logging.info(f"Noise cut removed {n_removed_noise} events")
 
@@ -890,7 +907,9 @@ def main(argv=None):
     )
 
     n_before_burst = len(events_filtered)
-    events_filtered, n_removed_burst = apply_burst_filter(events_filtered, cfg, mode=burst_mode)
+    events_filtered, n_removed_burst = apply_burst_filter(
+        events_filtered, cfg, mode=burst_mode
+    )
     if n_before_burst > 0:
         frac_removed = n_removed_burst / n_before_burst
         logging.info(
@@ -903,33 +922,32 @@ def main(argv=None):
 
     _ensure_events(events_filtered, "burst filtering")
 
-
-
     # Global t₀ reference
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
     if t0_cfg is not None:
         try:
-            t0_global = parse_timestamp(t0_cfg)
-            cfg.setdefault("analysis", {})["analysis_start_time"] = t0_global
+            t0_global = to_utc_datetime(t0_cfg)
+            cfg.setdefault("analysis", {})[
+                "analysis_start_time"
+            ] = t0_global.isoformat()
         except Exception:
             logging.warning(
                 f"Invalid analysis_start_time '{t0_cfg}' - using first event"
             )
-            t0_global = events_filtered["timestamp"].min()
+            t0_global = to_utc_datetime(events_filtered["timestamp"].min())
     else:
-        t0_global = events_filtered["timestamp"].min()
-
-    if not isinstance(t0_global, (int, float)):
-        t0_global = parse_timestamp(t0_global)
+        t0_global = to_utc_datetime(events_filtered["timestamp"].min())
 
     t_end_cfg = cfg.get("analysis", {}).get("analysis_end_time")
     t_end_global = None
     t_end_global_ts = None
     if t_end_cfg is not None:
         try:
-            t_end_global_ts = parse_timestamp(t_end_cfg)
-            t_end_global = pd.to_datetime(t_end_global_ts, unit="s", utc=True)
-            cfg.setdefault("analysis", {})["analysis_end_time"] = t_end_global_ts
+            t_end_global = to_utc_datetime(t_end_cfg)
+            t_end_global_ts = t_end_global.timestamp()
+            cfg.setdefault("analysis", {})[
+                "analysis_end_time"
+            ] = t_end_global.isoformat()
         except Exception:
             logging.warning(
                 f"Invalid analysis_end_time '{t_end_cfg}' - using last event"
@@ -941,9 +959,8 @@ def main(argv=None):
     t_spike_end = None
     if spike_end_cfg is not None:
         try:
-            t_spike_end_ts = parse_timestamp(spike_end_cfg)
-            t_spike_end = pd.to_datetime(t_spike_end_ts, unit="s", utc=True)
-            cfg.setdefault("analysis", {})["spike_end_time"] = t_spike_end_ts
+            t_spike_end = to_utc_datetime(spike_end_cfg)
+            cfg.setdefault("analysis", {})["spike_end_time"] = t_spike_end.isoformat()
         except Exception:
             logging.warning(f"Invalid spike_end_time '{spike_end_cfg}' - ignoring")
             t_spike_end = None
@@ -1036,7 +1053,7 @@ def main(argv=None):
                 df_analysis["adc"].values,
                 ts_seconds,
                 float(drift_rate),
-                t_ref=t0_global,
+                t_ref=t0_global.timestamp(),
                 mode=drift_mode,
                 params=drift_params,
             )
@@ -1080,7 +1097,7 @@ def main(argv=None):
         a2, a2_sig = obj.get("a2", (0.0, 0.0))
 
         coeffs = [c, a]
-        cov = np.array([[c_sig ** 2, 0.0], [0.0, a_sig ** 2]])
+        cov = np.array([[c_sig**2, 0.0], [0.0, a_sig**2]])
 
         if "ac_covariance" in obj:
             cov_ac = float(np.asarray(obj["ac_covariance"], dtype=float)[0][1])
@@ -1089,7 +1106,7 @@ def main(argv=None):
         if "a2" in obj:
             coeffs.append(a2)
             cov = np.pad(cov, ((0, 1), (0, 1)), mode="constant", constant_values=0.0)
-            cov[2, 2] = a2_sig ** 2
+            cov[2, 2] = a2_sig**2
             cov[1, 2] = cov[2, 1] = float(obj.get("cov_a_a2", 0.0))
             cov[0, 2] = cov[2, 0] = float(obj.get("cov_a2_c", 0.0))
 
@@ -1109,7 +1126,9 @@ def main(argv=None):
         a2, a2_sig = cal_params.get("a2", (0.0, 0.0))
         c, c_sig = cal_params["c"]
         sigE_mean, sigE_sigma = cal_params["sigma_E"]
-        cov_mat = np.asarray(cal_params.get("ac_covariance", [[0.0, 0.0], [0.0, 0.0]]), dtype=float)
+        cov_mat = np.asarray(
+            cal_params.get("ac_covariance", [[0.0, 0.0], [0.0, 0.0]]), dtype=float
+        )
         cov_ac = float(cov_mat[0, 1])
         cov_a_a2 = float(cal_params.get("cov_a_a2", 0.0))
         cov_a2_c = float(cal_params.get("cov_a2_c", 0.0))
@@ -1285,11 +1304,7 @@ def main(argv=None):
                 # fd_width is measured in MeV since energies are in MeV
                 nbins = max(
                     1,
-                    int(
-                        np.ceil(
-                            (E_all.max() - E_all.min()) / float(fd_width)
-                        )
-                    ),
+                    int(np.ceil((E_all.max() - E_all.min()) / float(fd_width))),
                 )
             else:
                 nbins = default_bins
@@ -1454,7 +1469,10 @@ def main(argv=None):
 
             lo, hi = win_range
             probs = window_prob(
-                df_analysis["energy_MeV"].values, df_analysis["denergy_MeV"].values, lo, hi
+                df_analysis["energy_MeV"].values,
+                df_analysis["denergy_MeV"].values,
+                lo,
+                hi,
             )
             iso_mask = probs > 0
             iso_events = df_analysis[iso_mask].copy()
@@ -1464,7 +1482,7 @@ def main(argv=None):
                 continue
 
             first_ts = pd.to_datetime(iso_events["timestamp"].iloc[0], utc=True)
-            t0_dt = datetime.fromtimestamp(t0_global, tz=timezone.utc)
+            t0_dt = t0_global
             settle = timedelta(seconds=float(args.settle_s or 0))
             t_start_fit_dt = max(first_ts, t0_dt + settle)
             t_start_map[iso] = t_start_fit_dt
@@ -1474,9 +1492,7 @@ def main(argv=None):
         priors_time = {}
 
         # Efficiency prior per isotope
-        eff_val = cfg["time_fit"].get(
-            f"eff_{iso.lower()}", [1.0, 0.0]
-        )
+        eff_val = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0, 0.0])
         priors_time["eff"] = tuple(eff_val)
 
         # Half-life prior (user must supply [T₁/₂, σ(T₁/₂)] in seconds)
@@ -1502,9 +1518,7 @@ def main(argv=None):
             if iso in isotopes_to_subtract:
                 baseline_counts[iso] = n0_count
 
-            eff = cfg["time_fit"].get(
-                f"eff_{iso.lower()}", [1.0]
-            )[0]
+            eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
             if baseline_live_time > 0 and eff > 0:
                 n0_activity = n0_count / (baseline_live_time * eff)
                 n0_sigma = np.sqrt(n0_count) / (baseline_live_time * eff)
@@ -1539,9 +1553,7 @@ def main(argv=None):
             else:
                 if eff > 0 and live_time_iso > 0:
                     c_rate = analysis_counts / (live_time_iso * eff)
-                    c_sigma = math.sqrt(analysis_counts) / (
-                        live_time_iso * eff
-                    )
+                    c_sigma = math.sqrt(analysis_counts) / (live_time_iso * eff)
                 else:
                     c_rate = 0.0
                     c_sigma = 0.0
@@ -1549,7 +1561,7 @@ def main(argv=None):
                 "value": c_rate,
                 "uncertainty": c_sigma,
             }
-            weight_factor = 1.0 / (c_sigma ** 2) if c_sigma > 0 else 1.0
+            weight_factor = 1.0 / (c_sigma**2) if c_sigma > 0 else 1.0
             iso_events["weight"] *= weight_factor
         else:
             priors_time["N0"] = (
@@ -1562,15 +1574,11 @@ def main(argv=None):
 
             analysis_counts = float(np.sum(iso_events["weight"]))
             iso_counts_raw[iso] = analysis_counts
-            eff = cfg["time_fit"].get(
-                f"eff_{iso.lower()}", [1.0]
-            )[0]
+            eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
             live_time_iso = iso_live_time.get(iso, 0.0)
             if eff > 0 and live_time_iso > 0:
                 c_rate = analysis_counts / (live_time_iso * eff)
-                c_sigma = math.sqrt(analysis_counts) / (
-                    live_time_iso * eff
-                )
+                c_sigma = math.sqrt(analysis_counts) / (live_time_iso * eff)
             else:
                 c_rate = 0.0
                 c_sigma = 0.0
@@ -1578,7 +1586,7 @@ def main(argv=None):
                 "value": c_rate,
                 "uncertainty": c_sigma,
             }
-            weight_factor = 1.0 / (c_sigma ** 2) if c_sigma > 0 else 1.0
+            weight_factor = 1.0 / (c_sigma**2) if c_sigma > 0 else 1.0
             iso_events["weight"] *= weight_factor
 
         # Store priors for use in systematics scanning
@@ -1586,7 +1594,7 @@ def main(argv=None):
 
         # Build configuration for fit_time_series
         if args.settle_s is not None:
-            t0_dt = datetime.fromtimestamp(t0_global, tz=timezone.utc)
+            t0_dt = t0_global
             cut = t0_dt + timedelta(seconds=float(args.settle_s))
             iso_events = iso_events[iso_events["timestamp"] >= cut]
         ts_vals = iso_events["timestamp"]
@@ -1599,18 +1607,18 @@ def main(argv=None):
         fit_cfg = {
             "isotopes": {
                 iso: {
-                    "half_life_s": cfg["time_fit"].get(
-                        f"hl_{iso.lower()}", [np.nan]
-                    )[0],
-                    "efficiency": cfg["time_fit"].get(
-                        f"eff_{iso.lower()}", [1.0]
-                    )[0],
+                    "half_life_s": cfg["time_fit"].get(f"hl_{iso.lower()}", [np.nan])[
+                        0
+                    ],
+                    "efficiency": cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0],
                 }
             },
             "fit_background": not cfg["time_fit"]["flags"].get(
                 "fix_background_b", False
             ),
-            "fit_initial": not cfg["time_fit"]["flags"].get(f"fix_N0_{iso.lower()}", False),
+            "fit_initial": not cfg["time_fit"]["flags"].get(
+                f"fix_N0_{iso.lower()}", False
+            ),
             "background_guess": cfg["time_fit"].get("background_guess", 0.0),
             "n0_guess_fraction": cfg["time_fit"].get("n0_guess_fraction", 0.1),
         }
@@ -1622,7 +1630,11 @@ def main(argv=None):
             if isinstance(t_start_val, datetime):
                 t_start_fit = t_start_val.timestamp()
             else:
-                t_start_fit = float(t_start_val if t_start_val is not None else t0_global)
+                t_start_fit = (
+                    float(t_start_val)
+                    if t_start_val is not None
+                    else t0_global.timestamp()
+                )
             try:
                 decay_out = fit_time_series(
                     times_dict,
@@ -1658,7 +1670,7 @@ def main(argv=None):
         mask210 = (
             (df_analysis["energy_MeV"] >= lo)
             & (df_analysis["energy_MeV"] <= hi)
-            & (df_analysis["timestamp"] >= pd.to_datetime(t0_global, unit="s", utc=True))
+            & (df_analysis["timestamp"] >= t0_global)
             & (df_analysis["timestamp"] <= t_end_global)
         )
         events_p210 = df_analysis[mask210]
@@ -1710,7 +1722,9 @@ def main(argv=None):
                 cfg_fit = {
                     "isotopes": {
                         iso: {
-                            "half_life_s": cfg["time_fit"].get(f"hl_{iso.lower()}", [np.nan])[0],
+                            "half_life_s": cfg["time_fit"].get(
+                                f"hl_{iso.lower()}", [np.nan]
+                            )[0],
                             "efficiency": priors_mod["eff"][0],
                         }
                     },
@@ -1726,7 +1740,7 @@ def main(argv=None):
                 try:
                     out = fit_time_series(
                         times_dict,
-                        t0_global,
+                        t0_global.timestamp(),
                         t_end_global_ts,
                         cfg_fit,
                         weights=weights_local,
@@ -1735,7 +1749,7 @@ def main(argv=None):
                 except TypeError:
                     out = fit_time_series(
                         times_dict,
-                        t0_global,
+                        t0_global.timestamp(),
                         t_end_global_ts,
                         cfg_fit,
                         strict=args.strict_covariance,
@@ -1849,8 +1863,17 @@ def main(argv=None):
                 baseline_rates[iso] = 0.0
                 baseline_unc[iso] = 0.0
 
-    dilution_factor = monitor_vol / (monitor_vol + sample_vol) if (monitor_vol + sample_vol) > 0 else 0.0
-    scales = {"Po214": dilution_factor, "Po218": dilution_factor, "Po210": 1.0, "noise": 1.0}
+    dilution_factor = (
+        monitor_vol / (monitor_vol + sample_vol)
+        if (monitor_vol + sample_vol) > 0
+        else 0.0
+    )
+    scales = {
+        "Po214": dilution_factor,
+        "Po218": dilution_factor,
+        "Po210": 1.0,
+        "noise": 1.0,
+    }
     baseline_info["scales"] = scales
     baseline_info["analysis_counts"] = iso_counts_raw
 
@@ -1902,10 +1925,12 @@ def main(argv=None):
         baseline_info["dilution_factor"] = dilution_factor
     if baseline_info.get("corrected_activity"):
         baseline_info["corrected_rate_Bq"] = {
-            iso: vals["value"] for iso, vals in baseline_info["corrected_activity"].items()
+            iso: vals["value"]
+            for iso, vals in baseline_info["corrected_activity"].items()
         }
         baseline_info["corrected_sigma_Bq"] = {
-            iso: vals["uncertainty"] for iso, vals in baseline_info["corrected_activity"].items()
+            iso: vals["uncertainty"]
+            for iso, vals in baseline_info["corrected_activity"].items()
         }
 
     # ────────────────────────────────────────────────────────────
@@ -2139,11 +2164,15 @@ def main(argv=None):
                         fit_dict.update(_fit_params(obj))
 
             centers, widths = _ts_bin_centers_widths(
-                ts_times, plot_cfg, t0_global, t_end_global_ts
+                ts_times, plot_cfg, t0_global.timestamp(), t_end_global_ts
             )
             normalise = bool(plot_cfg.get("plot_time_normalise_rate", False))
             model_errs = {}
-            iso_list_err = [iso] if not overlay else [i for i in ("Po214", "Po218", "Po210") if time_fit_results.get(i)]
+            iso_list_err = (
+                [iso]
+                if not overlay
+                else [i for i in ("Po214", "Po218", "Po210") if time_fit_results.get(i)]
+            )
             for iso_key in iso_list_err:
                 sigma_arr = _model_uncertainty(
                     centers,
@@ -2159,7 +2188,7 @@ def main(argv=None):
                 all_timestamps=ts_times,
                 all_energies=ts_energy,
                 fit_results=fit_dict,
-                t_start=t0_global,
+                t_start=t0_global.timestamp(),
                 t_end=t_end_global_ts,
                 config=plot_cfg,
                 out_png=Path(out_dir) / f"time_series_{iso}.png",
@@ -2193,7 +2222,7 @@ def main(argv=None):
     try:
         from radon_activity import radon_activity_curve
 
-        times = np.linspace(t0_global, t_end_global_ts, 100)
+        times = np.linspace(t0_global.timestamp(), t_end_global_ts, 100)
         times_dt = pd.to_datetime(times, unit="s", utc=True)
         t_rel = (times_dt - analysis_start).total_seconds()
 
