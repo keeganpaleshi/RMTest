@@ -14,9 +14,8 @@ This repository provides a complete pipeline to analyze electrostatic radon moni
 - `efficiency.py`: Efficiency calculations and BLUE combination helpers.
 - `systematics.py`: Scan for systematic uncertainties (optional).
 - `plot_utils.py`: Plotting routines for spectrum and time-series.
-- `utils.py`: Miscellaneous utilities providing `parse_timestamp` and
-  `parse_datetime` for time conversion, JSON validation, and count-rate
-  conversions.
+- `utils.py`: Miscellaneous utilities providing `parse_datetime` for
+  time conversion, JSON validation, and count-rate conversions.
 - `tests/`: `pytest` unit tests for calibration, fitting, and I/O.
 
 ## Installation
@@ -196,8 +195,7 @@ All other time-related fields (`analysis_end_time`, `spike_end_time`,
 `spike_periods`, `run_periods`, `radon_interval` and
 `baseline.range`) likewise accept absolute timestamps in ISO 8601
 format or numeric seconds.  All of these values are parsed with
-`parse_timestamp` (wrapped by `parse_datetime` when a `numpy.datetime64`
-object is required) so the same formats apply everywhere.
+`parse_datetime` so the same formats apply everywhere.
 
 `analysis_end_time` may be specified to stop processing after the given
 timestamp while `spike_end_time` discards all events before its value.
@@ -562,10 +560,8 @@ search for peak centroids:
 - `cps_to_cpd(rate_cps)` converts counts/s to counts/day.
 - `cps_to_bq(rate_cps, volume_liters=None)` returns the activity in Bq, or
   Bq/m^3 when a detector volume is supplied.
-- `parse_timestamp(value)` converts ISO‑8601 strings, numeric seconds or
-  `datetime` objects to Unix seconds.
-- `parse_datetime(value)` returns the same input as a UTC
-  `numpy.datetime64` object.
+- `parse_datetime(value)` converts ISO‑8601 strings, numeric seconds or
+  `datetime` objects to a UTC `numpy.datetime64` object.
 - `find_adc_bin_peaks(adc_values, expected, window=50, prominence=0.0, width=None)`
   histogramises the raw ADC spectrum, searches for maxima near each expected
   centroid and returns a `{peak: adc_centroid}` mapping in ADC units.
