@@ -5,6 +5,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
+from utils import to_native
 import numpy as np
 from calibration import CalibrationResult
 from fitting import FitResult, FitParams
@@ -51,7 +52,7 @@ def test_summary_includes_git_and_cli(tmp_path, monkeypatch):
     captured = {}
 
     def fake_write_summary(out_dir, summary, timestamp=None):
-        captured["summary"] = summary
+        captured["summary"] = to_native(summary)
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
         return str(d)

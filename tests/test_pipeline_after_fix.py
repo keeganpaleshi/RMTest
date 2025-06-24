@@ -6,6 +6,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import analyze
+from utils import to_native
 
 
 def test_pipeline_calibrates_after_fix(tmp_path, monkeypatch):
@@ -43,7 +44,7 @@ def test_pipeline_calibrates_after_fix(tmp_path, monkeypatch):
     captured = {}
 
     def fake_write(out_dir, summary, timestamp=None):
-        captured["summary"] = summary
+        captured["summary"] = to_native(summary)
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
         return str(d)

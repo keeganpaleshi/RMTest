@@ -3,10 +3,11 @@ import sys
 from pathlib import Path
 import pandas as pd
 import numpy as np
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from calibration import CalibrationResult
+from utils import to_native, parse_datetime
 from datetime import datetime, timezone
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
 import baseline_noise
 from fitting import FitResult, FitParams
@@ -78,7 +79,7 @@ def test_cli_baseline_range_iso_strings(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
     def fake_write(out_dir, summary, timestamp=None):
-        captured["summary"] = summary
+        captured["summary"] = to_native(summary)
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
         return str(d)
@@ -99,8 +100,8 @@ def test_cli_baseline_range_iso_strings(tmp_path, monkeypatch):
     summary = captured.get("summary", {})
     exp_start = datetime(1970, 1, 1, 0, 0, 1, tzinfo=timezone.utc)
     exp_end = datetime(1970, 1, 1, 0, 0, 2, tzinfo=timezone.utc)
-    assert summary.get("baseline", {}).get("start") == exp_start
-    assert summary.get("baseline", {}).get("end") == exp_end
+    assert pd.to_datetime(parse_datetime(summary.get("baseline", {}).get("start"))).tz_localize(timezone.utc) == exp_start
+    assert pd.to_datetime(parse_datetime(summary.get("baseline", {}).get("end"))).tz_localize(timezone.utc) == exp_end
     assert summary.get("baseline", {}).get("n_events") == 1
     assert captured.get("cfg", {}).get("baseline", {}).get("range") == [
         exp_start,
@@ -158,7 +159,7 @@ def test_cli_baseline_range_timezone(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
     def fake_write(out_dir, summary, timestamp=None):
-        captured["summary"] = summary
+        captured["summary"] = to_native(summary)
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
         return str(d)
@@ -197,8 +198,8 @@ def test_cli_baseline_range_timezone(tmp_path, monkeypatch):
     summary = captured.get("summary", {})
     exp_start = datetime(1970, 1, 1, 0, 0, 1, tzinfo=timezone.utc)
     exp_end = datetime(1970, 1, 1, 0, 0, 2, tzinfo=timezone.utc)
-    assert summary.get("baseline", {}).get("start") == exp_start
-    assert summary.get("baseline", {}).get("end") == exp_end
+    assert pd.to_datetime(parse_datetime(summary.get("baseline", {}).get("start"))).tz_localize(timezone.utc) == exp_start
+    assert pd.to_datetime(parse_datetime(summary.get("baseline", {}).get("end"))).tz_localize(timezone.utc) == exp_end
     assert summary.get("baseline", {}).get("n_events") == 1
     assert captured.get("cfg", {}).get("baseline", {}).get("range") == [
         exp_start,

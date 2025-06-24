@@ -112,6 +112,7 @@ from baseline_utils import (
     subtract_baseline_rate,
     compute_dilution_factor,
 )
+from summary import Summary
 
 
 def _fit_params(obj: FitResult | Mapping[str, float] | None) -> FitParams:
@@ -2055,7 +2056,7 @@ def main(argv=None):
             "peaks": cal_params.peaks,
         }
 
-    summary = {
+    summary_dict = {
         "timestamp": now_str,
         "config_used": args.config.name,
         "calibration": cal_summary,
@@ -2094,7 +2095,7 @@ def main(argv=None):
     }
 
     if weights is not None:
-        summary["efficiency"]["blue_weights"] = list(weights)
+        summary_dict["efficiency"]["blue_weights"] = list(weights)
 
     results_dir = Path(args.output_dir) / (args.job_id or now_str)
     if results_dir.exists():
@@ -2104,6 +2105,7 @@ def main(argv=None):
             raise FileExistsError(f"Results folder already exists: {results_dir}")
 
     copy_config(results_dir, cfg, exist_ok=args.overwrite)
+    summary = Summary(**summary_dict)
     out_dir = write_summary(results_dir, summary)
 
     # Generate plots now that the output directory exists
