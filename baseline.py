@@ -51,7 +51,7 @@ def _scaling_factor(dt_window: float, dt_baseline: float,
     return scale, float(np.sqrt(var))
 
 
-def _seconds(col):
+def _to_datetime64(col):
     """Return timestamp column as ``numpy.datetime64`` values."""
 
     if pd.api.types.is_datetime64_any_dtype(col):
@@ -60,7 +60,7 @@ def _seconds(col):
             ser = ser.dt.tz_convert("UTC").dt.tz_localize(None)
         ts = ser.astype("datetime64[ns]").to_numpy()
     else:
-        ts = col.map(parse_datetime).astype("datetime64[ns]").to_numpy()
+        ts = col.map(lambda v: parse_datetime(v).to_datetime64()).to_numpy()
     return np.asarray(ts)
 
 
@@ -68,7 +68,7 @@ def rate_histogram(df, bins):
     """Return (histogram in counts/s, live_time_s)."""
     if df.empty:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
-    ts = _seconds(df["timestamp"])
+    ts = _to_datetime64(df["timestamp"])
     live = float((ts[-1] - ts[0]) / np.timedelta64(1, "s"))
     hist_src = df.get("subtracted_adc_hist", df["adc"]).to_numpy()
     hist, _ = np.histogram(hist_src, bins=bins)
@@ -99,6 +99,18 @@ def subtract_baseline(df_analysis, df_full, bins, t_base0, t_base1,
     """
     assert mode in ("none", "electronics", "radon", "all")
 
+    df_analysis = df_analysis.copy()
+    df_full = df_full.copy()
+
+    for frame in (df_analysis, df_full):
+        ts = frame["timestamp"]
+        if not pd.api.types.is_datetime64_any_dtype(ts):
+            frame["timestamp"] = ts.map(parse_datetime)
+        elif ts.dt.tz is None:
+            frame["timestamp"] = ts.dt.tz_localize("UTC")
+        else:
+            frame["timestamp"] = ts.dt.tz_convert("UTC")
+
     if mode == "none":
         return df_analysis.copy()
 
@@ -108,9 +120,9 @@ def subtract_baseline(df_analysis, df_full, bins, t_base0, t_base1,
         live_time_analysis = live_an
 
     # baseline slice
-    t0 = parse_datetime(t_base0)
-    t1 = parse_datetime(t_base1)
-    ts_full = _seconds(df_full["timestamp"])
+    t0 = parse_datetime(t_base0).to_datetime64()
+    t1 = parse_datetime(t_base1).to_datetime64()
+    ts_full = _to_datetime64(df_full["timestamp"])
     mask = (ts_full >= t0) & (ts_full <= t1)
     if not mask.any():
         logging.warning("baseline_range matched no events – skipping subtraction")
