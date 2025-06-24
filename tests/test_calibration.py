@@ -227,7 +227,7 @@ def test_calibrationresult_uncertainty_linear():
     from calibration import CalibrationResult
 
     cov = np.array([[0.2 ** 2, 0.0], [0.0, 0.1 ** 2]])
-    calib = CalibrationResult(coeffs=[1.0, 2.0], covariance=cov)
+    calib = CalibrationResult(coeffs=[1.0, 2.0], cov=cov)
 
     adc = np.array([5.0])
     expected = np.sqrt((adc * 0.1) ** 2 + 0.2 ** 2)
@@ -244,7 +244,7 @@ def test_calibrationresult_uncertainty_quadratic():
         [0.0, 0.1 ** 2, 0.005],
         [0.0, 0.005, 0.02 ** 2],
     ])
-    calib = CalibrationResult(coeffs=[0.5, 1.0, 0.05], covariance=cov)
+    calib = CalibrationResult(coeffs=[0.5, 1.0, 0.05], cov=cov)
 
     adc = 2.0
     var = (
@@ -264,7 +264,7 @@ def test_calibrationresult_uncertainty_negative_covariance():
     from calibration import CalibrationResult
 
     cov = np.array([[0.02 ** 2, -0.5], [-0.5, 0.001 ** 2]])
-    calib = CalibrationResult(coeffs=[0.0, 1.0], covariance=cov)
+    calib = CalibrationResult(coeffs=[0.0, 1.0], cov=cov)
 
     sigma = calib.uncertainty([1.0])
     assert np.isfinite(sigma).all()

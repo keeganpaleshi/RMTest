@@ -1079,7 +1079,7 @@ def main(argv=None):
 
         assert isinstance(cal_params, CalibrationResult)
         coeffs = cal_params.coeffs
-        cov = np.asarray(cal_params.covariance, dtype=float)
+        cov = np.asarray(cal_params.cov, dtype=float)
         c = coeffs[0]
         a = coeffs[1]
         a2 = coeffs[2] if len(coeffs) == 3 else 0.0
@@ -2012,7 +2012,7 @@ def main(argv=None):
     else:
         cal_summary = {
             "coeffs": list(cal_params.coeffs),
-            "covariance": np.asarray(cal_params.covariance).tolist(),
+            "covariance": np.asarray(cal_params.cov).tolist(),
             "sigma_E": cal_params.sigma_E,
             "sigma_E_error": cal_params.sigma_E_error,
             "peaks": cal_params.peaks,

@@ -571,11 +571,10 @@ parameters.  Use `predict()` to convert ADC values to MeV and
 ```python
 from calibration import CalibrationResult
 
+# coeffs are ordered [c, a] for a linear polynomial
 cal = CalibrationResult(
-    slope=0.001,
-    intercept=0.0,
-    slope_uncertainty=5e-5,
-    intercept_uncertainty=0.1,
+    coeffs=[0.0, 0.001],
+    cov=[[0.1**2, 0.0], [0.0, (5e-5)**2]],
 )
 
 energies = cal.predict([1500, 1700])
