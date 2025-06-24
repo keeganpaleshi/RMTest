@@ -8,6 +8,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import analyze
+from calibration import CalibrationResult
 from constants import DEFAULT_ADC_CENTROIDS
 from io_utils import load_config
 from fitting import FitResult
@@ -50,12 +51,12 @@ def test_expected_peaks_default(tmp_path, monkeypatch):
     monkeypatch.setattr(
         analyze,
         "derive_calibration_constants",
-        lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)},
+        lambda *a, **k: CalibrationResult([0.0, 1.0], np.zeros((2, 2)), sigma_E=1.0),
     )
     monkeypatch.setattr(
         analyze,
         "derive_calibration_constants_auto",
-        lambda *a, **k: {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0)},
+        lambda *a, **k: CalibrationResult([0.0, 1.0], np.zeros((2, 2)), sigma_E=1.0),
     )
     monkeypatch.setattr(analyze, "fit_spectrum", lambda *a, **k: FitResult({}, np.zeros((0, 0)), 0))
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
