@@ -4,8 +4,7 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
-from utils import parse_datetime
-from utils.time_utils import tz_localize_utc, tz_convert_utc
+from utils.time_utils import parse_timestamp, tz_localize_utc, tz_convert_utc
 from radon.baseline import (
     subtract_baseline_counts,
     subtract_baseline_rate,
@@ -61,7 +60,7 @@ def _to_datetime64(events: pd.DataFrame | pd.Series) -> np.ndarray:
         if getattr(ser.dtype, "tz", None) is None:
             ser = tz_localize_utc(ser)
     else:
-        ser = col.map(parse_datetime)
+        ser = col.map(parse_timestamp)
 
     ser = tz_convert_utc(ser)
     return ser.to_numpy(dtype="datetime64[ns]")
@@ -113,8 +112,8 @@ def apply_baseline_subtraction(
     if live_time_analysis is None:
         live_time_analysis = live_an
 
-    t0 = parse_datetime(t_base0)
-    t1 = parse_datetime(t_base1)
+    t0 = parse_timestamp(t_base0)
+    t1 = parse_timestamp(t_base1)
     ts_full = _to_datetime64(df_full)
     ts_int = ts_full.view("int64")
     t0_ns = t0.value

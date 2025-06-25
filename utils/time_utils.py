@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Union
+
 import pandas as pd
 from pandas.api.types import is_datetime64_any_dtype
 
@@ -43,9 +46,9 @@ def ensure_utc(series: pd.Series) -> pd.Series:
 
 
 
-def parse_timestamp(value):
-    """Return ``value`` parsed to a UTC ``pandas.Timestamp``."""
-    from datetime import datetime, timezone
+def parse_timestamp(value: Union[str, int, float, datetime, pd.Timestamp]) -> pd.Timestamp:
+    """Return ``value`` parsed to a UTC :class:`pandas.Timestamp`."""
+    from datetime import timezone
     from dateutil import parser as date_parser
 
     if isinstance(value, pd.Timestamp):
@@ -83,9 +86,9 @@ def parse_timestamp(value):
     raise ValueError(f"invalid timestamp: {value!r}")
 
 
-def to_epoch_seconds(ts_or_str) -> float:
-    """Return Unix epoch seconds for ``ts_or_str``."""
+def to_epoch_seconds(ts: Union[pd.Timestamp, str, int, float]) -> float:
+    """Return Unix epoch seconds for ``ts``."""
 
-    ts = parse_timestamp(ts_or_str)
-    return ts.timestamp()
+    ts_parsed = parse_timestamp(ts)
+    return ts_parsed.timestamp()
 

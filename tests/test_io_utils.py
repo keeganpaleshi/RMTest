@@ -17,7 +17,7 @@ from io_utils import (
     apply_burst_filter,
     Summary,
 )
-from utils import parse_datetime
+from utils.time_utils import parse_timestamp
 
 
 def test_load_config(tmp_path):
@@ -145,7 +145,7 @@ def test_load_events_column_aliases(tmp_path):
     df.to_csv(p, index=False)
     loaded = load_events(p)
     assert str(loaded["timestamp"].dtype) == "datetime64[ns, UTC]"
-    assert list(loaded["timestamp"])[0] == parse_datetime(1000)
+    assert list(loaded["timestamp"])[0] == parse_timestamp(1000)
     assert list(loaded["adc"])[0] == 1250
     assert "time" not in loaded.columns
     assert "adc_ch" not in loaded.columns
@@ -172,7 +172,7 @@ def test_load_events_custom_columns(tmp_path):
     }
     loaded = load_events(p, column_map=column_map)
     assert str(loaded["timestamp"].dtype) == "datetime64[ns, UTC]"
-    assert list(loaded["timestamp"])[0] == parse_datetime(1000)
+    assert list(loaded["timestamp"])[0] == parse_timestamp(1000)
     assert list(loaded["adc"])[0] == 1250
     assert "ftimestamps" not in loaded.columns
 
@@ -211,7 +211,7 @@ def test_load_events_string_nan(tmp_path):
     df.to_csv(p, index=False)
     loaded = load_events(p)
     assert len(loaded) == 1
-    assert loaded["timestamp"].iloc[0] == parse_datetime(1000)
+    assert loaded["timestamp"].iloc[0] == parse_timestamp(1000)
 
 
 def test_write_summary_and_copy_config(tmp_path):
