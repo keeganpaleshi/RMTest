@@ -1,5 +1,6 @@
-from baseline_utils import rate_histogram, subtract_baseline_dataframe
+from baseline_utils import rate_histogram, subtract
 
-subtract_baseline = subtract_baseline_dataframe
+# Backwards compatibility
+subtract_baseline = subtract
 
-__all__ = ["rate_histogram", "subtract_baseline", "subtract_baseline_dataframe"]
+__all__ = ["rate_histogram", "subtract", "subtract_baseline"]

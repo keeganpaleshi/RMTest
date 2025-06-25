@@ -135,6 +135,64 @@ def apply_baseline_subtraction(
     return df_out
 
 
+def subtract(
+    df_analysis: pd.DataFrame,
+    df_full: pd.DataFrame,
+    bins,
+    t_base0: datetime,
+    t_base1: datetime,
+    mode: str = "all",
+    *,
+    live_time_analysis: float | None = None,
+    **kw,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Return baseline-corrected spectra and statistical errors.
+
+    Uncertainties are propagated in quadrature from the analysis and
+    baseline histograms unless ``kw.get("uncert_prop") == "none"``.
+    """
+
+    df_corr = apply_baseline_subtraction(
+        df_analysis,
+        df_full,
+        bins,
+        t_base0,
+        t_base1,
+        mode=mode,
+        live_time_analysis=live_time_analysis,
+    )
+
+    if kw.get("uncert_prop") == "none":
+        err_hist = np.zeros(len(bins) - 1, dtype=float)
+    else:
+        rate_an, live_an = rate_histogram(df_analysis, bins)
+        if live_time_analysis is None:
+            live_time_analysis = live_an
+
+        t0 = parse_timestamp(t_base0)
+        t1 = parse_timestamp(t_base1)
+        ts_full = _to_datetime64(df_full)
+        ts_int = ts_full.view("int64")
+        mask = (ts_int >= t0.value) & (ts_int <= t1.value)
+
+        if mask.any():
+            rate_bl, live_bl = rate_histogram(df_full.loc[mask], bins)
+        else:
+            rate_bl, live_bl = np.zeros(len(bins) - 1, dtype=float), 0.0
+
+        counts_an = rate_an * live_time_analysis
+        counts_bl = rate_bl * live_bl
+        scale = live_time_analysis / live_bl if live_bl > 0 else 0.0
+
+        var = counts_an + (scale**2) * counts_bl
+        err_hist = np.sqrt(var)
+
+    df_err = df_corr.copy()
+    df_err["subtracted_adc_hist"] = [err_hist] * len(df_err)
+
+    return df_corr, df_err
+
+
 # Backwards compatibility
 subtract_baseline_dataframe = apply_baseline_subtraction
 

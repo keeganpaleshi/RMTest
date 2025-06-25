@@ -113,11 +113,11 @@ from utils.time_utils import (
     tz_convert_utc,
 )
 from baseline_utils import (
-    subtract_baseline_dataframe,
     subtract_baseline_counts,
     subtract_baseline_rate,
     compute_dilution_factor,
 )
+import baseline
 
 
 def _fit_params(obj: FitResult | Mapping[str, float] | None) -> FitParams:
@@ -1237,7 +1237,7 @@ def main(argv=None):
         t_base0 = args.baseline_range[0]
         t_base1 = args.baseline_range[1]
         edges = adc_hist_edges(df_analysis["adc"].values, hist_bins)
-        df_analysis = subtract_baseline_dataframe(
+        df_analysis, _ = baseline.subtract(
             df_analysis,
             events_all,
             bins=edges,
