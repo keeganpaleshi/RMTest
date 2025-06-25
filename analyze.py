@@ -124,6 +124,21 @@ def _fit_params(obj: FitResult | Mapping[str, float] | None) -> FitParams:
     return {}
 
 
+def _cov_lookup(fit_result: FitResult | Mapping[str, float] | None, name1: str, name2: str) -> float:
+    """Return covariance between two parameters if present."""
+    if isinstance(fit_result, FitResult):
+        try:
+            return float(fit_result.cov_df.loc[name1, name2])
+        except KeyError:
+            try:
+                return float(fit_result.get_cov(name1, name2))
+            except KeyError:
+                return 0.0
+    if isinstance(fit_result, Mapping):
+        return float(fit_result.get(f"cov_{name1}_{name2}", 0.0))
+    return 0.0
+
+
 def _ensure_events(events: pd.DataFrame, stage: str) -> None:
     """Exit if ``events`` is empty, printing a helpful message."""
     if len(events) == 0:
@@ -329,18 +344,7 @@ def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
     dE = params.get("dE_corrected", params.get(f"dE_{iso}", 0.0))
     dN0 = params.get(f"dN0_{iso}", 0.0)
     dB = params.get(f"dB_{iso}", params.get("dB", 0.0))
-    cov = 0.0
-    if isinstance(fit_obj, FitResult):
-        try:
-            cov = float(fit_obj.cov_df.loc[f"E_{iso}", f"N0_{iso}"])
-        except KeyError:
-            try:
-                cov = fit_obj.get_cov(f"E_{iso}", f"N0_{iso}")
-            except KeyError:
-                cov = 0.0
-    elif isinstance(fit_obj, Mapping):
-        key = f"cov_E_{iso}_N0_{iso}"
-        cov = float(fit_obj.get(key, 0.0))
+    cov = _cov_lookup(fit_obj, f"E_{iso}", f"N0_{iso}")
     t = np.asarray(centers, dtype=float)
     exp_term = np.exp(-lam * t)
     dR_dE = eff * (1.0 - exp_term)
@@ -1946,13 +1950,7 @@ def main(argv=None):
             default_const = cfg.get("nuclide_constants", {})
             default_hl = default_const.get("Po214", PO214).half_life_s
             hl = cfg.get("time_fit", {}).get("hl_po214", [default_hl])[0]
-            try:
-                cov = float(fit_result.cov_df.loc["E_Po214", "N0_Po214"])
-            except KeyError:
-                try:
-                    cov = fit_result.get_cov("E_Po214", "N0_Po214")
-                except KeyError:
-                    cov = 0.0
+            cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
             delta214, err_delta214 = radon_delta(
                 t_start_rel,
                 t_end_rel,
@@ -1975,13 +1973,7 @@ def main(argv=None):
             default_const = cfg.get("nuclide_constants", {})
             default_hl = default_const.get("Po218", PO218).half_life_s
             hl = cfg.get("time_fit", {}).get("hl_po218", [default_hl])[0]
-            try:
-                cov = float(fit_result.cov_df.loc["E_Po218", "N0_Po218"])
-            except KeyError:
-                try:
-                    cov = fit_result.get_cov("E_Po218", "N0_Po218")
-                except KeyError:
-                    cov = 0.0
+            cov = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
             delta218, err_delta218 = radon_delta(
                 t_start_rel,
                 t_end_rel,
@@ -2195,13 +2187,7 @@ def main(argv=None):
             default_const = cfg.get("nuclide_constants", {})
             default_hl = default_const.get("Po214", PO214).half_life_s
             hl = cfg.get("time_fit", {}).get("hl_po214", [default_hl])[0]
-            try:
-                cov = float(fit_result.cov_df.loc["E_Po214", "N0_Po214"])
-            except KeyError:
-                try:
-                    cov = fit_result.get_cov("E_Po214", "N0_Po214")
-                except KeyError:
-                    cov = 0.0
+            cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
             A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
             plot_radon_activity(
                 times,
@@ -2222,13 +2208,7 @@ def main(argv=None):
             default_const = cfg.get("nuclide_constants", {})
             default_hl = default_const.get("Po218", PO218).half_life_s
             hl = cfg.get("time_fit", {}).get("hl_po218", [default_hl])[0]
-            try:
-                cov = float(fit_result.cov_df.loc["E_Po218", "N0_Po218"])
-            except KeyError:
-                try:
-                    cov = fit_result.get_cov("E_Po218", "N0_Po218")
-                except KeyError:
-                    cov = 0.0
+            cov = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
             A218, dA218 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
 
         activity_arr = np.zeros_like(times, dtype=float)
@@ -2284,13 +2264,7 @@ def main(argv=None):
                 default_const = cfg.get("nuclide_constants", {})
                 default_hl = default_const.get("Po214", PO214).half_life_s
                 hl214 = cfg.get("time_fit", {}).get("hl_po214", [default_hl])[0]
-                try:
-                    cov214 = float(fit_result.cov_df.loc["E_Po214", "N0_Po214"])
-                except KeyError:
-                    try:
-                        cov214 = fit_result.get_cov("E_Po214", "N0_Po214")
-                    except KeyError:
-                        cov214 = 0.0
+                cov214 = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
                 A214_tr, _ = radon_activity_curve(
                     rel_trend, E214, dE214, N0214, dN0214, hl214, cov214
                 )
@@ -2305,13 +2279,7 @@ def main(argv=None):
                 default_const = cfg.get("nuclide_constants", {})
                 default_hl = default_const.get("Po218", PO218).half_life_s
                 hl218 = cfg.get("time_fit", {}).get("hl_po218", [default_hl])[0]
-                try:
-                    cov218 = float(fit_result.cov_df.loc["E_Po218", "N0_Po218"])
-                except KeyError:
-                    try:
-                        cov218 = fit_result.get_cov("E_Po218", "N0_Po218")
-                    except KeyError:
-                        cov218 = 0.0
+                cov218 = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
                 A218_tr, _ = radon_activity_curve(
                     rel_trend, E218, dE218, N0218, dN0218, hl218, cov218
                 )
