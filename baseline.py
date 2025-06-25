@@ -5,7 +5,12 @@ from utils import parse_datetime
 
 from baseline_utils import subtract_baseline_dataframe
 
-__all__ = ["compute_rate_histogram", "subtract_baseline_df", "subtract_baseline_dataframe"]
+__all__ = [
+    "compute_rate_histogram",
+    "subtract_baseline_df",
+    "subtract_baseline_dataframe",
+    "subtract_baseline",
+]
 
 
 def _to_datetime64(col):
@@ -13,11 +18,13 @@ def _to_datetime64(col):
 
     if pd.api.types.is_datetime64_any_dtype(col):
         ser = col
-        if getattr(ser.dtype, "tz", None) is not None:
-            ser = ser.dt.tz_convert("UTC").dt.tz_localize(None)
-        ts = ser.astype("datetime64[ns]").to_numpy()
     else:
-        ts = col.map(parse_datetime).astype("datetime64[ns]").to_numpy()
+        ser = col.map(parse_datetime)
+
+    if getattr(ser.dtype, "tz", None) is not None:
+        ser = ser.dt.tz_convert("UTC").dt.tz_localize(None)
+
+    ts = ser.astype("datetime64[ns]").to_numpy()
     return np.asarray(ts)
 
 
@@ -39,6 +46,20 @@ def subtract_baseline_df(df_analysis, df_full, bins, t_base0, t_base1,
     """Wrapper for :func:`baseline_utils.subtract_baseline_dataframe`."""
 
     return subtract_baseline_dataframe(
+        df_analysis,
+        df_full,
+        bins,
+        t_base0,
+        t_base1,
+        mode=mode,
+        live_time_analysis=live_time_analysis,
+    )
+
+
+def subtract_baseline(df_analysis, df_full, bins, t_base0, t_base1,
+                      mode="all", live_time_analysis=None):
+    """Backward-compatible alias for :func:`subtract_baseline_df`."""
+    return subtract_baseline_df(
         df_analysis,
         df_full,
         bins,

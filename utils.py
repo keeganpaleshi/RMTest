@@ -252,12 +252,13 @@ def to_utc_datetime(value, tz="UTC") -> datetime:
 
 
 def parse_datetime(value):
-    """Parse an ISO-8601 string or numeric epoch value to ``numpy.datetime64``.
+    """Parse an ISO-8601 string or numeric epoch value to a timezone-aware
+    ``Timestamp`` in UTC.
 
     The function accepts strings like ``"2023-09-28T13:45:00-04:00"`` or
     numeric Unix timestamps (as ``int``, ``float`` or numeric ``str``). Any
     parsed time lacking a timezone is interpreted as UTC. On success a
-    ``numpy.datetime64`` object in UTC (nanosecond resolution) is returned.
+    ``pandas.Timestamp`` object with ``UTC`` timezone information is returned.
     ``ValueError`` is raised if the input cannot be parsed.
     """
 
@@ -269,7 +270,19 @@ def parse_datetime(value):
     if pd is None:
         raise RuntimeError("pandas is required for parse_datetime")
 
-    return pd.Timestamp(dt).to_datetime64()
+    ts = pd.Timestamp(dt)
+    if ts.tz is None:
+        ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
+
+    try:
+        # pandas >= 2.2 with NumPy >= 2.0 can retain the timezone
+        return ts.to_datetime64("UTC")
+    except TypeError:
+        # Older pandas versions drop the timezone when converting to
+        # ``datetime64``.  In that case return the Timestamp itself.
+        return ts
 
 
 def parse_time(s, tz="UTC") -> float:

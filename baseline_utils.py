@@ -53,11 +53,13 @@ def _seconds(col: pd.Series) -> np.ndarray:
 
     if pd.api.types.is_datetime64_any_dtype(col):
         ser = col
-        if getattr(ser.dtype, "tz", None) is not None:
-            ser = ser.dt.tz_convert("UTC").dt.tz_localize(None)
-        ts = ser.astype("datetime64[ns]").to_numpy()
     else:
-        ts = col.map(parse_datetime).astype("datetime64[ns]").to_numpy()
+        ser = col.map(parse_datetime)
+
+    if getattr(ser.dtype, "tz", None) is not None:
+        ser = ser.dt.tz_convert("UTC").dt.tz_localize(None)
+
+    ts = ser.astype("datetime64[ns]").to_numpy()
     return np.asarray(ts)
 
 
@@ -97,6 +99,19 @@ def subtract_baseline_dataframe(
 
     t0 = parse_datetime(t_base0)
     t1 = parse_datetime(t_base1)
+    # ``ts_full`` is an array of ``numpy.datetime64`` so ensure ``t0`` and ``t1``
+    # are comparable across pandas versions.
+    if isinstance(t0, pd.Timestamp):
+        try:
+            t0 = t0.to_datetime64("UTC")
+        except TypeError:
+            t0 = t0.to_datetime64()
+    if isinstance(t1, pd.Timestamp):
+        try:
+            t1 = t1.to_datetime64("UTC")
+        except TypeError:
+            t1 = t1.to_datetime64()
+
     ts_full = _seconds(df_full["timestamp"])
     mask = (ts_full >= t0) & (ts_full <= t1)
     if not mask.any():
