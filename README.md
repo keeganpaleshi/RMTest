@@ -193,6 +193,11 @@ To disable the cut:
 }
 ```
 
+`slope_MeV_per_ch` may also be specified under `calibration` to fix the
+ADC→MeV conversion. When this slope is given the two‑point fit is skipped
+and the provided value is used directly. Set it to `null` to retain the
+automatic calibration.
+
 When the cut is applied the analysis logs how many events were removed. This
 count also appears in `summary.json` under `noise_cut.removed_events`.
 
