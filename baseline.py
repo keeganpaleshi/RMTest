@@ -1,6 +1,7 @@
 import numpy as np
 import logging
 import pandas as pd
+from utils import parse_datetime
 
 from baseline_utils import subtract_baseline_dataframe
 
@@ -10,7 +11,9 @@ __all__ = ["rate_histogram", "subtract_baseline", "subtract_baseline_dataframe"]
 def _to_datetime64(col):
     """Return timestamp column as ``datetime64[ns, UTC]`` values."""
 
-    return pd.to_datetime(col, utc=True)
+    if pd.api.types.is_datetime64_any_dtype(col):
+        return pd.to_datetime(col, utc=True)
+    return pd.to_datetime(col.map(parse_datetime), utc=True)
 
 
 def rate_histogram(df, bins):
