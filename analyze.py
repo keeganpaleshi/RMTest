@@ -56,7 +56,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 import math
 import numpy as np
@@ -117,7 +117,7 @@ from baseline_utils import (
 def _fit_params(obj: FitResult | Mapping[str, float] | None) -> FitParams:
     """Return fit parameters mapping from a ``FitResult`` or dictionary."""
     if isinstance(obj, FitResult):
-        return obj.params
+        return cast(FitParams, obj.params)
     if isinstance(obj, Mapping):
         return obj  # type: ignore[return-value]
     return {}
