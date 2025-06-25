@@ -19,6 +19,7 @@ __all__ = [
     "parse_time_arg",
     "parse_timestamp",
     "parse_datetime",
+    "to_seconds",
     "parse_time",
     "LITERS_PER_M3",
 ]
@@ -270,6 +271,18 @@ def parse_datetime(value):
         raise RuntimeError("pandas is required for parse_datetime")
 
     return pd.Timestamp(dt.replace(tzinfo=None), tz="UTC")
+
+
+def to_seconds(series: pd.Series) -> np.ndarray:
+    """Return float seconds from a timestamp series."""
+
+    if not pd.api.types.is_datetime64_any_dtype(series):
+        return series.astype(float).to_numpy()
+    if getattr(series.dtype, "tz", None) is None:
+        series = series.map(parse_datetime)
+    else:
+        series = series.dt.tz_convert("UTC")
+    return series.astype("int64").to_numpy() / 1e9
 
 
 def parse_time(s, tz="UTC") -> float:
