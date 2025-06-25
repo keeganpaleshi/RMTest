@@ -1,5 +1,8 @@
 {
     "allow_fallback": false,
+    "calibration": {
+        "slope_MeV_per_ch": null
+    },
     "time_fit": {
         "window_po218": [3.05e6, 3.25e6]
     }

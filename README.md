@@ -164,6 +164,9 @@ peak energies must be to their known values.  The default of `0.5` MeV
 causes calibration to fail when any Po‑210, Po‑218 or Po‑214 centroid
 deviates by more than this amount.
 
+`slope_MeV_per_ch` fixes the linear calibration slope. When provided only the
+Po‑214 peak is used to determine the intercept so the two‑point fit is skipped.
+
 `noise_cutoff` defines a pedestal noise threshold in ADC.  Events with raw
 ADC values at or below this threshold are removed before any fits.  The
 default is `400`.  Set it to `null` to skip the cut entirely.  The
