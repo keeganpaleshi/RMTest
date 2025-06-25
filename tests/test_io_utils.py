@@ -194,11 +194,15 @@ def test_load_events_missing_column(tmp_path):
 
 
 def test_load_events_string_nan(tmp_path):
+    ts = pd.Series(
+        [pd.Timestamp(1000, unit="s", tz="UTC"), pd.NaT],
+        dtype="datetime64[ns, UTC]",
+    )
     df = pd.DataFrame(
         {
             "fUniqueID": [1, 2],
             "fBits": [0, 0],
-            "timestamp": [pd.Timestamp(1000, unit="s", tz="UTC"), "NaN"],
+            "timestamp": ts,
             "adc": [1200, 1300],
             "fchannel": [1, 1],
         }
