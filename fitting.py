@@ -79,8 +79,10 @@ class FitResult:
 
     ndf: int
     param_index: dict[str, int] | None = None
+    cov_df: pd.DataFrame | None = None
 
     def __post_init__(self):
+        ordered: list[str] | None = None
         if self.param_index is None and isinstance(self.params, dict):
             ordered = [
                 k
@@ -88,6 +90,9 @@ class FitResult:
                 if k != "fit_valid" and not k.startswith("d") and not k.startswith("cov_")
             ]
             self.param_index = {name: i for i, name in enumerate(ordered)}
+        elif self.param_index is not None:
+            ordered = [n for n, _ in sorted(self.param_index.items(), key=lambda kv: kv[1])]
+
         if self.cov is not None:
             self.cov = np.asarray(self.cov, dtype=float)
             if self.cov.ndim >= 2:
@@ -98,11 +103,23 @@ class FitResult:
                     raise ValueError(
                         "cov must be square and match param_index length"
                     )
+                if self.param_index is not None:
+                    if ordered is None:
+                        ordered = [n for n, _ in sorted(self.param_index.items(), key=lambda kv: kv[1])]
+                    self.cov_df = pd.DataFrame(self.cov, index=ordered, columns=ordered)
 
     def get_cov(self, name1: str, name2: str) -> float:
         """Return covariance entry for two parameters."""
         if self.cov is None or self.param_index is None:
             return 0.0
+        if self.cov_df is not None:
+            try:
+                return float(self.cov_df.loc[name1, name2])
+            except KeyError as exc:
+                raise KeyError(
+                    f"Parameter(s) missing in covariance: {name1}, {name2}"
+                ) from exc
+
         try:
             i1 = self.param_index[name1]
             i2 = self.param_index[name2]
