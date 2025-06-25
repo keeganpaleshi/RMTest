@@ -5,6 +5,7 @@ from scipy.signal import find_peaks
 import math
 from dataclasses import is_dataclass, asdict
 import argparse
+import warnings
 from datetime import datetime, timezone, tzinfo, timedelta
 from dateutil import parser as date_parser
 from dateutil.tz import gettz
@@ -17,10 +18,8 @@ __all__ = [
     "cps_to_bq",
     "to_utc_datetime",
     "parse_time_arg",
-    "parse_timestamp",
     "parse_datetime",
     "to_seconds",
-    "parse_time",
     "LITERS_PER_M3",
 ]
 
@@ -184,42 +183,16 @@ def cps_to_bq(rate_cps, volume_liters=None):
 
 
 def parse_timestamp(s) -> float:
-    """Parse an ISO-8601 string, numeric seconds, or ``datetime``.
+    """Deprecated wrapper for :func:`time_utils.parse_timestamp`."""
 
-    Any string without timezone information is interpreted as UTC.
-    The return value is the Unix epoch time in seconds (UTC).
-    """
+    warnings.warn(
+        "utils.parse_timestamp is deprecated; use time_utils.parse_timestamp instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    from time_utils import parse_timestamp as _parse_timestamp
 
-    if isinstance(s, (int, float)):
-        return float(s)
-
-    if isinstance(s, datetime):
-        dt = s
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        else:
-            dt = dt.astimezone(timezone.utc)
-        return float(dt.timestamp())
-
-    if isinstance(s, str):
-        try:
-            return float(s)
-        except ValueError:
-            pass
-
-        try:
-            dt = date_parser.isoparse(s)
-        except (ValueError, OverflowError) as e:
-            raise argparse.ArgumentTypeError(f"could not parse time: {s!r}") from e
-
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        else:
-            dt = dt.astimezone(timezone.utc)
-
-        return float(dt.timestamp())
-
-    raise argparse.ArgumentTypeError(f"could not parse time: {s!r}")
+    return _parse_timestamp(s)
 
 
 def to_utc_datetime(value, tz="UTC") -> datetime:
@@ -286,9 +259,16 @@ def to_seconds(series: pd.Series) -> np.ndarray:
 
 
 def parse_time(s, tz="UTC") -> float:
-    """Parse a timestamp string, number or ``datetime`` into Unix seconds."""
+    """Deprecated wrapper for :func:`time_utils.parse_timestamp`."""
 
-    return parse_timestamp(s)
+    warnings.warn(
+        "utils.parse_time is deprecated; use time_utils.parse_timestamp instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    from time_utils import parse_timestamp as _parse_timestamp
+
+    return _parse_timestamp(s)
 
 
 def parse_time_arg(val, tz="UTC") -> datetime:
