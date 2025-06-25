@@ -657,6 +657,20 @@ scripts/setup_tests.sh
 pytest -v
 ```
 
+### Verifying Helper Removal
+
+To ensure the old `_seconds` helper is no longer used, search the codebase for
+the exact helper name instead of the generic `total_seconds()` call:
+
+```bash
+grep -R "baseline\._seconds(" -n
+# or
+grep -R "\<_seconds(" -n
+```
+
+These patterns catch leftover calls without flagging legitimate
+`datetime.timedelta.total_seconds()` usage.
+
 
 ## Hierarchical Analysis
 
