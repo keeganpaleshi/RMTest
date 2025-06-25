@@ -31,10 +31,10 @@ def test_config_interval_parsing_to_datetime():
         "baseline": {"range": ["1970-01-01T00:00:01Z", "1970-01-01T00:00:02Z"]},
         "analysis": {"radon_interval": ["1970-01-01T00:00:03Z", "1970-01-01T00:00:04Z"]},
     }
-    b_start = pd.to_datetime(parse_datetime(cfg["baseline"]["range"][0]), utc=True)
-    b_end = pd.to_datetime(parse_datetime(cfg["baseline"]["range"][1]), utc=True)
-    r_start = pd.to_datetime(parse_datetime(cfg["analysis"]["radon_interval"][0]), utc=True)
-    r_end = pd.to_datetime(parse_datetime(cfg["analysis"]["radon_interval"][1]), utc=True)
+    b_start = parse_datetime(cfg["baseline"]["range"][0])
+    b_end = parse_datetime(cfg["baseline"]["range"][1])
+    r_start = parse_datetime(cfg["analysis"]["radon_interval"][0])
+    r_end = parse_datetime(cfg["analysis"]["radon_interval"][1])
     for dt in (b_start, b_end, r_start, r_end):
         assert dt.tzinfo is not None
         assert dt.tzinfo.utcoffset(dt) == timedelta(0)
