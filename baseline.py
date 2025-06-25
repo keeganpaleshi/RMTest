@@ -3,9 +3,9 @@ import logging
 import pandas as pd
 
 import baseline_utils
-from baseline_utils import subtract_baseline_dataframe
+from baseline_utils import apply_baseline_dataframe
 
-__all__ = ["rate_histogram", "subtract_baseline", "subtract_baseline_dataframe"]
+__all__ = ["rate_histogram", "apply_baseline", "apply_baseline_dataframe"]
 
 
 def rate_histogram(df, bins):
@@ -27,11 +27,11 @@ def rate_histogram(df, bins):
     return hist / live, live
 
 
-def subtract_baseline(df_analysis, df_full, bins, t_base0, t_base1,
-                         mode="all", live_time_analysis=None):
-    """Wrapper for :func:`baseline_utils.subtract_baseline_dataframe`."""
+def apply_baseline(df_analysis, df_full, bins, t_base0, t_base1,
+                   mode="all", live_time_analysis=None):
+    """Wrapper for :func:`baseline_utils.apply_baseline_dataframe`."""
 
-    return subtract_baseline_dataframe(
+    return apply_baseline_dataframe(
         df_analysis,
         df_full,
         bins,

@@ -17,7 +17,7 @@ def test_baseline_none():
         "adc": np.arange(10),
     })
     bins = np.arange(0, 11)
-    out = baseline_utils.subtract_baseline_dataframe(
+    out = baseline_utils.apply_baseline_dataframe(
         df,
         df,
         bins=bins,
@@ -41,7 +41,7 @@ def test_baseline_time_norm():
     })
     df_full = pd.concat([df_an, df_bl], ignore_index=True)
     bins = np.arange(0, 7)
-    out = baseline_utils.subtract_baseline_dataframe(
+    out = baseline_utils.apply_baseline_dataframe(
         df_an,
         df_full,
         bins=bins,
@@ -59,7 +59,7 @@ def test_baseline_none_datetime():
         "adc": np.arange(10),
     })
     bins = np.arange(0, 11)
-    out = baseline_utils.subtract_baseline_dataframe(
+    out = baseline_utils.apply_baseline_dataframe(
         df,
         df,
         bins=bins,
@@ -83,7 +83,7 @@ def test_baseline_time_norm_datetime():
     })
     df_full = pd.concat([df_an, df_bl], ignore_index=True)
     bins = np.arange(0, 7)
-    out = baseline_utils.subtract_baseline_dataframe(
+    out = baseline_utils.apply_baseline_dataframe(
         df_an,
         df_full,
         bins=bins,

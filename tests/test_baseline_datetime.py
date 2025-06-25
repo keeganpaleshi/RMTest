@@ -26,7 +26,7 @@ def test_subtract_baseline_datetime_column():
     df_bl = pd.DataFrame({"timestamp": ts_bl, "adc": np.tile([1,2,3,4,5],10)})
     df_full = pd.concat([df_an, df_bl], ignore_index=True)
     bins = np.arange(0, 7)
-    out = baseline.subtract_baseline(
+    out = baseline.apply_baseline(
         df_an,
         df_full,
         bins=bins,

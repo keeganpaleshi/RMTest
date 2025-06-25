@@ -1,3 +1,5 @@
 """Helper package exposing baseline utilities."""
-from baseline import subtract_baseline
-__all__ = ["subtract_baseline"]
+
+from baseline import apply_baseline
+
+__all__ = ["apply_baseline"]
