@@ -46,3 +46,17 @@ def test_cov_entry_missing_params():
 
     fr_none = FitResult(params, None, 0)
     assert fr_none.get_cov("A", "B") == 0.0
+
+
+def test_cov_entry_dimension_mismatch():
+    params = {"A": 1.0, "B": 2.0, "C": 3.0}
+    cov = np.eye(2)
+    with pytest.raises(ValueError):
+        FitResult(params, cov, 0)
+
+
+def test_cov_entry_non_square():
+    params = {"A": 1.0, "B": 2.0}
+    cov = np.ones((2, 3))
+    with pytest.raises(ValueError):
+        FitResult(params, cov, 0)
