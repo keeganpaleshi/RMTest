@@ -562,13 +562,12 @@ def test_model_uncertainty_uses_covariance():
         "dN0_Po214": 0.2,
         "B_Po214": 0.0,
         "dB_Po214": 0.0,
-        "cov_E_Po214_N0_Po214": 0.05,
         "fit_valid": True,
     }
-    fr = FitResult(params, np.zeros((3, 3)), 0)
-    params_nc = dict(params)
-    params_nc.pop("cov_E_Po214_N0_Po214")
-    fr_nc = FitResult(params_nc, np.zeros((3, 3)), 0)
+    cov = np.zeros((3, 3))
+    cov[0, 1] = cov[1, 0] = 0.05
+    fr = FitResult(params, cov, 0)
+    fr_nc = FitResult(params, np.zeros((3, 3)), 0)
     cfg = {"time_fit": {"hl_po214": [10.0], "eff_po214": [1.0]}}
     with_cov = analyze._model_uncertainty(centers, widths, fr, "Po214", cfg, True)
     no_cov = analyze._model_uncertainty(centers, widths, fr_nc, "Po214", cfg, True)
