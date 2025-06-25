@@ -48,8 +48,14 @@ def compute_dilution_factor(monitor_volume: float, sample_volume: float) -> floa
     return float(monitor_volume) / float(total)
 
 
-def _to_datetime64(col: pd.Series) -> np.ndarray:
+def _to_datetime64(events: pd.DataFrame | pd.Series) -> np.ndarray:
     """Return ``numpy.ndarray`` of ``datetime64[ns]`` in UTC.
+
+    Parameters
+    ----------
+    events:
+        ``Series`` of timestamps or a ``DataFrame`` containing a
+        ``"timestamp"`` column.
 
     Both timezone-naive and timezone-aware inputs are supported.  Any
     timezone information is converted to UTC before the underlying
@@ -58,17 +64,20 @@ def _to_datetime64(col: pd.Series) -> np.ndarray:
     zone attributes.
     """
 
+    if isinstance(events, pd.DataFrame):
+        col = events["timestamp"]
+    else:
+        col = events
+
     if pd.api.types.is_datetime64_any_dtype(col):
         ser = col
-        if getattr(ser.dtype, "tz", None) is not None:
-            ser = ser.dt.tz_convert("UTC")
-        ts = ser.view("int64").view("datetime64[ns]")
+        if getattr(ser.dtype, "tz", None) is None:
+            ser = ser.dt.tz_localize("UTC")
     else:
         ser = col.map(parse_datetime)
-        if getattr(ser.dtype, "tz", None) is not None:
-            ser = ser.dt.tz_convert("UTC")
-        ts = ser.view("int64").view("datetime64[ns]")
-    return np.asarray(ts)
+
+    ser = ser.dt.tz_convert("UTC")
+    return ser.to_numpy(dtype="datetime64[ns]")
 
 
 def _rate_histogram(df: pd.DataFrame, bins) -> tuple[np.ndarray, float]:
