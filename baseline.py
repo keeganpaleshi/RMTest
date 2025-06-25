@@ -1,32 +1,18 @@
 import numpy as np
 import logging
 import pandas as pd
-from utils import parse_datetime
 
+import baseline_utils
 from baseline_utils import subtract_baseline_dataframe
 
 __all__ = ["rate_histogram", "subtract_baseline", "subtract_baseline_dataframe"]
-
-
-def _to_datetime64(events: pd.DataFrame) -> np.ndarray:
-    """Return numpy.ndarray[datetime64[ns, UTC]]."""
-
-    ts_col = events["timestamp"]
-    if pd.api.types.is_datetime64_any_dtype(ts_col):
-        ser = ts_col
-        if getattr(ser.dtype, "tz", None) is not None:
-            ser = ser.dt.tz_convert("UTC")
-        ts = ser.to_numpy(dtype="datetime64[ns]")
-    else:
-        ts = ts_col.map(parse_datetime).astype("datetime64[ns]").to_numpy()
-    return np.asarray(ts)
 
 
 def rate_histogram(df, bins):
     """Return (histogram in counts/s, live_time_s)."""
     if df.empty:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
-    ts = _to_datetime64(df)
+    ts = baseline_utils._to_datetime64(df["timestamp"])
     live = float((ts[-1] - ts[0]) / np.timedelta64(1, "s"))
     hist_src = df.get("subtracted_adc_hist", df["adc"]).to_numpy()
     hist, _ = np.histogram(hist_src, bins=bins)
