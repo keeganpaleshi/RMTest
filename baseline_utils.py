@@ -17,6 +17,7 @@ __all__ = [
     "subtract_baseline_counts",
     "subtract_baseline_rate",
     "_scaling_factor",
+    "rate_histogram",
 ]
 
 
@@ -67,7 +68,7 @@ def _to_datetime64(events: pd.DataFrame | pd.Series) -> np.ndarray:
     return ser.to_numpy(dtype="datetime64[ns]")
 
 
-def _rate_histogram(df: pd.DataFrame, bins) -> tuple[np.ndarray, float]:
+def rate_histogram(df: pd.DataFrame, bins) -> tuple[np.ndarray, float]:
     """Return histogram in counts/s and the live time in seconds.
 
     Timestamp columns may be timezone-aware.  Differences are computed
@@ -85,6 +86,10 @@ def _rate_histogram(df: pd.DataFrame, bins) -> tuple[np.ndarray, float]:
     if live <= 0:
         return np.zeros_like(hist, dtype=float), live
     return hist / live, live
+
+
+# Backwards compatibility alias
+_rate_histogram = rate_histogram
 
 
 def apply_baseline_subtraction(

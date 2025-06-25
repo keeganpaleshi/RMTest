@@ -7,13 +7,14 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import baseline
+from baseline_utils import rate_histogram
 
 
 def test_rate_histogram_datetime_column():
     ts = pd.date_range("1970-01-01", periods=5, freq="s", tz="UTC")
     df = pd.DataFrame({"timestamp": ts, "adc": np.arange(5)})
     bins = np.arange(0, 7)
-    rate, live = baseline.rate_histogram(df, bins)
+    rate, live = rate_histogram(df, bins)
     assert live == pytest.approx(4.0)
     assert np.allclose(rate, np.histogram(df["adc"], bins=bins)[0] / live)
     assert str(df["timestamp"].dtype) == "datetime64[ns, UTC]"
