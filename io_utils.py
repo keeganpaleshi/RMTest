@@ -296,7 +296,7 @@ def load_events(csv_path, *, column_map=None):
 
     df = df.rename(columns=rename, errors="ignore")
 
-    # Parse timestamps directly to ``datetime64`` values
+    # Parse timestamps directly to timezone-aware ``Timestamp`` values
     if "timestamp" in df.columns:
         def _safe_parse(val):
             try:
@@ -304,9 +304,7 @@ def load_events(csv_path, *, column_map=None):
             except Exception:
                 return pd.NaT
 
-        df["timestamp"] = pd.to_datetime(
-            df["timestamp"].map(_safe_parse), utc=True
-        )
+        df["timestamp"] = df["timestamp"].map(_safe_parse)
 
     # Check required columns after renaming
     required_cols = ["fUniqueID", "fBits", "timestamp", "adc", "fchannel"]
@@ -389,10 +387,9 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
     ts = out_df["timestamp"]
     if not pd.api.types.is_datetime64_any_dtype(ts):
         ts = ts.map(parse_datetime)
-        ts = pd.to_datetime(ts, utc=True)
     else:
         if ts.dt.tz is None:
-            ts = ts.dt.tz_localize("UTC")
+            ts = ts.map(parse_datetime)
         else:
             ts = ts.dt.tz_convert("UTC")
     out_df["timestamp"] = ts
@@ -435,10 +432,9 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
             ts = out_df["timestamp"]
             if not pd.api.types.is_datetime64_any_dtype(ts):
                 ts = ts.map(parse_datetime)
-                ts = pd.to_datetime(ts, utc=True)
             else:
                 if ts.dt.tz is None:
-                    ts = ts.dt.tz_localize("UTC")
+                    ts = ts.map(parse_datetime)
                 else:
                     ts = ts.dt.tz_convert("UTC")
             out_df["timestamp"] = ts

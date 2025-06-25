@@ -223,10 +223,10 @@ def prepare_analysis_df(
     df_analysis = df.copy()
     ts = df_analysis["timestamp"]
     if not pd.api.types.is_datetime64_any_dtype(ts):
-        df_analysis["timestamp"] = pd.to_datetime(ts, unit="s", utc=True)
+        df_analysis["timestamp"] = ts.map(parse_datetime)
     else:
         if ts.dt.tz is None:
-            df_analysis["timestamp"] = ts.dt.tz_localize(timezone.utc)
+            df_analysis["timestamp"] = ts.map(parse_datetime)
         else:
             df_analysis["timestamp"] = ts.dt.tz_convert(timezone.utc)
 
@@ -816,15 +816,8 @@ def main(argv=None):
     try:
         events_all = load_events(args.input, column_map=cfg.get("columns"))
 
-        # 1) Parse non-datetime values
-        if not pd.api.types.is_datetime64_any_dtype(events_all["timestamp"]):
-            events_all["timestamp"] = events_all["timestamp"].map(parse_datetime)
-
-        # 2) Localize naïve datetimes to UTC
-        if events_all["timestamp"].dt.tz is None:
-            events_all["timestamp"] = events_all["timestamp"].dt.tz_localize(timezone.utc)
-        else:
-            events_all["timestamp"] = events_all["timestamp"].dt.tz_convert(timezone.utc)
+        # Parse timestamps to UTC ``Timestamp`` objects
+        events_all["timestamp"] = events_all["timestamp"].map(parse_datetime)
 
 
     except Exception as e:

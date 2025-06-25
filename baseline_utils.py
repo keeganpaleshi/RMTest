@@ -95,8 +95,8 @@ def subtract_baseline_dataframe(
     if live_time_analysis is None:
         live_time_analysis = live_an
 
-    t0 = parse_datetime(t_base0)
-    t1 = parse_datetime(t_base1)
+    t0 = parse_datetime(t_base0).to_datetime64()
+    t1 = parse_datetime(t_base1).to_datetime64()
     ts_full = _to_datetime64(df_full["timestamp"])
     mask = (ts_full >= t0) & (ts_full <= t1)
     if not mask.any():
