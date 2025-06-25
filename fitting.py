@@ -148,7 +148,8 @@ class FitResult:
         names = [n for n, _ in ordered]
         cov = np.asarray(self.cov, dtype=float)
         if cov.ndim == 2 and cov.shape[0] == len(names):
-            return pd.DataFrame(cov, index=names, columns=names)
+            self._cov_df = pd.DataFrame(cov, index=names, columns=names)
+            return self._cov_df
         return pd.DataFrame()
 
 
