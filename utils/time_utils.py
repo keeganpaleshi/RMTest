@@ -6,6 +6,8 @@ __all__ = [
     "tz_localize_utc",
     "tz_convert_utc",
     "ensure_utc",
+    "parse_timestamp",
+    "to_epoch_seconds",
 ]
 
 
@@ -38,4 +40,35 @@ def ensure_utc(series: pd.Series) -> pd.Series:
     if getattr(series.dtype, "tz", None) is None:
         return tz_localize_utc(series)
     return tz_convert_utc(series)
+
+
+def parse_timestamp(value) -> pd.Timestamp:
+    """Return ``value`` parsed as a UTC ``pandas.Timestamp``."""
+
+    if isinstance(value, pd.Timestamp):
+        ts = value
+    elif isinstance(value, (int, float)):
+        ts = pd.to_datetime(float(value), unit="s", utc=True)
+    elif isinstance(value, str):
+        try:
+            num = float(value)
+        except ValueError:
+            ts = pd.to_datetime(value, utc=True)
+        else:
+            ts = pd.to_datetime(num, unit="s", utc=True)
+    else:
+        ts = pd.to_datetime(value, utc=True)
+
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
+    return ts
+
+
+def to_epoch_seconds(ts_or_str) -> float:
+    """Return Unix epoch seconds for ``ts_or_str``."""
+
+    return parse_timestamp(ts_or_str).timestamp()
+
 
