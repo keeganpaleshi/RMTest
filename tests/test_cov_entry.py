@@ -46,3 +46,16 @@ def test_cov_entry_missing_params():
 
     fr_none = FitResult(params, None, 0)
     assert fr_none.get_cov("A", "B") == 0.0
+
+
+def test_cov_entry_prefix_handled():
+    params = {
+        "A": 1.0,
+        "B": 2.0,
+        "cov_A_B": 0.1,
+    }
+    cov = np.array([[1.0, 0.1], [0.1, 4.0]])
+    fr = FitResult(params, cov, 0)
+    assert len(fr.param_index) == 2
+    assert "cov_A_B" not in fr.param_index
+    assert fr.get_cov("A", "B") == pytest.approx(0.1)

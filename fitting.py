@@ -84,11 +84,22 @@ class FitResult:
             ordered = [
                 k
                 for k in self.params.keys()
-                if k != "fit_valid" and not k.startswith("d")
+                if k != "fit_valid" and not k.startswith("d") and not k.startswith("cov_")
             ]
             self.param_index = {name: i for i, name in enumerate(ordered)}
         if self.cov is not None:
             self.cov = np.asarray(self.cov, dtype=float)
+            if (
+                self.param_index is not None
+                and self.cov.ndim >= 2
+                and (
+                    self.cov.shape[0] != len(self.param_index)
+                    or self.cov.shape[1] != len(self.param_index)
+                )
+            ):
+                raise ValueError(
+                    "Covariance matrix dimension does not match parameter index"
+                )
 
     def get_cov(self, name1: str, name2: str) -> float:
         """Return covariance entry for two parameters."""
