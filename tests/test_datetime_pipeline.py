@@ -44,6 +44,7 @@ def test_datetime_pipeline(tmp_path):
     args = argparse.Namespace(slope=None)
     analysis_df, *_ = analyze.prepare_analysis_df(
         subtracted,
+        spike_start=None,
         spike_end=None,
         spike_periods=[],
         run_periods=[],

@@ -1144,6 +1144,130 @@ def test_spike_end_time_cli(tmp_path, monkeypatch):
     assert captured["times"] == [10.0]
 
 
+def test_spike_start_time_cli(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {
+            "do_time_fit": True,
+            "window_po214": [0.0, 20.0],
+            "hl_po214": [1.0, 0.0],
+            "eff_po214": [1.0, 0.0],
+            "flags": {},
+        },
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    cfg_path = tmp_path / "cfg.json"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    df = pd.DataFrame({
+        "fUniqueID": [1, 2],
+        "fBits": [0, 0],
+        "timestamp": [pd.Timestamp(0.0, unit="s", tz="UTC"), pd.Timestamp(10.0, unit="s", tz="UTC")],
+        "adc": [8.0, 8.0],
+        "fchannel": [1, 1],
+    })
+    data_path = tmp_path / "d.csv"
+    df.to_csv(data_path, index=False)
+
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+
+    captured = {}
+
+    def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
+        captured["times"] = ts_dict["Po214"].tolist()
+        return FitResult(FitParams({}), np.zeros((0, 0)), 0)
+
+    monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+        "--spike-start-time",
+        "1970-01-01T00:00:05Z",
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+    analyze.main()
+
+    assert captured["times"] == [0.0]
+
+
+def test_spike_start_and_end_cli(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {
+            "do_time_fit": True,
+            "window_po214": [0.0, 20.0],
+            "hl_po214": [1.0, 0.0],
+            "eff_po214": [1.0, 0.0],
+            "flags": {},
+        },
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    cfg_path = tmp_path / "cfg.json"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    df = pd.DataFrame({
+        "fUniqueID": [1, 2, 3],
+        "fBits": [0, 0, 0],
+        "timestamp": [
+            pd.Timestamp(0.0, unit="s", tz="UTC"),
+            pd.Timestamp(2.0, unit="s", tz="UTC"),
+            pd.Timestamp(6.0, unit="s", tz="UTC"),
+        ],
+        "adc": [8.0, 8.0, 8.0],
+        "fchannel": [1, 1, 1],
+    })
+    data_path = tmp_path / "d.csv"
+    df.to_csv(data_path, index=False)
+
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+
+    captured = {}
+
+    def fake_fit(ts_dict, t_start, t_end, config, **kwargs):
+        captured["times"] = ts_dict["Po214"].tolist()
+        return FitResult(FitParams({}), np.zeros((0, 0)), 0)
+
+    monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+        "--spike-start-time",
+        "1970-01-01T00:00:01Z",
+        "--spike-end-time",
+        "1970-01-01T00:00:05Z",
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+    analyze.main()
+
+    assert captured["times"] == [0.0, 6.0]
+
+
 def test_spike_period_cli(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},

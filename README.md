@@ -198,17 +198,20 @@ time origin for decay fitting and time-series plots.  Provide an
 ISO‑8601 string such as `"2023-07-31T00:00:00Z"` or the corresponding
 numeric Unix seconds.  When omitted the first event timestamp is used.
 
-All other time-related fields (`analysis_end_time`, `spike_end_time`,
-`spike_periods`, `run_periods`, `radon_interval` and
+
+All other time-related fields (`analysis_end_time`, `spike_start_time`,
+`spike_end_time`, `spike_periods`, `run_periods`, `radon_interval` and
 `baseline.range`) likewise accept absolute timestamps in ISO 8601
 format or numeric seconds.  All of these values are parsed with
 `time_utils.parse_timestamp` so the same formats apply everywhere.
 
 `analysis_end_time` may be specified to stop processing after the given
-timestamp while `spike_end_time` discards all events before its value.
-`spike_periods` holds a list of `[start, end]` pairs where events are
-excluded entirely.  All of these accept either ISO‑8601 strings or
-numeric seconds and can also be set with the corresponding CLI options.
+timestamp.  `spike_start_time` discards all events after its value,
+while `spike_end_time` discards all events before its value.  When both
+are provided events between them are removed. `spike_periods` holds a
+list of `[start, end]` pairs where events are excluded entirely.  All of
+these accept either ISO‑8601 strings or numeric seconds and can also be
+set with the corresponding CLI options.
 `run_periods` specifies the intervals of valid data to keep after spike
 filtering.  Events falling outside all provided periods are discarded.
 `radon_interval` sets two timestamps used to compute the change in radon
@@ -230,6 +233,7 @@ Example snippet:
 "analysis": {
     "analysis_start_time": "2023-07-31T00:00:00Z",
     "analysis_end_time": "2024-02-01T06:00:00Z",
+    "spike_start_time": null,
     "spike_end_time": "2023-07-31T00:10:00Z",
     "spike_periods": [["2023-11-12T00:00:00Z", "2023-11-13T12:00:00Z"]],
     "run_periods": [["2023-09-28T00:00:00Z", "2023-10-28T23:59:59Z"], ["2024-01-05T00:00:00Z", "2024-01-10T23:59:59Z"]],
@@ -245,6 +249,7 @@ When present the value is also written to `summary.json` under the
 "analysis": {
     "analysis_start_time": "2023-07-31T00:00:00Z",
     "analysis_end_time": "2024-02-01T06:00:00Z",
+    "spike_start_time": null,
     "spike_end_time": "2023-07-31T00:10:00Z",
     "spike_periods": [["2023-11-12T00:00:00Z", "2023-11-13T12:00:00Z"]],
     "run_periods": [["2023-09-28T00:00:00Z", "2023-10-28T23:59:59Z"], ["2024-01-05T00:00:00Z", "2024-01-10T23:59:59Z"]],
@@ -295,8 +300,8 @@ file alongside the plot.
 
 Additional convenience flags include `--spike-count` (with optional
 `--spike-count-err`) to override spike efficiency inputs, `--slope` to
-apply a linear ADC drift correction, `--analysis-start-time`, `--analysis-end-time` and
-`--spike-end-time` to clip the dataset, one or more `--spike-period`
+apply a linear ADC drift correction, `--analysis-start-time`, `--analysis-end-time`,
+`--spike-start-time` and `--spike-end-time` to clip the dataset, one or more `--spike-period`
 options to exclude specific time windows, `--settle-s` to skip the
 initial settling period in the decay fit, `--seed` to set the random
 seed used by the analysis, `--hierarchical-summary PATH` to produce a

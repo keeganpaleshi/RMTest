@@ -47,6 +47,7 @@ def test_prepare_analysis_df_preserves_dtype():
     args = argparse.Namespace(slope=None)
     out_df, *_ = analyze.prepare_analysis_df(
         df,
+        spike_start=None,
         spike_end=None,
         spike_periods=[],
         run_periods=[],
