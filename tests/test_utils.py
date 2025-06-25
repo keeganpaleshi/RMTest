@@ -2,6 +2,8 @@ import sys
 from pathlib import Path
 from datetime import datetime, timezone
 import pytest
+import numpy as np
+import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -12,6 +14,7 @@ from utils import (
     parse_timestamp,
     parse_time,
     parse_time_arg,
+    to_seconds,
     LITERS_PER_M3,
 )
 
@@ -86,3 +89,15 @@ def test_parse_timestamp_iso():
 
 def test_parse_timestamp_datetime_naive():
     assert parse_timestamp(datetime(1970, 1, 1)) == pytest.approx(0.0)
+
+
+def test_to_seconds_datetime_series():
+    ser = pd.Series(pd.to_datetime([0, 1, 2], unit="s", utc=True))
+    out = to_seconds(ser)
+    assert np.allclose(out, [0.0, 1.0, 2.0])
+
+
+def test_to_seconds_numeric_series():
+    ser = pd.Series([0.0, 1.5, 2.2])
+    out = to_seconds(ser)
+    assert np.allclose(out, [0.0, 1.5, 2.2])

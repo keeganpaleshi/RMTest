@@ -105,7 +105,7 @@ from utils import (
     parse_time_arg,
     to_utc_datetime,
 )
-from utils import parse_datetime
+from utils import parse_datetime, to_seconds
 from baseline_utils import (
     subtract_baseline_dataframe,
     subtract_baseline_counts,
@@ -1002,11 +1002,7 @@ def main(argv=None):
 
     if drift_rate != 0.0 or drift_mode != "linear" or drift_params is not None:
         try:
-            ts_vals = df_analysis["timestamp"]
-            if pd.api.types.is_datetime64_any_dtype(ts_vals):
-                ts_seconds = ts_vals.astype("int64").to_numpy() / 1e9
-            else:
-                ts_seconds = ts_vals.astype(float).to_numpy()
+            ts_seconds = to_seconds(df_analysis["timestamp"])
             df_analysis["adc"] = apply_linear_adc_shift(
                 df_analysis["adc"].values,
                 ts_seconds,
@@ -1581,11 +1577,7 @@ def main(argv=None):
             t0_dt = to_utc_datetime(t0_global)
             cut = t0_dt + timedelta(seconds=float(args.settle_s))
             iso_events = iso_events[iso_events["timestamp"] >= cut]
-        ts_vals = iso_events["timestamp"]
-        if pd.api.types.is_datetime64_any_dtype(ts_vals):
-            ts_vals = ts_vals.astype("int64").to_numpy() / 1e9
-        else:
-            ts_vals = ts_vals.astype(float).to_numpy()
+        ts_vals = to_seconds(iso_events["timestamp"])
         times_dict = {iso: ts_vals}
         weights_map = {iso: iso_events["weight"].values}
         fit_cfg = {
@@ -1694,11 +1686,7 @@ def main(argv=None):
                 )
                 mask = probs > 0
                 filtered_df = df_analysis[mask]
-                ts_vals = filtered_df["timestamp"]
-                if pd.api.types.is_datetime64_any_dtype(ts_vals):
-                    ts_vals = ts_vals.astype("int64").to_numpy() / 1e9
-                else:
-                    ts_vals = ts_vals.astype(float).to_numpy()
+                ts_vals = to_seconds(filtered_df["timestamp"])
                 times_dict = {iso: ts_vals}
                 weights_local = {iso: probs[mask]}
                 cfg_fit = {
