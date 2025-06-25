@@ -95,16 +95,16 @@ def apply_baseline_subtraction(
     mode: str = "all",
     live_time_analysis: float | None = None,
     *,
-    allow_fallback: bool = False,
+    allow_fallback: bool = True,
 ) -> pd.DataFrame:
     """Return new ``DataFrame`` with baseline-subtracted spectra.
 
     ``t_base0`` and ``t_base1`` may be naïve or timezone-aware. They are
     interpreted in UTC and compared using integer nanoseconds to avoid
     issues with differing time zone information between ``df_full`` and
-    the provided range. When ``allow_fallback`` is ``False`` (default), a
-    :class:`RuntimeError` is raised if the baseline range contains no
-    events.
+    the provided range. ``allow_fallback`` defaults to ``True``. When set to
+    ``False``, a :class:`RuntimeError` is raised if the baseline range
+    contains no events.
     """
 
     assert mode in ("none", "electronics", "radon", "all")
@@ -151,14 +151,14 @@ def subtract(
     mode: str = "all",
     *,
     live_time_analysis: float | None = None,
-    allow_fallback: bool = False,
+    allow_fallback: bool = True,
     **kw,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Return baseline-corrected spectra and statistical errors.
 
     Uncertainties are propagated in quadrature from the analysis and
     baseline histograms unless ``kw.get("uncert_prop") == "none"``.
-    If ``allow_fallback`` is ``False`` (default) a
+    ``allow_fallback`` defaults to ``True``. When set to ``False``, a
     :class:`RuntimeError` is raised when the baseline interval contains
     no events.
     """
