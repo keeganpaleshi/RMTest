@@ -9,11 +9,17 @@ __all__ = ["rate_histogram", "subtract_baseline", "subtract_baseline_dataframe"]
 
 
 def rate_histogram(df, bins):
-    """Return (histogram in counts/s, live_time_s)."""
+    """Return ``(histogram in counts/s, live_time_s)``.
+
+    The ``timestamp`` column may be timezone-aware. Values are converted to UTC
+    and the live time is computed from integer nanoseconds to ensure consistent
+    behaviour irrespective of timezone.
+    """
     if df.empty:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
     ts = baseline_utils._to_datetime64(df["timestamp"])
-    live = float((ts[-1] - ts[0]) / np.timedelta64(1, "s"))
+    ts_ns = ts.view("int64")
+    live = float((ts_ns[-1] - ts_ns[0]) / 1e9)
     hist_src = df.get("subtracted_adc_hist", df["adc"]).to_numpy()
     hist, _ = np.histogram(hist_src, bins=bins)
     if live <= 0:
