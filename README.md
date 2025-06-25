@@ -479,10 +479,11 @@ The `--baseline-mode` option selects the background removal strategy.
 Valid modes are `none`, `electronics`, `radon` and `all` (default).
 
 Baseline subtraction for each isotope is handled by
-``baseline_utils.subtract_baseline_rate`` which combines the fitted rate
+``radon.baseline.subtract_baseline_rate`` which combines the fitted rate
 with the raw baseline counts.  Internally it uses
-``baseline_utils.subtract_baseline_counts`` so that the propagated uncertainty reflects
-the unweighted event statistics of the analysis window.
+``radon.baseline.subtract_baseline_counts`` so that the propagated uncertainty reflects
+the unweighted event statistics of the analysis window. ``baseline_utils``
+re-exports these helpers for backward compatibility.
 
 
 Example snippet:
@@ -517,7 +518,7 @@ python analyze.py --config assay.json --input run.csv --output_dir results \
 
 ### Baseline Subtraction Details
 
-Baseline subtraction relies on ``baseline_utils.subtract_baseline_counts``.
+Baseline subtraction relies on ``radon.baseline.subtract_baseline_counts``.
 This helper expects the raw event counts from the analysis window, the
 corresponding live time, the number of counts observed during the baseline
 interval and its live time, together with the detection efficiency.  The
