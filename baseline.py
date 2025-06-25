@@ -17,7 +17,7 @@ def rate_histogram(df, bins):
     """
     if df.empty:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
-    ts = baseline_utils._to_datetime64(df["timestamp"])
+    ts = baseline_utils._to_datetime64(df)
     ts_int = ts.view("int64")
     live = float((ts_int[-1] - ts_int[0]) / 1e9)
     hist_src = df.get("subtracted_adc_hist", df["adc"]).to_numpy()
