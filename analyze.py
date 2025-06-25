@@ -347,7 +347,7 @@ def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
     dR_dN0 = eff * lam * exp_term
     dR_dB = 1.0
     var = (dR_dE * dE) ** 2 + (dR_dN0 * dN0) ** 2 + (dR_dB * dB) ** 2
-    if cov:
+    if cov and np.isfinite(cov):
         var += 2.0 * dR_dE * dR_dN0 * cov
     sigma_rate = np.sqrt(var)
     return sigma_rate if normalise else sigma_rate * widths
