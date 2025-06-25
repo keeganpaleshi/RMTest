@@ -64,7 +64,7 @@ def test_load_config_missing_section(tmp_path):
     p = tmp_path / "cfg.json"
     with open(p, "w") as f:
         json.dump(cfg, f)
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError):
         load_config(p)
 
 
