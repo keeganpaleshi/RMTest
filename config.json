@@ -1,5 +1,5 @@
 {
-    "allow_fallback": false,
+    "allow_fallback": true,
     "pipeline": {
         "log_level": "INFO",
         "random_seed": null
@@ -15,8 +15,12 @@
         "ambient_concentration": null
 
     },
+    "columns": {
+        "timestamp": "timestamps",
+        "adc": "adc_channels"
+    },
     "baseline": {
-        "range": ["2023-08-01T00:00:00Z", "2023-08-31T23:59:59Z"],
+        "range": ["2023-08-01T00:00:00Z", "2023-08-02T23:59:59Z"],
         "monitor_volume_l": 605.0,
         "sample_volume_l": 0.0,
         "isotopes_to_subtract": ["Po214", "Po218"]
@@ -30,18 +34,18 @@
         "micro_count_threshold": 3
     },
     "calibration": {
-        "method": "auto",
+        "method": "two-point",
         "noise_cutoff": 400,
         "hist_bins": 2000,
         "peak_search_radius": 100,
-        "peak_prominence": 10,
-        "peak_width": 3,
+        "peak_prominence": 5,
+        "peak_width": 5,
         "nominal_adc": {"Po210": 1250, "Po218": 1405, "Po214": 1800},
         "fit_window_adc": 40,
-        "use_emg": false,
+        "use_emg": true,
         "init_sigma_adc": 10.0,
         "init_tau_adc": 1.0,
-        "sanity_tolerance_mev": 0.5,
+        "sanity_tolerance_mev": 1.0,
         "known_energies": {"Po210": 5.304, "Po218": 6.002, "Po214": 7.687}
     },
     "spectral_fit": {
@@ -51,7 +55,7 @@
         "fd_hist_bins": 400,
         "mu_sigma": 0.05,
         "amp_prior_scale": 1.0,
-        "bkg_mode": "manual",
+        "bkg_mode": "auto",
         "b0_prior": [0.0, 1.0],
         "b1_prior": [0.0, 1.0],
         "tau_Po210_prior_mean": 0.0,
@@ -71,7 +75,7 @@
         "peak_search_prominence": 30,
         "peak_search_width_adc": 3,
         "use_plot_bins_for_fit": false,
-        "unbinned_likelihood": false,
+        "unbinned_likelihood": true,
         "mu_bounds": {
             "Po210": null,
             "Po218": [5.9, 6.2],
@@ -83,9 +87,9 @@
         "window_po214": [7.4, 7.9],
         "window_po218": [5.8, 6.3],
         "window_po210": [5.2, 5.4],
-        "eff_po214": [0.40, 0.0],
-        "eff_po218": [0.20, 0.0],
-        "eff_po210": [0.10, 0.0],
+        "eff_po214": [0.40, 0.05],
+        "eff_po218": [0.20, 0.05],
+        "eff_po210": [0.10, 0.05],
         "hl_po214": [328320, 0.0],
         "hl_po218": [328320, 0.0],
         "bkg_po214": [0.0, 0.0],
@@ -103,7 +107,7 @@
         "enable": false,
         "sigma_E_frac": 0.10,
         "tail_fraction": 0.05,
-        "energy_shift_keV": 1.0,
+        "energy_shift_keV": 0.001,
         "adc_drift_rate": 0.0,
         "adc_drift_mode": "linear",
         "adc_drift_params": null
@@ -117,6 +121,6 @@
         "plot_save_formats": ["png", "pdf"],
         "dump_time_series_json": false,
         "plot_time_style": "lines",
-        "overlay_isotopes": false
+        "overlay_isotopes": true
     }
 }
