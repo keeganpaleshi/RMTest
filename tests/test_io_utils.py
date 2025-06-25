@@ -84,7 +84,7 @@ def test_load_events(tmp_path, caplog):
     assert str(loaded["timestamp"].dtype) == "datetime64[ns, UTC]"
     expected_ts = pd.to_datetime([1000, 1005, 1010], unit="s", utc=True)
     assert np.array_equal(
-        loaded["timestamp"].view("int64"), expected_ts.view("int64")
+        loaded["timestamp"].astype("int64"), expected_ts.astype("int64")
     )
     assert np.array_equal(loaded["adc"].values, np.array([1200, 1300, 1250]))
     assert "0 discarded" in caplog.text
@@ -108,7 +108,7 @@ def test_load_events_drop_bad_rows(tmp_path, caplog):
     assert str(loaded["timestamp"].dtype) == "datetime64[ns, UTC]"
     expected_ts = pd.to_datetime([1000, 1005, 1020], unit="s", utc=True)
     assert np.array_equal(
-        loaded["timestamp"].view("int64"), expected_ts.view("int64")
+        loaded["timestamp"].astype("int64"), expected_ts.astype("int64")
     )
     assert "3 discarded" in caplog.text
 

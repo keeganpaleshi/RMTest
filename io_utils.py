@@ -393,7 +393,7 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
         else:
             ts = ts.dt.tz_convert("UTC")
     out_df["timestamp"] = ts
-    times_sec = ts.view("int64").to_numpy() / 1e9
+    times_sec = ts.astype("int64").to_numpy() / 1e9
 
     # ───── micro-burst veto ─────
     if mode in ("micro", "both"):
@@ -438,7 +438,7 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
                 else:
                     ts = ts.dt.tz_convert("UTC")
             out_df["timestamp"] = ts
-            times_sec = ts.view("int64").to_numpy() / 1e9
+            times_sec = ts.astype("int64").to_numpy() / 1e9
 
     # ───── rate-based veto ─────
     if mode in ("rate", "both"):
