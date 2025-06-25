@@ -1651,8 +1651,13 @@ def main(argv=None):
             time_fit_results[iso] = {}
 
         # Store inputs for plotting later
+        ts_vals = iso_events["timestamp"]
+        if pd.api.types.is_datetime64_any_dtype(ts_vals):
+            ts_plot = ts_vals.view("int64").to_numpy() / 1e9
+        else:
+            ts_plot = ts_vals.astype(float).to_numpy()
         time_plot_data[iso] = {
-            "events_times": iso_events["timestamp"].values,
+            "events_times": ts_plot,
             "events_energy": iso_events["energy_MeV"].values,
         }
 
@@ -1667,8 +1672,13 @@ def main(argv=None):
             & (df_analysis["timestamp"] <= t_end_global)
         )
         events_p210 = df_analysis[mask210]
+        ts210 = events_p210["timestamp"]
+        if pd.api.types.is_datetime64_any_dtype(ts210):
+            ts210_plot = ts210.view("int64").to_numpy() / 1e9
+        else:
+            ts210_plot = ts210.astype(float).to_numpy()
         time_plot_data["Po210"] = {
-            "events_times": events_p210["timestamp"].values,
+            "events_times": ts210_plot,
             "events_energy": events_p210["energy_MeV"].values,
         }
 
@@ -2135,7 +2145,11 @@ def main(argv=None):
                 fit_obj = time_fit_results.get(iso)
                 fit_dict = _fit_params(fit_obj)
             else:
-                ts_times = df_analysis["timestamp"].values
+                ts_vals_all = df_analysis["timestamp"]
+                if pd.api.types.is_datetime64_any_dtype(ts_vals_all):
+                    ts_times = ts_vals_all.view("int64").to_numpy() / 1e9
+                else:
+                    ts_times = ts_vals_all.astype(float).to_numpy()
                 ts_energy = df_analysis["energy_MeV"].values
                 fit_dict = {}
                 for k in ("Po214", "Po218", "Po210"):
