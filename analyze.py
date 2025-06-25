@@ -344,14 +344,10 @@ def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
     dE = params.get("dE_corrected", params.get(f"dE_{iso}", 0.0))
     dN0 = params.get(f"dN0_{iso}", 0.0)
     dB = params.get(f"dB_{iso}", params.get("dB", 0.0))
-    cov = 0.0
-    if iso == "Po214":
-        cov = params.get("cov_E_Po214_N0_Po214", 0.0)
-    else:
-        try:
-            cov = _cov_entry(fit_obj, f"E_{iso}", f"N0_{iso}")
-        except Exception:
-            cov = 0.0
+    try:
+        cov = _cov_entry(fit_obj, f"E_{iso}", f"N0_{iso}")
+    except Exception:
+        cov = 0.0
     t = np.asarray(centers, dtype=float)
     exp_term = np.exp(-lam * t)
     dR_dE = eff * (1.0 - exp_term)
