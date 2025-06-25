@@ -142,18 +142,18 @@ class FitResult:
         """Return covariance matrix as a :class:`pandas.DataFrame`."""
         if self._cov_df is not None:
             return self._cov_df
+
         if self.cov is None or self.param_index is None:
             df = pd.DataFrame()
-            self._cov_df = df
-            return df
-        ordered = sorted(self.param_index.items(), key=lambda kv: kv[1])
-        names = [n for n, _ in ordered]
-        cov = np.asarray(self.cov, dtype=float)
-        if cov.ndim == 2 and cov.shape[0] == len(names):
-            df = pd.DataFrame(cov, index=names, columns=names)
-            self._cov_df = df
-            return df
-        df = pd.DataFrame()
+        else:
+            ordered = sorted(self.param_index.items(), key=lambda kv: kv[1])
+            names = [n for n, _ in ordered]
+            cov = np.asarray(self.cov, dtype=float)
+            if cov.ndim == 2 and cov.shape[0] == len(names):
+                df = pd.DataFrame(cov, index=names, columns=names)
+            else:
+                df = pd.DataFrame()
+
         self._cov_df = df
         return df
 
