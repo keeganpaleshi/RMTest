@@ -4,6 +4,7 @@ from collections.abc import Sequence, Mapping
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 from scipy.stats import exponnorm
+from utils import find_adc_bin_peaks
 from constants import (
     _TAU_MIN,
     DEFAULT_NOISE_CUTOFF,
@@ -176,6 +177,50 @@ def apply_calibration(adc_values, slope, intercept, quadratic_coeff=0.0):
 
     adc_arr = np.asarray(adc_values, dtype=float)
     return quadratic_coeff * adc_arr ** 2 + slope * adc_arr + intercept
+
+
+def fixed_slope_calibration(adc_values, cfg):
+    """Return calibration result for a fixed slope."""
+
+    if len(adc_values) == 0:
+        raise RuntimeError("No ADC values provided")
+
+    cal_cfg = cfg.get("calibration", {})
+    slope = float(cal_cfg["slope_MeV_per_ch"])
+
+    nominal_adc = cal_cfg.get("nominal_adc", DEFAULT_NOMINAL_ADC)
+    po214_guess = nominal_adc.get("Po214", DEFAULT_NOMINAL_ADC["Po214"])
+    radius = cal_cfg.get("peak_search_radius", 200)
+    prom = cal_cfg.get("peak_prominence", 0.0)
+    width = cal_cfg.get("peak_width")
+
+    peaks = find_adc_bin_peaks(
+        adc_values,
+        {"Po214": po214_guess},
+        window=radius,
+        prominence=prom,
+        width=width,
+    )
+    adc_peak = float(peaks["Po214"])
+
+    energies_cfg = cal_cfg.get("known_energies")
+    energies = DEFAULT_KNOWN_ENERGIES if energies_cfg is None else {
+        **DEFAULT_KNOWN_ENERGIES,
+        **energies_cfg,
+    }
+    E214 = energies["Po214"]
+    intercept = float(E214 - slope * adc_peak)
+
+    sigma_E = float(cal_cfg.get("init_sigma_adc", 0.0))
+
+    result = CalibrationResult(
+        coeffs=[intercept, slope],
+        cov=np.zeros((2, 2)),
+        peaks={"Po214": {"centroid_adc": adc_peak}},
+        sigma_E=sigma_E,
+        sigma_E_error=0.0,
+    )
+    return result
 
 
 def calibrate_run(adc_values, config, hist_bins=None):
@@ -453,6 +498,8 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
 def derive_calibration_constants(adc_values, config):
     """Return :class:`CalibrationResult` for ``adc_values`` with ``config``."""
+    if config.get("calibration", {}).get("slope_MeV_per_ch") is not None:
+        return fixed_slope_calibration(adc_values, config)
     return calibrate_run(adc_values, config)
 
 
@@ -518,6 +565,7 @@ __all__ = [
     "CalibrationResult",
     "two_point_calibration",
     "apply_calibration",
+    "fixed_slope_calibration",
     "calibrate_run",
     "derive_calibration_constants",
     "derive_calibration_constants_auto",

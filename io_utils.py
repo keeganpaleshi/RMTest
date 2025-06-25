@@ -184,6 +184,7 @@ CONFIG_SCHEMA = {
                 "use_emg": {"type": "boolean"},
                 "init_sigma_adc": {"type": "number", "minimum": 0},
                 "init_tau_adc": {"type": "number", "minimum": 0},
+                "slope_MeV_per_ch": {"type": ["number", "null"]},
                 "sanity_tolerance_mev": {"type": "number", "minimum": 0},
                 "known_energies": {"type": "object"},
             },

@@ -170,6 +170,10 @@ default is `400`.  Set it to `null` to skip the cut entirely.  The
 `analyze.py` pipeline applies this filter right after loading the event
 CSV.
 
+`slope_MeV_per_ch` fixes the ADC→MeV slope. When set, only the Po‑214 peak
+is used to compute the intercept and the two‑point calibration step is
+skipped.
+
 The command-line option `--noise-cutoff` overrides this value when
 provided. When you supply the option, its argument entirely replaces the
 value from the configuration file.
