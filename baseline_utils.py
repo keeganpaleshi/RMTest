@@ -13,10 +13,10 @@ from radon.baseline import (
 
 __all__ = [
     "compute_dilution_factor",
+    "rate_histogram",
     "subtract_baseline_dataframe",
     "subtract_baseline_counts",
     "subtract_baseline_rate",
-    "_scaling_factor",
 ]
 
 
@@ -67,7 +67,7 @@ def _to_datetime64(events: pd.DataFrame | pd.Series) -> np.ndarray:
     return ser.to_numpy(dtype="datetime64[ns]")
 
 
-def _rate_histogram(df: pd.DataFrame, bins) -> tuple[np.ndarray, float]:
+def rate_histogram(df: pd.DataFrame, bins) -> tuple[np.ndarray, float]:
     """Return histogram in counts/s and the live time in seconds.
 
     Timestamp columns may be timezone-aware.  Differences are computed
@@ -109,7 +109,7 @@ def apply_baseline_subtraction(
     if mode == "none":
         return df_analysis.copy()
 
-    rate_an, live_an = _rate_histogram(df_analysis, bins)
+    rate_an, live_an = rate_histogram(df_analysis, bins)
     if live_time_analysis is None:
         live_time_analysis = live_an
 
@@ -124,7 +124,7 @@ def apply_baseline_subtraction(
         logging.warning("baseline_range matched no events – skipping subtraction")
         return df_analysis.copy()
 
-    rate_bl, live_bl = _rate_histogram(df_full.loc[mask], bins)
+    rate_bl, live_bl = rate_histogram(df_full.loc[mask], bins)
 
     if mode in ("electronics", "radon", "all"):
         net_counts = (rate_an - rate_bl) * live_time_analysis
