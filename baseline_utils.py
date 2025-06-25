@@ -48,17 +48,23 @@ def compute_dilution_factor(monitor_volume: float, sample_volume: float) -> floa
     return float(monitor_volume) / float(total)
 
 
-def _to_datetime64(col: pd.Series) -> np.ndarray:
-    """Return numpy.ndarray[datetime64[ns, UTC]]."""
+def _to_datetime64(events: pd.DataFrame | pd.Series) -> np.ndarray:
+    """Return ``timestamp`` values as ``datetime64[ns, UTC]``."""
 
-    if pd.api.types.is_datetime64_any_dtype(col):
-        ser = col
-        if getattr(ser.dtype, "tz", None) is not None:
-            ser = ser.dt.tz_convert("UTC")
-        ts = ser.astype("datetime64[ns]").to_numpy()
+    if isinstance(events, pd.Series):
+        ser = events
     else:
-        ts = col.map(parse_datetime).astype("datetime64[ns]").to_numpy()
-    return np.asarray(ts)
+        ser = events["timestamp"]
+
+    if not pd.api.types.is_datetime64_any_dtype(ser):
+        ser = pd.to_datetime(ser.map(parse_datetime), utc=True)
+    else:
+        if ser.dt.tz is None:
+            ser = ser.dt.tz_localize("UTC")
+        else:
+            ser = ser.dt.tz_convert("UTC")
+
+    return ser.to_numpy(dtype="datetime64[ns]")
 
 
 def _rate_histogram(df: pd.DataFrame, bins) -> tuple[np.ndarray, float]:
@@ -66,7 +72,7 @@ def _rate_histogram(df: pd.DataFrame, bins) -> tuple[np.ndarray, float]:
 
     if df.empty:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
-    ts = _to_datetime64(df["timestamp"])
+    ts = _to_datetime64(df)
     live = float((ts[-1] - ts[0]) / np.timedelta64(1, "s"))
     hist_src = df.get("subtracted_adc_hist", df["adc"]).to_numpy()
     hist, _ = np.histogram(hist_src, bins=bins)
@@ -97,7 +103,7 @@ def subtract_baseline_dataframe(
 
     t0 = parse_datetime(t_base0)
     t1 = parse_datetime(t_base1)
-    ts_full = _to_datetime64(df_full["timestamp"])
+    ts_full = _to_datetime64(df_full)
     mask = (ts_full >= t0) & (ts_full <= t1)
     if not mask.any():
         logging.warning("baseline_range matched no events – skipping subtraction")
