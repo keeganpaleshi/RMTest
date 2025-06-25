@@ -49,25 +49,41 @@ def compute_dilution_factor(monitor_volume: float, sample_volume: float) -> floa
 
 
 def _to_datetime64(col: pd.Series) -> np.ndarray:
-    """Return numpy.ndarray[datetime64[ns, UTC]]."""
+    """Return ``numpy.ndarray`` of ``datetime64[ns]`` in UTC.
+
+    Both timezone-naive and timezone-aware inputs are supported.  Any
+    timezone information is converted to UTC before the underlying
+    integer nanoseconds are reinterpreted as ``datetime64[ns]``.  This
+    avoids ``pandas`` warnings when comparing arrays with different time
+    zone attributes.
+    """
 
     if pd.api.types.is_datetime64_any_dtype(col):
         ser = col
         if getattr(ser.dtype, "tz", None) is not None:
-            ser = ser.dt.tz_convert("UTC").dt.tz_localize(None)
-        ts = ser.to_numpy(dtype="datetime64[ns]")
+            ser = ser.dt.tz_convert("UTC")
+        ts = ser.view("int64").view("datetime64[ns]")
     else:
-        ts = col.map(parse_datetime).to_numpy(dtype="datetime64[ns]")
+        ser = col.map(parse_datetime)
+        if getattr(ser.dtype, "tz", None) is not None:
+            ser = ser.dt.tz_convert("UTC")
+        ts = ser.view("int64").view("datetime64[ns]")
     return np.asarray(ts)
 
 
 def _rate_histogram(df: pd.DataFrame, bins) -> tuple[np.ndarray, float]:
-    """Return histogram in counts/s and the live time in seconds."""
+    """Return histogram in counts/s and the live time in seconds.
+
+    Timestamp columns may be timezone-aware.  Differences are computed
+    on the underlying integer nanoseconds to avoid issues with mixed
+    time zones.
+    """
 
     if df.empty:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
     ts = _to_datetime64(df["timestamp"])
-    live = float((ts[-1] - ts[0]) / np.timedelta64(1, "s"))
+    ts_int = ts.view("int64")
+    live = float((ts_int[-1] - ts_int[0]) / 1e9)
     hist_src = df.get("subtracted_adc_hist", df["adc"]).to_numpy()
     hist, _ = np.histogram(hist_src, bins=bins)
     if live <= 0:
@@ -84,7 +100,13 @@ def subtract_baseline_dataframe(
     mode: str = "all",
     live_time_analysis: float | None = None,
 ) -> pd.DataFrame:
-    """Return new ``DataFrame`` with baseline-subtracted spectra."""
+    """Return new ``DataFrame`` with baseline-subtracted spectra.
+
+    ``t_base0`` and ``t_base1`` may be naïve or timezone-aware.  They are
+    interpreted in UTC and compared using integer nanoseconds to avoid
+    issues with differing time zone information between ``df_full`` and
+    the provided range.
+    """
 
     assert mode in ("none", "electronics", "radon", "all")
 
@@ -95,10 +117,13 @@ def subtract_baseline_dataframe(
     if live_time_analysis is None:
         live_time_analysis = live_an
 
-    t0 = parse_datetime(t_base0).to_datetime64()
-    t1 = parse_datetime(t_base1).to_datetime64()
+    t0 = parse_datetime(t_base0)
+    t1 = parse_datetime(t_base1)
     ts_full = _to_datetime64(df_full["timestamp"])
-    mask = (ts_full >= t0) & (ts_full <= t1)
+    ts_int = ts_full.view("int64")
+    t0_ns = t0.value
+    t1_ns = t1.value
+    mask = (ts_int >= t0_ns) & (ts_int <= t1_ns)
     if not mask.any():
         logging.warning("baseline_range matched no events – skipping subtraction")
         return df_analysis.copy()
