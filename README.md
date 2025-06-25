@@ -561,7 +561,7 @@ search for peak centroids:
 - `cps_to_bq(rate_cps, volume_liters=None)` returns the activity in Bq, or
   Bq/m^3 when a detector volume is supplied.
 - `parse_datetime(value)` converts ISO‑8601 strings, numeric seconds or
-  `datetime` objects to a UTC `numpy.datetime64` object.
+  `datetime` objects to a timezone-aware `pandas.Timestamp` with dtype `datetime64[ns, UTC]`.
 - `find_adc_bin_peaks(adc_values, expected, window=50, prominence=0.0, width=None)`
   histogramises the raw ADC spectrum, searches for maxima near each expected
   centroid and returns a `{peak: adc_centroid}` mapping in ADC units.
