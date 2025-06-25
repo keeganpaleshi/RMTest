@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 from calibration import CalibrationResult
 from datetime import datetime, timezone
+import dataclasses
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
@@ -78,6 +79,8 @@ def test_cli_baseline_range_iso_strings(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
@@ -158,6 +161,8 @@ def test_cli_baseline_range_timezone(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)

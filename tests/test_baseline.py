@@ -10,6 +10,7 @@ import analyze
 import baseline_noise
 from calibration import CalibrationResult
 import baseline
+import dataclasses
 from baseline_utils import subtract_baseline_counts
 from radon.baseline import subtract_baseline_counts
 from fitting import FitResult, FitParams
@@ -68,6 +69,8 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     monkeypatch.setattr(baseline_noise, "estimate_baseline_noise", lambda *a, **k: (5.0, {}))
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
@@ -163,6 +166,8 @@ def test_baseline_scaling_factor(tmp_path, monkeypatch):
     captured = {}
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
@@ -267,6 +272,8 @@ def test_n0_prior_from_baseline(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "scan_systematics", fake_scan_systematics)
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
@@ -343,6 +350,8 @@ def test_isotopes_to_subtract_control(tmp_path, monkeypatch):
     captured = {}
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
@@ -442,6 +451,8 @@ def test_baseline_scaling_multiple_isotopes(tmp_path, monkeypatch):
     captured = {}
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
@@ -546,6 +557,8 @@ def test_noise_level_none_not_recorded(tmp_path, monkeypatch):
     captured = {}
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
@@ -626,6 +639,8 @@ def test_sigma_rate_uses_weighted_counts(tmp_path, monkeypatch):
     captured = {}
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)

@@ -8,6 +8,7 @@ import analyze
 import numpy as np
 from calibration import CalibrationResult
 from fitting import FitResult, FitParams
+import dataclasses
 
 
 def test_summary_includes_git_and_cli(tmp_path, monkeypatch):
@@ -51,6 +52,8 @@ def test_summary_includes_git_and_cli(tmp_path, monkeypatch):
     captured = {}
 
     def fake_write_summary(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)

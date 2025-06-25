@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 import numpy as np
+import dataclasses
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fitting import FitResult, FitParams
 
@@ -66,6 +67,8 @@ def test_time_window_filters_events(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
@@ -206,6 +209,8 @@ def test_time_window_filters_events_config(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
@@ -286,6 +291,8 @@ def test_run_period_filters_events(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
@@ -374,6 +381,8 @@ def test_baseline_range_iso_strings(tmp_path, monkeypatch, start, end):
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
@@ -458,6 +467,8 @@ def test_unified_filter_combined_windows(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)

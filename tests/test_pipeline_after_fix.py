@@ -6,6 +6,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import analyze
+import dataclasses
 
 
 def test_pipeline_calibrates_after_fix(tmp_path, monkeypatch):
@@ -43,6 +44,8 @@ def test_pipeline_calibrates_after_fix(tmp_path, monkeypatch):
     captured = {}
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)

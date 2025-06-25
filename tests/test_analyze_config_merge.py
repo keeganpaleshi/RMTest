@@ -2,6 +2,7 @@ import json
 import sys
 from pathlib import Path
 from datetime import datetime, timezone
+import dataclasses
 import pandas as pd
 import numpy as np
 import logging
@@ -560,6 +561,8 @@ def test_spike_count_cli(tmp_path, monkeypatch):
     saved = {}
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         saved["summary"] = summary
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
@@ -698,6 +701,8 @@ def test_assay_efficiency_list(tmp_path, monkeypatch):
     saved = {}
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         saved["summary"] = summary
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
@@ -781,6 +786,8 @@ def test_spike_efficiency_list(tmp_path, monkeypatch):
     saved = {}
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         saved["summary"] = summary
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
@@ -941,6 +948,8 @@ def test_settle_s_summary(tmp_path, monkeypatch):
     captured = {}
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
@@ -1188,6 +1197,8 @@ def test_spike_period_cli(tmp_path, monkeypatch):
     saved = {}
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         saved["summary"] = summary
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
@@ -1251,6 +1262,8 @@ def test_seed_cli_sets_random_seed(tmp_path, monkeypatch):
 
     captured = {}
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
@@ -1310,6 +1323,8 @@ def test_ambient_concentration_recorded(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "plot_equivalent_air", fake_plot_equivalent_air)
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
@@ -1370,6 +1385,8 @@ def test_ambient_concentration_from_config(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "plot_equivalent_air", fake_plot_equivalent_air)
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
@@ -1651,6 +1668,8 @@ def test_burst_mode_summary_config(tmp_path, monkeypatch):
     saved = {}
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         saved["summary"] = summary
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
@@ -1770,6 +1789,8 @@ def test_ambient_concentration_default_none(tmp_path, monkeypatch):
     captured = {}
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
@@ -1885,6 +1906,8 @@ def test_spike_periods_null_config(tmp_path, monkeypatch):
     saved = {}
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         saved["summary"] = summary
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)

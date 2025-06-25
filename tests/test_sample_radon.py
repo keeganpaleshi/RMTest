@@ -7,6 +7,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
 import radon_activity
+import dataclasses
 import numpy as np
 from calibration import CalibrationResult
 from fitting import FitResult, FitParams
@@ -57,6 +58,8 @@ def test_total_radon_uses_sample_volume(tmp_path, monkeypatch):
     captured = {}
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)

@@ -12,6 +12,7 @@ from constants import load_nuclide_overrides
 
 import numpy as np
 from utils import to_native, parse_datetime, to_seconds
+from dataclasses import is_dataclass, asdict
 import jsonschema
 
 
@@ -473,8 +474,8 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
     return out_df, removed_total
 
 
-def write_summary(output_dir, summary_dict, timestamp=None):
-    """Write ``summary_dict`` to ``summary.json`` and return the results folder."""
+def write_summary(output_dir, summary, timestamp=None):
+    """Write ``summary`` to ``summary.json`` and return the results folder."""
 
     output_path = Path(output_dir)
 
@@ -490,6 +491,10 @@ def write_summary(output_dir, summary_dict, timestamp=None):
 
     summary_path = results_folder / "summary.json"
 
+    if is_dataclass(summary):
+        summary_dict = asdict(summary)
+    else:
+        summary_dict = summary
     sanitized = to_native(summary_dict)
 
     with open(summary_path, "w", encoding="utf-8") as f:

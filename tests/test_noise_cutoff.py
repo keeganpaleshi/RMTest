@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 import pandas as pd
 import pytest
+import dataclasses
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
@@ -64,6 +65,8 @@ def test_noise_cutoff_filters_events(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
@@ -138,6 +141,8 @@ def test_invalid_noise_cutoff_skips_cut(tmp_path, monkeypatch, caplog):
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)

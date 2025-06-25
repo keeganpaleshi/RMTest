@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
 from calibration import CalibrationResult
 from fitting import FitResult, FitParams
+import dataclasses
 
 
 def test_blue_weights_summary(tmp_path, monkeypatch):
@@ -62,6 +63,8 @@ def test_blue_weights_summary(tmp_path, monkeypatch):
     captured = {}
 
     def fake_write(out_dir, summary, timestamp=None):
+        if dataclasses.is_dataclass(summary):
+            summary = dataclasses.asdict(summary)
         captured["summary"] = summary
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
