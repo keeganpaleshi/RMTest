@@ -8,7 +8,6 @@ from utils import parse_datetime
 from radon.baseline import (
     subtract_baseline_counts,
     subtract_baseline_rate,
-    _scaling_factor,
 )
 
 __all__ = [
@@ -16,7 +15,6 @@ __all__ = [
     "subtract_baseline_dataframe",
     "subtract_baseline_counts",
     "subtract_baseline_rate",
-    "_scaling_factor",
 ]
 
 
