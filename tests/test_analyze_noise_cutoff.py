@@ -31,7 +31,7 @@ def test_analyze_noise_cutoff(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1, 2],
         "fBits": [0, 0],
-        "timestamp": [1.0, 2.0],
+        "timestamp": [pd.Timestamp(1.0, unit="s", tz="UTC"), pd.Timestamp(2.0, unit="s", tz="UTC")],
         "adc": [50, 150],
         "fchannel": [1, 1],
     })

@@ -72,7 +72,7 @@ def test_load_events(tmp_path, caplog):
         {
             "fUniqueID": [1, 2, 3],
             "fBits": [0, 0, 0],
-            "timestamp": [1000, 1005, 1010],
+            "timestamp": [pd.Timestamp(1000, unit="s", tz="UTC"), pd.Timestamp(1005, unit="s", tz="UTC"), pd.Timestamp(1010, unit="s", tz="UTC")],
             "adc": [1200, 1300, 1250],
             "fchannel": [1, 1, 1],
         }
@@ -164,7 +164,7 @@ def test_load_events_missing_column(tmp_path):
         {
             "fUniqueID": [1],
             "fBits": [0],
-            "timestamp": [1000],
+            "timestamp": [pd.Timestamp(1000, unit="s", tz="UTC")],
             # ADC column intentionally missing
             "fchannel": [1],
         }

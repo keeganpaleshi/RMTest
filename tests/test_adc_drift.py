@@ -31,7 +31,7 @@ def _write_basic(tmp_path, drift_rate, mode="linear", params=None):
     df = pd.DataFrame({
         "fUniqueID": [1, 2, 3],
         "fBits": [0, 0, 0],
-        "timestamp": [0.0, 1.0, 2.0],
+        "timestamp": [pd.Timestamp(0.0, unit="s", tz="UTC"), pd.Timestamp(1.0, unit="s", tz="UTC"), pd.Timestamp(2.0, unit="s", tz="UTC")],
         "adc": [10, 10, 10],
         "fchannel": [1, 1, 1],
     })

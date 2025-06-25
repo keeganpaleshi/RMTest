@@ -28,7 +28,7 @@ def test_exit_when_noise_cut_removes_all(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1],
         "fBits": [0],
-        "timestamp": [1.0],
+        "timestamp": [pd.Timestamp(1.0, unit="s", tz="UTC")],
         "adc": [5],
         "fchannel": [1],
     })

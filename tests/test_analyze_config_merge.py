@@ -43,7 +43,7 @@ def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
         {
             "fUniqueID": [1],
             "fBits": [0],
-            "timestamp": [1000],
+            "timestamp": [pd.Timestamp(1000, unit="s", tz="UTC")],
             "adc": [7600],
             "fchannel": [1],
         }
@@ -132,7 +132,7 @@ def test_analysis_start_time_applied(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1],
         "fBits": [0],
-        "timestamp": [15],
+        "timestamp": [pd.Timestamp(15, unit="s", tz="UTC")],
         "adc": [7600],
         "fchannel": [1],
     })
@@ -199,7 +199,7 @@ def test_job_id_overrides_results_folder(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1],
         "fBits": [0],
-        "timestamp": [0],
+        "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")],
         "adc": [1000],
         "fchannel": [1],
     })
@@ -261,7 +261,7 @@ def test_efficiency_json_cli(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data = tmp_path / "d.csv"
     df.to_csv(data, index=False)
 
@@ -317,7 +317,7 @@ def test_systematics_json_cli(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1800], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1800], "fchannel": [1]})
     data = tmp_path / "d.csv"
     df.to_csv(data, index=False)
 
@@ -382,7 +382,7 @@ def test_time_bin_cli(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -437,7 +437,7 @@ def test_time_bin_override_logs(tmp_path, monkeypatch, caplog):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -488,7 +488,7 @@ def test_po210_time_series_plot_generated(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -537,7 +537,7 @@ def test_spike_count_cli(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -604,7 +604,7 @@ def test_spike_count_single_call(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -663,7 +663,7 @@ def test_assay_efficiency_list(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -744,7 +744,7 @@ def test_spike_efficiency_list(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -821,7 +821,7 @@ def test_debug_flag_sets_log_level(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -876,7 +876,7 @@ def test_settle_s_cli(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1, 2],
         "fBits": [0, 0],
-        "timestamp": [0.0, 10.0],
+        "timestamp": [pd.Timestamp(0.0, unit="s", tz="UTC"), pd.Timestamp(10.0, unit="s", tz="UTC")],
         "adc": [8.0, 8.0],
         "fchannel": [1, 1],
     })
@@ -926,7 +926,7 @@ def test_settle_s_summary(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -988,7 +988,7 @@ def test_analysis_end_time_cli(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1, 2],
         "fBits": [0, 0],
-        "timestamp": [0.0, 10.0],
+        "timestamp": [pd.Timestamp(0.0, unit="s", tz="UTC"), pd.Timestamp(10.0, unit="s", tz="UTC")],
         "adc": [8.0, 8.0],
         "fchannel": [1, 1],
     })
@@ -1047,7 +1047,7 @@ def test_analysis_start_time_cli(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1],
         "fBits": [0],
-        "timestamp": [15.0],
+        "timestamp": [pd.Timestamp(15.0, unit="s", tz="UTC")],
         "adc": [8.0],
         "fchannel": [1],
     })
@@ -1106,7 +1106,7 @@ def test_spike_end_time_cli(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1, 2],
         "fBits": [0, 0],
-        "timestamp": [0.0, 10.0],
+        "timestamp": [pd.Timestamp(0.0, unit="s", tz="UTC"), pd.Timestamp(10.0, unit="s", tz="UTC")],
         "adc": [8.0, 8.0],
         "fchannel": [1, 1],
     })
@@ -1165,7 +1165,7 @@ def test_spike_period_cli(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1, 2, 3],
         "fBits": [0, 0, 0],
-        "timestamp": [0.0, 6.0, 12.0],
+        "timestamp": [pd.Timestamp(0.0, unit="s", tz="UTC"), pd.Timestamp(6.0, unit="s", tz="UTC"), pd.Timestamp(12.0, unit="s", tz="UTC")],
         "adc": [8.0, 8.0, 8.0],
         "fchannel": [1, 1, 1],
     })
@@ -1237,7 +1237,7 @@ def test_seed_cli_sets_random_seed(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -1290,7 +1290,7 @@ def test_ambient_concentration_recorded(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -1350,7 +1350,7 @@ def test_ambient_concentration_from_config(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -1410,7 +1410,7 @@ def test_ambient_file_interpolation(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1, 2],
         "fBits": [0, 0],
-        "timestamp": [0, 2],
+        "timestamp": [pd.Timestamp(0, unit="s", tz="UTC"), pd.Timestamp(2, unit="s", tz="UTC")],
         "adc": [1, 1],
         "fchannel": [1, 1],
     })
@@ -1490,7 +1490,7 @@ def test_burst_mode_from_config(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -1538,7 +1538,7 @@ def test_burst_mode_micro_config(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -1586,7 +1586,7 @@ def test_burst_mode_cli_overrides(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -1635,7 +1635,7 @@ def test_burst_mode_summary_config(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -1694,7 +1694,7 @@ def test_burst_filter_auto_disabled(tmp_path, monkeypatch):
         {
             "fUniqueID": [1, 2],
             "fBits": [0, 0],
-            "timestamp": [0, 2000],
+            "timestamp": [pd.Timestamp(0, unit="s", tz="UTC"), pd.Timestamp(2000, unit="s", tz="UTC")],
             "adc": [1, 1],
             "fchannel": [1, 1],
         }
@@ -1755,7 +1755,7 @@ def test_ambient_concentration_default_none(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -1807,7 +1807,7 @@ def test_ambient_concentration_written_to_summary_file(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -1872,7 +1872,7 @@ def test_spike_periods_null_config(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0.0], "adc": [8.0], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0.0, unit="s", tz="UTC")], "adc": [8.0], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -1932,7 +1932,7 @@ def test_hl_po214_cli_overrides(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0.0], "adc": [8.0], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0.0, unit="s", tz="UTC")], "adc": [8.0], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -1988,7 +1988,7 @@ def test_hl_po210_default_used(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0.0], "adc": [8.0], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0.0, unit="s", tz="UTC")], "adc": [8.0], "fchannel": [1]})
     data_path = tmp_path / "d.csv"
     df.to_csv(data_path, index=False)
 
@@ -2049,7 +2049,7 @@ def test_time_fields_written_back(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1, 2, 3],
         "fBits": [0, 0, 0],
-        "timestamp": [0.5, 2.5, 4.5],
+        "timestamp": [pd.Timestamp(0.5, unit="s", tz="UTC"), pd.Timestamp(2.5, unit="s", tz="UTC"), pd.Timestamp(4.5, unit="s", tz="UTC")],
         "adc": [8.0, 8.0, 8.0],
         "fchannel": [1, 1, 1],
     })

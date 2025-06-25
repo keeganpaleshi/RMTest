@@ -27,7 +27,7 @@ def test_hierarchical_summary(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1],
         "fBits": [0],
-        "timestamp": [0],
+        "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")],
         "adc": [1000],
         "fchannel": [1],
     })
