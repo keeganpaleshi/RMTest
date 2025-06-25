@@ -59,17 +59,17 @@ The script exits with an error message if filtering removes all events at any st
 
 ## Event Filtering
 
-All filtering steps—including the noise cut, burst removal, time-window
-selection and baseline subtraction—are now handled by the dedicated
-`EventFilter` class.  This centralized class applies the full sequence of
-filters while keeping the command-line overrides intact.  Options provided on
-the command line still take precedence over the values specified in the
-configuration file.
+Noise removal, burst suppression, time-window trimming and baseline
+subtraction are performed directly by `analyze.py`. Configure them in
+`config.json` or override the values via command-line options:
 
-```python
-from event_filter import EventFilter
-events, baseline = EventFilter(cfg).apply(events)
-```
+- `calibration.noise_cutoff` / `--noise-cutoff` for the pedestal cut
+- `burst_filter.burst_mode` / `--burst-mode` for burst vetoing
+- `analysis_*` timestamps and periods to clip or exclude data
+- `baseline.range` or `--baseline-range` to enable baseline subtraction
+
+The helper functions in `io_utils` and `baseline_utils` can be used
+individually when building custom workflows.
 
 ## Input CSV Format
 
