@@ -1,7 +1,4 @@
 {
-  "calibration": {
-    "slope_MeV_per_ch": 0.00435
-  }
     "allow_fallback": false,
     "pipeline": {
         "log_level": "INFO",
@@ -44,7 +41,8 @@
         "use_emg": false,
         "init_sigma_adc": 10.0,
         "init_tau_adc": 1.0,
-        "slope_MeV_per_ch": 0.0043,
+        "slope_MeV_per_ch": 0.00435,
+        "intercept_MeV": -0.15,
         "sanity_tolerance_mev": 0.5,
         "known_energies": {"Po210": 5.304, "Po218": 6.002, "Po214": 7.687}
     },
