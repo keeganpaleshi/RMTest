@@ -2,7 +2,7 @@
 
 import math
 import numpy as np
-from typing import Optional, Tuple
+from typing import Optional, Tuple, cast
 
 __all__ = [
     "compute_radon_activity",
@@ -82,8 +82,8 @@ def compute_radon_activity(
                 "require_equilibrium=False"
             )
 
-    values = []
-    weights = []
+    values: list[float] = []
+    weights: list[Optional[float]] = []
 
     if rate218 is not None and eff218 > 0:
         values.append(rate218)
@@ -110,7 +110,7 @@ def compute_radon_activity(
 
     # If both have valid uncertainties use weighted average
     if len(values) == 2 and all(w is not None for w in weights):
-        w1, w2 = weights
+        w1, w2 = cast(Tuple[float, float], (weights[0], weights[1]))
         if math.isinf(w1) and math.isinf(w2):
             A = (values[0] + values[1]) / 2.0
             sigma = 0.0
