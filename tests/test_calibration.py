@@ -148,6 +148,35 @@ def test_calibration_sanity_check_triggers_error():
         derive_calibration_constants(adc, cfg)
 
 
+def test_peak_ordering_violation_raises():
+    """Swapped nominal guesses should trigger ordering check."""
+    rng = np.random.default_rng(42)
+    adc = np.concatenate([
+        rng.normal(800, 2, 300),
+        rng.normal(1000, 2, 300),
+        rng.normal(1200, 2, 300),
+    ])
+
+    cfg = {
+        "calibration": {
+            "peak_prominence": 5,
+            "peak_width": 1,
+            # Swap Po214 and Po218 guesses so Po218 peak lies above Po214
+            "nominal_adc": {"Po210": 800, "Po218": 1200, "Po214": 1000},
+            "fit_window_adc": 20,
+            "use_emg": False,
+            "init_sigma_adc": 4.0,
+            "init_tau_adc": 0.0,
+            "peak_search_radius": 5,
+            # Large tolerance to bypass energy sanity check
+            "sanity_tolerance_mev": 10.0,
+        }
+    }
+
+    with pytest.raises(RuntimeError, match="inconsistent peak ordering"):
+        derive_calibration_constants(adc, cfg)
+
+
 def test_calibrate_run_quadratic_option(caplog):
     """calibrate_run should warn and fall back to linear when quadratic requested."""
     rng = np.random.default_rng(3)
