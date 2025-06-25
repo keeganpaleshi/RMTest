@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import analyze
 from fitting import FitResult, FitParams
+import pandas as pd
 
 
 
@@ -72,3 +73,11 @@ def test_fit_result_cov_ok():
     params = {"A": 1.0, "B": 2.0, "C": 3.0}
     cov = np.eye(3)
     FitResult(params, cov, 0)
+
+
+def test_cov_dataframe_created():
+    params = {"A": 1.0, "B": 2.0}
+    cov = np.array([[1.0, 0.1], [0.1, 4.0]])
+    fr = FitResult(params, cov, 0)
+    assert isinstance(fr.cov_df, pd.DataFrame)
+    assert fr.cov_df.loc["A", "B"] == pytest.approx(0.1)
