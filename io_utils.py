@@ -194,6 +194,7 @@ CONFIG_SCHEMA = {
             "properties": {
                 "analysis_start_time": {"type": ["string", "number", "null"]},
                 "analysis_end_time": {"type": ["string", "number", "null"]},
+                "spike_start_time": {"type": ["string", "number", "null"]},
                 "spike_end_time": {"type": ["string", "number", "null"]},
                 "spike_periods": {
                     "type": ["array", "null"],

@@ -207,6 +207,7 @@ def get_spike_efficiency(spike_cfg):
 
 def prepare_analysis_df(
     df: pd.DataFrame,
+    spike_start: pd.Timestamp | None,
     spike_end: pd.Timestamp | None,
     spike_periods: list[tuple[pd.Timestamp, pd.Timestamp]],
     run_periods: list[tuple[pd.Timestamp, pd.Timestamp]],
@@ -236,7 +237,13 @@ def prepare_analysis_df(
         else:
             df_analysis["timestamp"] = tz_convert_utc(ts)
 
-    if spike_end is not None:
+    if spike_start is not None and spike_end is not None:
+        mask = (df_analysis["timestamp"] >= spike_start) & (df_analysis["timestamp"] < spike_end)
+        if mask.any():
+            df_analysis = df_analysis[~mask].reset_index(drop=True)
+    elif spike_start is not None:
+        df_analysis = df_analysis[df_analysis["timestamp"] <= spike_start].reset_index(drop=True)
+    elif spike_end is not None:
         df_analysis = df_analysis[df_analysis["timestamp"] >= spike_end].reset_index(drop=True)
 
     for start_ts, end_ts in spike_periods:
@@ -443,6 +450,10 @@ def parse_args(argv=None):
         help="Reference start time of the analysis (ISO string or epoch). Overrides `analysis.analysis_start_time` in config.json",
     )
     p.add_argument(
+        "--spike-start-time",
+        help="Discard events after this ISO timestamp. Providing this option overrides `analysis.spike_start_time` in config.json",
+    )
+    p.add_argument(
         "--spike-end-time",
         help="Discard events before this ISO timestamp. Providing this option overrides `analysis.spike_end_time` in config.json",
     )
@@ -625,6 +636,8 @@ def main(argv=None):
         args.analysis_end_time = parse_time_arg(args.analysis_end_time, tz=tzinfo)
     if args.analysis_start_time is not None:
         args.analysis_start_time = parse_time_arg(args.analysis_start_time, tz=tzinfo)
+    if args.spike_start_time is not None:
+        args.spike_start_time = parse_time_arg(args.spike_start_time, tz=tzinfo)
     if args.spike_end_time is not None:
         args.spike_end_time = parse_time_arg(args.spike_end_time, tz=tzinfo)
     if args.spike_period:
@@ -699,6 +712,10 @@ def main(argv=None):
     if args.analysis_start_time is not None:
         _log_override("analysis", "analysis_start_time", args.analysis_start_time)
         cfg.setdefault("analysis", {})["analysis_start_time"] = args.analysis_start_time
+
+    if args.spike_start_time is not None:
+        _log_override("analysis", "spike_start_time", args.spike_start_time)
+        cfg.setdefault("analysis", {})["spike_start_time"] = args.spike_start_time
 
     if args.spike_end_time is not None:
         _log_override("analysis", "spike_end_time", args.spike_end_time)
@@ -919,6 +936,17 @@ def main(argv=None):
             t_end_global = None
             t_end_global_ts = None
 
+    spike_start_cfg = cfg.get("analysis", {}).get("spike_start_time")
+    t_spike_start = None
+    if spike_start_cfg is not None:
+        try:
+            t_spike_start_dt = to_utc_datetime(spike_start_cfg)
+            t_spike_start = t_spike_start_dt
+            cfg.setdefault("analysis", {})["spike_start_time"] = t_spike_start_dt
+        except Exception:
+            logging.warning(f"Invalid spike_start_time '{spike_start_cfg}' - ignoring")
+            t_spike_start = None
+
     spike_end_cfg = cfg.get("analysis", {}).get("spike_end_time")
     t_spike_end = None
     if spike_end_cfg is not None:
@@ -992,6 +1020,7 @@ def main(argv=None):
         drift_params,
     ) = prepare_analysis_df(
         events_filtered,
+        t_spike_start,
         t_spike_end,
         spike_periods,
         run_periods,
@@ -2076,6 +2105,7 @@ def main(argv=None):
         analysis={
             "analysis_start_time": t0_cfg,
             "analysis_end_time": t_end_cfg,
+            "spike_start_time": spike_start_cfg,
             "spike_end_time": spike_end_cfg,
             "spike_periods": spike_periods_cfg,
             "run_periods": run_periods_cfg,
