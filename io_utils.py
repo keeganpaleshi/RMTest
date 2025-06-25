@@ -11,7 +11,7 @@ import pandas as pd
 from constants import load_nuclide_overrides
 
 import numpy as np
-from utils import to_native, parse_datetime
+from utils import to_native, parse_datetime, to_seconds
 import jsonschema
 
 
@@ -396,7 +396,7 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
         else:
             ts = ts.dt.tz_convert("UTC")
     out_df["timestamp"] = ts
-    times_sec = ts.view("int64").to_numpy() / 1e9
+    times_sec = to_seconds(ts)
 
     # ───── micro-burst veto ─────
     if mode in ("micro", "both"):
@@ -442,7 +442,7 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
                 else:
                     ts = ts.dt.tz_convert("UTC")
             out_df["timestamp"] = ts
-            times_sec = ts.view("int64").to_numpy() / 1e9
+            times_sec = to_seconds(ts)
 
     # ───── rate-based veto ─────
     if mode in ("rate", "both"):

@@ -104,6 +104,7 @@ from utils import (
     adc_hist_edges,
     parse_time_arg,
     to_utc_datetime,
+    to_seconds,
 )
 from utils import parse_datetime
 from baseline_utils import (
@@ -287,10 +288,7 @@ def prepare_analysis_df(
 
 def _ts_bin_centers_widths(times, cfg, t_start, t_end):
     """Return bin centers and widths matching :func:`plot_time_series`."""
-    arr = np.asarray(times)
-    if np.issubdtype(arr.dtype, "datetime64"):
-        arr = arr.view("int64") / 1e9
-    arr = arr.astype(float)
+    arr = to_seconds(times)
     times_rel = arr - float(t_start)
     bin_mode = str(
         cfg.get("plot_time_binning_mode", cfg.get("time_bin_mode", "fixed"))
@@ -1014,10 +1012,7 @@ def main(argv=None):
     if drift_rate != 0.0 or drift_mode != "linear" or drift_params is not None:
         try:
             ts_vals = df_analysis["timestamp"]
-            if pd.api.types.is_datetime64_any_dtype(ts_vals):
-                ts_seconds = ts_vals.view("int64").to_numpy() / 1e9
-            else:
-                ts_seconds = ts_vals.astype(float).to_numpy()
+            ts_seconds = to_seconds(ts_vals)
             df_analysis["adc"] = apply_linear_adc_shift(
                 df_analysis["adc"].values,
                 ts_seconds,
@@ -1593,10 +1588,7 @@ def main(argv=None):
             cut = t0_dt + timedelta(seconds=float(args.settle_s))
             iso_events = iso_events[iso_events["timestamp"] >= cut]
         ts_vals = iso_events["timestamp"]
-        if pd.api.types.is_datetime64_any_dtype(ts_vals):
-            ts_vals = ts_vals.view("int64").to_numpy() / 1e9
-        else:
-            ts_vals = ts_vals.astype(float).to_numpy()
+        ts_vals = to_seconds(ts_vals)
         times_dict = {iso: ts_vals}
         weights_map = {iso: iso_events["weight"].values}
         fit_cfg = {
@@ -1706,10 +1698,7 @@ def main(argv=None):
                 mask = probs > 0
                 filtered_df = df_analysis[mask]
                 ts_vals = filtered_df["timestamp"]
-                if pd.api.types.is_datetime64_any_dtype(ts_vals):
-                    ts_vals = ts_vals.view("int64").to_numpy() / 1e9
-                else:
-                    ts_vals = ts_vals.astype(float).to_numpy()
+                ts_vals = to_seconds(ts_vals)
                 times_dict = {iso: ts_vals}
                 weights_local = {iso: probs[mask]}
                 cfg_fit = {

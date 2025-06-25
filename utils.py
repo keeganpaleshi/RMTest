@@ -20,6 +20,7 @@ __all__ = [
     "parse_timestamp",
     "parse_datetime",
     "parse_time",
+    "to_seconds",
     "LITERS_PER_M3",
 ]
 
@@ -276,6 +277,28 @@ def parse_time(s, tz="UTC") -> float:
     """Parse a timestamp string, number or ``datetime`` into Unix seconds."""
 
     return parse_timestamp(s)
+
+
+def to_seconds(series) -> np.ndarray:
+    """Return timestamps as seconds since the Unix epoch."""
+
+    if isinstance(series, (pd.Series, pd.Index)):
+        arr = series
+        if pd.api.types.is_datetime64_any_dtype(arr):
+            if arr.dt.tz is None:
+                arr = arr.dt.tz_localize("UTC")
+            else:
+                arr = arr.dt.tz_convert("UTC")
+            values = arr.view("int64").to_numpy() / 1e9
+        else:
+            values = arr.astype(float).to_numpy()
+    else:
+        arr = np.asarray(series)
+        if np.issubdtype(arr.dtype, "datetime64"):
+            values = arr.view("int64") / 1e9
+        else:
+            values = arr.astype(float)
+    return np.asarray(values, dtype=float)
 
 
 def parse_time_arg(val, tz="UTC") -> datetime:
