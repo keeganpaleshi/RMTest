@@ -1,8 +1,9 @@
 import numpy as np
 from scipy.optimize import curve_fit
 from constants import CURVE_FIT_MAX_EVALS
+from baseline_utils import subtract
 
-__all__ = ["estimate_baseline_noise"]
+__all__ = ["estimate_baseline_noise", "subtract"]
 
 
 def _constant(x, A):

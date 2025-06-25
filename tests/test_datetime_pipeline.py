@@ -31,7 +31,7 @@ def test_datetime_pipeline(tmp_path):
     assert str(loaded["timestamp"].dtype) == "datetime64[ns, UTC]"
 
     bins = np.arange(0, 5)
-    subtracted = baseline.subtract_baseline(
+    subtracted, _ = baseline.subtract(
         loaded,
         loaded,
         bins=bins,
