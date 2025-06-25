@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import TypedDict, NotRequired
 
 import numpy as np
+import pandas as pd
 from iminuit import Minuit
 from scipy.optimize import curve_fit, OptimizeWarning
 from calibration import emg_left, gaussian
@@ -114,6 +115,16 @@ class FitResult:
             return float(self.cov[i1, i2])
 
         raise KeyError(f"Parameter(s) missing in covariance: {name1}, {name2}")
+
+    @property
+    def cov_df(self) -> pd.DataFrame:
+        """Return covariance matrix as a :class:`pandas.DataFrame`."""
+        if self.cov is None or self.param_index is None:
+            return pd.DataFrame()
+        index = [None] * len(self.param_index)
+        for name, idx in self.param_index.items():
+            index[idx] = name
+        return pd.DataFrame(self.cov, index=index, columns=index)
 
 
 def fit_decay(times, priors, t0=0.0, t_end=None, flags=None):

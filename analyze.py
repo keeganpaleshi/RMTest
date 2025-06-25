@@ -124,21 +124,6 @@ def _fit_params(obj: FitResult | Mapping[str, float] | None) -> FitParams:
     return {}
 
 
-def _cov_entry(fit: FitResult | dict, p1: str, p2: str) -> float:
-    """Return covariance between two parameters from a ``FitResult``.
-
-    Raises
-    ------
-    KeyError
-        If either ``p1`` or ``p2`` is not present in the covariance matrix.
-    """
-
-    if not isinstance(fit, FitResult):
-        return 0.0
-
-    return fit.get_cov(p1, p2)
-
-
 def _ensure_events(events: pd.DataFrame, stage: str) -> None:
     """Exit if ``events`` is empty, printing a helpful message."""
     if len(events) == 0:
@@ -344,10 +329,15 @@ def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
     dE = params.get("dE_corrected", params.get(f"dE_{iso}", 0.0))
     dN0 = params.get(f"dN0_{iso}", 0.0)
     dB = params.get(f"dB_{iso}", params.get("dB", 0.0))
-    try:
-        cov = _cov_entry(fit_obj, f"E_{iso}", f"N0_{iso}")
-    except Exception:
-        cov = 0.0
+    cov = 0.0
+    if isinstance(fit_obj, FitResult):
+        try:
+            if hasattr(fit_obj, "cov_df") and not fit_obj.cov_df.empty:
+                cov = float(fit_obj.cov_df.loc[f"E_{iso}", f"N0_{iso}"])
+            else:
+                cov = fit_obj.get_cov(f"E_{iso}", f"N0_{iso}")
+        except KeyError:
+            cov = 0.0
     t = np.asarray(centers, dtype=float)
     exp_term = np.exp(-lam * t)
     dR_dE = eff * (1.0 - exp_term)
@@ -1976,7 +1966,15 @@ def main(argv=None):
             default_const = cfg.get("nuclide_constants", {})
             default_hl = default_const.get("Po218", PO218).half_life_s
             hl = cfg.get("time_fit", {}).get("hl_po218", [default_hl])[0]
-            cov = _cov_entry(fit_result, "E_Po218", "N0_Po218")
+            cov = 0.0
+            if isinstance(fit_result, FitResult):
+                try:
+                    if hasattr(fit_result, "cov_df") and not fit_result.cov_df.empty:
+                        cov = float(fit_result.cov_df.loc["E_Po218", "N0_Po218"])
+                    else:
+                        cov = fit_result.get_cov("E_Po218", "N0_Po218")
+                except KeyError:
+                    cov = 0.0
             delta218, err_delta218 = radon_delta(
                 t_start_rel,
                 t_end_rel,
@@ -2211,7 +2209,15 @@ def main(argv=None):
             default_const = cfg.get("nuclide_constants", {})
             default_hl = default_const.get("Po218", PO218).half_life_s
             hl = cfg.get("time_fit", {}).get("hl_po218", [default_hl])[0]
-            cov = _cov_entry(fit_result, "E_Po218", "N0_Po218")
+            cov = 0.0
+            if isinstance(fit_result, FitResult):
+                try:
+                    if hasattr(fit_result, "cov_df") and not fit_result.cov_df.empty:
+                        cov = float(fit_result.cov_df.loc["E_Po218", "N0_Po218"])
+                    else:
+                        cov = fit_result.get_cov("E_Po218", "N0_Po218")
+                except KeyError:
+                    cov = 0.0
             A218, dA218 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
 
         activity_arr = np.zeros_like(times, dtype=float)
@@ -2282,7 +2288,15 @@ def main(argv=None):
                 default_const = cfg.get("nuclide_constants", {})
                 default_hl = default_const.get("Po218", PO218).half_life_s
                 hl218 = cfg.get("time_fit", {}).get("hl_po218", [default_hl])[0]
-                cov218 = _cov_entry(fit_result, "E_Po218", "N0_Po218")
+                cov218 = 0.0
+                if isinstance(fit_result, FitResult):
+                    try:
+                        if hasattr(fit_result, "cov_df") and not fit_result.cov_df.empty:
+                            cov218 = float(fit_result.cov_df.loc["E_Po218", "N0_Po218"])
+                        else:
+                            cov218 = fit_result.get_cov("E_Po218", "N0_Po218")
+                    except KeyError:
+                        cov218 = 0.0
                 A218_tr, _ = radon_activity_curve(
                     rel_trend, E218, dE218, N0218, dN0218, hl218, cov218
                 )
