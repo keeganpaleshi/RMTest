@@ -143,13 +143,19 @@ class FitResult:
         if self._cov_df is not None:
             return self._cov_df
         if self.cov is None or self.param_index is None:
-            return pd.DataFrame()
+            df = pd.DataFrame()
+            self._cov_df = df
+            return df
         ordered = sorted(self.param_index.items(), key=lambda kv: kv[1])
         names = [n for n, _ in ordered]
         cov = np.asarray(self.cov, dtype=float)
         if cov.ndim == 2 and cov.shape[0] == len(names):
-            return pd.DataFrame(cov, index=names, columns=names)
-        return pd.DataFrame()
+            df = pd.DataFrame(cov, index=names, columns=names)
+            self._cov_df = df
+            return df
+        df = pd.DataFrame()
+        self._cov_df = df
+        return df
 
 
 def fit_decay(times, priors, t0=0.0, t_end=None, flags=None):
