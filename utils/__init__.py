@@ -17,10 +17,8 @@ __all__ = [
     "cps_to_bq",
     "to_utc_datetime",
     "parse_time_arg",
-    "parse_timestamp",
     "parse_datetime",
     "to_seconds",
-    "parse_time",
     "LITERS_PER_M3",
 ]
 
@@ -183,45 +181,6 @@ def cps_to_bq(rate_cps, volume_liters=None):
     return float(rate_cps) / volume_m3
 
 
-def parse_timestamp(s) -> float:
-    """Parse an ISO-8601 string, numeric seconds, or ``datetime``.
-
-    Any string without timezone information is interpreted as UTC.
-    The return value is the Unix epoch time in seconds (UTC).
-    """
-
-    if isinstance(s, (int, float)):
-        return float(s)
-
-    if isinstance(s, datetime):
-        dt = s
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        else:
-            dt = dt.astimezone(timezone.utc)
-        return float(dt.timestamp())
-
-    if isinstance(s, str):
-        try:
-            return float(s)
-        except ValueError:
-            pass
-
-        try:
-            dt = date_parser.isoparse(s)
-        except (ValueError, OverflowError) as e:
-            raise argparse.ArgumentTypeError(f"could not parse time: {s!r}") from e
-
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        else:
-            dt = dt.astimezone(timezone.utc)
-
-        return float(dt.timestamp())
-
-    raise argparse.ArgumentTypeError(f"could not parse time: {s!r}")
-
-
 def to_utc_datetime(value, tz="UTC") -> datetime:
     """Return ``value`` converted to a UTC ``datetime`` object."""
 
@@ -283,12 +242,6 @@ def to_seconds(series: pd.Series) -> np.ndarray:
     else:
         series = series.dt.tz_convert("UTC")
     return series.astype("int64").to_numpy() / 1e9
-
-
-def parse_time(s, tz="UTC") -> float:
-    """Parse a timestamp string, number or ``datetime`` into Unix seconds."""
-
-    return parse_timestamp(s)
 
 
 def parse_time_arg(val, tz="UTC") -> datetime:
