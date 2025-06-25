@@ -57,4 +57,5 @@ def test_cov_entry_prefix_handled():
     cov = np.array([[1.0, 0.1], [0.1, 4.0]])
     fr = FitResult(params, cov, 0)
     assert len(fr.param_index) == 2
+    assert "cov_A_B" not in fr.param_index
     assert fr.get_cov("A", "B") == pytest.approx(0.1)
