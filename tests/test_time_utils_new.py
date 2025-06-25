@@ -1,9 +1,12 @@
 import pandas as pd
+import pytest
 from utils.time_utils import (
     to_datetime_utc,
     tz_localize_utc,
     tz_convert_utc,
     ensure_utc,
+    parse_timestamp,
+    to_epoch_seconds,
 )
 
 
@@ -28,3 +31,10 @@ def test_ensure_utc():
     ser_aware = pd.Series(pd.date_range("1970-01-01", periods=2, freq="s", tz="US/Eastern"))
     assert str(ensure_utc(ser_naive).dtype) == "datetime64[ns, UTC]"
     assert str(ensure_utc(ser_aware).dtype) == "datetime64[ns, UTC]"
+
+
+def test_parse_timestamp_and_epoch():
+    ts = parse_timestamp("1970-01-01T00:00:01Z")
+    assert isinstance(ts, pd.Timestamp)
+    assert str(ts.tz) == "UTC"
+    assert to_epoch_seconds(ts) == pytest.approx(1.0)

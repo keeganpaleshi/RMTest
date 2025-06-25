@@ -14,8 +14,9 @@ This repository provides a complete pipeline to analyze electrostatic radon moni
 - `efficiency.py`: Efficiency calculations and BLUE combination helpers.
 - `systematics.py`: Scan for systematic uncertainties (optional).
 - `plot_utils.py`: Plotting routines for spectrum and time-series.
-- `utils.py`: Miscellaneous utilities providing `parse_datetime` for
-  time conversion, JSON validation, and count-rate conversions.
+- `utils.py`: Miscellaneous utilities for count-rate conversions and other helpers.
+- `time_utils.parse_timestamp` converts strings or numbers to timezone-aware
+  `pandas.Timestamp` objects.
 - `tests/`: `pytest` unit tests for calibration, fitting, and I/O.
 
 ## Installation
@@ -72,7 +73,7 @@ The input file must be a comma-separated table with these columns:
 - `fBits` – status bits or flags
 - `timestamp` – event timestamp in seconds
   (either numeric Unix seconds or an ISO‑8601 string; parsed directly to
-  timezone-aware ``pandas.Timestamp`` values via `parse_datetime`)
+  timezone-aware ``pandas.Timestamp`` values via `time_utils.parse_timestamp`)
 - `adc` – raw ADC value
 - `fchannel` – acquisition channel
 
@@ -125,9 +126,10 @@ For example:
 
 ```python
 from utils import cps_to_bq
+from utils.time_utils import parse_timestamp
+
 activity_bq_m3 = cps_to_bq(fit_result["E_Po214"], volume_liters=10.0)
-from utils import parse_datetime
-t0 = parse_datetime("2023-07-31T00:00:00Z")
+t0 = parse_timestamp("2023-07-31T00:00:00Z")
 ```
 
 When using ``compute_radon_activity`` you should pass the fitted rates
@@ -195,7 +197,7 @@ All other time-related fields (`analysis_end_time`, `spike_end_time`,
 `spike_periods`, `run_periods`, `radon_interval` and
 `baseline.range`) likewise accept absolute timestamps in ISO 8601
 format or numeric seconds.  All of these values are parsed with
-`parse_datetime` so the same formats apply everywhere.
+`time_utils.parse_timestamp` so the same formats apply everywhere.
 
 `analysis_end_time` may be specified to stop processing after the given
 timestamp while `spike_end_time` discards all events before its value.
@@ -555,14 +557,14 @@ Example configuration to tighten the cut (set it to `null` to disable):
 
 ## Utility Conversions
 
-`utils.py` provides simple helpers to convert count rates, parse times and
-search for peak centroids:
+`utils.py` provides simple helpers to convert count rates while
+`time_utils` offers timestamp utilities:
 
 - `cps_to_cpd(rate_cps)` converts counts/s to counts/day.
 - `cps_to_bq(rate_cps, volume_liters=None)` returns the activity in Bq, or
   Bq/m^3 when a detector volume is supplied.
-- `parse_datetime(value)` converts ISO‑8601 strings, numeric seconds or
-  `datetime` objects to a timezone-aware `pandas.Timestamp` in UTC.
+- `time_utils.parse_timestamp(value)` converts ISO‑8601 strings, numeric seconds
+  or `datetime` objects to a timezone-aware `pandas.Timestamp` in UTC.
 - `find_adc_bin_peaks(adc_values, expected, window=50, prominence=0.0, width=None)`
   histogramises the raw ADC spectrum, searches for maxima near each expected
   centroid and returns a `{peak: adc_centroid}` mapping in ADC units.
