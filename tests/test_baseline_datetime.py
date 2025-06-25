@@ -22,7 +22,7 @@ def test_rate_histogram_datetime_column():
 def test_subtract_baseline_datetime_column():
     ts_an = pd.date_range("1970-01-01", periods=5, freq="s", tz="UTC")
     df_an = pd.DataFrame({"timestamp": ts_an, "adc": [1, 2, 3, 4, 5]})
-    ts_bl = pd.to_datetime(np.linspace(86400, 86440, 50), unit="s", utc=True)
+    ts_bl = [pd.Timestamp(t, unit="s", tz="UTC") for t in np.linspace(86400, 86440, 50)]
     df_bl = pd.DataFrame({"timestamp": ts_bl, "adc": np.tile([1,2,3,4,5],10)})
     df_full = pd.concat([df_an, df_bl], ignore_index=True)
     bins = np.arange(0, 7)
