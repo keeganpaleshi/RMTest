@@ -55,7 +55,7 @@ def _to_datetime64(col: pd.Series) -> np.ndarray:
         ser = col
         if getattr(ser.dtype, "tz", None) is not None:
             ser = ser.dt.tz_convert("UTC")
-        ts = ser.astype("datetime64[ns]").to_numpy()
+        ts = ser.to_numpy(dtype="datetime64[ns]")
     else:
         ts = col.map(parse_datetime).astype("datetime64[ns]").to_numpy()
     return np.asarray(ts)
