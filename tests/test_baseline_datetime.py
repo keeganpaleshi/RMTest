@@ -16,7 +16,7 @@ def test_rate_histogram_datetime_column():
     rate, live = baseline.rate_histogram(df, bins)
     assert live == pytest.approx(4.0)
     assert np.allclose(rate, np.histogram(df["adc"], bins=bins)[0] / live)
-    assert df["timestamp"].dtype == "datetime64[ns, UTC]"
+    assert str(df["timestamp"].dtype) == "datetime64[ns, UTC]"
 
 
 def test_subtract_baseline_datetime_column():
@@ -36,5 +36,5 @@ def test_subtract_baseline_datetime_column():
     )
     integral = out["subtracted_adc_hist"].iloc[0].sum()
     assert integral == pytest.approx(0.0, rel=1e-6)
-    assert out["timestamp"].dtype == "datetime64[ns, UTC]"
+    assert str(out["timestamp"].dtype) == "datetime64[ns, UTC]"
 
