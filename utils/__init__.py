@@ -8,7 +8,8 @@ import argparse
 from datetime import datetime, timezone, tzinfo, timedelta
 from dateutil import parser as date_parser
 from dateutil.tz import gettz
-from .time_utils import parse_timestamp, to_epoch_seconds
+from .time_utils import parse_timestamp as _parse_timestamp, to_epoch_seconds
+import warnings
 
 __all__ = [
     "to_native",
@@ -18,11 +19,9 @@ __all__ = [
     "cps_to_bq",
     "to_utc_datetime",
     "parse_time_arg",
-    "parse_timestamp",
     "to_epoch_seconds",
     "parse_datetime",
     "to_seconds",
-    "parse_time",
     "LITERS_PER_M3",
 ]
 
@@ -250,9 +249,25 @@ def to_seconds(series: pd.Series) -> np.ndarray:
     return series.astype("int64").to_numpy() / 1e9
 
 
-def parse_time(s, tz="UTC") -> float:
-    """Parse a timestamp string, number or ``datetime`` into Unix seconds."""
+def parse_timestamp(value):
+    """Deprecated wrapper for :func:`utils.time_utils.parse_timestamp`."""
 
+    warnings.warn(
+        "utils.parse_timestamp is deprecated; use utils.time_utils.parse_timestamp",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _parse_timestamp(value)
+
+
+def parse_time(s, tz="UTC") -> float:
+    """Deprecated wrapper for :func:`utils.time_utils.to_epoch_seconds`."""
+
+    warnings.warn(
+        "utils.parse_time is deprecated; use utils.time_utils.to_epoch_seconds",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return to_epoch_seconds(s)
 
 
