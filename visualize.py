@@ -4,6 +4,7 @@ import matplotlib as _mpl
 _mpl.use("Agg")
 import matplotlib.pyplot as plt
 from color_schemes import COLOR_SCHEMES
+from plot_utils.paths import get_targets
 
 __all__ = ["cov_heatmap", "efficiency_bar"]
 
@@ -37,9 +38,8 @@ def cov_heatmap(cov_matrix, out_png, labels=None):
                 fontsize=8,
             )
     plt.tight_layout()
-    dirpath = os.path.dirname(out_png) or "."
-    os.makedirs(dirpath, exist_ok=True)
-    plt.savefig(out_png, dpi=300)
+    target = get_targets(None, out_png)
+    plt.savefig(next(iter(target.values())), dpi=300)
     plt.close()
     return corr
 
@@ -71,8 +71,8 @@ def efficiency_bar(eff_dict, out_png, config=None):
         for i, w in enumerate(weights):
             plt.text(i, values[i] + errors[i], f"{w:.2f}", ha="center", va="bottom", fontsize=8)
     plt.tight_layout()
-    dirpath = os.path.dirname(out_png) or "."
-    os.makedirs(dirpath, exist_ok=True)
-    plt.savefig(out_png, dpi=300)
+    targets = get_targets(config, out_png)
+    for p in targets.values():
+        plt.savefig(p, dpi=300)
     plt.close()
     return None
