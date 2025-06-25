@@ -14,11 +14,13 @@ def _to_datetime64(events: pd.DataFrame) -> np.ndarray:
     ts_col = events["timestamp"]
     if pd.api.types.is_datetime64_any_dtype(ts_col):
         ser = ts_col
-        if getattr(ser.dtype, "tz", None) is not None:
-            ser = ser.dt.tz_convert("UTC")
-        ts = ser.to_numpy(dtype="datetime64[ns]")
     else:
-        ts = ts_col.map(parse_datetime).astype("datetime64[ns]").to_numpy()
+        ser = ts_col.map(parse_datetime)
+
+    if getattr(ser.dtype, "tz", None) is not None:
+        ser = ser.dt.tz_convert("UTC")
+
+    ts = ser.view("int64").to_numpy()
     return np.asarray(ts)
 
 
@@ -27,7 +29,7 @@ def rate_histogram(df, bins):
     if df.empty:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
     ts = _to_datetime64(df)
-    live = float((ts[-1] - ts[0]) / np.timedelta64(1, "s"))
+    live = float(ts[-1] - ts[0]) / 1e9
     hist_src = df.get("subtracted_adc_hist", df["adc"]).to_numpy()
     hist, _ = np.histogram(hist_src, bins=bins)
     if live <= 0:

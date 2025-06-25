@@ -53,11 +53,13 @@ def _to_datetime64(col: pd.Series) -> np.ndarray:
 
     if pd.api.types.is_datetime64_any_dtype(col):
         ser = col
-        if getattr(ser.dtype, "tz", None) is not None:
-            ser = ser.dt.tz_convert("UTC")
-        ts = ser.astype("datetime64[ns]").to_numpy()
     else:
-        ts = col.map(parse_datetime).astype("datetime64[ns]").to_numpy()
+        ser = col.map(parse_datetime)
+
+    if getattr(ser.dtype, "tz", None) is not None:
+        ser = ser.dt.tz_convert("UTC")
+
+    ts = ser.view("int64").to_numpy()
     return np.asarray(ts)
 
 
@@ -67,7 +69,7 @@ def _rate_histogram(df: pd.DataFrame, bins) -> tuple[np.ndarray, float]:
     if df.empty:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
     ts = _to_datetime64(df["timestamp"])
-    live = float((ts[-1] - ts[0]) / np.timedelta64(1, "s"))
+    live = float(ts[-1] - ts[0]) / 1e9
     hist_src = df.get("subtracted_adc_hist", df["adc"]).to_numpy()
     hist, _ = np.histogram(hist_src, bins=bins)
     if live <= 0:
@@ -95,8 +97,8 @@ def subtract_baseline_dataframe(
     if live_time_analysis is None:
         live_time_analysis = live_an
 
-    t0 = parse_datetime(t_base0)
-    t1 = parse_datetime(t_base1)
+    t0 = int(parse_datetime(t_base0).astype("int64"))
+    t1 = int(parse_datetime(t_base1).astype("int64"))
     ts_full = _to_datetime64(df_full["timestamp"])
     mask = (ts_full >= t0) & (ts_full <= t1)
     if not mask.any():
