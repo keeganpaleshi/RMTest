@@ -48,27 +48,25 @@ def compute_dilution_factor(monitor_volume: float, sample_volume: float) -> floa
     return float(monitor_volume) / float(total)
 
 
-def _to_datetime64(col: pd.Series) -> np.ndarray:
+def _to_datetime64(events: pd.DataFrame | pd.Series) -> np.ndarray:
     """Return ``numpy.ndarray`` of ``datetime64[ns]`` in UTC.
 
-    Both timezone-naive and timezone-aware inputs are supported.  Any
-    timezone information is converted to UTC before the underlying
-    integer nanoseconds are reinterpreted as ``datetime64[ns]``.  This
-    avoids ``pandas`` warnings when comparing arrays with different time
-    zone attributes.
+    ``events`` may be a ``DataFrame`` containing a ``timestamp`` column or
+    a ``Series`` of timestamp values.  The column must be datetime-like and
+    timezone-aware (or convertible via :func:`parse_datetime`).  The
+    returned array contains the timestamps converted to UTC.
     """
 
-    if pd.api.types.is_datetime64_any_dtype(col):
-        ser = col
-        if getattr(ser.dtype, "tz", None) is not None:
-            ser = ser.dt.tz_convert("UTC")
-        ts = ser.view("int64").view("datetime64[ns]")
+    if isinstance(events, pd.DataFrame):
+        ts = events["timestamp"]
     else:
-        ser = col.map(parse_datetime)
-        if getattr(ser.dtype, "tz", None) is not None:
-            ser = ser.dt.tz_convert("UTC")
-        ts = ser.view("int64").view("datetime64[ns]")
-    return np.asarray(ts)
+        ts = events
+
+    if not pd.api.types.is_datetime64_any_dtype(ts) or getattr(ts.dtype, "tz", None) is None:
+        ts = ts.map(parse_datetime)
+
+    ts = ts.dt.tz_convert("UTC")
+    return ts.to_numpy(dtype="datetime64[ns]")
 
 
 def _rate_histogram(df: pd.DataFrame, bins) -> tuple[np.ndarray, float]:
@@ -81,7 +79,7 @@ def _rate_histogram(df: pd.DataFrame, bins) -> tuple[np.ndarray, float]:
 
     if df.empty:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
-    ts = _to_datetime64(df["timestamp"])
+    ts = _to_datetime64(df)
     ts_int = ts.view("int64")
     live = float((ts_int[-1] - ts_int[0]) / 1e9)
     hist_src = df.get("subtracted_adc_hist", df["adc"]).to_numpy()
@@ -119,7 +117,7 @@ def subtract_baseline_dataframe(
 
     t0 = parse_datetime(t_base0)
     t1 = parse_datetime(t_base1)
-    ts_full = _to_datetime64(df_full["timestamp"])
+    ts_full = _to_datetime64(df_full)
     ts_int = ts_full.view("int64")
     t0_ns = t0.value
     t1_ns = t1.value
