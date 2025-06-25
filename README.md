@@ -49,7 +49,7 @@ python analyze.py --config config.json --input merged_data.csv \
     [--ambient-file amb.txt (time conc)] [--ambient-concentration 0.1] \
     [--burst-mode rate] \
     [--plot-time-binning-mode fixed --plot-time-bin-width 3600] [--dump-time-series-json] \
-    [--timezone Europe/Berlin] \
+    [--timezone UTC|EST|PST] \
     [--hierarchical-summary OUT.json]
 ```
 
