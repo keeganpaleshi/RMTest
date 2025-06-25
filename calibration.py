@@ -4,6 +4,7 @@ from collections.abc import Sequence, Mapping
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 from scipy.stats import exponnorm
+import utils
 from constants import (
     _TAU_MIN,
     DEFAULT_NOISE_CUTOFF,
@@ -156,6 +157,51 @@ def two_point_calibration(adc_centroids, energies):
     a = (E2 - E1) / (x2 - x1)
     c = E1 - a * x1
     return float(a), float(c)
+
+
+def fixed_slope_calibration(adc_values, cfg):
+    """Return calibration constants when the slope is fixed.
+
+    Parameters
+    ----------
+    adc_values : array-like
+        Raw ADC values from a single run.
+    cfg : dict
+        Configuration dictionary containing ``calibration`` options.
+    """
+
+    a = cfg["calibration"]["slope_MeV_per_ch"]
+
+    cal_cfg = cfg.get("calibration", {})
+    expected = {"Po214": cal_cfg["nominal_adc"]["Po214"]}
+    window = cal_cfg.get("peak_search_radius", 50)
+    prominence = cal_cfg.get("peak_prominence", 0.0)
+    width = cal_cfg.get("peak_width")
+
+    peaks = utils.find_adc_bin_peaks(
+        adc_values,
+        expected,
+        window=window,
+        prominence=prominence,
+        width=width,
+    )
+
+    adc_peak = peaks["Po214"]
+
+    energies = {
+        **DEFAULT_KNOWN_ENERGIES,
+        **cal_cfg.get("known_energies", {}),
+    }
+
+    E_known = energies["Po214"]
+    c = float(E_known - a * adc_peak)
+
+    return {
+        "a": a,
+        "c": c,
+        "sigma_E": cal_cfg["init_sigma_adc"],
+        "calibration_valid": True,
+    }
 
 
 def apply_calibration(adc_values, slope, intercept, quadratic_coeff=0.0):
@@ -452,7 +498,9 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
 
 def derive_calibration_constants(adc_values, config):
-    """Return :class:`CalibrationResult` for ``adc_values`` with ``config``."""
+    """Return calibration constants for ``adc_values`` using ``config``."""
+    if config.get("calibration", {}).get("slope_MeV_per_ch") is not None:
+        return fixed_slope_calibration(adc_values, config)
     return calibrate_run(adc_values, config)
 
 
@@ -517,6 +565,7 @@ def derive_calibration_constants_auto(
 __all__ = [
     "CalibrationResult",
     "two_point_calibration",
+    "fixed_slope_calibration",
     "apply_calibration",
     "calibrate_run",
     "derive_calibration_constants",
