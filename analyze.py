@@ -305,8 +305,7 @@ def _ts_bin_centers_widths(times, cfg, t_start, t_end):
         arr_sec = arr.view("int64") / 1e9
     else:
         arr_sec = arr.astype(float)
-    arr_float = arr_sec.astype(float)
-    times_rel = arr_float - float(t_start)
+    times_rel = arr_sec.astype(float) - float(t_start)
     bin_mode = str(
         cfg.get("plot_time_binning_mode", cfg.get("time_bin_mode", "fixed"))
     ).lower()
