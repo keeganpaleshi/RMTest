@@ -48,16 +48,20 @@ def compute_dilution_factor(monitor_volume: float, sample_volume: float) -> floa
     return float(monitor_volume) / float(total)
 
 
-def _to_datetime64(col: pd.Series) -> np.ndarray:
-    """Return numpy.ndarray[datetime64[ns, UTC]]."""
+def _to_datetime64(events: pd.DataFrame | pd.Series) -> np.ndarray:
+    """Return ``events['timestamp']`` as ``numpy.ndarray[datetime64[ns]]``.
 
-    if pd.api.types.is_datetime64_any_dtype(col):
-        ser = col
-        if getattr(ser.dtype, "tz", None) is not None:
-            ser = ser.dt.tz_convert("UTC").dt.tz_localize(None)
-        ts = ser.to_numpy(dtype="datetime64[ns]")
-    else:
-        ts = col.map(parse_datetime).to_numpy(dtype="datetime64[ns]")
+    ``events`` must be a DataFrame containing a datetime-like ``"timestamp"``
+    column or a Series of such values.  Any timezone information is converted to
+    ``UTC`` before converting to a NumPy array.
+    """
+
+    col = events["timestamp"] if isinstance(events, pd.DataFrame) else events
+
+    if not pd.api.types.is_datetime64_any_dtype(col):
+        raise TypeError("timestamp column must be datetime-like")
+
+    ts = col.dt.tz_convert("UTC").to_numpy(dtype="datetime64[ns]")
     return np.asarray(ts)
 
 
@@ -66,7 +70,7 @@ def _rate_histogram(df: pd.DataFrame, bins) -> tuple[np.ndarray, float]:
 
     if df.empty:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
-    ts = _to_datetime64(df["timestamp"])
+    ts = _to_datetime64(df)
     live = float((ts[-1] - ts[0]) / np.timedelta64(1, "s"))
     hist_src = df.get("subtracted_adc_hist", df["adc"]).to_numpy()
     hist, _ = np.histogram(hist_src, bins=bins)
@@ -97,7 +101,7 @@ def subtract_baseline_dataframe(
 
     t0 = parse_datetime(t_base0).to_datetime64()
     t1 = parse_datetime(t_base1).to_datetime64()
-    ts_full = _to_datetime64(df_full["timestamp"])
+    ts_full = _to_datetime64(df_full)
     mask = (ts_full >= t0) & (ts_full <= t1)
     if not mask.any():
         logging.warning("baseline_range matched no events – skipping subtraction")
