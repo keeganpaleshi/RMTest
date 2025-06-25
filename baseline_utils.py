@@ -90,7 +90,7 @@ def _rate_histogram(df: pd.DataFrame, bins) -> tuple[np.ndarray, float]:
 
     if df.empty:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
-    ts = _to_datetime64(df["timestamp"])
+    ts = _to_datetime64(df)
     ts_int = ts.view("int64")
     live = float((ts_int[-1] - ts_int[0]) / 1e9)
     hist_src = df.get("subtracted_adc_hist", df["adc"]).to_numpy()
@@ -128,7 +128,7 @@ def subtract_baseline_dataframe(
 
     t0 = parse_datetime(t_base0)
     t1 = parse_datetime(t_base1)
-    ts_full = _to_datetime64(df_full["timestamp"])
+    ts_full = _to_datetime64(df_full)
     ts_int = ts_full.view("int64")
     t0_ns = t0.value
     t1_ns = t1.value
