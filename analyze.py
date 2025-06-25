@@ -1014,6 +1014,8 @@ def main(argv=None):
                 params=drift_params,
             )
         except Exception as e:
+            if not cfg.get("allow_fallback"):
+                raise
             print(f"WARNING: Could not apply ADC drift correction -> {e}")
 
     # ────────────────────────────────────────────────────────────
@@ -1039,6 +1041,8 @@ def main(argv=None):
             cal_params = derive_calibration_constants(adc_vals, config=cfg)
     except Exception:
         logging.exception("calibration failed – using defaults")
+        if not cfg.get("allow_fallback"):
+            raise
         calibration_valid = False
         cal_params = {"a": (0.005, 0.001), "c": (0.02, 0.005), "sigma_E": (0.3, 0.1)}
 
@@ -1154,6 +1158,8 @@ def main(argv=None):
             baseline_range = (start_dt, end_dt)
             baseline_cfg["range"] = [start_dt, end_dt]
         except Exception as e:
+            if not cfg.get("allow_fallback"):
+                raise
             logging.warning(
                 "Invalid baseline.range %r -> %s", baseline_cfg.get("range"), e
             )
@@ -1183,9 +1189,10 @@ def main(argv=None):
             base_events["energy_MeV"] = np.array([], dtype=float)
             base_events["denergy_MeV"] = np.array([], dtype=float)
         if len(base_events) == 0:
-            logging.warning(
-                "baseline_range yielded zero events \u2013 skipping baseline subtraction"
-            )
+            msg = "baseline_range yielded zero events \u2013 skipping baseline subtraction"
+            if not cfg.get("allow_fallback"):
+                raise RuntimeError(msg)
+            logging.warning(msg)
             baseline_live_time = 0.0
         else:
             baseline_live_time = float((t_end_base - t_start_base).total_seconds())
@@ -1221,6 +1228,8 @@ def main(argv=None):
                 else:
                     noise_level, _ = result
         except Exception as e:
+            if not cfg.get("allow_fallback"):
+                raise
             print(f"WARNING: Baseline noise estimation failed -> {e}")
 
         if noise_level is not None:
@@ -1237,15 +1246,21 @@ def main(argv=None):
         t_base0 = args.baseline_range[0]
         t_base1 = args.baseline_range[1]
         edges = adc_hist_edges(df_analysis["adc"].values, hist_bins)
-        df_analysis, _ = baseline.subtract(
-            df_analysis,
-            events_all,
-            bins=edges,
-            t_base0=t_base0,
-            t_base1=t_base1,
-            mode=args.baseline_mode,
-            live_time_analysis=(analysis_end - analysis_start).total_seconds(),
-        )
+        try:
+            df_analysis, _ = baseline.subtract(
+                df_analysis,
+                events_all,
+                bins=edges,
+                t_base0=t_base0,
+                t_base1=t_base1,
+                mode=args.baseline_mode,
+                live_time_analysis=(analysis_end - analysis_start).total_seconds(),
+                allow_fallback=cfg.get("allow_fallback", False),
+            )
+        except Exception as e:
+            if not cfg.get("allow_fallback"):
+                raise
+            print(f"WARNING: Baseline subtraction failed -> {e}")
 
     # ────────────────────────────────────────────────────────────
     # 5. Spectral fit (optional)

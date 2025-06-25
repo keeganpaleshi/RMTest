@@ -1,4 +1,5 @@
 {
+    "allow_fallback": false,
     "pipeline": {
         "log_level": "INFO",
         "random_seed": null

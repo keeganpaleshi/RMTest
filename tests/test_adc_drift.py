@@ -11,9 +11,10 @@ from fitting import FitResult, FitParams
 from dataclasses import asdict
 
 
-def _write_basic(tmp_path, drift_rate, mode="linear", params=None):
+def _write_basic(tmp_path, drift_rate, mode="linear", params=None, *, allow_fallback=False):
     cfg = {
         "pipeline": {"log_level": "INFO"},
+        "allow_fallback": allow_fallback,
         "calibration": {},
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {"do_time_fit": False},
@@ -42,7 +43,7 @@ def _write_basic(tmp_path, drift_rate, mode="linear", params=None):
 
 
 def test_adc_drift_applied(tmp_path, monkeypatch):
-    cfg_path, data_path = _write_basic(tmp_path, 1.0)
+    cfg_path, data_path = _write_basic(tmp_path, 1.0, allow_fallback=True)
     captured = {}
 
     def fake_shift(adc, ts, rate, t_ref=None, mode="linear", params=None):
@@ -256,7 +257,7 @@ def test_adc_drift_piecewise_cfg(tmp_path, monkeypatch):
 
 def test_adc_drift_warning_on_failure(tmp_path, monkeypatch, capsys):
     """ADC drift correction failure should emit a warning but not abort."""
-    cfg_path, data_path = _write_basic(tmp_path, 1.0)
+    cfg_path, data_path = _write_basic(tmp_path, 1.0, allow_fallback=True)
 
     def bad_shift(*a, **k):
         raise ValueError("boom")

@@ -108,6 +108,7 @@ CONFIG_SCHEMA = {
             },
             "required": ["log_level"],
         },
+        "allow_fallback": {"type": "boolean"},
         "spectral_fit": {
             "type": "object",
             "properties": {"expected_peaks": {"type": "object"}},
