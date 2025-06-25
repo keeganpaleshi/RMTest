@@ -289,7 +289,7 @@ def _ts_bin_centers_widths(times, cfg, t_start, t_end):
     """Return bin centers and widths matching :func:`plot_time_series`."""
     arr = np.asarray(times)
     if np.issubdtype(arr.dtype, "datetime64"):
-        arr = arr.view("int64") / 1e9
+        arr = arr.astype("int64") / 1e9
     arr = arr.astype(float)
     times_rel = arr - float(t_start)
     bin_mode = str(
@@ -1015,7 +1015,7 @@ def main(argv=None):
         try:
             ts_vals = df_analysis["timestamp"]
             if pd.api.types.is_datetime64_any_dtype(ts_vals):
-                ts_seconds = ts_vals.view("int64").to_numpy() / 1e9
+                ts_seconds = ts_vals.astype("int64").to_numpy() / 1e9
             else:
                 ts_seconds = ts_vals.astype(float).to_numpy()
             df_analysis["adc"] = apply_linear_adc_shift(
@@ -1594,7 +1594,7 @@ def main(argv=None):
             iso_events = iso_events[iso_events["timestamp"] >= cut]
         ts_vals = iso_events["timestamp"]
         if pd.api.types.is_datetime64_any_dtype(ts_vals):
-            ts_vals = ts_vals.view("int64").to_numpy() / 1e9
+            ts_vals = ts_vals.astype("int64").to_numpy() / 1e9
         else:
             ts_vals = ts_vals.astype(float).to_numpy()
         times_dict = {iso: ts_vals}
@@ -1707,7 +1707,7 @@ def main(argv=None):
                 filtered_df = df_analysis[mask]
                 ts_vals = filtered_df["timestamp"]
                 if pd.api.types.is_datetime64_any_dtype(ts_vals):
-                    ts_vals = ts_vals.view("int64").to_numpy() / 1e9
+                    ts_vals = ts_vals.astype("int64").to_numpy() / 1e9
                 else:
                     ts_vals = ts_vals.astype(float).to_numpy()
                 times_dict = {iso: ts_vals}
