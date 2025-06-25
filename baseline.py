@@ -1,7 +1,6 @@
 import numpy as np
 import logging
 import pandas as pd
-from utils import parse_datetime
 
 from baseline_utils import subtract_baseline_dataframe
 
@@ -9,17 +8,14 @@ __all__ = ["rate_histogram", "subtract_baseline", "subtract_baseline_dataframe"]
 
 
 def _to_datetime64(events: pd.DataFrame) -> np.ndarray:
-    """Return numpy.ndarray[datetime64[ns, UTC]]."""
+    """Return ``numpy.ndarray`` of UTC timestamps."""
 
     ts_col = events["timestamp"]
-    if pd.api.types.is_datetime64_any_dtype(ts_col):
-        ser = ts_col
-        if getattr(ser.dtype, "tz", None) is not None:
-            ser = ser.dt.tz_convert("UTC")
-        ts = ser.to_numpy(dtype="datetime64[ns]")
+    if pd.api.types.is_numeric_dtype(ts_col):
+        ts = pd.to_datetime(ts_col, unit="s", utc=True)
     else:
-        ts = ts_col.map(parse_datetime).astype("datetime64[ns]").to_numpy()
-    return np.asarray(ts)
+        ts = pd.to_datetime(ts_col, utc=True)
+    return ts.dt.tz_convert("UTC").to_numpy(dtype="datetime64[ns]")
 
 
 def rate_histogram(df, bins):
