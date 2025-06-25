@@ -30,7 +30,7 @@ def test_subtract_baseline_preserves_dtype():
     ts = pd.date_range("1970-01-01", periods=3, freq="s", tz="UTC")
     df = pd.DataFrame({"timestamp": ts, "adc": [1, 2, 3]})
     bins = np.arange(0, 5)
-    out = baseline.subtract_baseline(
+    out = baseline.subtract_baseline_df(
         df,
         df,
         bins=bins,
