@@ -114,6 +114,27 @@ def plot_time_series(
     if fit_results is None:
         fit_results = {}
 
+    # Convert timestamps to UNIX seconds when datetime64 or datetime objects
+    ts_array = np.asarray(all_timestamps)
+    if np.issubdtype(ts_array.dtype, "datetime64"):
+        all_timestamps = ts_array.astype("int64") / 1e9
+    elif np.issubdtype(ts_array.dtype, np.object_):
+        if ts_array.size > 0 and isinstance(ts_array.flat[0], datetime):
+            all_timestamps = np.array([dt.timestamp() for dt in ts_array], dtype=float)
+        else:
+            all_timestamps = ts_array.astype(float)
+    else:
+        all_timestamps = ts_array.astype(float)
+
+    if isinstance(t_start, datetime):
+        t_start = t_start.timestamp()
+    elif isinstance(t_start, np.datetime64):
+        t_start = float(t_start.astype("int64") / 1e9)
+    if isinstance(t_end, datetime):
+        t_end = t_end.timestamp()
+    elif isinstance(t_end, np.datetime64):
+        t_end = float(t_end.astype("int64") / 1e9)
+
     def _cfg_get(cfg, key, default=None):
         """Lookup ``key`` in ``cfg``.
 

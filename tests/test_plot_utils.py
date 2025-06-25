@@ -804,3 +804,29 @@ def test_plot_time_series_uncertainty_band(tmp_path, monkeypatch):
     assert band_called.get("ok")
 
 
+def test_plot_time_series_datetime64(tmp_path):
+    times = np.array(
+        [
+            np.datetime64("1970-01-01T00:00:01"),
+            np.datetime64("1970-01-01T00:00:02"),
+            np.datetime64("1970-01-01T00:00:03"),
+        ]
+    )
+    energies = np.array([7.7, 7.8, 7.7])
+    cfg = basic_config()
+    cfg.update({"plot_time_binning_mode": "auto", "time_bins_fallback": 1})
+    out_png = tmp_path / "ts_dt.png"
+
+    plot_time_series(
+        times,
+        energies,
+        None,
+        times[0],
+        times[-1] + np.timedelta64(1, "s"),
+        cfg,
+        str(out_png),
+    )
+
+    assert out_png.exists()
+
+
