@@ -82,9 +82,14 @@ def test_load_events(tmp_path, caplog):
     with caplog.at_level(logging.INFO):
         loaded = load_events(p)
     assert str(loaded["timestamp"].dtype) == "datetime64[ns, UTC]"
-    expected_ts = pd.to_datetime([1000, 1005, 1010], unit="s", utc=True)
+    expected_ts = [
+        pd.Timestamp(1000, unit="s", tz="UTC"),
+        pd.Timestamp(1005, unit="s", tz="UTC"),
+        pd.Timestamp(1010, unit="s", tz="UTC"),
+    ]
     assert np.array_equal(
-        loaded["timestamp"].astype("int64"), expected_ts.astype("int64")
+        loaded["timestamp"].astype("int64"),
+        pd.Index(expected_ts).astype("int64"),
     )
     assert np.array_equal(loaded["adc"].values, np.array([1200, 1300, 1250]))
     assert "0 discarded" in caplog.text
@@ -95,7 +100,14 @@ def test_load_events_drop_bad_rows(tmp_path, caplog):
         {
             "fUniqueID": [1, 2, 2, 3, 4, 5],
             "fBits": [0, 0, 0, 0, 0, 0],
-            "timestamp": [1000, 1005, 1005, 1010, np.nan, 1020],
+            "timestamp": [
+                pd.Timestamp(1000, unit="s", tz="UTC"),
+                pd.Timestamp(1005, unit="s", tz="UTC"),
+                pd.Timestamp(1005, unit="s", tz="UTC"),
+                pd.Timestamp(1010, unit="s", tz="UTC"),
+                pd.NaT,
+                pd.Timestamp(1020, unit="s", tz="UTC"),
+            ],
             "adc": [1200, 1300, 1300, np.inf, 1350, 1250],
             "fchannel": [1, 1, 1, 1, 1, 1],
         }
@@ -106,9 +118,14 @@ def test_load_events_drop_bad_rows(tmp_path, caplog):
         loaded = load_events(p)
     # Expect rows with NaN/inf removed and duplicate dropped
     assert str(loaded["timestamp"].dtype) == "datetime64[ns, UTC]"
-    expected_ts = pd.to_datetime([1000, 1005, 1020], unit="s", utc=True)
+    expected_ts = [
+        pd.Timestamp(1000, unit="s", tz="UTC"),
+        pd.Timestamp(1005, unit="s", tz="UTC"),
+        pd.Timestamp(1020, unit="s", tz="UTC"),
+    ]
     assert np.array_equal(
-        loaded["timestamp"].astype("int64"), expected_ts.astype("int64")
+        loaded["timestamp"].astype("int64"),
+        pd.Index(expected_ts).astype("int64"),
     )
     assert "3 discarded" in caplog.text
 
@@ -180,7 +197,7 @@ def test_load_events_string_nan(tmp_path):
         {
             "fUniqueID": [1, 2],
             "fBits": [0, 0],
-            "timestamp": [1000, "NaN"],
+            "timestamp": [pd.Timestamp(1000, unit="s", tz="UTC"), "NaN"],
             "adc": [1200, 1300],
             "fchannel": [1, 1],
         }
@@ -241,7 +258,7 @@ def test_apply_burst_filter_no_removal():
         {
             "fUniqueID": range(100),
             "fBits": [0] * 100,
-            "timestamp": pd.to_datetime(np.arange(100), unit="s"),
+            "timestamp": [pd.Timestamp(t, unit="s", tz="UTC") for t in np.arange(100)],
             "adc": [1000] * 100,
             "fchannel": [1] * 100,
         }
@@ -260,7 +277,7 @@ def test_apply_burst_filter_with_burst():
         {
             "fUniqueID": range(len(times)),
             "fBits": [0] * len(times),
-            "timestamp": pd.to_datetime(times, unit="s"),
+            "timestamp": [pd.Timestamp(t, unit="s", tz="UTC") for t in times],
             "adc": [1000] * len(times),
             "fchannel": [1] * len(times),
         }
@@ -276,7 +293,7 @@ def test_apply_burst_filter_mode_none():
         {
             "fUniqueID": range(10),
             "fBits": [0] * 10,
-            "timestamp": pd.to_datetime([0] * 10, unit="s"),
+            "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")] * 10,
             "adc": [1000] * 10,
             "fchannel": [1] * 10,
         }
@@ -301,7 +318,7 @@ def test_apply_burst_filter_micro_burst():
         {
             "fUniqueID": range(len(times)),
             "fBits": [0] * len(times),
-            "timestamp": pd.to_datetime(times, unit="s"),
+            "timestamp": [pd.Timestamp(t, unit="s", tz="UTC") for t in times],
             "adc": [1000] * len(times),
             "fchannel": [1] * len(times),
         }
@@ -323,7 +340,7 @@ def test_apply_burst_filter_histogram_called(monkeypatch):
         {
             "fUniqueID": range(len(times)),
             "fBits": [0] * len(times),
-            "timestamp": pd.to_datetime(times, unit="s"),
+            "timestamp": [pd.Timestamp(t, unit="s", tz="UTC") for t in times],
             "adc": [1000] * len(times),
             "fchannel": [1] * len(times),
         }
@@ -359,7 +376,7 @@ def test_apply_burst_filter_both_matches_sequential():
         {
             "fUniqueID": range(len(times)),
             "fBits": [0] * len(times),
-            "timestamp": pd.to_datetime(times, unit="s"),
+            "timestamp": [pd.Timestamp(t, unit="s", tz="UTC") for t in times],
             "adc": [1000] * len(times),
             "fchannel": [1] * len(times),
         }
