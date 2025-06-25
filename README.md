@@ -2,7 +2,7 @@
 
 This repository provides a complete pipeline to analyze electrostatic radon monitor data.
 
-**Note:** All time quantities are expressed in seconds and all energies are given in MeV throughout the documentation and code. Input timestamps are converted with `to_utc_datetime` which accepts ISO‑8601 strings (with or without timezone), numeric epoch seconds and `datetime` objects and returns a timezone‑aware `numpy.datetime64` in UTC. The function is available from `utils.py` and is used throughout the command-line interface so both ISO‑8601 strings and Unix seconds work interchangeably. A global `--timezone` option controls which zone naïve times are interpreted in (default: `UTC`). Event timestamps remain timezone‑aware `datetime64` objects inside the pipeline; epoch seconds are produced only for numeric computations such as histogramming or fits.
+**Note:** All time quantities are expressed in seconds and all energies are given in MeV throughout the documentation and code. Input timestamps are converted with `to_utc_datetime` which accepts ISO‑8601 strings (with or without timezone), numeric epoch seconds and `datetime` objects and returns a timezone‑aware ``pandas.Timestamp`` in UTC. The function is available from `utils.py` and is used throughout the command-line interface so both ISO‑8601 strings and Unix seconds work interchangeably. A global `--timezone` option controls which zone naïve times are interpreted in (default: `UTC`). Event timestamps remain timezone‑aware `datetime64` objects inside the pipeline; epoch seconds are produced only for numeric computations such as histogramming or fits.
 
 ## Structure
 
@@ -72,7 +72,7 @@ The input file must be a comma-separated table with these columns:
 - `fBits` – status bits or flags
 - `timestamp` – event timestamp in seconds
   (either numeric Unix seconds or an ISO‑8601 string; parsed directly to
-  ``numpy.datetime64`` values via `parse_datetime`)
+  ```pandas.Timestamp``` values via `parse_datetime`)
 - `adc` – raw ADC value
 - `fchannel` – acquisition channel
 
@@ -560,8 +560,8 @@ search for peak centroids:
 - `cps_to_cpd(rate_cps)` converts counts/s to counts/day.
 - `cps_to_bq(rate_cps, volume_liters=None)` returns the activity in Bq, or
   Bq/m^3 when a detector volume is supplied.
-- `parse_datetime(value)` converts ISO‑8601 strings, numeric seconds or
-  `datetime` objects to a UTC `numpy.datetime64` object.
+- `parse_datetime(value)` converts ISO‐8601 strings, numeric seconds or
+  `datetime` objects to a UTC ``pandas.Timestamp``.
 - `find_adc_bin_peaks(adc_values, expected, window=50, prominence=0.0, width=None)`
   histogramises the raw ADC spectrum, searches for maxima near each expected
   centroid and returns a `{peak: adc_centroid}` mapping in ADC units.
