@@ -2,7 +2,7 @@
 
 This repository provides a complete pipeline to analyze electrostatic radon monitor data.
 
-**Note:** All time quantities are expressed in seconds and all energies are given in MeV throughout the documentation and code. Input timestamps are converted with `to_utc_datetime` which accepts ISO‑8601 strings (with or without timezone), numeric epoch seconds and `datetime` objects and returns a timezone‑aware `numpy.datetime64` in UTC. The function is available from `utils.py` and is used throughout the command-line interface so both ISO‑8601 strings and Unix seconds work interchangeably. A global `--timezone` option controls which zone naïve times are interpreted in (default: `UTC`). Event timestamps remain timezone‑aware `datetime64` objects inside the pipeline; epoch seconds are produced only for numeric computations such as histogramming or fits.
+**Note:** All time quantities are expressed in seconds and all energies are given in MeV throughout the documentation and code. Input timestamps are converted with `to_utc_datetime` which accepts ISO‑8601 strings (with or without timezone), numeric epoch seconds and `datetime` objects and returns a timezone‑aware `datetime` in UTC. The function is available from `utils.py` and is used throughout the command-line interface so both ISO‑8601 strings and Unix seconds work interchangeably. A global `--timezone` option controls which zone naïve times are interpreted in (default: `UTC`). Event timestamps remain timezone‑aware `datetime64` objects inside the pipeline; epoch seconds are produced only for numeric computations such as histogramming or fits.
 
 ## Structure
 
