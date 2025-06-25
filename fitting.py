@@ -4,7 +4,7 @@
 
 import logging
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TypedDict, NotRequired
 
 import numpy as np
@@ -79,7 +79,7 @@ class FitResult:
 
     ndf: int
     param_index: dict[str, int] | None = None
-    cov_df: pd.DataFrame | None = None
+    _cov_df: pd.DataFrame | None = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
         ordered: list[str] | None = None
@@ -106,15 +106,19 @@ class FitResult:
                 if self.param_index is not None:
                     if ordered is None:
                         ordered = [n for n, _ in sorted(self.param_index.items(), key=lambda kv: kv[1])]
-                    self.cov_df = pd.DataFrame(self.cov, index=ordered, columns=ordered)
+                    object.__setattr__(
+                        self,
+                        "_cov_df",
+                        pd.DataFrame(self.cov, index=ordered, columns=ordered),
+                    )
 
     def get_cov(self, name1: str, name2: str) -> float:
         """Return covariance entry for two parameters."""
         if self.cov is None or self.param_index is None:
             return 0.0
-        if self.cov_df is not None:
+        if self._cov_df is not None:
             try:
-                return float(self.cov_df.loc[name1, name2])
+                return float(self._cov_df.loc[name1, name2])
             except KeyError as exc:
                 raise KeyError(
                     f"Parameter(s) missing in covariance: {name1}, {name2}"
@@ -136,6 +140,8 @@ class FitResult:
     @property
     def cov_df(self) -> pd.DataFrame:
         """Return covariance matrix as a :class:`pandas.DataFrame`."""
+        if self._cov_df is not None:
+            return self._cov_df
         if self.cov is None or self.param_index is None:
             return pd.DataFrame()
         ordered = sorted(self.param_index.items(), key=lambda kv: kv[1])
