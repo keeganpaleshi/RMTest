@@ -218,36 +218,18 @@ def to_utc_datetime(value, tz="UTC") -> datetime:
 
 
 def parse_datetime(value):
-    """Parse an ISO-8601 string or numeric epoch value to ``pandas.Timestamp``.
+    """Deprecated alias for :func:`utils.time_utils.parse_timestamp`."""
 
-    The function accepts strings like ``"2023-09-28T13:45:00-04:00"`` or
-    numeric Unix timestamps (as ``int``, ``float`` or numeric ``str``). Any
-    parsed time lacking a timezone is interpreted as UTC.  On success a
-    timezone-aware ``pandas.Timestamp`` in UTC is returned. ``ValueError`` is
-    raised if the input cannot be parsed.
-    """
-
-    try:
-        dt = to_utc_datetime(value)
-    except ValueError as e:
-        raise ValueError(f"invalid datetime: {value!r}") from e
-
-    if pd is None:
-        raise RuntimeError("pandas is required for parse_datetime")
-
-    return pd.Timestamp(dt.replace(tzinfo=None), tz="UTC")
+    return parse_timestamp(value)
 
 
 def to_seconds(series: pd.Series) -> np.ndarray:
     """Return float seconds from a timestamp series."""
 
     if not pd.api.types.is_datetime64_any_dtype(series):
-        return series.astype(float).to_numpy()
-    if getattr(series.dtype, "tz", None) is None:
-        series = series.map(parse_datetime)
-    else:
-        series = series.dt.tz_convert("UTC")
-    return series.astype("int64").to_numpy() / 1e9
+        return pd.to_numeric(series, errors="coerce").to_numpy(dtype=float)
+    series_utc = series.map(parse_timestamp)
+    return series_utc.map(to_epoch_seconds).to_numpy()
 
 
 def parse_time(s, tz="UTC") -> float:
