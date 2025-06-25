@@ -11,13 +11,11 @@ from utils import (
     cps_to_cpd,
     cps_to_bq,
     find_adc_bin_peaks,
-    parse_timestamp,
-    to_epoch_seconds,
-    parse_time,
     parse_time_arg,
     to_seconds,
     LITERS_PER_M3,
 )
+from utils.time_utils import parse_timestamp, to_epoch_seconds
 
 
 def test_cps_to_cpd():
@@ -52,28 +50,28 @@ def test_find_adc_bin_peaks_basic():
     assert result["p2"] == pytest.approx(20.5)
 
 
-def test_parse_time_int():
-    assert parse_time(42) == pytest.approx(42.0)
+def test_to_epoch_seconds_int():
+    assert to_epoch_seconds(42) == pytest.approx(42.0)
 
 
-def test_parse_time_float():
-    assert parse_time(42.5) == pytest.approx(42.5)
+def test_to_epoch_seconds_float():
+    assert to_epoch_seconds(42.5) == pytest.approx(42.5)
 
 
-def test_parse_time_numeric_str():
-    assert parse_time("42") == pytest.approx(42.0)
+def test_to_epoch_seconds_numeric_str():
+    assert to_epoch_seconds("42") == pytest.approx(42.0)
 
 
-def test_parse_time_numeric_str_float():
-    assert parse_time("42.5") == pytest.approx(42.5)
+def test_to_epoch_seconds_numeric_str_float():
+    assert to_epoch_seconds("42.5") == pytest.approx(42.5)
 
 
-def test_parse_time_iso_no_fraction():
-    assert parse_time("1970-01-01T00:00:00Z") == pytest.approx(0.0)
+def test_to_epoch_seconds_iso_no_fraction():
+    assert to_epoch_seconds("1970-01-01T00:00:00Z") == pytest.approx(0.0)
 
 
-def test_parse_time_iso_fraction():
-    assert parse_time("1970-01-01T00:00:00.5Z") == pytest.approx(0.5)
+def test_to_epoch_seconds_iso_fraction():
+    assert to_epoch_seconds("1970-01-01T00:00:00.5Z") == pytest.approx(0.5)
 
 
 def test_parse_time_naive_timezone():
