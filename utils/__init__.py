@@ -9,6 +9,8 @@ from datetime import datetime, timezone, tzinfo, timedelta
 from dateutil import parser as date_parser
 from dateutil.tz import gettz
 
+from .time_utils import parse_timestamp, to_epoch_seconds
+
 __all__ = [
     "to_native",
     "find_adc_bin_peaks",
@@ -18,6 +20,7 @@ __all__ = [
     "to_utc_datetime",
     "parse_time_arg",
     "parse_timestamp",
+    "to_epoch_seconds",
     "parse_datetime",
     "to_seconds",
     "parse_time",
@@ -183,43 +186,6 @@ def cps_to_bq(rate_cps, volume_liters=None):
     return float(rate_cps) / volume_m3
 
 
-def parse_timestamp(s) -> float:
-    """Parse an ISO-8601 string, numeric seconds, or ``datetime``.
-
-    Any string without timezone information is interpreted as UTC.
-    The return value is the Unix epoch time in seconds (UTC).
-    """
-
-    if isinstance(s, (int, float)):
-        return float(s)
-
-    if isinstance(s, datetime):
-        dt = s
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        else:
-            dt = dt.astimezone(timezone.utc)
-        return float(dt.timestamp())
-
-    if isinstance(s, str):
-        try:
-            return float(s)
-        except ValueError:
-            pass
-
-        try:
-            dt = date_parser.isoparse(s)
-        except (ValueError, OverflowError) as e:
-            raise argparse.ArgumentTypeError(f"could not parse time: {s!r}") from e
-
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        else:
-            dt = dt.astimezone(timezone.utc)
-
-        return float(dt.timestamp())
-
-    raise argparse.ArgumentTypeError(f"could not parse time: {s!r}")
 
 
 def to_utc_datetime(value, tz="UTC") -> datetime:
@@ -288,7 +254,7 @@ def to_seconds(series: pd.Series) -> np.ndarray:
 def parse_time(s, tz="UTC") -> float:
     """Parse a timestamp string, number or ``datetime`` into Unix seconds."""
 
-    return parse_timestamp(s)
+    return to_epoch_seconds(s)
 
 
 def parse_time_arg(val, tz="UTC") -> datetime:

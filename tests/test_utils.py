@@ -12,6 +12,7 @@ from utils import (
     cps_to_bq,
     find_adc_bin_peaks,
     parse_timestamp,
+    to_epoch_seconds,
     parse_time,
     parse_time_arg,
     to_seconds,
@@ -80,15 +81,21 @@ def test_parse_time_naive_timezone():
 
 
 def test_parse_timestamp_numeric():
-    assert parse_timestamp(42) == pytest.approx(42.0)
+    ts = parse_timestamp(42)
+    assert isinstance(ts, pd.Timestamp)
+    assert ts == pd.Timestamp(42, unit="s", tz="UTC")
 
 
 def test_parse_timestamp_iso():
-    assert parse_timestamp("1970-01-01T00:00:00Z") == pytest.approx(0.0)
+    ts = parse_timestamp("1970-01-01T00:00:00Z")
+    assert isinstance(ts, pd.Timestamp)
+    assert ts == pd.Timestamp("1970-01-01T00:00:00Z")
 
 
 def test_parse_timestamp_datetime_naive():
-    assert parse_timestamp(datetime(1970, 1, 1)) == pytest.approx(0.0)
+    ts = parse_timestamp(datetime(1970, 1, 1))
+    assert isinstance(ts, pd.Timestamp)
+    assert ts == pd.Timestamp("1970-01-01T00:00:00Z")
 
 
 def test_to_seconds_datetime_series():
@@ -101,3 +108,11 @@ def test_to_seconds_numeric_series():
     ser = pd.Series([0.0, 1.5, 2.2])
     out = to_seconds(ser)
     assert np.allclose(out, [0.0, 1.5, 2.2])
+
+def test_to_epoch_seconds_timestamp():
+    ts = pd.Timestamp("1970-01-01T00:00:01Z")
+    assert to_epoch_seconds(ts) == pytest.approx(1.0)
+
+
+def test_to_epoch_seconds_string():
+    assert to_epoch_seconds("1970-01-01T00:00:02Z") == pytest.approx(2.0)
