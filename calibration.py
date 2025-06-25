@@ -315,6 +315,13 @@ def calibrate_run(adc_values, config, hist_bins=None):
     adc214 = peak_fits["Po214"]["centroid_adc"]
     adc218 = peak_fits["Po218"]["centroid_adc"]
 
+    # Ensure peaks are ordered as Po210 < Po218 < Po214
+    if not (adc210 < adc218 < adc214):
+        raise RuntimeError(
+            "Calibration produced inconsistent peak ordering: "
+            f"Po210={adc210:.3f}, Po218={adc218:.3f}, Po214={adc214:.3f}"
+        )
+
     cfg_energies = config.get("calibration", {}).get("known_energies")
     energies = (
         DEFAULT_KNOWN_ENERGIES
