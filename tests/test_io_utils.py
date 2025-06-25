@@ -15,6 +15,7 @@ from io_utils import (
     write_summary,
     copy_config,
     apply_burst_filter,
+    Summary,
 )
 from utils import parse_datetime
 
@@ -210,7 +211,7 @@ def test_load_events_string_nan(tmp_path):
 
 
 def test_write_summary_and_copy_config(tmp_path):
-    summary = {"a": 1, "b": 2}
+    summary = Summary(calibration={"a": 1, "b": 2})
     outdir = tmp_path / "out"
     ts = "19700101T000000Z"
     cfg = {"test": 1}
@@ -226,7 +227,7 @@ def test_write_summary_and_copy_config(tmp_path):
 
 def test_write_summary_with_nullable_integers(tmp_path):
     series = pd.Series([1, pd.NA], dtype="Int64")
-    summary = {"present": series.iloc[0], "missing": series.iloc[1], "list": series.tolist()}
+    summary = Summary(calibration={"present": series.iloc[0], "missing": series.iloc[1], "list": series.tolist()})
     outdir = tmp_path / "out2"
     ts = "19700101T000001Z"
     results = write_summary(outdir, summary, ts)
@@ -234,13 +235,13 @@ def test_write_summary_with_nullable_integers(tmp_path):
     assert summary_path.exists()
     with open(summary_path, "r", encoding="utf-8") as f:
         loaded = json.load(f)
-    assert loaded["present"] == 1
-    assert loaded["missing"] is None
-    assert loaded["list"] == [1, None]
+    assert loaded["calibration"]["present"] == 1
+    assert loaded["calibration"]["missing"] is None
+    assert loaded["calibration"]["list"] == [1, None]
 
 
 def test_write_summary_with_nan_values(tmp_path):
-    summary = {"nan": float("nan"), "inf": float("inf"), "list": [float("nan"), 1.0]}
+    summary = Summary(calibration={"nan": float("nan"), "inf": float("inf"), "list": [float("nan"), 1.0]})
     outdir = tmp_path / "out_nan"
     ts = "19700101T000002Z"
     results = write_summary(outdir, summary, ts)
@@ -248,9 +249,9 @@ def test_write_summary_with_nan_values(tmp_path):
     assert summary_path.exists()
     with open(summary_path, "r", encoding="utf-8") as f:
         loaded = json.load(f)
-    assert loaded["nan"] is None
-    assert loaded["inf"] is None
-    assert loaded["list"] == [None, 1.0]
+    assert loaded["calibration"]["nan"] is None
+    assert loaded["calibration"]["inf"] is None
+    assert loaded["calibration"]["list"] == [None, 1.0]
 
 
 def test_apply_burst_filter_no_removal():
