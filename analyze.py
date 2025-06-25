@@ -106,8 +106,11 @@ from utils import (
     parse_time_arg,
     to_utc_datetime,
 )
-from utils import parse_datetime, to_seconds
-from utils.time_utils import to_datetime_utc, tz_convert_utc
+from utils.time_utils import (
+    to_datetime_utc,
+    parse_timestamp,
+    to_epoch_seconds,
+)
 from baseline_utils import (
     subtract_baseline_dataframe,
     subtract_baseline_counts,
@@ -223,14 +226,8 @@ def prepare_analysis_df(
     """Apply time window cuts and derive drift parameters."""
 
     df_analysis = df.copy()
-    ts = df_analysis["timestamp"]
-    if not pd.api.types.is_datetime64_any_dtype(ts):
-        df_analysis["timestamp"] = ts.map(parse_datetime)
-    else:
-        if ts.dt.tz is None:
-            df_analysis["timestamp"] = ts.map(parse_datetime)
-        else:
-            df_analysis["timestamp"] = tz_convert_utc(ts)
+    ts = df_analysis["timestamp"].map(parse_timestamp)
+    df_analysis["timestamp"] = ts
 
     if spike_end is not None:
         df_analysis = df_analysis[df_analysis["timestamp"] >= spike_end].reset_index(drop=True)
@@ -815,7 +812,7 @@ def main(argv=None):
         events_all = load_events(args.input, column_map=cfg.get("columns"))
 
         # Parse timestamps to UTC ``Timestamp`` objects
-        events_all["timestamp"] = events_all["timestamp"].map(parse_datetime)
+        events_all["timestamp"] = events_all["timestamp"].map(parse_timestamp)
 
 
     except Exception as e:
@@ -1000,7 +997,7 @@ def main(argv=None):
 
     if drift_rate != 0.0 or drift_mode != "linear" or drift_params is not None:
         try:
-            ts_seconds = to_seconds(df_analysis["timestamp"])
+            ts_seconds = df_analysis["timestamp"].map(to_epoch_seconds).to_numpy()
             df_analysis["adc"] = apply_linear_adc_shift(
                 df_analysis["adc"].values,
                 ts_seconds,
@@ -1575,7 +1572,7 @@ def main(argv=None):
             t0_dt = to_utc_datetime(t0_global)
             cut = t0_dt + timedelta(seconds=float(args.settle_s))
             iso_events = iso_events[iso_events["timestamp"] >= cut]
-        ts_vals = to_seconds(iso_events["timestamp"])
+        ts_vals = iso_events["timestamp"].map(to_epoch_seconds).to_numpy()
         times_dict = {iso: ts_vals}
         weights_map = {iso: iso_events["weight"].values}
         fit_cfg = {
@@ -1684,7 +1681,7 @@ def main(argv=None):
                 )
                 mask = probs > 0
                 filtered_df = df_analysis[mask]
-                ts_vals = to_seconds(filtered_df["timestamp"])
+                ts_vals = filtered_df["timestamp"].map(to_epoch_seconds).to_numpy()
                 times_dict = {iso: ts_vals}
                 weights_local = {iso: probs[mask]}
                 cfg_fit = {

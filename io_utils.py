@@ -14,8 +14,8 @@ from typing import Any, Iterator
 from constants import load_nuclide_overrides
 
 import numpy as np
-from utils import to_native, parse_datetime, to_seconds
-from utils.time_utils import tz_convert_utc
+from utils import to_native
+from utils.time_utils import parse_timestamp, to_epoch_seconds
 import jsonschema
 
 
@@ -246,8 +246,7 @@ def ensure_dir(path):
         p.mkdir(parents=True, exist_ok=True)
 
 
-# parse_datetime is re-exported from utils for backward compatibility
-# The implementation now lives in utils.parse_datetime
+# parse_timestamp is provided by ``utils.time_utils``
 
 
 def _merge_dicts(base: dict, override: dict) -> dict:
@@ -343,7 +342,7 @@ def load_events(csv_path, *, column_map=None):
     if "timestamp" in df.columns:
         def _safe_parse(val):
             try:
-                return parse_datetime(val)
+                return parse_timestamp(val)
             except Exception:
                 return pd.NaT
 
@@ -397,7 +396,7 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
     df : pandas.DataFrame
         Event data containing a ``timestamp`` column. Values may be numeric
         epoch seconds or ``datetime64`` objects. All timestamps are first
-        converted to ``datetime64`` using :func:`parse_datetime` and the
+        converted to ``datetime64`` using :func:`parse_timestamp` and the
         DataFrame is updated accordingly. Seconds are only used internally for
         histogram calculations.
     cfg : dict, optional
@@ -427,16 +426,9 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
     removed_total = 0
     out_df = df.copy()
 
-    ts = out_df["timestamp"]
-    if not pd.api.types.is_datetime64_any_dtype(ts):
-        ts = ts.map(parse_datetime)
-    else:
-        if ts.dt.tz is None:
-            ts = ts.map(parse_datetime)
-        else:
-            ts = tz_convert_utc(ts)
+    ts = out_df["timestamp"].map(parse_timestamp)
     out_df["timestamp"] = ts
-    times_sec = to_seconds(ts)
+    times_sec = ts.map(to_epoch_seconds).to_numpy()
 
     # ───── micro-burst veto ─────
     if mode in ("micro", "both"):
@@ -472,16 +464,9 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
             out_df = out_df[~to_remove].reset_index(drop=True)
 
             # Recalculate times after removing events
-            ts = out_df["timestamp"]
-            if not pd.api.types.is_datetime64_any_dtype(ts):
-                ts = ts.map(parse_datetime)
-            else:
-                if ts.dt.tz is None:
-                    ts = ts.map(parse_datetime)
-                else:
-                    ts = tz_convert_utc(ts)
+            ts = out_df["timestamp"].map(parse_timestamp)
             out_df["timestamp"] = ts
-            times_sec = to_seconds(ts)
+            times_sec = ts.map(to_epoch_seconds).to_numpy()
 
     # ───── rate-based veto ─────
     if mode in ("rate", "both"):
