@@ -5,6 +5,7 @@ import json
 import logging
 import warnings
 from datetime import datetime, timezone
+from dataclasses import dataclass, field
 from dateutil import parser as date_parser
 import argparse
 import pandas as pd
@@ -53,6 +54,33 @@ def extract_time_series_events(events, cfg):
     return out
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class Summary:
+    """Summary information written to ``summary.json``."""
+
+    timestamp: str | None = None
+    config_used: str | None = None
+    calibration: dict = field(default_factory=dict)
+    calibration_valid: bool | None = None
+    spectral_fit: dict = field(default_factory=dict)
+    time_fit: dict = field(default_factory=dict)
+    systematics: dict = field(default_factory=dict)
+    baseline: dict = field(default_factory=dict)
+    radon_results: dict = field(default_factory=dict)
+    noise_cut: dict = field(default_factory=dict)
+    burst_filter: dict = field(default_factory=dict)
+    adc_drift_rate: float | None = None
+    adc_drift_mode: str | None = None
+    adc_drift_params: dict = field(default_factory=dict)
+    efficiency: dict = field(default_factory=dict)
+    random_seed: int | None = None
+    git_commit: str | None = None
+    requirements_sha256: str | None = None
+    cli_sha256: str | None = None
+    cli_args: list[str] = field(default_factory=list)
+    analysis: dict = field(default_factory=dict)
 
 
 CONFIG_SCHEMA = {
@@ -476,6 +504,7 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
     return out_df, removed_total
 
 
+
 @dataclass
 class Summary(Mapping[str, Any]):
     """Container for run summary information."""
@@ -536,7 +565,7 @@ def write_summary(
 
     summary_path = results_folder / "summary.json"
 
-    sanitized = to_native(summary_dict)
+    sanitized = to_native(summary)
 
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(sanitized, f, indent=4)

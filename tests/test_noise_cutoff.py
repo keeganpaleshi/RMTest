@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
 import numpy as np
 from calibration import CalibrationResult
+from dataclasses import asdict
 from fitting import FitResult, FitParams
 
 
@@ -64,7 +65,7 @@ def test_noise_cutoff_filters_events(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
     def fake_write(out_dir, summary, timestamp=None):
-        captured["summary"] = summary
+        captured["summary"] = asdict(summary)
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
         return str(d)
@@ -138,7 +139,7 @@ def test_invalid_noise_cutoff_skips_cut(tmp_path, monkeypatch, caplog):
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
     def fake_write(out_dir, summary, timestamp=None):
-        captured["summary"] = summary
+        captured["summary"] = asdict(summary)
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
         return str(d)

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
+from dataclasses import asdict
 import baseline_noise
 from fitting import FitResult, FitParams
 
@@ -78,7 +79,7 @@ def test_cli_baseline_range_overrides_config_again(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
 
     def fake_write(out_dir, summary, timestamp=None):
-        captured["summary"] = summary
+        captured["summary"] = asdict(summary)
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
         return str(d)

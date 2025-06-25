@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
 from calibration import CalibrationResult
 from fitting import FitResult, FitParams
+from dataclasses import asdict
 
 
 def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
@@ -560,7 +561,7 @@ def test_spike_count_cli(tmp_path, monkeypatch):
     saved = {}
 
     def fake_write(out_dir, summary, timestamp=None):
-        saved["summary"] = summary
+        saved["summary"] = asdict(summary)
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
         return str(d)
@@ -698,7 +699,7 @@ def test_assay_efficiency_list(tmp_path, monkeypatch):
     saved = {}
 
     def fake_write(out_dir, summary, timestamp=None):
-        saved["summary"] = summary
+        saved["summary"] = asdict(summary)
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
         return str(d)
@@ -781,7 +782,7 @@ def test_spike_efficiency_list(tmp_path, monkeypatch):
     saved = {}
 
     def fake_write(out_dir, summary, timestamp=None):
-        saved["summary"] = summary
+        saved["summary"] = asdict(summary)
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
         return str(d)
@@ -941,7 +942,7 @@ def test_settle_s_summary(tmp_path, monkeypatch):
     captured = {}
 
     def fake_write(out_dir, summary, timestamp=None):
-        captured["summary"] = summary
+        captured["summary"] = asdict(summary)
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
         return str(d)
@@ -1188,7 +1189,7 @@ def test_spike_period_cli(tmp_path, monkeypatch):
     saved = {}
 
     def fake_write(out_dir, summary, timestamp=None):
-        saved["summary"] = summary
+        saved["summary"] = asdict(summary)
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
         return str(d)
@@ -1251,7 +1252,7 @@ def test_seed_cli_sets_random_seed(tmp_path, monkeypatch):
 
     captured = {}
     def fake_write(out_dir, summary, timestamp=None):
-        captured["summary"] = summary
+        captured["summary"] = asdict(summary)
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
         return str(d)
@@ -1310,7 +1311,7 @@ def test_ambient_concentration_recorded(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "plot_equivalent_air", fake_plot_equivalent_air)
 
     def fake_write(out_dir, summary, timestamp=None):
-        captured["summary"] = summary
+        captured["summary"] = asdict(summary)
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
         return str(d)
@@ -1370,7 +1371,7 @@ def test_ambient_concentration_from_config(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "plot_equivalent_air", fake_plot_equivalent_air)
 
     def fake_write(out_dir, summary, timestamp=None):
-        captured["summary"] = summary
+        captured["summary"] = asdict(summary)
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
         return str(d)
@@ -1651,7 +1652,7 @@ def test_burst_mode_summary_config(tmp_path, monkeypatch):
     saved = {}
 
     def fake_write(out_dir, summary, timestamp=None):
-        saved["summary"] = summary
+        saved["summary"] = asdict(summary)
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
         return str(d)
@@ -1770,7 +1771,7 @@ def test_ambient_concentration_default_none(tmp_path, monkeypatch):
     captured = {}
 
     def fake_write(out_dir, summary, timestamp=None):
-        captured["summary"] = summary
+        captured["summary"] = asdict(summary)
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
         return str(d)
@@ -1885,7 +1886,7 @@ def test_spike_periods_null_config(tmp_path, monkeypatch):
     saved = {}
 
     def fake_write(out_dir, summary, timestamp=None):
-        saved["summary"] = summary
+        saved["summary"] = asdict(summary)
         d = Path(out_dir) / "x"
         d.mkdir(parents=True, exist_ok=True)
         return str(d)
