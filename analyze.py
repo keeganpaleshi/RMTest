@@ -108,7 +108,7 @@ from utils import (
 )
 from utils import parse_datetime, to_seconds
 from baseline_utils import (
-    subtract_baseline_dataframe,
+    apply_baseline_correction,
     subtract_baseline_counts,
     subtract_baseline_rate,
     compute_dilution_factor,
@@ -1235,7 +1235,7 @@ def main(argv=None):
         t_base0 = args.baseline_range[0]
         t_base1 = args.baseline_range[1]
         edges = adc_hist_edges(df_analysis["adc"].values, hist_bins)
-        df_analysis = subtract_baseline_dataframe(
+        df_analysis = apply_baseline_correction(
             df_analysis,
             events_all,
             bins=edges,
