@@ -140,22 +140,18 @@ class FitResult:
     @property
     def cov_df(self) -> pd.DataFrame:
         """Return covariance matrix as a :class:`pandas.DataFrame`."""
-        if self._cov_df is not None:
-            return self._cov_df
-        if self.cov is None or self.param_index is None:
-            df = pd.DataFrame()
-            self._cov_df = df
-            return df
-        ordered = sorted(self.param_index.items(), key=lambda kv: kv[1])
-        names = [n for n, _ in ordered]
-        cov = np.asarray(self.cov, dtype=float)
-        if cov.ndim == 2 and cov.shape[0] == len(names):
-            df = pd.DataFrame(cov, index=names, columns=names)
-            self._cov_df = df
-            return df
-        df = pd.DataFrame()
-        self._cov_df = df
-        return df
+        if self._cov_df is None:
+            if self.cov is None or self.param_index is None:
+                self._cov_df = pd.DataFrame()
+            else:
+                ordered = sorted(self.param_index.items(), key=lambda kv: kv[1])
+                names = [n for n, _ in ordered]
+                cov = np.asarray(self.cov, dtype=float)
+                if cov.ndim == 2 and cov.shape[0] == len(names):
+                    self._cov_df = pd.DataFrame(cov, index=names, columns=names)
+                else:
+                    self._cov_df = pd.DataFrame()
+        return self._cov_df
 
 
 def fit_decay(times, priors, t0=0.0, t_end=None, flags=None):
