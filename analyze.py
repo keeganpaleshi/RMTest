@@ -106,7 +106,8 @@ from utils import (
     parse_time_arg,
     to_utc_datetime,
 )
-from utils import parse_datetime, to_seconds
+from utils import to_seconds
+from utils.time_utils import parse_timestamp, to_epoch_seconds
 from baseline_utils import (
     subtract_baseline_dataframe,
     subtract_baseline_counts,
@@ -224,10 +225,10 @@ def prepare_analysis_df(
     df_analysis = df.copy()
     ts = df_analysis["timestamp"]
     if not pd.api.types.is_datetime64_any_dtype(ts):
-        df_analysis["timestamp"] = ts.map(parse_datetime)
+        df_analysis["timestamp"] = ts.map(parse_timestamp)
     else:
         if ts.dt.tz is None:
-            df_analysis["timestamp"] = ts.map(parse_datetime)
+            df_analysis["timestamp"] = ts.map(parse_timestamp)
         else:
             df_analysis["timestamp"] = ts.dt.tz_convert(timezone.utc)
 
@@ -813,8 +814,8 @@ def main(argv=None):
     try:
         events_all = load_events(args.input, column_map=cfg.get("columns"))
 
-        # Parse timestamps to UTC ``Timestamp`` objects
-        events_all["timestamp"] = events_all["timestamp"].map(parse_datetime)
+        # Ensure timestamps are UTC ``Timestamp`` objects
+        events_all["timestamp"] = events_all["timestamp"].map(parse_timestamp)
 
 
     except Exception as e:
@@ -1164,7 +1165,7 @@ def main(argv=None):
         t_end_base = baseline_range[1]
         if t_end_base <= t_start_base:
             raise ValueError("baseline_range end time must be greater than start time")
-        events_all_ts = pd.to_datetime(events_all["timestamp"], utc=True)
+        events_all_ts = events_all["timestamp"].map(parse_timestamp)
         mask_base_full = (events_all_ts >= t_start_base) & (events_all_ts < t_end_base)
         mask_base = (df_analysis["timestamp"] >= t_start_base) & (
             df_analysis["timestamp"] < t_end_base
@@ -1448,7 +1449,7 @@ def main(argv=None):
                 print(f"WARNING: No events found for {iso} in [{lo}, {hi}] MeV.")
                 continue
 
-            first_ts = pd.to_datetime(iso_events["timestamp"].iloc[0], utc=True)
+            first_ts = parse_timestamp(iso_events["timestamp"].iloc[0])
             t0_dt = to_utc_datetime(t0_global)
             settle = timedelta(seconds=float(args.settle_s or 0))
             t_start_fit_dt = max(first_ts, t0_dt + settle)
@@ -1641,7 +1642,7 @@ def main(argv=None):
         mask210 = (
             (df_analysis["energy_MeV"] >= lo)
             & (df_analysis["energy_MeV"] <= hi)
-            & (df_analysis["timestamp"] >= pd.to_datetime(t0_global, utc=True))
+            & (df_analysis["timestamp"] >= parse_timestamp(t0_global))
             & (df_analysis["timestamp"] <= t_end_global)
         )
         events_p210 = df_analysis[mask210]
@@ -2173,8 +2174,7 @@ def main(argv=None):
         from radon_activity import radon_activity_curve
 
         times = np.linspace(t0_global.timestamp(), t_end_global_ts, 100)
-        times_dt = pd.to_datetime(times, unit="s", utc=True)
-        t_rel = (times_dt - analysis_start).total_seconds()
+        t_rel = times - to_epoch_seconds(analysis_start)
 
         A214 = dA214 = None
         if "Po214" in time_fit_results:
@@ -2251,8 +2251,7 @@ def main(argv=None):
                 radon_interval[1].timestamp(),
                 50,
             )
-            times_trend_dt = pd.to_datetime(times_trend, unit="s", utc=True)
-            rel_trend = (times_trend_dt - analysis_start).total_seconds()
+            rel_trend = times_trend - to_epoch_seconds(analysis_start)
             A214_tr = None
             if "Po214" in time_fit_results:
                 fit_result = time_fit_results["Po214"]

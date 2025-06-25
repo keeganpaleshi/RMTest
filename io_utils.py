@@ -14,7 +14,8 @@ from typing import Any, Iterator
 from constants import load_nuclide_overrides
 
 import numpy as np
-from utils import to_native, parse_datetime, to_seconds
+from utils import to_native, to_seconds
+from utils.time_utils import parse_timestamp
 import jsonschema
 
 
@@ -245,8 +246,7 @@ def ensure_dir(path):
         p.mkdir(parents=True, exist_ok=True)
 
 
-# parse_datetime is re-exported from utils for backward compatibility
-# The implementation now lives in utils.parse_datetime
+# parse_timestamp is re-exported from utils.time_utils
 
 
 def _merge_dicts(base: dict, override: dict) -> dict:
@@ -342,7 +342,7 @@ def load_events(csv_path, *, column_map=None):
     if "timestamp" in df.columns:
         def _safe_parse(val):
             try:
-                return parse_datetime(val)
+                return parse_timestamp(val)
             except Exception:
                 return pd.NaT
 
@@ -396,7 +396,7 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
     df : pandas.DataFrame
         Event data containing a ``timestamp`` column. Values may be numeric
         epoch seconds or ``datetime64`` objects. All timestamps are first
-        converted to ``datetime64`` using :func:`parse_datetime` and the
+        converted to ``datetime64`` using :func:`parse_timestamp` and the
         DataFrame is updated accordingly. Seconds are only used internally for
         histogram calculations.
     cfg : dict, optional
@@ -428,10 +428,10 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
 
     ts = out_df["timestamp"]
     if not pd.api.types.is_datetime64_any_dtype(ts):
-        ts = ts.map(parse_datetime)
+        ts = ts.map(parse_timestamp)
     else:
         if ts.dt.tz is None:
-            ts = ts.map(parse_datetime)
+            ts = ts.map(parse_timestamp)
         else:
             ts = ts.dt.tz_convert("UTC")
     out_df["timestamp"] = ts
@@ -473,10 +473,10 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
             # Recalculate times after removing events
             ts = out_df["timestamp"]
             if not pd.api.types.is_datetime64_any_dtype(ts):
-                ts = ts.map(parse_datetime)
+                ts = ts.map(parse_timestamp)
             else:
                 if ts.dt.tz is None:
-                    ts = ts.map(parse_datetime)
+                    ts = ts.map(parse_timestamp)
                 else:
                     ts = ts.dt.tz_convert("UTC")
             out_df["timestamp"] = ts

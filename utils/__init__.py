@@ -6,6 +6,7 @@ import math
 from dataclasses import is_dataclass, asdict
 import argparse
 from datetime import datetime, timezone, tzinfo, timedelta
+from .time_utils import parse_timestamp as _parse_ts, to_epoch_seconds
 from dateutil import parser as date_parser
 from dateutil.tz import gettz
 
@@ -184,42 +185,12 @@ def cps_to_bq(rate_cps, volume_liters=None):
 
 
 def parse_timestamp(s) -> float:
-    """Parse an ISO-8601 string, numeric seconds, or ``datetime``.
+    """Backward compatible wrapper returning epoch seconds."""
 
-    Any string without timezone information is interpreted as UTC.
-    The return value is the Unix epoch time in seconds (UTC).
-    """
-
-    if isinstance(s, (int, float)):
-        return float(s)
-
-    if isinstance(s, datetime):
-        dt = s
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        else:
-            dt = dt.astimezone(timezone.utc)
-        return float(dt.timestamp())
-
-    if isinstance(s, str):
-        try:
-            return float(s)
-        except ValueError:
-            pass
-
-        try:
-            dt = date_parser.isoparse(s)
-        except (ValueError, OverflowError) as e:
-            raise argparse.ArgumentTypeError(f"could not parse time: {s!r}") from e
-
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        else:
-            dt = dt.astimezone(timezone.utc)
-
-        return float(dt.timestamp())
-
-    raise argparse.ArgumentTypeError(f"could not parse time: {s!r}")
+    try:
+        return to_epoch_seconds(s)
+    except Exception as e:
+        raise argparse.ArgumentTypeError(f"could not parse time: {s!r}") from e
 
 
 def to_utc_datetime(value, tz="UTC") -> datetime:
@@ -262,33 +233,24 @@ def parse_datetime(value):
     raised if the input cannot be parsed.
     """
 
-    try:
-        dt = to_utc_datetime(value)
-    except ValueError as e:
-        raise ValueError(f"invalid datetime: {value!r}") from e
-
     if pd is None:
         raise RuntimeError("pandas is required for parse_datetime")
 
-    return pd.Timestamp(dt.replace(tzinfo=None), tz="UTC")
+    try:
+        return _parse_ts(value)
+    except Exception as e:
+        raise ValueError(f"invalid datetime: {value!r}") from e
 
 
 def to_seconds(series: pd.Series) -> np.ndarray:
     """Return float seconds from a timestamp series."""
-
-    if not pd.api.types.is_datetime64_any_dtype(series):
-        return series.astype(float).to_numpy()
-    if getattr(series.dtype, "tz", None) is None:
-        series = series.map(parse_datetime)
-    else:
-        series = series.dt.tz_convert("UTC")
-    return series.astype("int64").to_numpy() / 1e9
+    return np.array([to_epoch_seconds(v) for v in series])
 
 
 def parse_time(s, tz="UTC") -> float:
     """Parse a timestamp string, number or ``datetime`` into Unix seconds."""
 
-    return parse_timestamp(s)
+    return to_epoch_seconds(s)
 
 
 def parse_time_arg(val, tz="UTC") -> datetime:
