@@ -48,8 +48,8 @@ def compute_dilution_factor(monitor_volume: float, sample_volume: float) -> floa
     return float(monitor_volume) / float(total)
 
 
-def _to_datetime64(col: pd.Series) -> np.ndarray:
-    """Return timestamp column as an array of ``datetime64[ns, UTC]``."""
+def _to_datetime64(col: pd.Series) -> pd.DatetimeIndex | pd.core.arrays.DatetimeArray:
+    """Return timestamp column as a ``pandas.DatetimeArray`` in UTC."""
 
     if pd.api.types.is_datetime64_any_dtype(col):
         ser = col
@@ -65,7 +65,7 @@ def _to_datetime64(col: pd.Series) -> np.ndarray:
             .astype("datetime64[ns, UTC]")
             .array
         )
-    return np.asarray(ts)
+    return ts
 
 
 def _rate_histogram(df: pd.DataFrame, bins) -> tuple[np.ndarray, float]:

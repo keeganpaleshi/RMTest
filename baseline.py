@@ -9,7 +9,7 @@ __all__ = ["rate_histogram", "subtract_baseline", "subtract_baseline_dataframe"]
 
 
 def _to_datetime64(col):
-    """Return timestamp column as an array of ``datetime64[ns, UTC]``."""
+    """Return timestamp column as a ``pandas.DatetimeArray`` in UTC."""
 
     if pd.api.types.is_datetime64_any_dtype(col):
         ser = col
@@ -25,7 +25,7 @@ def _to_datetime64(col):
             .astype("datetime64[ns, UTC]")
             .array
         )
-    return np.asarray(ts)
+    return ts
 
 
 def rate_histogram(df, bins):
