@@ -166,6 +166,8 @@ deviates by more than this amount.
 
 `slope_MeV_per_ch` fixes the linear calibration slope. When provided only the
 Po‑214 peak is used to determine the intercept so the two‑point fit is skipped.
+Alternatively `intercept_MeV` may be supplied along with the slope to bypass
+searching for the Po‑214 peak entirely.
 
 `noise_cutoff` defines a pedestal noise threshold in ADC.  Events with raw
 ADC values at or below this threshold are removed before any fits.  The
@@ -195,8 +197,9 @@ To disable the cut:
 
 `slope_MeV_per_ch` may also be specified under `calibration` to fix the
 ADC→MeV conversion. When this slope is given the two‑point fit is skipped
-and the provided value is used directly. Set it to `null` to retain the
-automatic calibration.
+and the provided value is used directly. If `intercept_MeV` is also
+supplied the calibration is fully fixed and Po‑214 is no longer searched.
+Set either value to `null` to retain the automatic calibration.
 
 When the cut is applied the analysis logs how many events were removed. This
 count also appears in `summary.json` under `noise_cut.removed_events`.
