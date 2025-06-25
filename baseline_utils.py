@@ -94,13 +94,17 @@ def apply_baseline_subtraction(
     t_base1: datetime,
     mode: str = "all",
     live_time_analysis: float | None = None,
+    *,
+    allow_fallback: bool = False,
 ) -> pd.DataFrame:
     """Return new ``DataFrame`` with baseline-subtracted spectra.
 
-    ``t_base0`` and ``t_base1`` may be naïve or timezone-aware.  They are
+    ``t_base0`` and ``t_base1`` may be naïve or timezone-aware. They are
     interpreted in UTC and compared using integer nanoseconds to avoid
     issues with differing time zone information between ``df_full`` and
-    the provided range.
+    the provided range. When ``allow_fallback`` is ``False`` (default), a
+    :class:`RuntimeError` is raised if the baseline range contains no
+    events.
     """
 
     assert mode in ("none", "electronics", "radon", "all")
@@ -120,7 +124,10 @@ def apply_baseline_subtraction(
     t1_ns = t1.value
     mask = (ts_int >= t0_ns) & (ts_int <= t1_ns)
     if not mask.any():
-        logging.warning("baseline_range matched no events – skipping subtraction")
+        msg = "baseline_range matched no events – skipping subtraction"
+        if not allow_fallback:
+            raise RuntimeError(msg)
+        logging.warning(msg)
         return df_analysis.copy()
 
     rate_bl, live_bl = rate_histogram(df_full.loc[mask], bins)
@@ -144,12 +151,16 @@ def subtract(
     mode: str = "all",
     *,
     live_time_analysis: float | None = None,
+    allow_fallback: bool = False,
     **kw,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Return baseline-corrected spectra and statistical errors.
 
     Uncertainties are propagated in quadrature from the analysis and
     baseline histograms unless ``kw.get("uncert_prop") == "none"``.
+    If ``allow_fallback`` is ``False`` (default) a
+    :class:`RuntimeError` is raised when the baseline interval contains
+    no events.
     """
 
     df_corr = apply_baseline_subtraction(
@@ -160,6 +171,7 @@ def subtract(
         t_base1,
         mode=mode,
         live_time_analysis=live_time_analysis,
+        allow_fallback=allow_fallback,
     )
 
     if kw.get("uncert_prop") == "none":
