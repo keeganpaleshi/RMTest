@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-from datetime import datetime, timezone
 import pytest
 
 import sys
@@ -30,8 +29,8 @@ def test_subtract_baseline_datetime_column():
         df_an,
         df_full,
         bins=bins,
-        t_base0=datetime(1970,1,2,0,0,0,tzinfo=timezone.utc),
-        t_base1=datetime(1970,1,2,0,0,40,tzinfo=timezone.utc),
+        t_base0=pd.Timestamp("1970-01-02T00:00:00Z"),
+        t_base1=pd.Timestamp("1970-01-02T00:00:40Z"),
         mode="all",
     )
     integral = out["subtracted_adc_hist"].iloc[0].sum()

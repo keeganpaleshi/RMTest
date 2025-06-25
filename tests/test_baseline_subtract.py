@@ -2,7 +2,6 @@ import pytest
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from datetime import datetime, timezone
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -63,8 +62,8 @@ def test_baseline_none_datetime():
         df,
         df,
         bins=bins,
-        t_base0=datetime.fromtimestamp(0, tz=timezone.utc),
-        t_base1=datetime.fromtimestamp(5, tz=timezone.utc),
+        t_base0=pd.Timestamp(0, unit="s", tz="UTC"),
+        t_base1=pd.Timestamp(5, unit="s", tz="UTC"),
         mode="none",
     )
     hist_before, _ = baseline.rate_histogram(df, bins)
@@ -87,8 +86,8 @@ def test_baseline_time_norm_datetime():
         df_an,
         df_full,
         bins=bins,
-        t_base0=datetime.fromtimestamp(100, tz=timezone.utc),
-        t_base1=datetime.fromtimestamp(140, tz=timezone.utc),
+        t_base0=pd.Timestamp(100, unit="s", tz="UTC"),
+        t_base1=pd.Timestamp(140, unit="s", tz="UTC"),
         mode="all",
     )
     integral = out["subtracted_adc_hist"].iloc[0].sum()

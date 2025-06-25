@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import argparse
-from datetime import datetime, timezone
 
 import sys
 from pathlib import Path
@@ -34,8 +33,8 @@ def test_subtract_baseline_preserves_dtype():
         df,
         df,
         bins=bins,
-        t_base0=datetime(1970, 1, 1, tzinfo=timezone.utc),
-        t_base1=datetime(1970, 1, 1, 0, 2, tzinfo=timezone.utc),
+        t_base0=pd.Timestamp("1970-01-01T00:00:00Z"),
+        t_base1=pd.Timestamp("1970-01-01T00:00:02Z"),
         mode="none",
     )
     assert str(out["timestamp"].dtype) == "datetime64[ns, UTC]"
@@ -51,7 +50,7 @@ def test_prepare_analysis_df_preserves_dtype():
         spike_periods=[],
         run_periods=[],
         analysis_end=None,
-        t0_global=datetime(1970, 1, 1, tzinfo=timezone.utc),
+        t0_global=pd.Timestamp("1970-01-01T00:00:00Z"),
         cfg={},
         args=args,
     )
