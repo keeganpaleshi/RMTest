@@ -15,6 +15,7 @@ from constants import load_nuclide_overrides
 
 import numpy as np
 from utils import to_native, parse_datetime, to_seconds
+from utils.time_utils import tz_convert_utc
 import jsonschema
 
 
@@ -433,7 +434,7 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
         if ts.dt.tz is None:
             ts = ts.map(parse_datetime)
         else:
-            ts = ts.dt.tz_convert("UTC")
+            ts = tz_convert_utc(ts)
     out_df["timestamp"] = ts
     times_sec = to_seconds(ts)
 
@@ -478,7 +479,7 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
                 if ts.dt.tz is None:
                     ts = ts.map(parse_datetime)
                 else:
-                    ts = ts.dt.tz_convert("UTC")
+                    ts = tz_convert_utc(ts)
             out_df["timestamp"] = ts
             times_sec = to_seconds(ts)
 
