@@ -253,13 +253,13 @@ def to_utc_datetime(value, tz="UTC") -> datetime:
 
 def parse_datetime(value):
     """Parse an ISO-8601 string or numeric epoch value to a timezone aware
-    ``datetime64`` value.
+    :class:`pandas.Timestamp`.
 
     The function accepts strings like ``"2023-09-28T13:45:00-04:00"`` or
     numeric Unix timestamps (as ``int``, ``float`` or numeric ``str``). Any
     parsed time lacking a timezone is interpreted as UTC. On success a
-    ``datetime64[ns, UTC]`` scalar is returned. ``ValueError`` is raised if the
-    input cannot be parsed.
+    timezone-aware :class:`~pandas.Timestamp` in UTC is returned. ``ValueError``
+    is raised if the input cannot be parsed.
     """
 
     try:
