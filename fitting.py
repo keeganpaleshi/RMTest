@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import TypedDict, NotRequired
 
 import numpy as np
+import pandas as pd
 from iminuit import Minuit
 from scipy.optimize import curve_fit, OptimizeWarning
 from calibration import emg_left, gaussian
@@ -97,6 +98,17 @@ class FitResult:
                     raise ValueError(
                         "cov must be square and match param_index length"
                     )
+                if self.param_index is not None:
+                    names = [None] * len(self.param_index)
+                    for key, idx in self.param_index.items():
+                        names[idx] = key
+                    self.cov_df = pd.DataFrame(self.cov, index=names, columns=names)
+                else:
+                    self.cov_df = pd.DataFrame(self.cov)
+            else:
+                self.cov_df = pd.DataFrame(self.cov)
+        else:
+            self.cov_df = None
 
     def get_cov(self, name1: str, name2: str) -> float:
         """Return covariance entry for two parameters."""

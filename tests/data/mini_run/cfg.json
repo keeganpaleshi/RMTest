@@ -1,0 +1,28 @@
+{
+    "pipeline": {"log_level": "INFO"},
+    "calibration": {
+        "method": "two-point",
+        "peak_prominence": 0.0,
+        "peak_width": 1,
+        "nominal_adc": {"Po210": 1250, "Po218": 1300, "Po214": 1800},
+        "peak_search_radius": 50,
+        "fit_window_adc": 10,
+        "use_emg": false,
+        "init_sigma_adc": 5.0,
+        "init_tau_adc": 1.0,
+        "sanity_tolerance_mev": 1.0
+    },
+    "spectral_fit": {"do_spectral_fit": false, "expected_peaks": {"Po210": 0}},
+    "time_fit": {
+        "do_time_fit": true,
+        "window_po214": [1700, 1900],
+        "window_po218": [1270, 1330],
+        "hl_po214": [1.0, 0.0],
+        "eff_po214": [1.0, 0.0],
+        "hl_po218": [1.0, 0.0],
+        "eff_po218": [1.0, 0.0],
+        "flags": {}
+    },
+    "systematics": {"enable": false},
+    "plotting": {"plot_save_formats": ["png"]}
+}
