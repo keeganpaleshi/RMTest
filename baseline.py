@@ -1,5 +1,5 @@
-import numpy as np
 import logging
+import numpy as np
 import pandas as pd
 
 import baseline_utils
@@ -27,16 +27,6 @@ def rate_histogram(df, bins):
     return hist / live, live
 
 
-def subtract_baseline(df_analysis, df_full, bins, t_base0, t_base1,
-                         mode="all", live_time_analysis=None):
-    """Wrapper for :func:`baseline_utils.subtract_baseline_dataframe`."""
 
-    return subtract_baseline_dataframe(
-        df_analysis,
-        df_full,
-        bins,
-        t_base0,
-        t_base1,
-        mode=mode,
-        live_time_analysis=live_time_analysis,
-    )
+# Thin wrapper for backward compatibility
+subtract_baseline = baseline_utils.subtract_baseline_dataframe
