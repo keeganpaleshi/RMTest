@@ -572,3 +572,26 @@ def test_model_uncertainty_uses_covariance():
     with_cov = analyze._model_uncertainty(centers, widths, fr, "Po214", cfg, True)
     no_cov = analyze._model_uncertainty(centers, widths, fr_nc, "Po214", cfg, True)
     assert np.any(with_cov > no_cov)
+
+
+def test_model_uncertainty_nan_covariance():
+    centers = np.array([0.0, 1.0])
+    widths = np.array([1.0, 1.0])
+    params = {
+        "E_Po214": 1.0,
+        "dE_Po214": 0.1,
+        "N0_Po214": 2.0,
+        "dN0_Po214": 0.2,
+        "B_Po214": 0.0,
+        "dB_Po214": 0.0,
+        "fit_valid": True,
+    }
+    cov_nan = np.zeros((3, 3))
+    cov_nan[0, 1] = cov_nan[1, 0] = np.nan
+    fr_nan = FitResult(params, cov_nan, 0)
+    fr_zero = FitResult(params, np.zeros((3, 3)), 0)
+    cfg = {"time_fit": {"hl_po214": [10.0], "eff_po214": [1.0]}}
+    sigma_nan = analyze._model_uncertainty(centers, widths, fr_nan, "Po214", cfg, True)
+    sigma_zero = analyze._model_uncertainty(centers, widths, fr_zero, "Po214", cfg, True)
+    assert np.all(np.isfinite(sigma_nan))
+    assert np.allclose(sigma_nan, sigma_zero)
