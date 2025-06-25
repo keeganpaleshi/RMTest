@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from calibration import derive_calibration_constants
 
 
@@ -20,4 +21,5 @@ def test_fixed_slope_calibration():
 
     res = derive_calibration_constants(adc, cfg)
     assert res["a"] == 0.00435
+    assert res["c"] == pytest.approx(-0.14, abs=0.02)
     assert res["calibration_valid"] is True
