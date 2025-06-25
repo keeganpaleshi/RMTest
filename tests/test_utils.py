@@ -11,12 +11,11 @@ from utils import (
     cps_to_cpd,
     cps_to_bq,
     find_adc_bin_peaks,
-    parse_timestamp,
-    parse_time,
     parse_time_arg,
     to_seconds,
     LITERS_PER_M3,
 )
+from utils.time_utils import parse_timestamp, to_epoch_seconds
 
 
 def test_cps_to_cpd():
@@ -52,27 +51,27 @@ def test_find_adc_bin_peaks_basic():
 
 
 def test_parse_time_int():
-    assert parse_time(42) == pytest.approx(42.0)
+    assert to_epoch_seconds(42) == pytest.approx(42.0)
 
 
 def test_parse_time_float():
-    assert parse_time(42.5) == pytest.approx(42.5)
+    assert to_epoch_seconds(42.5) == pytest.approx(42.5)
 
 
 def test_parse_time_numeric_str():
-    assert parse_time("42") == pytest.approx(42.0)
+    assert to_epoch_seconds("42") == pytest.approx(42.0)
 
 
 def test_parse_time_numeric_str_float():
-    assert parse_time("42.5") == pytest.approx(42.5)
+    assert to_epoch_seconds("42.5") == pytest.approx(42.5)
 
 
 def test_parse_time_iso_no_fraction():
-    assert parse_time("1970-01-01T00:00:00Z") == pytest.approx(0.0)
+    assert to_epoch_seconds("1970-01-01T00:00:00Z") == pytest.approx(0.0)
 
 
 def test_parse_time_iso_fraction():
-    assert parse_time("1970-01-01T00:00:00.5Z") == pytest.approx(0.5)
+    assert to_epoch_seconds("1970-01-01T00:00:00.5Z") == pytest.approx(0.5)
 
 
 def test_parse_time_naive_timezone():
@@ -80,15 +79,21 @@ def test_parse_time_naive_timezone():
 
 
 def test_parse_timestamp_numeric():
-    assert parse_timestamp(42) == pytest.approx(42.0)
+    assert to_epoch_seconds(42) == pytest.approx(42.0)
 
 
 def test_parse_timestamp_iso():
-    assert parse_timestamp("1970-01-01T00:00:00Z") == pytest.approx(0.0)
+    assert to_epoch_seconds("1970-01-01T00:00:00Z") == pytest.approx(0.0)
 
 
 def test_parse_timestamp_datetime_naive():
-    assert parse_timestamp(datetime(1970, 1, 1)) == pytest.approx(0.0)
+    assert to_epoch_seconds(datetime(1970, 1, 1)) == pytest.approx(0.0)
+
+
+def test_parse_timestamp_returns_datetime():
+    dt = parse_timestamp("1970-01-01T00:00:00Z")
+    assert isinstance(dt, datetime)
+    assert dt == datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 def test_to_seconds_datetime_series():
