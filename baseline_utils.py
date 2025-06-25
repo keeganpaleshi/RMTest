@@ -49,15 +49,25 @@ def compute_dilution_factor(monitor_volume: float, sample_volume: float) -> floa
 
 
 def _to_datetime64(col: pd.Series) -> np.ndarray:
-    """Return numpy.ndarray[datetime64[ns, UTC]]."""
+    """Return ``numpy.ndarray`` of ``datetime64[ns]`` in UTC.
+
+    The conversion is timezone safe: timezone-aware values are converted to
+    UTC before dropping the timezone information.  Naive inputs are parsed via
+    :func:`parse_datetime` which also yields UTC values.
+    """
 
     if pd.api.types.is_datetime64_any_dtype(col):
         ser = col
         if getattr(ser.dtype, "tz", None) is not None:
-            ser = ser.dt.tz_convert("UTC").dt.tz_localize(None)
-        ts = ser.to_numpy(dtype="datetime64[ns]")
+            ser = ser.dt.tz_convert("UTC")
+        ts = ser.view("int64")
+        ts = ts.view("datetime64[ns]")
     else:
-        ts = col.map(parse_datetime).to_numpy(dtype="datetime64[ns]")
+        ser = col.map(parse_datetime)
+        if getattr(ser.dtype, "tz", None) is not None:
+            ser = ser.dt.tz_convert("UTC")
+        ts = ser.view("int64")
+        ts = ts.view("datetime64[ns]")
     return np.asarray(ts)
 
 
@@ -67,7 +77,8 @@ def _rate_histogram(df: pd.DataFrame, bins) -> tuple[np.ndarray, float]:
     if df.empty:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
     ts = _to_datetime64(df["timestamp"])
-    live = float((ts[-1] - ts[0]) / np.timedelta64(1, "s"))
+    ts_i64 = ts.view("int64")
+    live = float(ts_i64[-1] - ts_i64[0]) / 1e9
     hist_src = df.get("subtracted_adc_hist", df["adc"]).to_numpy()
     hist, _ = np.histogram(hist_src, bins=bins)
     if live <= 0:
@@ -95,10 +106,11 @@ def subtract_baseline_dataframe(
     if live_time_analysis is None:
         live_time_analysis = live_an
 
-    t0 = parse_datetime(t_base0).to_datetime64()
-    t1 = parse_datetime(t_base1).to_datetime64()
+    t0 = parse_datetime(t_base0).value
+    t1 = parse_datetime(t_base1).value
     ts_full = _to_datetime64(df_full["timestamp"])
-    mask = (ts_full >= t0) & (ts_full <= t1)
+    ts_i64 = ts_full.view("int64")
+    mask = (ts_i64 >= t0) & (ts_i64 <= t1)
     if not mask.any():
         logging.warning("baseline_range matched no events – skipping subtraction")
         return df_analysis.copy()
