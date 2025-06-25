@@ -1,10 +1,27 @@
 {
-    "allow_fallback": false,
+    "allow_fallback": true,
+    "pipeline": {
+        "log_level": "INFO",
+        "random_seed": null
+    },
+    "analysis": {},
+    "columns": {},
+    "baseline": {},
+    "burst_filter": {},
     "calibration": {
         "slope_MeV_per_ch": null,
         "intercept_MeV": null
     },
+    "spectral_fit": {
+        "bkg_mode": "auto",
+        "unbinned_likelihood": true
+    },
     "time_fit": {
         "window_po218": [3.05e6, 3.25e6]
+    },
+    "systematics": {},
+    "plotting": {
+        "plot_time_style": "lines",
+        "overlay_isotopes": true
     }
 }
