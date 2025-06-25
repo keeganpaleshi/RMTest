@@ -73,6 +73,7 @@ from io_utils import (
     load_events,
     write_summary,
     apply_burst_filter,
+    Summary,
 )
 from calibration import (
     derive_calibration_constants,
@@ -2044,31 +2045,31 @@ def main(argv=None):
             "peaks": cal_params.peaks,
         }
 
-    summary = {
-        "timestamp": now_str,
-        "config_used": args.config.name,
-        "calibration": cal_summary,
-        "calibration_valid": calibration_valid,
-        "spectral_fit": spec_dict,
-        "time_fit": time_fit_serializable,
-        "systematics": systematics_results,
-        "baseline": baseline_info,
-        "radon_results": radon_results,
-        "noise_cut": {"removed_events": int(n_removed_noise)},
-        "burst_filter": {
+    summary = Summary(
+        timestamp=now_str,
+        config_used=args.config.name,
+        calibration=cal_summary,
+        calibration_valid=calibration_valid,
+        spectral_fit=spec_dict,
+        time_fit=time_fit_serializable,
+        systematics=systematics_results,
+        baseline=baseline_info,
+        radon_results=radon_results,
+        noise_cut={"removed_events": int(n_removed_noise)},
+        burst_filter={
             "removed_events": int(n_removed_burst),
             "burst_mode": burst_mode,
         },
-        "adc_drift_rate": drift_rate,
-        "adc_drift_mode": drift_mode,
-        "adc_drift_params": drift_params,
-        "efficiency": efficiency_results,
-        "random_seed": seed_used,
-        "git_commit": commit,
-        "requirements_sha256": requirements_sha256,
-        "cli_sha256": cli_sha256,
-        "cli_args": cli_args,
-        "analysis": {
+        adc_drift_rate=drift_rate,
+        adc_drift_mode=drift_mode,
+        adc_drift_params=drift_params,
+        efficiency=efficiency_results,
+        random_seed=seed_used,
+        git_commit=commit,
+        requirements_sha256=requirements_sha256,
+        cli_sha256=cli_sha256,
+        cli_args=cli_args,
+        analysis={
             "analysis_start_time": t0_cfg,
             "analysis_end_time": t_end_cfg,
             "spike_end_time": spike_end_cfg,
@@ -2080,10 +2081,10 @@ def main(argv=None):
             ),
             "settle_s": cfg.get("analysis", {}).get("settle_s"),
         },
-    }
+    )
 
     if weights is not None:
-        summary["efficiency"]["blue_weights"] = list(weights)
+        summary.efficiency["blue_weights"] = list(weights)
 
     results_dir = Path(args.output_dir) / (args.job_id or now_str)
     if results_dir.exists():
