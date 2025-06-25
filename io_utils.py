@@ -5,11 +5,10 @@ import json
 import logging
 import warnings
 from datetime import datetime, timezone
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from dateutil import parser as date_parser
 import argparse
 import pandas as pd
-from dataclasses import dataclass, asdict
 from collections.abc import Mapping
 from typing import Any, Iterator
 from constants import load_nuclide_overrides
@@ -57,7 +56,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class Summary:
+class Summary(Mapping[str, Any]):
     """Summary information written to ``summary.json``."""
 
     timestamp: str | None = None
@@ -81,6 +80,18 @@ class Summary:
     cli_sha256: str | None = None
     cli_args: list[str] = field(default_factory=list)
     analysis: dict = field(default_factory=dict)
+
+    def __getitem__(self, key: str) -> Any:  # type: ignore[override]
+        return getattr(self, key)
+
+    def __iter__(self) -> Iterator[str]:  # type: ignore[override]
+        return iter(asdict(self))
+
+    def __len__(self) -> int:  # type: ignore[override]
+        return len(asdict(self))
+
+    def get(self, key: str, default=None) -> Any:
+        return getattr(self, key, default)
 
 
 CONFIG_SCHEMA = {
@@ -504,46 +515,6 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
     return out_df, removed_total
 
 
-
-@dataclass
-class Summary(Mapping[str, Any]):
-    """Container for run summary information."""
-
-    timestamp: str
-    config_used: str
-    calibration: dict
-    calibration_valid: bool
-    spectral_fit: dict
-    time_fit: dict
-    systematics: dict | None
-    baseline: dict | None
-    radon_results: dict | None
-    noise_cut: dict
-    burst_filter: dict
-    adc_drift_rate: float | None
-    adc_drift_mode: str | None
-    adc_drift_params: dict | None
-    efficiency: dict
-    random_seed: int | None
-    git_commit: str | None
-    requirements_sha256: str | None
-    cli_sha256: str | None
-    cli_args: list
-    analysis: dict
-
-    def __getitem__(self, key: str) -> Any:  # type: ignore[override]
-        return getattr(self, key)
-
-    def __iter__(self) -> Iterator[str]:  # type: ignore[override]
-        return iter(asdict(self))
-
-    def __len__(self) -> int:  # type: ignore[override]
-        return len(asdict(self))
-
-    def get(self, key: str, default=None) -> Any:
-        return getattr(self, key, default)
-
-
 def write_summary(
     output_dir: str | Path,
     summary_dict: Mapping[str, Any] | Summary,
@@ -565,7 +536,7 @@ def write_summary(
 
     summary_path = results_folder / "summary.json"
 
-    sanitized = to_native(summary)
+    sanitized = to_native(summary_dict)
 
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(sanitized, f, indent=4)
