@@ -290,7 +290,6 @@ def _ts_bin_centers_widths(times, cfg, t_start, t_end):
     arr = np.asarray(times)
     if np.issubdtype(arr.dtype, "datetime64"):
         arr = arr.astype("int64") / 1e9
-    arr = arr.astype(float)
     times_rel = arr - float(t_start)
     bin_mode = str(
         cfg.get("plot_time_binning_mode", cfg.get("time_bin_mode", "fixed"))
