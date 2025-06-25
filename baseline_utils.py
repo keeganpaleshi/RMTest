@@ -49,25 +49,42 @@ def compute_dilution_factor(monitor_volume: float, sample_volume: float) -> floa
 
 
 def _to_datetime64(col: pd.Series) -> np.ndarray:
-    """Return numpy.ndarray[datetime64[ns, UTC]]."""
+    """Return ``datetime64[ns]`` values in UTC.
+
+    ``col`` may contain timezone-aware or naïve timestamps. Any timezone-aware
+    values are first converted to UTC before being viewed as ``datetime64[ns]``
+    values.  This avoids pandas' implicit timezone conversions when using
+    ``astype`` directly.
+    """
 
     if pd.api.types.is_datetime64_any_dtype(col):
         ser = col
         if getattr(ser.dtype, "tz", None) is not None:
             ser = ser.dt.tz_convert("UTC")
-        ts = ser.to_numpy(dtype="datetime64[ns]")
+        ts = ser.view("int64")
+        ts = ts.view("datetime64[ns]")
     else:
-        ts = col.map(parse_datetime).to_numpy(dtype="datetime64[ns]")
+        ser = col.map(parse_datetime)
+        if getattr(ser.dtype, "tz", None) is not None:
+            ser = ser.dt.tz_convert("UTC")
+        ts = ser.view("int64")
+        ts = ts.view("datetime64[ns]")
     return np.asarray(ts)
 
 
 def _rate_histogram(df: pd.DataFrame, bins) -> tuple[np.ndarray, float]:
-    """Return histogram in counts/s and the live time in seconds."""
+    """Return histogram in counts/s and the live time in seconds.
+
+    The ``timestamp`` column may contain timezone-aware values. They are
+    converted to UTC before computing the live time using integer nanoseconds
+    to avoid any timezone-related rounding issues.
+    """
 
     if df.empty:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
     ts = _to_datetime64(df["timestamp"])
-    live = float((ts[-1] - ts[0]) / np.timedelta64(1, "s"))
+    ts_ns = ts.view("int64")
+    live = float((ts_ns[-1] - ts_ns[0]) / 1e9)
     hist_src = df.get("subtracted_adc_hist", df["adc"]).to_numpy()
     hist, _ = np.histogram(hist_src, bins=bins)
     if live <= 0:
@@ -84,7 +101,12 @@ def subtract_baseline_dataframe(
     mode: str = "all",
     live_time_analysis: float | None = None,
 ) -> pd.DataFrame:
-    """Return new ``DataFrame`` with baseline-subtracted spectra."""
+    """Return new ``DataFrame`` with baseline-subtracted spectra.
+
+    ``t_base0`` and ``t_base1`` may be timezone-aware. They are converted to
+    integer nanoseconds for comparison with the ``timestamp`` column to avoid
+    ambiguities due to mixed timezone information.
+    """
 
     assert mode in ("none", "electronics", "radon", "all")
 
@@ -95,10 +117,11 @@ def subtract_baseline_dataframe(
     if live_time_analysis is None:
         live_time_analysis = live_an
 
-    t0 = parse_datetime(t_base0).to_datetime64()
-    t1 = parse_datetime(t_base1).to_datetime64()
+    t0_ns = parse_datetime(t_base0).to_datetime64().view("int64")
+    t1_ns = parse_datetime(t_base1).to_datetime64().view("int64")
     ts_full = _to_datetime64(df_full["timestamp"])
-    mask = (ts_full >= t0) & (ts_full <= t1)
+    ts_full_ns = ts_full.view("int64")
+    mask = (ts_full_ns >= t0_ns) & (ts_full_ns <= t1_ns)
     if not mask.any():
         logging.warning("baseline_range matched no events – skipping subtraction")
         return df_analysis.copy()
