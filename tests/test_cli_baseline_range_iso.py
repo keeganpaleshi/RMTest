@@ -36,7 +36,7 @@ def test_cli_baseline_range_iso_strings(tmp_path, monkeypatch):
         {
             "fUniqueID": [1, 2, 3],
             "fBits": [0, 0, 0],
-            "timestamp": [0.5, 1.5, 2.5],
+            "timestamp": [pd.Timestamp(0.5, unit="s", tz="UTC"), pd.Timestamp(1.5, unit="s", tz="UTC"), pd.Timestamp(2.5, unit="s", tz="UTC")],
             "adc": [8.0, 8.0, 8.0],
             "fchannel": [1, 1, 1],
         }
@@ -132,7 +132,7 @@ def test_cli_baseline_range_timezone(tmp_path, monkeypatch):
         {
             "fUniqueID": [1, 2, 3],
             "fBits": [0, 0, 0],
-            "timestamp": [0.5, 1.5, 2.5],
+            "timestamp": [pd.Timestamp(0.5, unit="s", tz="UTC"), pd.Timestamp(1.5, unit="s", tz="UTC"), pd.Timestamp(2.5, unit="s", tz="UTC")],
             "adc": [8.0, 8.0, 8.0],
             "fchannel": [1, 1, 1],
         }

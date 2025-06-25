@@ -13,7 +13,7 @@ import baseline_utils
 
 def test_baseline_none():
     df = pd.DataFrame({
-        "timestamp": np.linspace(0, 9, 10),
+        "timestamp": pd.to_datetime(np.linspace(0, 9, 10), unit="s", utc=True),
         "adc": np.arange(10),
     })
     bins = np.arange(0, 11)
@@ -32,11 +32,11 @@ def test_baseline_none():
 
 def test_baseline_time_norm():
     df_an = pd.DataFrame({
-        "timestamp": np.linspace(0, 4, 5),
+        "timestamp": pd.to_datetime(np.linspace(0, 4, 5), unit="s", utc=True),
         "adc": [1, 2, 3, 4, 5],
     })
     df_bl = pd.DataFrame({
-        "timestamp": np.linspace(100, 140, 50),
+        "timestamp": pd.to_datetime(np.linspace(100, 140, 50), unit="s", utc=True),
         "adc": np.tile([1, 2, 3, 4, 5], 10),
     })
     df_full = pd.concat([df_an, df_bl], ignore_index=True)
@@ -55,7 +55,7 @@ def test_baseline_time_norm():
 
 def test_baseline_none_datetime():
     df = pd.DataFrame({
-        "timestamp": np.linspace(0, 9, 10),
+        "timestamp": pd.to_datetime(np.linspace(0, 9, 10), unit="s", utc=True),
         "adc": np.arange(10),
     })
     bins = np.arange(0, 11)
@@ -74,11 +74,11 @@ def test_baseline_none_datetime():
 
 def test_baseline_time_norm_datetime():
     df_an = pd.DataFrame({
-        "timestamp": np.linspace(0, 4, 5),
+        "timestamp": pd.to_datetime(np.linspace(0, 4, 5), unit="s", utc=True),
         "adc": [1, 2, 3, 4, 5],
     })
     df_bl = pd.DataFrame({
-        "timestamp": np.linspace(100, 140, 50),
+        "timestamp": pd.to_datetime(np.linspace(100, 140, 50), unit="s", utc=True),
         "adc": np.tile([1, 2, 3, 4, 5], 10),
     })
     df_full = pd.concat([df_an, df_bl], ignore_index=True)

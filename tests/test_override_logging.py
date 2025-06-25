@@ -43,7 +43,7 @@ def test_analysis_end_time_override_logs(tmp_path, monkeypatch, caplog):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
@@ -81,7 +81,7 @@ def test_analysis_start_time_override_logs(tmp_path, monkeypatch, caplog):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [0], "adc": [1], "fchannel": [1]})
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 

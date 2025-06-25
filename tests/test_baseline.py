@@ -38,7 +38,7 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1, 2, 3],
         "fBits": [0, 0, 0],
-        "timestamp": [1, 2, 20],
+        "timestamp": [pd.Timestamp(1, unit="s", tz="UTC"), pd.Timestamp(2, unit="s", tz="UTC"), pd.Timestamp(20, unit="s", tz="UTC")],
         "adc": [8, 8, 8],
         "fchannel": [1, 1, 1],
     })
@@ -97,7 +97,9 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     corr_sig = summary["baseline"]["corrected_sigma_Bq"]["Po214"]
 
     eff = cfg["time_fit"]["eff_po214"][0]
-    live_time = df["timestamp"].iloc[-1] - df["timestamp"].iloc[0]
+    live_time = (
+        df["timestamp"].iloc[-1] - df["timestamp"].iloc[0]
+    ).total_seconds()
     counts = summary["baseline"]["analysis_counts"]["Po214"]
     base_counts = summary["baseline"]["rate_Bq"]["Po214"] * summary["baseline"]["live_time"] * eff
     exp_rate, exp_sigma = subtract_baseline_counts(
@@ -135,7 +137,7 @@ def test_baseline_scaling_factor(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1, 2, 3],
         "fBits": [0, 0, 0],
-        "timestamp": [1, 2, 20],
+        "timestamp": [pd.Timestamp(1, unit="s", tz="UTC"), pd.Timestamp(2, unit="s", tz="UTC"), pd.Timestamp(20, unit="s", tz="UTC")],
         "adc": [8, 8, 8],
         "fchannel": [1, 1, 1],
     })
@@ -188,7 +190,9 @@ def test_baseline_scaling_factor(tmp_path, monkeypatch):
     corr_sig = summary["baseline"]["corrected_sigma_Bq"]["Po214"]
 
     eff = cfg["time_fit"]["eff_po214"][0]
-    live_time = df["timestamp"].iloc[-1] - df["timestamp"].iloc[0]
+    live_time = (
+        df["timestamp"].iloc[-1] - df["timestamp"].iloc[0]
+    ).total_seconds()
     counts = summary["baseline"]["analysis_counts"]["Po214"]
     base_counts = summary["baseline"]["rate_Bq"]["Po214"] * summary["baseline"]["live_time"] * eff
     exp_rate, exp_sigma = subtract_baseline_counts(
@@ -223,7 +227,7 @@ def test_n0_prior_from_baseline(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1, 2, 3],
         "fBits": [0, 0, 0],
-        "timestamp": [1, 2, 20],
+        "timestamp": [pd.Timestamp(1, unit="s", tz="UTC"), pd.Timestamp(2, unit="s", tz="UTC"), pd.Timestamp(20, unit="s", tz="UTC")],
         "adc": [8, 8, 8],
         "fchannel": [1, 1, 1],
     })
@@ -313,7 +317,7 @@ def test_isotopes_to_subtract_control(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1, 2, 3],
         "fBits": [0, 0, 0],
-        "timestamp": [1, 2, 20],
+        "timestamp": [pd.Timestamp(1, unit="s", tz="UTC"), pd.Timestamp(2, unit="s", tz="UTC"), pd.Timestamp(20, unit="s", tz="UTC")],
         "adc": [8, 8, 8],
         "fchannel": [1, 1, 1],
     })
@@ -398,7 +402,7 @@ def test_baseline_scaling_multiple_isotopes(tmp_path, monkeypatch):
         {
             "fUniqueID": [1, 2, 3, 4, 5, 6],
             "fBits": [0] * 6,
-            "timestamp": [1, 2, 3, 4, 20, 21],
+            "timestamp": [pd.Timestamp(1, unit="s", tz="UTC"), pd.Timestamp(2, unit="s", tz="UTC"), pd.Timestamp(3, unit="s", tz="UTC"), pd.Timestamp(4, unit="s", tz="UTC"), pd.Timestamp(20, unit="s", tz="UTC"), pd.Timestamp(21, unit="s", tz="UTC")],
             "adc": [8.0, 6.0, 5.3, 2.0, 8.0, 6.0],
             "fchannel": [1] * 6,
         }
@@ -479,7 +483,9 @@ def test_baseline_scaling_multiple_isotopes(tmp_path, monkeypatch):
     corr_sig = summary["baseline"]["corrected_sigma_Bq"]["Po214"]
 
     eff = cfg["time_fit"]["eff_po214"][0]
-    live_time = df["timestamp"].iloc[-1] - df["timestamp"].iloc[0]
+    live_time = (
+        df["timestamp"].iloc[-1] - df["timestamp"].iloc[0]
+    ).total_seconds()
     counts = summary["baseline"]["analysis_counts"]["Po214"]
     base_counts = summary["baseline"]["rate_Bq"]["Po214"] * summary["baseline"]["live_time"] * eff
     exp_rate, exp_sigma = subtract_baseline_counts(
@@ -514,7 +520,7 @@ def test_noise_level_none_not_recorded(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1, 2, 3],
         "fBits": [0, 0, 0],
-        "timestamp": [1, 2, 20],
+        "timestamp": [pd.Timestamp(1, unit="s", tz="UTC"), pd.Timestamp(2, unit="s", tz="UTC"), pd.Timestamp(20, unit="s", tz="UTC")],
         "adc": [8, 8, 8],
         "fchannel": [1, 1, 1],
     })
@@ -585,7 +591,7 @@ def test_sigma_rate_uses_weighted_counts(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1, 2, 3],
         "fBits": [0, 0, 0],
-        "timestamp": [1, 2, 20],
+        "timestamp": [pd.Timestamp(1, unit="s", tz="UTC"), pd.Timestamp(2, unit="s", tz="UTC"), pd.Timestamp(20, unit="s", tz="UTC")],
         "adc": [8, 8, 8],
         "fchannel": [1, 1, 1],
     })
@@ -642,7 +648,7 @@ def test_sigma_rate_uses_weighted_counts(tmp_path, monkeypatch):
 
 
 def test_rate_histogram_single_event():
-    df = pd.DataFrame({"timestamp": [1.0], "adc": [10.0]})
+    df = pd.DataFrame({"timestamp": [pd.Timestamp(1.0, unit="s", tz="UTC")], "adc": [10.0]})
     bins = np.array([0, 20])
     rate, live = baseline.rate_histogram(df, bins)
     assert live == 0.0

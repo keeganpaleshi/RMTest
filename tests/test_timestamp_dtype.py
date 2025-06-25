@@ -16,7 +16,7 @@ def test_load_events_returns_timezone(tmp_path):
     df = pd.DataFrame({
         "fUniqueID": [1],
         "fBits": [0],
-        "timestamp": [1000],
+        "timestamp": [pd.Timestamp(1000, unit="s", tz="UTC")],
         "adc": [1200],
         "fchannel": [1],
     })

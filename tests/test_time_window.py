@@ -35,7 +35,7 @@ def test_time_window_filters_events(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1, 2, 3, 4],
         "fBits": [0, 0, 0, 0],
-        "timestamp": [0.0, 2.0, 6.0, 9.0],
+        "timestamp": [pd.Timestamp(0.0, unit="s", tz="UTC"), pd.Timestamp(2.0, unit="s", tz="UTC"), pd.Timestamp(6.0, unit="s", tz="UTC"), pd.Timestamp(9.0, unit="s", tz="UTC")],
         "adc": [8.0, 8.0, 8.0, 8.0],
         "fchannel": [1, 1, 1, 1],
     })
@@ -114,7 +114,7 @@ def test_invalid_baseline_range_raises(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1],
         "fBits": [0],
-        "timestamp": [0.0],
+        "timestamp": [pd.Timestamp(0.0, unit="s", tz="UTC")],
         "adc": [8.0],
         "fchannel": [1],
     })
@@ -175,7 +175,7 @@ def test_time_window_filters_events_config(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1, 2, 3, 4],
         "fBits": [0, 0, 0, 0],
-        "timestamp": [0.0, 2.0, 6.0, 9.0],
+        "timestamp": [pd.Timestamp(0.0, unit="s", tz="UTC"), pd.Timestamp(2.0, unit="s", tz="UTC"), pd.Timestamp(6.0, unit="s", tz="UTC"), pd.Timestamp(9.0, unit="s", tz="UTC")],
         "adc": [8.0, 8.0, 8.0, 8.0],
         "fchannel": [1, 1, 1, 1],
     })
@@ -255,7 +255,7 @@ def test_run_period_filters_events(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1, 2, 3, 4],
         "fBits": [0, 0, 0, 0],
-        "timestamp": [0.0, 2.0, 5.0, 7.0],
+        "timestamp": [pd.Timestamp(0.0, unit="s", tz="UTC"), pd.Timestamp(2.0, unit="s", tz="UTC"), pd.Timestamp(5.0, unit="s", tz="UTC"), pd.Timestamp(7.0, unit="s", tz="UTC")],
         "adc": [8.0, 8.0, 8.0, 8.0],
         "fchannel": [1, 1, 1, 1],
     })
@@ -343,7 +343,7 @@ def test_baseline_range_iso_strings(tmp_path, monkeypatch, start, end):
     df = pd.DataFrame({
         "fUniqueID": [1, 2, 3, 4],
         "fBits": [0, 0, 0, 0],
-        "timestamp": [0.0, 2.0, 6.0, 9.0],
+        "timestamp": [pd.Timestamp(0.0, unit="s", tz="UTC"), pd.Timestamp(2.0, unit="s", tz="UTC"), pd.Timestamp(6.0, unit="s", tz="UTC"), pd.Timestamp(9.0, unit="s", tz="UTC")],
         "adc": [8.0, 8.0, 8.0, 8.0],
         "fchannel": [1, 1, 1, 1],
     })
@@ -427,7 +427,7 @@ def test_unified_filter_combined_windows(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1, 2, 3, 4, 5, 6],
         "fBits": [0, 0, 0, 0, 0, 0],
-        "timestamp": [0.0, 1.0, 2.0, 2.2, 3.0, 5.0],
+        "timestamp": [pd.Timestamp(0.0, unit="s", tz="UTC"), pd.Timestamp(1.0, unit="s", tz="UTC"), pd.Timestamp(2.0, unit="s", tz="UTC"), pd.Timestamp(2.2, unit="s", tz="UTC"), pd.Timestamp(3.0, unit="s", tz="UTC"), pd.Timestamp(5.0, unit="s", tz="UTC")],
         "adc": [8.0]*6,
         "fchannel": [1]*6,
     })

@@ -16,7 +16,7 @@ from plot_utils import plot_time_series
 def test_extract_time_series_po210_count():
     df = pd.DataFrame(
         {
-            "timestamp": [1.0, 2.0, 3.0, 4.0],
+            "timestamp": [pd.Timestamp(1.0, unit="s", tz="UTC"), pd.Timestamp(2.0, unit="s", tz="UTC"), pd.Timestamp(3.0, unit="s", tz="UTC"), pd.Timestamp(4.0, unit="s", tz="UTC")],
             "energy_MeV": [5.1, 5.3, 5.25, 5.5],
         }
     )

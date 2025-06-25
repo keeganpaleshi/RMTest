@@ -31,7 +31,7 @@ def test_duplicate_job_id_raises(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1],
         "fBits": [0],
-        "timestamp": [0],
+        "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")],
         "adc": [1000],
         "fchannel": [1],
     })
@@ -96,7 +96,7 @@ def test_job_id_overwrite_allows_rerun(tmp_path, monkeypatch):
     df = pd.DataFrame({
         "fUniqueID": [1],
         "fBits": [0],
-        "timestamp": [0],
+        "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")],
         "adc": [1000],
         "fchannel": [1],
     })
