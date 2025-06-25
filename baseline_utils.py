@@ -89,7 +89,13 @@ def subtract_baseline_dataframe(
     assert mode in ("none", "electronics", "radon", "all")
 
     if mode == "none":
-        return df_analysis.copy()
+        df_out = df_analysis.copy()
+        if getattr(df_out["timestamp"].dtype, "tz", None) is None:
+            df_out["timestamp"] = (
+                df_out["timestamp"].map(parse_datetime)
+            )
+            df_out["timestamp"] = pd.to_datetime(df_out["timestamp"], utc=True)
+        return df_out
 
     rate_an, live_an = _rate_histogram(df_analysis, bins)
     if live_time_analysis is None:
@@ -101,7 +107,13 @@ def subtract_baseline_dataframe(
     mask = (ts_full >= t0) & (ts_full <= t1)
     if not mask.any():
         logging.warning("baseline_range matched no events – skipping subtraction")
-        return df_analysis.copy()
+        df_out = df_analysis.copy()
+        if getattr(df_out["timestamp"].dtype, "tz", None) is None:
+            df_out["timestamp"] = (
+                df_out["timestamp"].map(parse_datetime)
+            )
+            df_out["timestamp"] = pd.to_datetime(df_out["timestamp"], utc=True)
+        return df_out
 
     rate_bl, live_bl = _rate_histogram(df_full.loc[mask], bins)
 
@@ -112,6 +124,10 @@ def subtract_baseline_dataframe(
 
     df_out = df_analysis.copy()
     df_out["subtracted_adc_hist"] = [net_counts] * len(df_out)
+    # ensure timezone-aware timestamps
+    if getattr(df_out["timestamp"].dtype, "tz", None) is None:
+        df_out["timestamp"] = df_out["timestamp"].map(parse_datetime)
+        df_out["timestamp"] = pd.to_datetime(df_out["timestamp"], utc=True)
     return df_out
 
 
