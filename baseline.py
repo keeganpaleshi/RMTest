@@ -5,7 +5,12 @@ from utils import parse_datetime
 
 from baseline_utils import subtract_baseline_dataframe
 
-__all__ = ["compute_rate_histogram", "subtract_baseline_df", "subtract_baseline_dataframe"]
+__all__ = [
+    "compute_rate_histogram",
+    "subtract_baseline_df",
+    "subtract_baseline_dataframe",
+    "subtract_baseline",
+]
 
 
 def _to_datetime64(col):
@@ -47,3 +52,8 @@ def subtract_baseline_df(df_analysis, df_full, bins, t_base0, t_base1,
         mode=mode,
         live_time_analysis=live_time_analysis,
     )
+
+
+# Backwards compatibility alias
+subtract_baseline = subtract_baseline_df
+
