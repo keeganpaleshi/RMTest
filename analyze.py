@@ -134,9 +134,15 @@ def _cov_entry(fit: FitResult | dict, p1: str, p2: str) -> float:
     """
 
     if not isinstance(fit, FitResult):
-        return 0.0
-
-    return fit.get_cov(p1, p2)
+        key = f"cov_{p1}_{p2}"
+        return float(fit.get(key, 0.0)) if isinstance(fit, Mapping) else 0.0
+    try:
+        return float(fit.cov_df.loc[p1, p2])
+    except Exception:
+        try:
+            return fit.get_cov(p1, p2)
+        except Exception:
+            return 0.0
 
 
 def _ensure_events(events: pd.DataFrame, stage: str) -> None:
@@ -1953,7 +1959,7 @@ def main(argv=None):
             default_const = cfg.get("nuclide_constants", {})
             default_hl = default_const.get("Po214", PO214).half_life_s
             hl = cfg.get("time_fit", {}).get("hl_po214", [default_hl])[0]
-            cov = fit.get("cov_E_Po214_N0_Po214", 0.0)
+            cov = _cov_entry(fit_result, "E_Po214", "N0_Po214")
             delta214, err_delta214 = radon_delta(
                 t_start_rel,
                 t_end_rel,
@@ -2190,7 +2196,7 @@ def main(argv=None):
             default_const = cfg.get("nuclide_constants", {})
             default_hl = default_const.get("Po214", PO214).half_life_s
             hl = cfg.get("time_fit", {}).get("hl_po214", [default_hl])[0]
-            cov = fit.get("cov_E_Po214_N0_Po214", 0.0)
+            cov = _cov_entry(fit_result, "E_Po214", "N0_Po214")
             A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
             plot_radon_activity(
                 times,
@@ -2267,7 +2273,7 @@ def main(argv=None):
                 default_const = cfg.get("nuclide_constants", {})
                 default_hl = default_const.get("Po214", PO214).half_life_s
                 hl214 = cfg.get("time_fit", {}).get("hl_po214", [default_hl])[0]
-                cov214 = fit.get("cov_E_Po214_N0_Po214", 0.0)
+                cov214 = _cov_entry(fit_result, "E_Po214", "N0_Po214")
                 A214_tr, _ = radon_activity_curve(
                     rel_trend, E214, dE214, N0214, dN0214, hl214, cov214
                 )
