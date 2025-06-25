@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 from utils import parse_datetime
+from utils.time_utils import tz_localize_utc, tz_convert_utc
 from radon.baseline import (
     subtract_baseline_counts,
     subtract_baseline_rate,
@@ -58,11 +59,11 @@ def _to_datetime64(events: pd.DataFrame | pd.Series) -> np.ndarray:
     if pd.api.types.is_datetime64_any_dtype(col):
         ser = col
         if getattr(ser.dtype, "tz", None) is None:
-            ser = ser.dt.tz_localize("UTC")
+            ser = tz_localize_utc(ser)
     else:
         ser = col.map(parse_datetime)
 
-    ser = ser.dt.tz_convert("UTC")
+    ser = tz_convert_utc(ser)
     return ser.to_numpy(dtype="datetime64[ns]")
 
 
