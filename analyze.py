@@ -1963,6 +1963,12 @@ def main(argv=None):
         rate218, err218, eff_po218, rate214, err214, eff_po214
     )
 
+    if A_radon < 0:
+        logging.warning(
+            "Negative radon activity %.3f Bq - using 0", A_radon
+        )
+        A_radon = 0.0
+
     # Convert activity to a concentration per liter of monitor volume and the
     # total amount of radon present in just the assay sample.
     conc, dconc, total_bq, dtotal_bq = compute_total_radon(
