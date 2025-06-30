@@ -5,9 +5,9 @@ import scipy
 def check_versions():
     np_version = Version(numpy.__version__)
     sp_version = Version(scipy.__version__)
-    if np_version >= Version("2.3"):
+    if np_version >= Version("2"):
         raise RuntimeError(
-            f"NumPy {numpy.__version__} is not supported; install <2.3 for compatibility."
+            f"NumPy {numpy.__version__} is not supported; install <2 for compatibility."
         )
     if sp_version >= Version("1.13"):
         raise RuntimeError(
