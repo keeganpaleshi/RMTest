@@ -393,8 +393,8 @@ Values with this suffix are automatically converted to MeV.
 Each entry is optional and only affects the scan when present.
 
 `plot_time_style` chooses how the histogram is drawn in the time-series
-plot.  Use `"steps"` (default) for a stepped histogram or `"lines"` to
-connect bin centers with straight lines.  The line style is useful when
+plot.  Use `"lines"` (default) to connect bin centers with straight lines
+or `"steps"` for a stepped histogram.  The line style is useful when
 overlaying multiple isotopes so one does not obscure the other.
 
 `overlay_isotopes` under `plotting` keeps both isotope windows intact
