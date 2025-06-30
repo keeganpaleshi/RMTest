@@ -6,6 +6,9 @@ from .efficiency import (
     calc_decay_efficiency,
     blue_combine,
 )
+from .version_check import check_versions as _check_versions
+
+_check_versions()
 
 __all__ = [
     "calc_spike_efficiency",
