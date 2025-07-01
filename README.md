@@ -7,7 +7,7 @@ This repository provides a complete pipeline to analyze electrostatic radon moni
 ## Structure
 
 - `analyze.py`: Main entry point to run the full analysis.
-- `config.json`: JSON configuration file containing thresholds and options.
+- `config.yaml`: YAML configuration file containing thresholds and options.
 - `io_utils.py`: Functions to load raw data and write outputs.
 - `calibration.py`: Peak-finding and energy calibration routines.
 - `fitting.py`: Unbinned likelihood fit for Po-214 (and optional Po-218).
@@ -36,7 +36,7 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-python analyze.py --config config.json --input merged_data.csv \
+python analyze.py --config config.yaml --input merged_data.csv \
     [--output_dir results] [--job-id MYRUN] [--overwrite] \
     [--efficiency-json eff.json] [--systematics-json syst.json] \
     [--spike-count N --spike-count-err S] [--slope RATE] \
@@ -61,7 +61,7 @@ The script exits with an error message if filtering removes all events at any st
 
 Noise removal, burst suppression, time-window trimming and baseline
 subtraction are performed directly by `analyze.py`. Configure them in
-`config.json` or override the values via command-line options:
+`config.yaml` or override the values via command-line options:
 
 - `calibration.noise_cutoff` / `--noise-cutoff` for the pedestal cut
 - `burst_filter.burst_mode` / `--burst-mode` for burst vetoing
@@ -93,7 +93,7 @@ the `columns` section of the configuration.  Provide a mapping from the
 canonical names (`timestamp`, `adc`, etc.) to the actual column names in
 the file:
 
-```json
+```yaml
 "columns": {
     "timestamp": "ftimestamps",
     "adc": "fadc_channels"
@@ -151,8 +151,8 @@ found to be non-positive definite.
 
 ## Configuration
 
-The parser is case sensitive, so all keys in `config.json` should be lowercase. Mixed-case names from older files remain supported for backward compatibility but are deprecated.
-Default values may also be provided in `config_defaults.json` at the repository root. When present this file is merged with your configuration so missing keys fall back to its values.
+The parser is case sensitive, so all keys in `config.yaml` should be lowercase. Mixed-case names from older files remain supported for backward compatibility but are deprecated.
+Default values may also be provided in `config_defaults.yaml` at the repository root. When present this file is merged with your configuration so missing keys fall back to its values.
 
 `nominal_adc` under the `calibration` section sets the expected raw ADC
 centroids for Po‑210, Po‑218 and Po‑214 when using automatic calibration.
@@ -181,7 +181,7 @@ value from the configuration file.
 
 Example snippet:
 
-```json
+```yaml
 "calibration": {
     "noise_cutoff": 400
 }
@@ -189,7 +189,7 @@ Example snippet:
 
 To disable the cut:
 
-```json
+```yaml
 "calibration": {
     "noise_cutoff": null
 }
@@ -232,15 +232,15 @@ activity between them.
 radon concentration in Bq/L used for the equivalent air plot.  The
 command-line option `--ambient-concentration` overrides this value.  The
 default configuration sets this key to `null`.  The template
-`config.json` therefore includes
-```json
+`config.yaml` therefore includes
+```yaml
 "ambient_concentration": null
 ```
 under the `analysis` section.
 
 Example snippet:
 
-```json
+```yaml
 "analysis": {
     "analysis_start_time": "2023-07-31T00:00:00Z",
     "analysis_end_time": "2024-02-01T06:00:00Z",
@@ -256,7 +256,7 @@ Example snippet:
 When present the value is also written to `summary.json` under the
 `analysis` section:
 
-```json
+```yaml
 "analysis": {
     "analysis_start_time": "2023-07-31T00:00:00Z",
     "analysis_end_time": "2024-02-01T06:00:00Z",
@@ -287,7 +287,7 @@ rate veto.
 
 Example snippet:
 
-```json
+```yaml
 "burst_filter": {
     "burst_mode": "rate",
     "burst_window_size_s": 60,
@@ -360,7 +360,7 @@ fit.  Important keys include:
 
 Example snippet:
 
-```json
+```yaml
 "spectral_fit": {
     "bkg_mode": "manual",
     "b0_prior": [0.0, 1.0],
@@ -416,7 +416,7 @@ counts per second.  Set it to `false` to show the raw counts per bin.
 
 Example snippet:
 
-```json
+```yaml
 "plotting": {
     "plot_time_normalise_rate": false
 }
@@ -462,7 +462,7 @@ varying radon concentration.  The configuration values are in seconds;
 
 Example snippet:
 
-```json
+```yaml
 "time_fit": {
     "hl_po214": [328320, 0.0],
     "hl_po218": [328320, 0.0],
@@ -511,7 +511,7 @@ re-exports these helpers for backward compatibility.
 
 Example snippet:
 
-```json
+```yaml
 "baseline": {
     "range": ["2023-07-01T00:00:00Z", "2023-07-03T00:00:00Z"],
     "monitor_volume_l": 10.0,
@@ -570,7 +570,7 @@ is specified, `analyze.py` forwards `calibration.noise_cutoff` as this value.
 
 Example configuration to tighten the cut (set it to `null` to disable):
 
-```json
+```yaml
 "calibration": {
     "noise_cutoff": 300
 }
@@ -650,7 +650,7 @@ method.  Each entry may be a single dictionary or a list of dictionaries
 which will be combined.  When the configuration file provides an
 `efficiency` section with entries such as:
 
-```json
+```yaml
 "efficiency": {
     "spike": [
         {"counts": 1000, "activity_bq": 50, "live_time_s": 3600}

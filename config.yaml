@@ -1,0 +1,155 @@
+allow_fallback: true
+pipeline:
+  log_level: INFO
+  random_seed: null
+analysis:
+  analysis_start_time: '2023-07-31T00:00:00Z'
+  analysis_end_time: '2024-02-01T06:00:00Z'
+  spike_end_time: '2023-07-31T00:10:00Z'
+  spike_periods:
+  - - '2023-11-12T00:00:00Z'
+    - '2023-11-13T12:00:00Z'
+  run_periods:
+  - - '2023-09-28T00:00:00Z'
+    - '2023-10-28T23:59:59Z'
+  - - '2024-01-05T00:00:00Z'
+    - '2024-01-10T23:59:59Z'
+  radon_interval:
+  - '2024-01-05T06:00:00Z'
+  - '2024-01-06T18:00:00Z'
+  ambient_concentration: null
+columns:
+  timestamp: timestamps
+  adc: adc_channels
+baseline:
+  range:
+  - '2023-08-01T00:00:00Z'
+  - '2023-08-02T23:59:59Z'
+  monitor_volume_l: 605.0
+  sample_volume_l: 0.0
+  isotopes_to_subtract:
+  - Po214
+  - Po218
+burst_filter:
+  burst_mode: rate
+  burst_window_size_s: 60
+  rolling_median_window: 5
+  burst_multiplier: 5
+  micro_window_size_s: 1
+  micro_count_threshold: 3
+calibration:
+  method: two-point
+  noise_cutoff: 400
+  hist_bins: 2000
+  peak_search_radius: 100
+  peak_prominence: 5
+  peak_width: 5
+  nominal_adc:
+    Po210: 1250
+    Po218: 1405
+    Po214: 1800
+  fit_window_adc: 40
+  use_emg: true
+  init_sigma_adc: 10.0
+  init_tau_adc: 1.0
+  sanity_tolerance_mev: 1.0
+  known_energies:
+    Po210: 5.304
+    Po218: 6.002
+    Po214: 7.687
+spectral_fit:
+  do_spectral_fit: true
+  spectral_binning_mode: adc
+  adc_bin_width: 1
+  fd_hist_bins: 400
+  mu_sigma: 0.05
+  amp_prior_scale: 1.0
+  bkg_mode: auto
+  b0_prior:
+  - 0.0
+  - 1.0
+  b1_prior:
+  - 0.0
+  - 1.0
+  tau_Po210_prior_mean: 0.0
+  tau_Po210_prior_sigma: 0.0
+  tau_Po218_prior_mean: 0.005
+  tau_Po218_prior_sigma: 0.002
+  tau_Po214_prior_mean: 0.005
+  tau_Po214_prior_sigma: 0.002
+  spectral_peak_tolerance_mev: 0.3
+  use_emg:
+    Po210: false
+    Po218: true
+    Po214: true
+  float_sigma_E: true
+  sigma_E_prior_source: 0.15
+  peak_search_prominence: 30
+  peak_search_width_adc: 3
+  use_plot_bins_for_fit: false
+  unbinned_likelihood: true
+  mu_bounds:
+    Po210: null
+    Po218:
+    - 5.9
+    - 6.2
+    Po214: null
+time_fit:
+  do_time_fit: true
+  window_po214:
+  - 7.4
+  - 7.9
+  window_po218:
+  - 5.8
+  - 6.3
+  window_po210:
+  - 5.2
+  - 5.4
+  eff_po214:
+  - 0.4
+  - 0.05
+  eff_po218:
+  - 0.2
+  - 0.05
+  eff_po210:
+  - 0.1
+  - 0.05
+  hl_po214:
+  - 328320
+  - 0.0
+  hl_po218:
+  - 328320
+  - 0.0
+  bkg_po214:
+  - 0.0
+  - 0.0
+  bkg_po218:
+  - 0.0
+  - 0.0
+  sig_n0_po214: 1.0
+  sig_n0_po218: 1.0
+  background_guess: 0.0
+  n0_guess_fraction: 0.1
+  flags:
+    fix_background_b: false
+    fix_N0_Po218: false
+systematics:
+  enable: false
+  sigma_E_frac: 0.1
+  tail_fraction: 0.05
+  energy_shift_keV: 0.001
+  adc_drift_rate: 0.0
+  adc_drift_mode: linear
+  adc_drift_params: null
+plotting:
+  plot_spectrum_binsize_adc: 1
+  plot_time_binning_mode: auto
+  plot_time_bin_width_s: 21600
+  plot_time_normalise_rate: true
+  time_bins_fallback: 1
+  plot_save_formats:
+  - png
+  - pdf
+  dump_time_series_json: false
+  plot_time_style: lines
+  overlay_isotopes: true
