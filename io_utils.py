@@ -2,6 +2,7 @@
 from pathlib import Path
 import shutil
 import json
+import yaml
 import logging
 import warnings
 from datetime import datetime, timezone
@@ -290,24 +291,32 @@ def merge_cfg(base: Mapping[str, Any], user: Mapping[str, Any], *, _path: str = 
 
 def load_config(config_path):
     """
-    Load ``config_path`` and merge it with ``config_defaults.json`` if present.
-    The resulting dictionary is validated against ``CONFIG_SCHEMA``.
+    Load ``config_path`` and merge it with ``config_defaults.yaml`` (or
+    ``config_defaults.json``) if present. The resulting dictionary is validated
+    against ``CONFIG_SCHEMA``.
 
     Returns the merged configuration dictionary.
-    Raises ``FileNotFoundError`` or ``json.JSONDecodeError`` on failure.
+    Raises ``FileNotFoundError`` or ``json.JSONDecodeError, yaml.YAMLError`` on failure.
     """
     path = Path(config_path)
     if not path.is_file():
         raise FileNotFoundError(f"Config file not found: {config_path}")
 
-    defaults_path = Path(__file__).resolve().with_name("config_defaults.json")
+    defaults_path_yaml = Path(__file__).resolve().with_name("config_defaults.yaml")
+    defaults_path_json = Path(__file__).resolve().with_name("config_defaults.json")
     defaults: dict = {}
-    if defaults_path.is_file():
-        with open(defaults_path, "r", encoding="utf-8") as f:
+    if defaults_path_yaml.is_file():
+        with open(defaults_path_yaml, "r", encoding="utf-8") as f:
+            defaults = yaml.safe_load(f) or {}
+    elif defaults_path_json.is_file():
+        with open(defaults_path_json, "r", encoding="utf-8") as f:
             defaults = json.load(f, object_pairs_hook=_no_duplicates_object_pairs_hook)
 
     with open(path, "r", encoding="utf-8") as f:
-        cfg = json.load(f, object_pairs_hook=_no_duplicates_object_pairs_hook)
+        if path.suffix in {".yaml", ".yml"}:
+            cfg = yaml.safe_load(f) or {}
+        else:
+            cfg = json.load(f, object_pairs_hook=_no_duplicates_object_pairs_hook)
 
     # Validate user config for required keys before applying defaults
     validator = jsonschema.Draft7Validator(CONFIG_SCHEMA)
