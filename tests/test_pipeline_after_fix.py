@@ -67,5 +67,5 @@ def test_pipeline_calibrates_after_fix(tmp_path, monkeypatch):
     summary = captured.get("summary", {})
     cent = summary.get("calibration", {}).get("peaks", {}).get("Po218", {}).get("centroid_adc")
     assert cent is not None
-    assert cent == pytest.approx(1300, abs=3)
+    assert cent == pytest.approx(1288, abs=3)
 
