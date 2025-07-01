@@ -6,5 +6,9 @@
     },
     "time_fit": {
         "window_po218": [3.05e6, 3.25e6]
+    },
+    "columns": {
+        "timestamp": "timestamp",
+        "adc": "adc"
     }
 }
