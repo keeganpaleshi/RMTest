@@ -9,6 +9,7 @@ __all__ = [
     "compute_total_radon",
     "radon_activity_curve",
     "radon_delta",
+    "print_activity_breakdown",
 ]
 
 
@@ -283,3 +284,75 @@ def radon_delta(
         variance += 2.0 * d_delta_dE * d_delta_dN0 * cov_en0
     sigma = math.sqrt(variance)
     return delta, sigma
+
+
+def print_activity_breakdown(rows: list[dict[str, object]]) -> None:
+    """Print a table of intermediate radon activity numbers."""
+
+    try:
+        from texttable import Texttable  # type: ignore
+
+        table = Texttable()
+        table.set_deco(Texttable.BORDER | Texttable.HEADER | Texttable.VLINES)
+        table.header(
+            [
+                "Isotope",
+                "Raw (Bq)",
+                "Baseline (Bq)",
+                "Corrected (Bq)",
+                "σ (Bq)",
+            ]
+        )
+        for row in rows:
+            table.add_row(
+                [
+                    row.get("iso", ""),
+                    f"{row.get('raw_rate', float('nan')):.3f}",
+                    f"{row.get('baseline_rate', float('nan')):.3f}",
+                    f"{row.get('corrected', float('nan')):.3f}",
+                    f"{row.get('err_corrected', float('nan')):.3f}",
+                ]
+            )
+        print(table.draw())
+    except Exception:
+        headings = ["Isotope", "Raw (Bq)", "Baseline (Bq)", "Corrected (Bq)", "σ (Bq)"]
+        str_rows = [
+            [
+                str(row.get("iso", "")),
+                f"{row.get('raw_rate', float('nan')):.3f}",
+                f"{row.get('baseline_rate', float('nan')):.3f}",
+                f"{row.get('corrected', float('nan')):.3f}",
+                f"{row.get('err_corrected', float('nan')):.3f}",
+            ]
+            for row in rows
+        ]
+        widths = [len(h) for h in headings]
+        for r in str_rows:
+            for i, val in enumerate(r):
+                widths[i] = max(widths[i], len(val))
+
+        top = "┌" + "┬".join("─" * w for w in widths) + "┐"
+        print(top)
+        header = "│" + "│".join(h.ljust(widths[i]) for i, h in enumerate(headings)) + "│"
+        print(header)
+        middle = "├" + "┼".join("─" * w for w in widths) + "┤"
+        print(middle)
+        for r in str_rows:
+            line = "│" + "│".join(r[i].ljust(widths[i]) for i in range(len(widths))) + "│"
+            print(line)
+        bottom = "└" + "┴".join("─" * w for w in widths) + "┘"
+        print(bottom)
+
+    # Compute total radon activity from the corrected rates
+    rate218 = err218 = None
+    rate214 = err214 = None
+    for row in rows:
+        if row.get("iso") == "Po218":
+            rate218 = float(row.get("corrected", 0.0))
+            err218 = float(row.get("err_corrected", 0.0))
+        elif row.get("iso") == "Po214":
+            rate214 = float(row.get("corrected", 0.0))
+            err214 = float(row.get("err_corrected", 0.0))
+
+    total, sigma = compute_radon_activity(rate218, err218, 1.0, rate214, err214, 1.0)
+    print(f"Total radon: {total:.3f} ± {sigma:.3f} Bq")
