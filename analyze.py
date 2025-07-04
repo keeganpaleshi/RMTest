@@ -417,14 +417,15 @@ def parse_args(argv=None):
         help="Background removal strategy (default: all)",
     )
     p.add_argument(
+
+        "--allow-negative-baseline",
+        action="store_true",
+        help="Allow negative baseline-corrected rates",
+    )
+    p.add_argument(
         "--check-baseline-only",
         action="store_true",
         help="Exit after printing baseline diagnostics",
-    )
-    p.add_argument(
-        "--allow_negative_baseline",
-        action="store_true",
-        help="Do not error if corrected baseline rate is negative",
     )
     p.add_argument(
         "--burst-mode",
@@ -819,6 +820,9 @@ def main(argv=None):
             int(args.noise_cutoff),
         )
         cfg.setdefault("calibration", {})["noise_cutoff"] = int(args.noise_cutoff)
+
+    if args.allow_negative_baseline:
+        cfg["allow_negative_baseline"] = True
 
     if args.debug:
         cfg.setdefault("pipeline", {})["log_level"] = "DEBUG"
@@ -1982,6 +1986,15 @@ def main(argv=None):
         baseline_info["corrected_sigma_Bq"] = {
             iso: vals["uncertainty"] for iso, vals in baseline_info["corrected_activity"].items()
         }
+
+    try:
+        _ = summarize_baseline(
+            {"baseline": baseline_info, "time_fit": {iso: _fit_params(time_fit_results.get(iso)) for iso in isotopes_to_subtract}},
+            isotopes_to_subtract,
+        )
+    except BaselineError as e:
+        print(f"ERROR: {e}")
+        sys.exit(1)
 
     # ────────────────────────────────────────────────────────────
     # Radon activity extrapolation

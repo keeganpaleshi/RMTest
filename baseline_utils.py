@@ -89,7 +89,15 @@ __all__ = [
     "subtract_baseline_counts",
     "subtract_baseline_rate",
     "rate_histogram",
+    "summarize_baseline",
+    "BaselineError",
 ]
+
+
+class BaselineError(RuntimeError):
+    """Raised when baseline subtraction yields negative rates."""
+
+    pass
 
 
 
@@ -284,3 +292,49 @@ subtract_baseline_dataframe = apply_baseline_subtraction
 
 
 # thin wrappers are imported above from :mod:`radon.baseline`
+
+
+def summarize_baseline(cfg: dict, isotopes: list[str]) -> dict[str, tuple[float, float, float]]:
+    """Return baseline subtraction summary for selected isotopes.
+
+    Parameters
+    ----------
+    cfg : dict
+        Summary dictionary containing ``baseline`` and ``time_fit`` sections.
+    isotopes : list[str]
+        Isotope names to include in the output.
+
+    Returns
+    -------
+    dict
+        Mapping ``iso -> (raw_rate, baseline_rate, corrected_rate)`` in Bq.
+
+    Raises
+    ------
+    BaselineError
+        If any corrected rate is negative and ``cfg.get('allow_negative_baseline')``
+        is not ``True``.
+    """
+
+    baseline = cfg.get("baseline", {})
+    tf = cfg.get("time_fit", {})
+    scales = baseline.get("scales", {})
+    base_rates = baseline.get("rate_Bq", {})
+
+    allow_negative = bool(cfg.get("allow_negative_baseline"))
+
+    summary: dict[str, tuple[float, float, float]] = {}
+    for iso in isotopes:
+        fit = tf.get(iso, {})
+        raw = fit.get(f"E_{iso}")
+        if raw is None:
+            continue
+        base = float(base_rates.get(iso, 0.0)) * float(scales.get(iso, 1.0))
+        corr = float(fit.get("E_corrected", raw - base))
+        raw = float(raw)
+        summary[iso] = (raw, base, corr)
+        if corr < 0 and not allow_negative:
+            raise BaselineError(f"negative corrected rate for {iso}")
+
+    return summary
+
