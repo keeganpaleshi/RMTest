@@ -198,9 +198,16 @@ def test_clamp_non_negative():
     assert err == pytest.approx(0.01)
 
 
-def test_compute_total_radon_negative_activity_bq_clamped(caplog):
+def test_compute_total_radon_negative_activity_default_raises():
+    with pytest.raises(RuntimeError):
+        compute_total_radon(-1.0, 0.5, 10.0, 1.0)
+
+
+def test_compute_total_radon_negative_activity_allowed(caplog):
     with caplog.at_level(logging.WARNING):
-        conc, dconc, tot, dtot = compute_total_radon(-1.0, 0.5, 10.0, 1.0)
+        conc, dconc, tot, dtot = compute_total_radon(
+            -1.0, 0.5, 10.0, 1.0, allow_negative_activity=True
+        )
     assert conc == pytest.approx(0.0)
     assert dconc == pytest.approx(0.05)
     assert tot == pytest.approx(0.0)

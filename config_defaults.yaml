@@ -1,5 +1,6 @@
 allow_fallback: false
 allow_negative_baseline: false
+allow_negative_activity: false
 calibration:
   slope_MeV_per_ch: null
   intercept_MeV: null

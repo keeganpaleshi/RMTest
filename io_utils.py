@@ -111,6 +111,7 @@ CONFIG_SCHEMA = {
         },
         "allow_fallback": {"type": "boolean"},
         "allow_negative_baseline": {"type": "boolean"},
+        "allow_negative_activity": {"type": "boolean"},
         "spectral_fit": {
             "type": "object",
             "properties": {"expected_peaks": {"type": "object"}},

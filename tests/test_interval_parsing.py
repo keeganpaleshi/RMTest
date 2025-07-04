@@ -39,3 +39,12 @@ def test_config_interval_parsing_to_datetime():
     for dt in (b_start, b_end, r_start, r_end):
         assert dt.tzinfo is not None
         assert dt.tzinfo.utcoffset(dt) == timedelta(0)
+
+def test_parse_allow_negative_activity():
+    args = analyze.parse_args([
+        "--config", "cfg.json",
+        "--input", "data.csv",
+        "--output_dir", "out",
+        "--allow-negative-activity",
+    ])
+    assert args.allow_negative_activity is True
