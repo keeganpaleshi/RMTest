@@ -7,7 +7,7 @@ This repository provides a complete pipeline to analyze electrostatic radon moni
 ## Structure
 
 - `analyze.py`: Main entry point to run the full analysis.
-- `config.yaml`: YAML configuration file containing thresholds and options.
+- `config.yaml`: YAML configuration file containing thresholds and options used by default.
 - `io_utils.py`: Functions to load raw data and write outputs.
 - `calibration.py`: Peak-finding and energy calibration routines.
 - `fitting.py`: Unbinned likelihood fit for Po-214 (and optional Po-218).
@@ -36,7 +36,7 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-python analyze.py --config config.yaml --input merged_data.csv \
+python analyze.py [--config config.yaml] --input merged_data.csv \
     [--output_dir results] [--job-id MYRUN] [--overwrite] \
     [--efficiency-json eff.json] [--systematics-json syst.json] \
     [--spike-count N --spike-count-err S] [--slope RATE] \
@@ -152,6 +152,7 @@ found to be non-positive definite.
 ## Configuration
 
 The parser is case sensitive, so all keys in `config.yaml` should be lowercase. Mixed-case names from older files remain supported for backward compatibility but are deprecated.
+If `--config` is not supplied, `analyze.py` automatically looks for a `config.yaml` file in the same directory as the script.
 Default values may also be provided in `config_defaults.yaml` at the repository root. When present this file is merged with your configuration so missing keys fall back to its values.
 
 `nominal_adc` under the `calibration` section sets the expected raw ADC

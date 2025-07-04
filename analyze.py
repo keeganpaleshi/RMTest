@@ -372,8 +372,12 @@ def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
 def parse_args(argv=None):
     """Parse command line arguments."""
     p = argparse.ArgumentParser(description="Full Radon Monitor Analysis Pipeline")
+    default_cfg = Path(__file__).resolve().with_name("config.yaml")
     p.add_argument(
-        "--config", "-c", required=True, help="Path to YAML or JSON configuration file"
+        "--config",
+        "-c",
+        default=str(default_cfg),
+        help="Path to YAML or JSON configuration file (default: config.yaml)",
     )
     p.add_argument(
         "--input",
