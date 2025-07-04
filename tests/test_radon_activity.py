@@ -8,6 +8,7 @@ from radon_activity import (
     compute_total_radon,
     radon_activity_curve,
     radon_delta,
+    print_activity_breakdown,
 )
 import math
 import numpy as np
@@ -287,3 +288,28 @@ def test_radon_delta_invalid_half_life():
         radon_delta(0.0, 2.0, 1.0, 0.1, 2.0, 0.2, 0.0)
     with pytest.raises(ValueError):
         radon_delta(0.0, 2.0, 1.0, 0.1, 2.0, 0.2, -5.0)
+
+
+def test_print_activity_breakdown(capsys):
+    rows = [
+        {
+            "iso": "Po218",
+            "raw_rate": 0.112,
+            "baseline_rate": 0.027,
+            "corrected": 0.085,
+            "err_raw": 0.012,
+            "err_corrected": 0.01,
+        },
+        {
+            "iso": "Po214",
+            "raw_rate": 0.118,
+            "baseline_rate": 0.026,
+            "corrected": 0.092,
+            "err_raw": 0.013,
+            "err_corrected": 0.011,
+        },
+    ]
+
+    print_activity_breakdown(rows)
+    captured = capsys.readouterr().out
+    assert "Total radon" in captured

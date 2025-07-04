@@ -1935,6 +1935,7 @@ def main(argv=None):
 
     corrected_rates = {}
     corrected_unc = {}
+    activity_rows = []
 
     for iso, fit in time_fit_results.items():
         params = _fit_params(fit)
@@ -1974,6 +1975,16 @@ def main(argv=None):
         baseline_unc[iso] = base_sigma
         corrected_rates[iso] = corr_rate
         corrected_unc[iso] = corr_sigma
+        activity_rows.append(
+            {
+                "iso": iso,
+                "raw_rate": params[f"E_{iso}"],
+                "baseline_rate": base_rate,
+                "corrected": corr_rate,
+                "err_raw": err_fit,
+                "err_corrected": corr_sigma,
+            }
+        )
 
     if baseline_rates:
         baseline_info["rate_Bq"] = baseline_rates
@@ -2041,6 +2052,11 @@ def main(argv=None):
         "value": total_bq,
         "uncertainty": dtotal_bq,
     }
+
+    if args.debug:
+        from radon_activity import print_activity_breakdown
+
+        print_activity_breakdown(activity_rows)
 
     if radon_interval is not None:
         from radon_activity import radon_delta
