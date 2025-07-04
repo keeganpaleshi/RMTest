@@ -347,7 +347,7 @@ def load_config(config_path):
     return cfg
 
 
-def load_events(csv_path, *, column_map=None):
+def load_events(csv_path, *, start=None, end=None, column_map=None):
     """
     Read event CSV into a DataFrame with columns:
        ['fUniqueID','fBits','timestamp','adc','fchannel']
@@ -419,6 +419,13 @@ def load_events(csv_path, *, column_map=None):
 
     # Sort by timestamp
     df = df.sort_values("timestamp").reset_index(drop=True)
+
+    if start is not None:
+        start_dt = parse_timestamp(start)
+        df = df[df["timestamp"] >= start_dt]
+    if end is not None:
+        end_dt = parse_timestamp(end)
+        df = df[df["timestamp"] <= end_dt]
 
     logger.info(
         f"Loaded {len(df)} events from {csv_path} ({discarded} discarded)."
