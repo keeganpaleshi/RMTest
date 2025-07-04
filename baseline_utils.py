@@ -5,12 +5,85 @@ import numpy as np
 import pandas as pd
 
 from utils.time_utils import parse_timestamp, tz_localize_utc, tz_convert_utc
+from io_utils import load_events
 from radon.baseline import (
     subtract_baseline_counts,
     subtract_baseline_rate,
 )
 
+
+class BaselineError(Exception):
+    """Raised when baseline diagnostics fail."""
+
+
+def summarize_baseline(cfg: dict, isotopes: list[str]) -> dict[str, tuple[float, float, float]]:
+    """Return baseline diagnostics for *isotopes*.
+
+    Parameters
+    ----------
+    cfg : dict
+        Configuration dictionary containing ``baseline`` and ``time_fit`` sections.
+    isotopes : list of str
+        Isotopes to include in the summary.
+
+    Returns
+    -------
+    dict
+        Mapping of isotope name to ``(raw_rate, baseline_rate, corrected_rate)`` tuples.
+    """
+
+    bl_cfg = cfg.get("baseline")
+    if not bl_cfg:
+        raise BaselineError("baseline configuration missing")
+
+    paths = bl_cfg.get("files")
+    if not paths:
+        raise BaselineError("baseline.files not specified")
+    if isinstance(paths, str):
+        paths = [paths]
+
+    rng = bl_cfg.get("range")
+    if not rng or len(rng) != 2:
+        raise BaselineError("baseline.range must contain [start, end]")
+    start, end = rng
+
+    monitor_vol = float(bl_cfg.get("monitor_volume_l", 0.0))
+    sample_vol = float(bl_cfg.get("sample_volume_l", 0.0))
+    dilution = compute_dilution_factor(monitor_vol, sample_vol)
+
+    events = []
+    for p in paths:
+        df = load_events(p, start=start, end=end)
+        if not df.empty:
+            events.append(df)
+    if not events:
+        raise BaselineError("no baseline events")
+    df_bl = pd.concat(events, ignore_index=True)
+
+    ts = df_bl["timestamp"].astype("int64")
+    live = float((ts.max() - ts.min()) / 1e9)
+    if live <= 0:
+        raise BaselineError("zero live-time in baseline range")
+
+    results = {}
+    for iso in isotopes:
+        win = cfg.get("time_fit", {}).get(f"window_{iso.lower()}")
+        if not win:
+            continue
+        lo, hi = win
+        mask = (df_bl.get("energy_MeV", df_bl["adc"]) >= lo) & (
+            df_bl.get("energy_MeV", df_bl["adc"]) <= hi
+        )
+        counts = int(mask.sum())
+        raw_rate = counts / live if live > 0 else 0.0
+        baseline_rate = raw_rate * dilution
+        results[iso] = (raw_rate, baseline_rate, raw_rate - baseline_rate)
+
+    return results
+
 __all__ = [
+    "BaselineError",
+    "summarize_baseline",
     "compute_dilution_factor",
     "subtract_baseline_dataframe",
     "subtract_baseline_counts",

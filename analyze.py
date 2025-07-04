@@ -417,9 +417,15 @@ def parse_args(argv=None):
         help="Background removal strategy (default: all)",
     )
     p.add_argument(
+
         "--allow-negative-baseline",
         action="store_true",
         help="Allow negative baseline-corrected rates",
+    )
+    p.add_argument(
+        "--check-baseline-only",
+        action="store_true",
+        help="Exit after printing baseline diagnostics",
     )
     p.add_argument(
         "--burst-mode",
@@ -1287,6 +1293,34 @@ def main(argv=None):
             baseline_counts["noise"] = int(np.sum(mask_noise))
 
     _ensure_events(df_analysis, "baseline subtraction")
+
+    if args.check_baseline_only:
+        try:
+            summary = summarize_baseline(cfg, isotopes_to_subtract)
+        except BaselineError as e:
+            print(f"BaselineError: {e}")
+            sys.exit(1)
+        try:
+            from tabulate import tabulate
+
+            rows = [
+                (iso, f"{vals[0]:.3f}", f"{vals[1]:.3f}", f"{vals[2]:.3f}")
+                for iso, vals in summary.items()
+            ]
+            table = tabulate(
+                rows,
+                headers=["Isotope", "Raw rate", "Baseline rate", "Corrected"],
+                tablefmt="plain",
+            )
+        except Exception:
+            table = "\n".join(
+                f"{iso}: raw={vals[0]:.3f} baseline={vals[1]:.3f} corrected={vals[2]:.3f}"
+                for iso, vals in summary.items()
+            )
+        print(table)
+        if not args.allow_negative_baseline and any(v[2] < 0 for v in summary.values()):
+            sys.exit(1)
+        sys.exit(0)
 
     if args.baseline_range:
         t_base0 = args.baseline_range[0]
