@@ -384,8 +384,11 @@ def parse_args(argv=None):
     p.add_argument(
         "--output_dir",
         "-o",
-        required=True,
-        help="Directory under which to create a timestamped analysis folder (override with --job-id)",
+        default="results",
+        help=(
+            "Directory under which to create a timestamped analysis folder "
+            "(override with --job-id; default: results)"
+        ),
     )
     p.add_argument(
         "--timezone",
