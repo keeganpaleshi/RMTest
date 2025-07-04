@@ -1,16 +1,29 @@
 """Utilities to combine Po-218 and Po-214 rates into a radon activity."""
 
+import logging
 import math
 import numpy as np
 from typing import Optional, Tuple, cast
 
 __all__ = [
+    "clamp_non_negative",
     "compute_radon_activity",
     "compute_total_radon",
     "radon_activity_curve",
     "radon_delta",
     "print_activity_breakdown",
 ]
+
+
+def clamp_non_negative(value: float, err: float) -> Tuple[float, float]:
+    """Return ``(max(value, 0.0), err)`` and log if clamping occurs."""
+
+    if value < 0:
+        logging.warning(
+            f"Clamped negative activity (value = {value:.2f} Bq \u2192 0 Bq)"
+        )
+        value = 0.0
+    return value, err
 
 
 def compute_radon_activity(
@@ -186,8 +199,12 @@ def compute_total_radon(
         raise ValueError("sample_volume must be non-negative")
     if err_bq < 0:
         raise ValueError("err_bq must be non-negative")
-    if activity_bq < 0:
-        raise ValueError("activity_bq must be non-negative")
+
+    activity_bq, err_bq = clamp_non_negative(activity_bq, err_bq)
+    if math.isnan(activity_bq):
+        raise ValueError("activity_bq must not be NaN")
+    if err_bq == 0:
+        raise ValueError("err_bq must be non-zero")
     conc = activity_bq / monitor_volume
     sigma_conc = err_bq / monitor_volume
 

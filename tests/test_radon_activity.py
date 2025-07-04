@@ -1,9 +1,11 @@
 import sys
 from pathlib import Path
+import logging
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from radon_activity import (
+    clamp_non_negative,
     compute_radon_activity,
     compute_total_radon,
     radon_activity_curve,
@@ -190,9 +192,20 @@ def test_compute_total_radon_negative_err_bq():
         compute_total_radon(5.0, -0.1, 10.0, 1.0)
 
 
-def test_compute_total_radon_negative_activity_bq():
-    with pytest.raises(ValueError):
-        compute_total_radon(-1.0, 0.5, 10.0, 1.0)
+def test_clamp_non_negative():
+    val, err = clamp_non_negative(-0.02, 0.01)
+    assert val == pytest.approx(0.0)
+    assert err == pytest.approx(0.01)
+
+
+def test_compute_total_radon_negative_activity_bq_clamped(caplog):
+    with caplog.at_level(logging.WARNING):
+        conc, dconc, tot, dtot = compute_total_radon(-1.0, 0.5, 10.0, 1.0)
+    assert conc == pytest.approx(0.0)
+    assert dconc == pytest.approx(0.05)
+    assert tot == pytest.approx(0.0)
+    assert dtot == pytest.approx(0.05)
+    assert "Clamped negative activity" in caplog.text
 
 
 def test_radon_activity_curve():
