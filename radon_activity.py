@@ -165,6 +165,8 @@ def compute_total_radon(
     err_bq: float,
     monitor_volume: float,
     sample_volume: float,
+    *,
+    allow_negative_activity: bool = False,
 ) -> Tuple[float, float, float, float]:
     """Convert activity into concentration and total radon in the sample volume.
 
@@ -175,7 +177,7 @@ def compute_total_radon(
     Both ``monitor_volume`` and ``sample_volume`` must be non-negative.  A
     ``ValueError`` is raised if ``monitor_volume`` is not positive, if
     ``sample_volume`` is negative, if ``err_bq`` is negative, or if
-    ``activity_bq`` is negative.
+    ``activity_bq`` is negative while ``allow_negative_activity`` is ``False``.
 
     Returns
     -------
@@ -200,7 +202,12 @@ def compute_total_radon(
     if err_bq < 0:
         raise ValueError("err_bq must be non-negative")
 
+    was_neg = activity_bq < 0
     activity_bq, err_bq = clamp_non_negative(activity_bq, err_bq)
+    if was_neg and not allow_negative_activity:
+        raise RuntimeError(
+            "Negative activity encountered. Re-run with --allow_negative_activity to override"
+        )
     if math.isnan(activity_bq):
         raise ValueError("activity_bq must not be NaN")
     if err_bq == 0:

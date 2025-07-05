@@ -423,6 +423,11 @@ def parse_args(argv=None):
         help="Allow negative baseline-corrected rates",
     )
     p.add_argument(
+        "--allow-negative-activity",
+        action="store_true",
+        help="Continue if radon activity is negative",
+    )
+    p.add_argument(
         "--check-baseline-only",
         action="store_true",
         help="Exit after printing baseline diagnostics",
@@ -823,6 +828,7 @@ def main(argv=None):
 
     if args.allow_negative_baseline:
         cfg["allow_negative_baseline"] = True
+
 
     if args.debug:
         cfg.setdefault("pipeline", {})["log_level"] = "DEBUG"
@@ -2036,12 +2042,17 @@ def main(argv=None):
 
     # Convert activity to a concentration per liter of monitor volume and the
     # total amount of radon present in just the assay sample.
-    conc, dconc, total_bq, dtotal_bq = compute_total_radon(
-        A_radon,
-        dA_radon,
-        monitor_vol,
-        sample_vol,
-    )
+    try:
+        conc, dconc, total_bq, dtotal_bq = compute_total_radon(
+            A_radon,
+            dA_radon,
+            monitor_vol,
+            sample_vol,
+            allow_negative_activity=args.allow_negative_activity,
+        )
+    except RuntimeError as e:
+        print(f"ERROR: {e}")
+        sys.exit(1)
 
     radon_results["radon_activity_Bq"] = {"value": A_radon, "uncertainty": dA_radon}
     radon_results["radon_concentration_Bq_per_L"] = {
