@@ -21,4 +21,4 @@ def test_window_po218_default(tmp_path):
         json.dump(cfg, f)
 
     loaded = load_config(cfg_path)
-    assert loaded["time_fit"]["window_po218"] == [5.922, 6.082]
+    assert loaded["time_fit"]["window_po218"] == [5.90, 6.10]

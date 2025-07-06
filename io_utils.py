@@ -123,22 +123,40 @@ CONFIG_SCHEMA = {
             "properties": {
                 "do_time_fit": {"type": "boolean"},
                 "hl_po214": {
-                    "type": "array",
-                    "items": {"type": "number"},
-                    "minItems": 1,
-                    "maxItems": 2,
+                    "anyOf": [
+                        {
+                            "type": "array",
+                            "items": {"type": "number", "minimum": 0},
+                            "minItems": 1,
+                            "maxItems": 2,
+                        },
+                        {"type": "number", "minimum": 0},
+                        {"type": "null"},
+                    ]
                 },
                 "hl_po218": {
-                    "type": "array",
-                    "items": {"type": "number"},
-                    "minItems": 1,
-                    "maxItems": 2,
+                    "anyOf": [
+                        {
+                            "type": "array",
+                            "items": {"type": "number", "minimum": 0},
+                            "minItems": 1,
+                            "maxItems": 2,
+                        },
+                        {"type": "number", "minimum": 0},
+                        {"type": "null"},
+                    ]
                 },
                 "hl_po210": {
-                    "type": "array",
-                    "items": {"type": "number"},
-                    "minItems": 1,
-                    "maxItems": 2,
+                    "anyOf": [
+                        {
+                            "type": "array",
+                            "items": {"type": "number", "minimum": 0},
+                            "minItems": 1,
+                            "maxItems": 2,
+                        },
+                        {"type": "number", "minimum": 0},
+                        {"type": "null"},
+                    ]
                 },
             },
             "required": ["do_time_fit"],
