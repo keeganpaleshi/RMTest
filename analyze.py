@@ -21,7 +21,8 @@ This script performs the following steps:
   4. (Optional) Extract a “baseline” interval for background estimation.
   5. (Optional) Spectral fit (Po‐210, Po‐218, Po‐214) using unbinned likelihood.
      -> Can bin either in “1 ADC‐channel per bin” or Freedman‐Diaconis (per config).
-     -> Uses EMG tails for Po‐210/Po‐218 if requested.
+    -> Uses EMG tails by default for Po‐210.
+       Po‐218 and Po‐214 use Gaussian unless requested.
      -> Overlays fit on the spectrum plot.
   6. Time‐series decay fit (Po‐218 and Po‐214 separately).
      -> Extract events in each isotope’s energy window.
@@ -1487,6 +1488,9 @@ def main(argv=None):
             cfg["spectral_fit"].get("sigma_E_prior_source", sigE_sigma),
         )
 
+        use_emg_cfg = cfg.get("spectral_fit", {}).get("use_emg", {})
+        use_emg_defaults = {"Po210": True, "Po218": False, "Po214": False}
+
         for peak, centroid_adc in adc_peaks.items():
             mu = apply_calibration(centroid_adc, a, c, quadratic_coeff=a2)
             bounds_cfg = cfg["spectral_fit"].get("mu_bounds", {})
@@ -1512,8 +1516,8 @@ def main(argv=None):
             )
             priors_spec[f"S_{peak}"] = (mu_amp, sigma_amp)
 
-            # If EMG tails are requested for this peak:
-            if cfg["spectral_fit"].get("use_emg", {}).get(peak, False):
+            # If EMG tails are requested for this peak (default Po210 True):
+            if use_emg_cfg.get(peak, use_emg_defaults.get(peak, False)):
                 priors_spec[f"tau_{peak}"] = (
                     cfg["spectral_fit"].get(f"tau_{peak}_prior_mean"),
                     cfg["spectral_fit"].get(f"tau_{peak}_prior_sigma"),
