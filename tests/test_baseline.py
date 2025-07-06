@@ -13,6 +13,7 @@ import baseline_noise
 from dataclasses import asdict
 from calibration import CalibrationResult
 import baseline
+import baseline_utils
 from baseline_utils import subtract_baseline_counts
 from radon.baseline import subtract_baseline_counts
 from fitting import FitResult, FitParams
@@ -661,3 +662,11 @@ def test_rate_histogram_single_event():
 def test_corrected_activity_non_negative():
     baseline_info = {"corrected_activity": {"Po214": {"value": 0.1}}}
     assert baseline_info["corrected_activity"]["Po214"]["value"] >= 0
+
+
+def test_baseline_guard():
+    from datetime import datetime
+
+    assert baseline_utils.baseline_period_before_data(
+        datetime(2024, 10, 28), datetime(2025, 1, 1)
+    ) is True

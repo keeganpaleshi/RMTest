@@ -28,6 +28,7 @@ __all__ = [
     "rate_histogram",
     "subtract",
     "summarize_baseline",
+    "baseline_period_before_data",
 ]
 
 
@@ -44,6 +45,14 @@ def compute_dilution_factor(monitor_volume: float, sample_volume: float) -> floa
     if total <= 0:
         return 0.0
     return float(monitor_volume) / float(total)
+
+
+def baseline_period_before_data(baseline_end, data_start):
+    """Return True if baseline interval ends before data interval starts."""
+
+    end = parse_timestamp(pd.Timestamp(baseline_end))
+    start = parse_timestamp(pd.Timestamp(data_start))
+    return end < start
 
 
 def _to_datetime64(events: pd.DataFrame | pd.Series) -> np.ndarray:
@@ -131,6 +140,11 @@ def apply_baseline_subtraction(
     t0 = parse_timestamp(t_base0)
     t1 = parse_timestamp(t_base1)
     ts_full = _to_datetime64(df_full)
+    if ts_full.size > 0 and baseline_period_before_data(t1, ts_full.min()):
+        logging.warning(
+            "Baseline window ends after data start – subtraction skipped"
+        )
+        return df_analysis.copy()
     ts_int = ts_full.view("int64")
     t0_ns = t0.value
     t1_ns = t1.value
