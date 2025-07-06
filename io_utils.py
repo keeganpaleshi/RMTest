@@ -72,6 +72,9 @@ class Summary(Mapping[str, Any]):
     baseline: dict = field(default_factory=dict)
     radon_results: dict = field(default_factory=dict)
     radon_combined: dict = field(default_factory=dict)
+    radon: dict = field(default_factory=dict)
+    po214: dict = field(default_factory=dict)
+    po218: dict = field(default_factory=dict)
     noise_cut: dict = field(default_factory=dict)
     burst_filter: dict = field(default_factory=dict)
     adc_drift_rate: float | None = None
