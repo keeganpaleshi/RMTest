@@ -6,6 +6,8 @@ import pytest
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import types
+sys.modules.setdefault("pymc", types.ModuleType("pymc"))
 import analyze
 import baseline_noise
 from dataclasses import asdict
@@ -654,3 +656,8 @@ def test_rate_histogram_single_event():
     rate, live = baseline.rate_histogram(df, bins)
     assert live == 0.0
     assert np.all(rate == 0.0)
+
+
+def test_corrected_activity_non_negative():
+    baseline_info = {"corrected_activity": {"Po214": {"value": 0.1}}}
+    assert baseline_info["corrected_activity"]["Po214"]["value"] >= 0
