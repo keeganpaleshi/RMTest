@@ -1958,7 +1958,12 @@ def main(argv=None):
         base_cnt = baseline_counts.get(iso, 0.0)
         s = scales.get(iso, 1.0)
 
-        if live_time_iso > 0 and eff > 0:
+        if args.baseline_mode == "none":
+            base_rate = baseline_rates.get(iso, 0.0)
+            base_sigma = baseline_unc.get(iso, 0.0)
+            corr_rate = params[f"E_{iso}"]
+            corr_sigma = err_fit
+        elif live_time_iso > 0 and eff > 0:
             corr_rate, corr_sigma, base_rate, base_sigma = subtract_baseline_rate(
                 params[f"E_{iso}"],
                 err_fit,
@@ -2006,7 +2011,14 @@ def main(argv=None):
 
     try:
         _ = summarize_baseline(
-            {"baseline": baseline_info, "time_fit": {iso: _fit_params(time_fit_results.get(iso)) for iso in isotopes_to_subtract}},
+            {
+                "baseline": baseline_info,
+                "time_fit": {
+                    iso: _fit_params(time_fit_results.get(iso))
+                    for iso in isotopes_to_subtract
+                },
+                "allow_negative_baseline": cfg.get("allow_negative_baseline"),
+            },
             isotopes_to_subtract,
         )
     except BaselineError as e:
