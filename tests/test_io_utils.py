@@ -436,6 +436,37 @@ def test_load_config_invalid_half_life(tmp_path):
         load_config(p)
 
 
+def test_load_config_invalid_analysis_isotope(tmp_path):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "analysis_isotope": "bad",
+        "spectral_fit": {"expected_peaks": {"Po210": 1}},
+        "time_fit": {"do_time_fit": True},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    p = tmp_path / "cfg.json"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+    with pytest.raises(jsonschema.exceptions.ValidationError):
+        load_config(p)
+
+
+def test_load_config_default_analysis_isotope(tmp_path):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "spectral_fit": {"expected_peaks": {"Po210": 1}},
+        "time_fit": {"do_time_fit": True},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    p = tmp_path / "cfg.json"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+    loaded = load_config(p)
+    assert loaded["analysis_isotope"] in {"radon", "po218", "po214"}
+
+
 def test_load_config_invalid_baseline(tmp_path):
     cfg = {
         "pipeline": {"log_level": "INFO"},

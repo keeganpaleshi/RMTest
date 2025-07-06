@@ -1,5 +1,9 @@
 allow_fallback: true
+
+analysis_isotope: radon
+
 allow_negative_baseline: false
+
 pipeline:
   log_level: INFO
   random_seed: null

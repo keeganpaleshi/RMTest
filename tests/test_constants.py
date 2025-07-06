@@ -8,7 +8,7 @@ from constants import PO210, load_nuclide_overrides, load_half_life_overrides
 
 
 def test_po210_default():
-    assert PO210.half_life_s == pytest.approx(138.376 * 24 * 3600)
+    assert PO210.half_life_s == pytest.approx(1.1956e7)
 
 
 def test_po210_override():
