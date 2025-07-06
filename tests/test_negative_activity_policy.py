@@ -49,4 +49,6 @@ def test_negative_activity_allowed(tmp_path, monkeypatch):
     ])
 
     summary = captured.get("summary", {})
-    assert summary["radon_results"]["total_radon_in_sample_Bq"]["value"] == pytest.approx(0.0)
+    radon_res = summary["radon_results"]
+    assert radon_res["radon_concentration_Bq_per_L"]["value"] < 0.0
+    assert radon_res["total_radon_in_sample_Bq"]["value"] == pytest.approx(0.0)

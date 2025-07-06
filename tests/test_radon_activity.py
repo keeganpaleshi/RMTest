@@ -208,11 +208,11 @@ def test_compute_total_radon_negative_activity_allowed(caplog):
         conc, dconc, tot, dtot = compute_total_radon(
             -1.0, 0.5, 10.0, 1.0, allow_negative_activity=True
         )
-    assert conc == pytest.approx(0.0)
+    assert conc == pytest.approx(-0.1)
     assert dconc == pytest.approx(0.05)
-    assert tot == pytest.approx(0.0)
+    assert tot == pytest.approx(-0.1)
     assert dtot == pytest.approx(0.05)
-    assert "Clamped negative activity" in caplog.text
+    assert "Negative activity" in caplog.text
 
 
 def test_radon_activity_curve():
