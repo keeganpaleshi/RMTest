@@ -2152,7 +2152,7 @@ def test_hl_po210_default_used(tmp_path, monkeypatch):
 def test_time_fields_written_back(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},
-        "baseline": {"range": ["0", "1"], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
+        "baseline": {"range": ["0", "1"], "monitor_volume_l": 605.0, "sample_volume_l": 1.0},
         "analysis": {
             "analysis_end_time": "1970-01-01T00:00:05Z",
             "spike_end_time": "1970-01-01T00:00:00Z",

@@ -17,7 +17,7 @@ def test_cli_baseline_range_empty(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},
         "allow_fallback": True,
-        "baseline": {"range": [0, 5], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
+        "baseline": {"range": [0, 5], "monitor_volume_l": 605.0, "sample_volume_l": 1.0},
         "calibration": {},
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
