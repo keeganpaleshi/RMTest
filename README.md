@@ -431,10 +431,10 @@ regions appear alongside the dashed model lines.
 
 `plot_time_series` takes its half-life values from the `time_fit` section.
 Specify custom values using the keys `hl_po214`, `hl_po218` and `hl_po210`.
-When these keys are omitted, `hl_po214` and `hl_po218` fall back to their
-physical half-lives (≈164 µs and ≈183 s). `hl_po210` defaults to its physical
-half-life (≈138 days). These custom half-lives control the decay model drawn
-over the time-series histogram.
+When these keys are omitted, `hl_po214` and `hl_po218` fall back to the
+physical values of 1.64×10⁻⁴ s and 186 s respectively. `hl_po210`
+defaults to 1.1956×10⁷ s (≈138 days). These custom half-lives control the
+decay model drawn over the time-series histogram.
 The same values are used in the `time_fit` routine itself, so changing
 `hl_po214` or `hl_po218` affects both the unbinned fit and the overlay in
 `plot_time_series`. For monitoring that spans multiple days you may set
@@ -457,9 +457,8 @@ discard the first seconds of data before the decay fit.
 
 When the data covers months or more, the short half-lives of Po‑218 and
 Po‑214 no longer matter.  The defaults therefore set `hl_po214` and
-`hl_po218` to the radon half-life (≈3.8 days) so the fit tracks the slowly
-varying radon concentration.  The configuration values are in seconds;
-3.8 days corresponds to roughly `3.8 * 86400 ≈ 3.3e5` seconds.
+`hl_po218` to the radon half-life (330350.4 s ≈3.8 days) so the fit tracks the
+slowly varying radon concentration.
 
 Example snippet:
 
@@ -538,6 +537,23 @@ python analyze.py --config assay.json --input run.csv --output_dir results \
 python analyze.py --config assay.json --input run.csv --output_dir results \
     --baseline_range 2023-07-01T00:00:00Z 2023-07-03T00:00:00Z \
     --baseline-mode none
+```
+
+### Long Baseline Example
+
+A dedicated baseline run spanning several weeks can be re-used for
+multiple assays. First analyze the baseline period on its own:
+
+```bash
+python analyze.py --config examples/long_baseline.yaml --input baseline.csv \
+    --output_dir baseline_results --job-id baseline
+```
+
+Subsequent assay runs reference the same interval:
+
+```bash
+python analyze.py --config assay.yaml --input assay.csv --output_dir results \
+    --baseline_range 2023-07-01T00:00:00Z 2023-07-31T23:59:59Z
 ```
 
 ### Baseline Subtraction Details
@@ -646,6 +662,14 @@ shows the equivalent air volume derived from this Po‑214 activity.
 If the combined activity of Po‑214 and Po‑218 is negative it is clamped to
 zero by default and the pipeline aborts.  Pass `--allow-negative-activity`
 to continue processing with a total radon value of `0 Bq`.
+
+### Radon vs Po214 Mode
+
+The configuration key `analysis_isotope` selects how the radon activity is
+reported. The default value `radon` combines the Po‑218 and Po‑214 estimates
+using inverse-variance weighting. Setting it to `po214` or `po218` uses only
+the chosen progeny. The command line option `--iso` overrides this setting
+for a particular run.
 
 ## Efficiency Calculations
 
