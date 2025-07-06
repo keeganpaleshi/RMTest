@@ -1,0 +1,21 @@
+pipeline:
+  log_level: INFO
+
+baseline:
+  range:
+    - '2023-07-01T00:00:00Z'
+    - '2023-07-31T23:59:59Z'
+  monitor_volume_l: 605.0
+  sample_volume_l: 5.0
+  isotopes_to_subtract: [Po214, Po218]
+
+time_fit:
+  do_time_fit: true
+  hl_po214: [328320, 0.0]
+  hl_po218: [328320, 0.0]
+
+systematics:
+  enable: false
+
+plotting:
+  plot_save_formats: [png]
