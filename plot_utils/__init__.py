@@ -162,16 +162,14 @@ def plot_time_series(
     if hl_po218 is None and "hl_po218" in _legacy_kwargs:
         hl_po218 = _legacy_kwargs.pop("hl_po218")
 
-    po214_hl = (
-        float(hl_po214)
-        if hl_po214 is not None
-        else float(_cfg_get(config, "hl_po214", [default214])[0])
-    )
-    po218_hl = (
-        float(hl_po218)
-        if hl_po218 is not None
-        else float(_cfg_get(config, "hl_po218", [default218])[0])
-    )
+    def _hl_param(name, default):
+        val = _cfg_get(config, name, default)
+        if isinstance(val, list):
+            return float(val[0]) if val else float(default)
+        return float(default) if val is None else float(val)
+
+    po214_hl = float(hl_po214) if hl_po214 is not None else _hl_param("hl_po214", default214)
+    po218_hl = float(hl_po218) if hl_po218 is not None else _hl_param("hl_po218", default218)
 
     if po214_hl <= 0:
         raise ValueError("hl_po214 must be positive")
@@ -183,12 +181,9 @@ def plot_time_series(
             # Energy window for Po-210 events (optional)
             "window": _cfg_get(config, "window_po210"),
             "eff": float(_cfg_get(config, "eff_po210", [1.0])[0]),
-            "half_life": float(
-                _cfg_get(
-                    config,
-                    "hl_po210",
-                    [default_const.get("Po210", PO210).half_life_s],
-                )[0]
+            "half_life": _hl_param(
+                "hl_po210",
+                default_const.get("Po210", PO210).half_life_s,
             ),
         },
         "Po218": {

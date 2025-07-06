@@ -431,9 +431,9 @@ regions appear alongside the dashed model lines.
 
 `plot_time_series` takes its half-life values from the `time_fit` section.
 Specify custom values using the keys `hl_po214`, `hl_po218` and `hl_po210`.
-When these keys are omitted, `hl_po214` and `hl_po218` fall back to the
-physical values of 1.64×10⁻⁴ s and 186 s respectively. `hl_po210`
-defaults to 1.1956×10⁷ s (≈138 days). These custom half-lives control the
+When these keys are omitted or set to ``null`` the values fall back to the
+physical half-lives of 1.64×10⁻⁴ s, 186 s and 1.1956×10⁷ s respectively.
+These custom half-lives control the
 decay model drawn over the time-series histogram.
 The same values are used in the `time_fit` routine itself, so changing
 `hl_po214` or `hl_po218` affects both the unbinned fit and the overlay in
@@ -456,17 +456,17 @@ discard the first seconds of data before the decay fit.
 ### Fitting Long Time Scales
 
 When the data covers months or more, the short half-lives of Po‑218 and
-Po‑214 no longer matter.  The defaults therefore set `hl_po214` and
-`hl_po218` to the radon half-life (330350.4 s ≈3.8 days) so the fit tracks the
-slowly varying radon concentration.
+Po‑214 no longer matter.  You may set `hl_po214` and `hl_po218` to the
+radon half-life (330350.4 s ≈3.8 days) so the fit tracks the slowly varying
+radon concentration.
 
 Example snippet:
 
 ```yaml
 "time_fit": {
-    "hl_po214": [328320, 0.0],
-    "hl_po218": [328320, 0.0],
-    "hl_po210": [11923200, 0.0],
+    "hl_po214": 328320,
+    "hl_po218": 328320,
+    "hl_po210": 11923200,
     "sig_n0_po214": 1.0,
     "sig_n0_po218": 1.0
 }

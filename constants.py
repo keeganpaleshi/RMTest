@@ -115,7 +115,7 @@ def load_nuclide_overrides(cfg: dict | None) -> dict[str, NuclideConst]:
             if isinstance(val, list):
                 if val:
                     hl = val[0]
-            else:
+            elif val is not None:
                 hl = val
         qv = override.get("Q_value_MeV", const.Q_value_MeV)
         result[name] = NuclideConst(half_life_s=float(hl), Q_value_MeV=qv)
