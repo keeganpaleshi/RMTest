@@ -6,6 +6,7 @@ import math
 from typing import Any, Mapping
 
 from constants import load_nuclide_overrides, RN222, PO218, PO214
+from radon_activity import compute_radon_activity
 
 __all__ = ["estimate_radon_activity"]
 
@@ -17,13 +18,17 @@ def _decay_constant(hl_s: float) -> float:
 
 
 def estimate_radon_activity(
-    N218: int | None,
-    epsilon218: float,
-    f218: float,
-    N214: int | None,
-    epsilon214: float,
-    f214: float,
+    N218: int | None = None,
+    epsilon218: float | None = None,
+    f218: float | None = None,
+    N214: int | None = None,
+    epsilon214: float | None = None,
+    f214: float | None = None,
     *,
+    rate214: float | None = None,
+    err214: float | None = None,
+    rate218: float | None = None,
+    err218: float | None = None,
     analysis_isotope: str = "radon",
     nuclide_constants: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -43,6 +48,53 @@ def estimate_radon_activity(
         Overrides for nuclide half-lives.  Must contain ``Rn222``, ``Po218`` and
         ``Po214`` entries compatible with :mod:`constants`.
     """
+    if rate214 is not None or rate218 is not None:
+        comp: dict[str, Any] = {}
+        if rate218 is not None:
+            comp["from_po218"] = {
+                "activity_Bq": rate218,
+                "stat_unc_Bq": err218,
+            }
+        if rate214 is not None:
+            comp["from_po214"] = {
+                "activity_Bq": rate214,
+                "stat_unc_Bq": err214,
+            }
+        A, sigma = compute_radon_activity(
+            rate218,
+            err218,
+            1.0,
+            rate214,
+            err214,
+            1.0,
+            require_equilibrium=False,
+        )
+        mode = analysis_isotope.lower()
+        if mode == "radon":
+            return {
+                "isotope_mode": "radon",
+                "activity_Bq": A,
+                "stat_unc_Bq": sigma,
+                "components": comp,
+            }
+        if mode == "po214":
+            return {
+                "isotope_mode": "po214",
+                "activity_Bq": rate214,
+                "stat_unc_Bq": err214,
+                "components": comp,
+            }
+        if mode == "po218":
+            return {
+                "isotope_mode": "po218",
+                "activity_Bq": rate218,
+                "stat_unc_Bq": err218,
+                "components": comp,
+            }
+        raise ValueError("invalid isotope mode")
+
+    if epsilon218 is None or epsilon214 is None or f218 is None or f214 is None:
+        raise ValueError("counts mode requires efficiencies and fractions")
     if epsilon218 <= 0 or epsilon214 <= 0:
         raise ValueError("efficiencies must be positive")
     if f218 <= 0 or f214 <= 0:

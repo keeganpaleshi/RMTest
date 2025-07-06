@@ -1593,6 +1593,9 @@ def main(argv=None):
     t_start_map = {}
     iso_counts = {}
     iso_counts_raw = {}
+    radon_estimate_info = None
+    po214_estimate_info = None
+    po218_estimate_info = None
     if cfg.get("time_fit", {}).get("do_time_fit", False):
         for iso in ("Po218", "Po214"):
             win_key = f"window_{iso.lower()}"
@@ -1817,6 +1820,49 @@ def main(argv=None):
             "events_times": iso_events["timestamp"].values,
             "events_energy": iso_events["energy_MeV"].values,
         }
+
+    from radon_joint_estimator import estimate_radon_activity
+    from types import SimpleNamespace
+
+    fit214_obj = time_fit_results.get("Po214")
+    fit218_obj = time_fit_results.get("Po218")
+    fit214 = fit218 = None
+    if fit214_obj:
+        p = _fit_params(fit214_obj)
+        fit214 = SimpleNamespace(
+            rate=p.get("E_corrected", p.get("E_Po214")),
+            err=p.get("dE_corrected", p.get("dE_Po214")),
+        )
+    if fit218_obj:
+        p = _fit_params(fit218_obj)
+        fit218 = SimpleNamespace(
+            rate=p.get("E_corrected", p.get("E_Po218")),
+            err=p.get("dE_corrected", p.get("dE_Po218")),
+        )
+
+    iso_mode = cfg.get("analysis_isotope", "radon").lower()
+
+    if iso_mode == "radon":
+        if (fit214 and fit214.rate is not None) or (fit218 and fit218.rate is not None):
+            radon_estimate_info = estimate_radon_activity(
+                rate214=fit214.rate if fit214 else None,
+                err214=fit214.err if fit214 else None,
+                rate218=fit218.rate if fit218 else None,
+                err218=fit218.err if fit218 else None,
+            )
+    elif iso_mode in {"po214", "po218"}:
+        chosen = fit214 if iso_mode == "po214" else fit218
+        if chosen and chosen.rate is not None:
+            info = {
+                "activity_Bq": chosen.rate,
+                "stat_unc_Bq": chosen.err,
+            }
+            if iso_mode == "po214":
+                po214_estimate_info = info
+            else:
+                po218_estimate_info = info
+    else:
+        raise ValueError(f"Unknown analysis isotope {iso_mode}")
 
     # Also extract Po-210 events for plotting if a window is provided
     win_p210 = cfg.get("time_fit", {}).get("window_po210")
@@ -2320,6 +2366,13 @@ def main(argv=None):
 
     if radon_combined_info is not None:
         summary.radon_combined = radon_combined_info
+
+    if radon_estimate_info is not None:
+        summary.radon = radon_estimate_info
+    if po214_estimate_info is not None:
+        summary.po214 = po214_estimate_info
+    if po218_estimate_info is not None:
+        summary.po218 = po218_estimate_info
 
     if weights is not None:
         summary.efficiency["blue_weights"] = list(weights)
