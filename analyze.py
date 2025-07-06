@@ -119,6 +119,7 @@ from plot_utils import (
     plot_equivalent_air,
     plot_radon_trend,
 )
+import plotting
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
 from utils import (
@@ -2394,6 +2395,15 @@ def main(argv=None):
 
     copy_config(results_dir, cfg, exist_ok=args.overwrite)
     out_dir = write_summary(results_dir, summary)
+
+    if iso_mode == "radon":
+        rad_ts = summary.get("radon", {}).get("time_series")
+        if rad_ts is not None:
+            try:
+                plotting.plot_radon_activity(rad_ts, Path(out_dir))
+                plotting.plot_radon_trend(rad_ts, Path(out_dir))
+            except Exception as e:
+                print(f"WARNING: Could not create radon pipeline plots -> {e}")
 
     # Generate plots now that the output directory exists
     if spec_plot_data:
