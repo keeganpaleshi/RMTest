@@ -11,8 +11,8 @@ baseline:
 
 time_fit:
   do_time_fit: true
-  hl_po214: [328320, 0.0]
-  hl_po218: [328320, 0.0]
+  hl_po214: null
+  hl_po218: null
 
 systematics:
   enable: false

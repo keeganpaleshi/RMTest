@@ -123,19 +123,19 @@ CONFIG_SCHEMA = {
             "properties": {
                 "do_time_fit": {"type": "boolean"},
                 "hl_po214": {
-                    "type": "array",
+                    "type": ["array", "null"],
                     "items": {"type": "number"},
                     "minItems": 1,
                     "maxItems": 2,
                 },
                 "hl_po218": {
-                    "type": "array",
+                    "type": ["array", "null"],
                     "items": {"type": "number"},
                     "minItems": 1,
                     "maxItems": 2,
                 },
                 "hl_po210": {
-                    "type": "array",
+                    "type": ["array", "null"],
                     "items": {"type": "number"},
                     "minItems": 1,
                     "maxItems": 2,

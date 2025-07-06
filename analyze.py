@@ -91,6 +91,27 @@ from constants import (
     DEFAULT_ADC_CENTROIDS,
 )
 
+NUCLIDES = {
+    "Po210": PO210,
+    "Po214": PO214,
+    "Po218": PO218,
+}
+
+
+def _hl_value(cfg: Mapping[str, Any], iso: str) -> float:
+    """Return the half-life in seconds for ``iso`` using configuration ``cfg``.
+
+    When the configuration does not specify a value or it is ``None`` the
+    constant from :mod:`constants` is used.
+    """
+    val = cfg.get("time_fit", {}).get(f"hl_{iso.lower()}")
+    if isinstance(val, list):
+        val = val[0] if val else None
+    if val is None:
+        consts = cfg.get("nuclide_constants", {})
+        val = consts.get(iso, NUCLIDES[iso]).half_life_s
+    return float(val)
+
 from plot_utils import (
     plot_spectrum,
     plot_time_series,
@@ -352,13 +373,7 @@ def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
     if fit_obj is None:
         return None
     params = _fit_params(fit_obj)
-    default_const = cfg.get("nuclide_constants", {})
-    hl_default = {
-        "Po214": default_const.get("Po214", PO214).half_life_s,
-        "Po218": default_const.get("Po218", PO218).half_life_s,
-        "Po210": default_const.get("Po210", PO210).half_life_s,
-    }[iso]
-    hl = cfg.get("time_fit", {}).get(f"hl_{iso.lower()}", [hl_default])[0]
+    hl = _hl_value(cfg, iso)
     eff_cfg = cfg.get("time_fit", {}).get(f"eff_{iso.lower()}")
     if isinstance(eff_cfg, list):
         eff = eff_cfg[0]
@@ -1624,9 +1639,16 @@ def main(argv=None):
 
         # Half-life prior (user must supply [T₁/₂, σ(T₁/₂)] in seconds)
         hl_key = f"hl_{iso.lower()}"
-        if hl_key in cfg["time_fit"]:
-            T12, T12sig = cfg["time_fit"][hl_key]
-            priors_time["tau"] = (T12 / np.log(2), T12sig / np.log(2))
+        hl_val = cfg["time_fit"].get(hl_key)
+        if hl_val is not None:
+            if isinstance(hl_val, list):
+                T12 = hl_val[0] if hl_val else None
+                T12sig = hl_val[1] if len(hl_val) > 1 else 0.0
+            else:
+                T12 = hl_val
+                T12sig = 0.0
+            if T12 is not None:
+                priors_time["tau"] = (T12 / np.log(2), T12sig / np.log(2))
 
         # Background‐rate prior
         if f"bkg_{iso.lower()}" in cfg["time_fit"]:
@@ -1744,7 +1766,7 @@ def main(argv=None):
         fit_cfg = {
             "isotopes": {
                 iso: {
-                    "half_life_s": cfg["time_fit"].get(f"hl_{iso.lower()}", [np.nan])[0],
+                    "half_life_s": _hl_value(cfg, iso),
                     "efficiency": eff_value,
                 }
             },
@@ -1851,9 +1873,7 @@ def main(argv=None):
                 cfg_fit = {
                     "isotopes": {
                         iso: {
-                            "half_life_s": cfg["time_fit"].get(
-                                f"hl_{iso.lower()}", [np.nan]
-                            )[0],
+                            "half_life_s": _hl_value(cfg, iso),
                             "efficiency": priors_mod["eff"][0],
                         }
                     },
@@ -2174,9 +2194,7 @@ def main(argv=None):
             dE = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
             N0 = fit.get("N0_Po214", 0.0)
             dN0 = fit.get("dN0_Po214", 0.0)
-            default_const = cfg.get("nuclide_constants", {})
-            default_hl = default_const.get("Po214", PO214).half_life_s
-            hl = cfg.get("time_fit", {}).get("hl_po214", [default_hl])[0]
+            hl = _hl_value(cfg, "Po214")
             cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
             delta214, err_delta214 = radon_delta(
                 t_start_rel,
@@ -2197,9 +2215,7 @@ def main(argv=None):
             dE = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
             N0 = fit.get("N0_Po218", 0.0)
             dN0 = fit.get("dN0_Po218", 0.0)
-            default_const = cfg.get("nuclide_constants", {})
-            default_hl = default_const.get("Po218", PO218).half_life_s
-            hl = cfg.get("time_fit", {}).get("hl_po218", [default_hl])[0]
+            hl = _hl_value(cfg, "Po218")
             cov = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
             delta218, err_delta218 = radon_delta(
                 t_start_rel,
@@ -2416,9 +2432,7 @@ def main(argv=None):
             dE = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
             N0 = fit.get("N0_Po214", 0.0)
             dN0 = fit.get("dN0_Po214", 0.0)
-            default_const = cfg.get("nuclide_constants", {})
-            default_hl = default_const.get("Po214", PO214).half_life_s
-            hl = cfg.get("time_fit", {}).get("hl_po214", [default_hl])[0]
+            hl = _hl_value(cfg, "Po214")
             cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
             A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
             plot_radon_activity(
@@ -2437,9 +2451,7 @@ def main(argv=None):
             dE = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
             N0 = fit.get("N0_Po218", 0.0)
             dN0 = fit.get("dN0_Po218", 0.0)
-            default_const = cfg.get("nuclide_constants", {})
-            default_hl = default_const.get("Po218", PO218).half_life_s
-            hl = cfg.get("time_fit", {}).get("hl_po218", [default_hl])[0]
+            hl = _hl_value(cfg, "Po218")
             cov = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
             A218, dA218 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
 
@@ -2493,9 +2505,7 @@ def main(argv=None):
                 dE214 = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
                 N0214 = fit.get("N0_Po214", 0.0)
                 dN0214 = fit.get("dN0_Po214", 0.0)
-                default_const = cfg.get("nuclide_constants", {})
-                default_hl = default_const.get("Po214", PO214).half_life_s
-                hl214 = cfg.get("time_fit", {}).get("hl_po214", [default_hl])[0]
+                hl214 = _hl_value(cfg, "Po214")
                 cov214 = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
                 A214_tr, _ = radon_activity_curve(
                     rel_trend, E214, dE214, N0214, dN0214, hl214, cov214
@@ -2508,9 +2518,7 @@ def main(argv=None):
                 dE218 = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
                 N0218 = fit.get("N0_Po218", 0.0)
                 dN0218 = fit.get("dN0_Po218", 0.0)
-                default_const = cfg.get("nuclide_constants", {})
-                default_hl = default_const.get("Po218", PO218).half_life_s
-                hl218 = cfg.get("time_fit", {}).get("hl_po218", [default_hl])[0]
+                hl218 = _hl_value(cfg, "Po218")
                 cov218 = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
                 A218_tr, _ = radon_activity_curve(
                     rel_trend, E218, dE218, N0218, dN0218, hl218, cov218
