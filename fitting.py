@@ -36,6 +36,13 @@ class FitParams(TypedDict, total=False):
     N0_Po218: NotRequired[float]
     dN0_Po218: NotRequired[float]
 
+    eff_Po214: NotRequired[float]
+    deff_Po214: NotRequired[float]
+    eff_Po218: NotRequired[float]
+    deff_Po218: NotRequired[float]
+    eff_Po210: NotRequired[float]
+    deff_Po210: NotRequired[float]
+
     E_corrected: NotRequired[float]
     dE_corrected: NotRequired[float]
 
@@ -542,6 +549,7 @@ def _neg_log_likelihood_time(
     fix_b_map,
     fix_n0_map,
     param_indices,
+    var_eff_map,
 ):
     """
     params: tuple of all (E_iso, [B_iso], [N0_iso], for each iso in iso_list, in the order recorded by param_indices)
@@ -567,6 +575,8 @@ def _neg_log_likelihood_time(
     for iso in iso_list:
         lam = lam_map[iso]
         eff = eff_map[iso]
+        if var_eff_map.get(iso):
+            eff *= p[f"eff_{iso}"]
 
         # Extract parameters (some may be fixed to zero):
         E_iso = p[f"E_{iso}"]
@@ -655,16 +665,25 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
     # 1) Build maps: lam_map, eff_map, fix_b_map, fix_n0_map
     lam_map, eff_map = {}, {}
     fix_b_map, fix_n0_map = {}, {}
+    var_eff_map = {}
     for iso in iso_list:
         iso_cfg = config["isotopes"][iso]
         hl = float(iso_cfg["half_life_s"])
         if hl <= 0:
             raise ValueError("half_life_s must be positive")
         lam_map[iso] = np.log(2.0) / hl
-        eff = float(iso_cfg.get("efficiency", 1.0))
-        if eff <= 0:
-            raise ValueError("efficiency must be positive")
-        eff_map[iso] = eff
+        eff_val = iso_cfg.get("efficiency", 1.0)
+        if isinstance(eff_val, list):
+            eff_val = eff_val[0]
+        if eff_val is None:
+            eff_map[iso] = 1.0
+            var_eff_map[iso] = True
+        else:
+            eff = float(eff_val)
+            if eff <= 0:
+                raise ValueError("efficiency must be positive")
+            eff_map[iso] = eff
+            var_eff_map[iso] = False
         fix_b_map[iso] = not bool(config.get("fit_background", False))
         fix_n0_map[iso] = not bool(config.get("fit_initial", False))
 
@@ -711,6 +730,13 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
             limits[f"N0_{iso}"] = (0.0, None)
             idx += 1
 
+        #    eff_iso scaling (if efficiency free)
+        if var_eff_map.get(iso):
+            param_indices[f"eff_{iso}"] = idx
+            initial_guesses.append(1.0)
+            limits[f"eff_{iso}"] = (0.0, None)
+            idx += 1
+
     # 3) Build the Minuit minimizer
     def _nll_minuit_wrapper(*args):
         return _neg_log_likelihood_time(
@@ -725,6 +751,7 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
             fix_b_map,
             fix_n0_map,
             param_indices,
+            var_eff_map,
         )
 
     # Collect parameter names in the same order as initial_guesses

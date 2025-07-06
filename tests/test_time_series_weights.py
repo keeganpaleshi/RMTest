@@ -71,6 +71,7 @@ def test_weighted_nll_matches_numeric_integration():
     fix_b_map = {"Po214": False}
     fix_n0_map = {"Po214": False}
     param_indices = {"E_Po214": 0, "B_Po214": 1, "N0_Po214": 2}
+    var_eff_map = {"Po214": False}
 
     analytic_nll = _neg_log_likelihood_time(
         params,
@@ -84,6 +85,7 @@ def test_weighted_nll_matches_numeric_integration():
         fix_b_map,
         fix_n0_map,
         param_indices,
+        var_eff_map,
     )
 
     def rate(t):

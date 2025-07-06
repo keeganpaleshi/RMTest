@@ -353,7 +353,13 @@ def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
         "Po210": default_const.get("Po210", PO210).half_life_s,
     }[iso]
     hl = cfg.get("time_fit", {}).get(f"hl_{iso.lower()}", [hl_default])[0]
-    eff = cfg.get("time_fit", {}).get(f"eff_{iso.lower()}", [1.0])[0]
+    eff_entry = cfg.get("time_fit", {}).get(f"eff_{iso.lower()}")
+    if isinstance(eff_entry, list):
+        eff = eff_entry[0]
+    elif eff_entry is None:
+        eff = 1.0
+    else:
+        eff = eff_entry
     lam = math.log(2.0) / float(hl)
     dE = params.get("dE_corrected", params.get(f"dE_{iso}", 0.0))
     dN0 = params.get(f"dN0_{iso}", 0.0)
@@ -1565,10 +1571,12 @@ def main(argv=None):
         priors_time = {}
 
         # Efficiency prior per isotope
-        eff_val = cfg["time_fit"].get(
-            f"eff_{iso.lower()}", [1.0, 0.0]
-        )
-        priors_time["eff"] = tuple(eff_val)
+        eff_val = cfg["time_fit"].get(f"eff_{iso.lower()}")
+        if eff_val is not None:
+            if isinstance(eff_val, list):
+                priors_time["eff"] = tuple(eff_val)
+            else:
+                priors_time["eff"] = (float(eff_val), 0.0)
 
         # Half-life prior (user must supply [T₁/₂, σ(T₁/₂)] in seconds)
         hl_key = f"hl_{iso.lower()}"
@@ -1593,9 +1601,13 @@ def main(argv=None):
             if iso in isotopes_to_subtract:
                 baseline_counts[iso] = n0_count
 
-            eff = cfg["time_fit"].get(
-                f"eff_{iso.lower()}", [1.0]
-            )[0]
+            eff_entry = cfg["time_fit"].get(f"eff_{iso.lower()}")
+            if isinstance(eff_entry, list):
+                eff = eff_entry[0]
+            elif eff_entry is None:
+                eff = 1.0
+            else:
+                eff = eff_entry
             if baseline_live_time > 0 and eff > 0:
                 n0_activity = n0_count / (baseline_live_time * eff)
                 n0_sigma = np.sqrt(n0_count) / (baseline_live_time * eff)
@@ -1653,9 +1665,13 @@ def main(argv=None):
 
             analysis_counts = float(np.sum(iso_events["weight"]))
             iso_counts_raw[iso] = analysis_counts
-            eff = cfg["time_fit"].get(
-                f"eff_{iso.lower()}", [1.0]
-            )[0]
+            eff_entry = cfg["time_fit"].get(f"eff_{iso.lower()}")
+            if isinstance(eff_entry, list):
+                eff = eff_entry[0]
+            elif eff_entry is None:
+                eff = 1.0
+            else:
+                eff = eff_entry
             live_time_iso = iso_live_time.get(iso, 0.0)
             if eff > 0 and live_time_iso > 0:
                 c_rate = analysis_counts / (live_time_iso * eff)
@@ -1690,8 +1706,8 @@ def main(argv=None):
                         f"hl_{iso.lower()}", [np.nan]
                     )[0],
                     "efficiency": cfg["time_fit"].get(
-                        f"eff_{iso.lower()}", [1.0]
-                    )[0],
+                        f"eff_{iso.lower()}"
+                    ),
                 }
             },
             "fit_background": not cfg["time_fit"]["flags"].get(
@@ -1926,7 +1942,13 @@ def main(argv=None):
     baseline_unc = {}
     if baseline_live_time > 0:
         for iso, n in baseline_counts.items():
-            eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
+            eff_entry = cfg["time_fit"].get(f"eff_{iso.lower()}")
+            if isinstance(eff_entry, list):
+                eff = eff_entry[0]
+            elif eff_entry is None:
+                eff = 1.0
+            else:
+                eff = eff_entry
             if eff > 0:
                 baseline_rates[iso] = n / (baseline_live_time * eff)
                 baseline_unc[iso] = np.sqrt(n) / (baseline_live_time * eff)
@@ -1954,7 +1976,13 @@ def main(argv=None):
         err_fit = params.get(f"dE_{iso}", 0.0)
         live_time_iso = iso_live_time.get(iso, 0.0)
         count = iso_counts_raw.get(iso, baseline_counts.get(iso, 0.0))
-        eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
+        eff_entry = cfg["time_fit"].get(f"eff_{iso.lower()}")
+        if isinstance(eff_entry, list):
+            eff = eff_entry[0]
+        elif eff_entry is None:
+            eff = 1.0
+        else:
+            eff = eff_entry
         base_cnt = baseline_counts.get(iso, 0.0)
         s = scales.get(iso, 1.0)
 
