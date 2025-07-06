@@ -2124,6 +2124,7 @@ def main(argv=None):
     from radon_activity import compute_radon_activity, compute_total_radon
 
     radon_results = {}
+    radon_combined_info = None
     def _eff_value_local(key):
         val = cfg.get("time_fit", {}).get(key)
         if isinstance(val, list):
@@ -2150,6 +2151,12 @@ def main(argv=None):
     A_radon, dA_radon = compute_radon_activity(
         rate218, err218, eff_po218, rate214, err214, eff_po214
     )
+
+    if cfg.get("analysis_isotope", "radon") == "radon":
+        radon_combined_info = {
+            "activity_Bq": A_radon,
+            "unc_Bq": dA_radon,
+        }
 
     # Convert activity to a concentration per liter of monitor volume and the
     # total amount of radon present in just the assay sample.
@@ -2311,6 +2318,9 @@ def main(argv=None):
         },
     )
 
+    if radon_combined_info is not None:
+        summary.radon_combined = radon_combined_info
+
     if weights is not None:
         summary.efficiency["blue_weights"] = list(weights)
 
@@ -2423,6 +2433,18 @@ def main(argv=None):
         times = np.linspace(t0_global.timestamp(), t_end_global_ts, 100)
         times_dt = to_datetime_utc(times, unit="s")
         t_rel = (times_dt - analysis_start).total_seconds()
+
+        if radon_combined_info is not None:
+            try:
+                _ = plot_radon_activity(
+                    [t0_global.timestamp(), t_end_global_ts],
+                    [radon_combined_info["activity_Bq"]] * 2,
+                    [radon_combined_info["unc_Bq"]] * 2,
+                    Path(out_dir) / "radon_activity_combined.png",
+                    config=cfg.get("plotting", {}),
+                )
+            except Exception as e:
+                print(f"WARNING: Could not create radon combined plot -> {e}")
 
         A214 = dA214 = None
         if "Po214" in time_fit_results:
