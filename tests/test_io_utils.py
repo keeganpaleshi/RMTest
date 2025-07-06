@@ -470,7 +470,7 @@ def test_load_config_default_analysis_isotope(tmp_path):
 def test_load_config_invalid_baseline(tmp_path):
     cfg = {
         "pipeline": {"log_level": "INFO"},
-        "baseline": {"monitor_volume_l": -1, "sample_volume_l": 0.0},
+        "baseline": {"monitor_volume_l": -1, "sample_volume_l": 1.0},
         "spectral_fit": {"expected_peaks": {"Po210": 1}},
         "time_fit": {"do_time_fit": True},
         "systematics": {"enable": False},
