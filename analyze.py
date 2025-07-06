@@ -715,6 +715,11 @@ def main(argv=None):
         print(f"ERROR: Could not load config '{args.config}': {e}")
         sys.exit(1)
 
+    consts = cfg.get("nuclide_constants", {})
+    po214 = consts.get("Po214")
+    if po214 is not None:
+        assert po214.half_life_s < 1e3
+
     def _log_override(section, key, new_val):
         prev = cfg.get(section, {}).get(key)
         if prev is not None and prev != new_val:
@@ -1275,6 +1280,7 @@ def main(argv=None):
 
     monitor_vol = float(baseline_cfg.get("monitor_volume_l", 605.0))
     sample_vol = float(baseline_cfg.get("sample_volume_l", 0.0))
+    assert sample_vol > 0
     base_events = pd.DataFrame()
     baseline_live_time = 0.0
     mask_base = None
@@ -2081,6 +2087,10 @@ def main(argv=None):
             iso: vals["uncertainty"]
             for iso, vals in baseline_info["corrected_activity"].items()
         }
+        if "Po214" in baseline_info["corrected_activity"]:
+            assert (
+                baseline_info["corrected_activity"]["Po214"]["value"] >= 0
+            )
 
     try:
         _ = summarize_baseline(

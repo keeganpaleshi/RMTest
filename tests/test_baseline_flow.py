@@ -15,7 +15,7 @@ def test_baseline_event_from_unfiltered_data(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},
         "calibration": {"noise_cutoff": 5},
-        "baseline": {"range": [0, 2], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
+        "baseline": {"range": [0, 2], "monitor_volume_l": 605.0, "sample_volume_l": 1.0},
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {"do_time_fit": False},
         "systematics": {"enable": False},

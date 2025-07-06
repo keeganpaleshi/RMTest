@@ -13,7 +13,7 @@ import baseline_noise
 from dataclasses import asdict
 from calibration import CalibrationResult
 import baseline
-from baseline_utils import subtract_baseline_counts
+from baseline_utils import subtract_baseline_counts, compute_dilution_factor
 from radon.baseline import subtract_baseline_counts
 from fitting import FitResult, FitParams
 
@@ -21,7 +21,7 @@ from fitting import FitResult, FitParams
 def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},
-        "baseline": {"range": [0, 10], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
+        "baseline": {"range": [0, 10], "monitor_volume_l": 605.0, "sample_volume_l": 1.0},
         "calibration": {},
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
@@ -91,9 +91,10 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
     summary = captured["summary"]
     # Baseline-subtracted rate is reported under ``corrected_rate_Bq``
     assert summary["baseline"]["n_events"] == 2
-    assert summary["baseline"]["dilution_factor"] == pytest.approx(1.0)
-    assert summary["baseline"]["scales"]["Po214"] == pytest.approx(1.0)
-    assert summary["baseline"]["scales"]["Po218"] == pytest.approx(1.0)
+    expected_dilution = compute_dilution_factor(605.0, 1.0)
+    assert summary["baseline"]["dilution_factor"] == pytest.approx(expected_dilution)
+    assert summary["baseline"]["scales"]["Po214"] == pytest.approx(expected_dilution)
+    assert summary["baseline"]["scales"]["Po218"] == pytest.approx(expected_dilution)
     assert summary["baseline"]["scales"]["Po210"] == pytest.approx(1.0)
     assert summary["baseline"]["scales"]["noise"] == pytest.approx(1.0)
     corr_rate = summary["baseline"]["corrected_rate_Bq"]["Po214"]
@@ -210,7 +211,7 @@ def test_n0_prior_from_baseline(tmp_path, monkeypatch):
     """Baseline counts convert to an N0 prior in activity units."""
     cfg = {
         "pipeline": {"log_level": "INFO"},
-        "baseline": {"range": [0, 10], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
+        "baseline": {"range": [0, 10], "monitor_volume_l": 605.0, "sample_volume_l": 1.0},
         "calibration": {},
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
@@ -300,7 +301,7 @@ def test_isotopes_to_subtract_control(tmp_path, monkeypatch):
     """No subtraction occurs when the isotope list is empty."""
     cfg = {
         "pipeline": {"log_level": "INFO"},
-        "baseline": {"range": [0, 10], "monitor_volume_l": 605.0, "sample_volume_l": 0.0, "isotopes_to_subtract": []},
+        "baseline": {"range": [0, 10], "monitor_volume_l": 605.0, "sample_volume_l": 1.0, "isotopes_to_subtract": []},
         "calibration": {},
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
@@ -503,7 +504,7 @@ def test_baseline_scaling_multiple_isotopes(tmp_path, monkeypatch):
 def test_noise_level_none_not_recorded(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},
-        "baseline": {"range": [0, 10], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
+        "baseline": {"range": [0, 10], "monitor_volume_l": 605.0, "sample_volume_l": 1.0},
         "calibration": {},
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
@@ -574,7 +575,7 @@ def test_sigma_rate_uses_weighted_counts(tmp_path, monkeypatch):
     """Baseline-corrected uncertainty should use weighted iso counts."""
     cfg = {
         "pipeline": {"log_level": "INFO"},
-        "baseline": {"range": [0, 10], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
+        "baseline": {"range": [0, 10], "monitor_volume_l": 605.0, "sample_volume_l": 1.0},
         "calibration": {},
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
