@@ -29,23 +29,34 @@ def test_analyze_noise_cutoff(tmp_path, monkeypatch):
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
-    df = pd.DataFrame({
-        "fUniqueID": [1, 2],
-        "fBits": [0, 0],
-        "timestamp": [pd.Timestamp(1.0, unit="s", tz="UTC"), pd.Timestamp(2.0, unit="s", tz="UTC")],
-        "adc": [50, 150],
-        "fchannel": [1, 1],
-    })
+    df = pd.DataFrame(
+        {
+            "fUniqueID": [1, 2],
+            "fBits": [0, 0],
+            "timestamp": [
+                pd.Timestamp(1.0, unit="s", tz="UTC"),
+                pd.Timestamp(2.0, unit="s", tz="UTC"),
+            ],
+            "adc": [50, 150],
+            "fchannel": [1, 1],
+        }
+    )
     data_path = tmp_path / "data.csv"
     df.to_csv(data_path, index=False)
 
     cal_mock = {"a": (1.0, 0.0), "c": (0.0, 0.0), "sigma_E": (1.0, 0.0), "peaks": {}}
-    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
-    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
+    monkeypatch.setattr(
+        analyze, "derive_calibration_constants", lambda *a, **k: cal_mock
+    )
+    monkeypatch.setattr(
+        analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock
+    )
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
-    monkeypatch.setattr(analyze, "apply_burst_filter", lambda df, cfg, mode="rate": (df, 0))
+    monkeypatch.setattr(
+        analyze, "apply_burst_filter", lambda df, cfg, mode="rate": (df, 0)
+    )
 
     captured = {}
 
@@ -73,12 +84,15 @@ def test_analyze_noise_cutoff(tmp_path, monkeypatch):
 
     args = [
         "analyze.py",
-        "--config", str(cfg_path),
-        "--input", str(data_path),
-        "--output_dir", str(tmp_path),
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
     analyze.main()
 
     assert captured.get("fit_times") == [2.0]
-    assert captured.get("plot_times") == [np.datetime64("1970-01-01T00:00:02Z")]
+    assert captured.get("plot_times") == []

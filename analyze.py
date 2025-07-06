@@ -131,7 +131,9 @@ def _fit_params(obj: FitResult | Mapping[str, float] | None) -> FitParams:
     return {}
 
 
-def _cov_lookup(fit_result: FitResult | Mapping[str, float] | None, name1: str, name2: str) -> float:
+def _cov_lookup(
+    fit_result: FitResult | Mapping[str, float] | None, name1: str, name2: str
+) -> float:
     """Return covariance between two parameters if present."""
     if isinstance(fit_result, FitResult):
         try:
@@ -218,15 +220,7 @@ def prepare_analysis_df(
     t0_global: datetime,
     cfg: dict,
     args,
-) -> tuple[
-    pd.DataFrame,
-    datetime,
-    datetime,
-    float,
-    float,
-    str | None,
-    Any,
-]:
+) -> tuple[pd.DataFrame, datetime, datetime, float, float, str | None, Any,]:
     """Apply time window cuts and derive drift parameters."""
 
     df_analysis = df.copy()
@@ -240,16 +234,24 @@ def prepare_analysis_df(
             df_analysis["timestamp"] = tz_convert_utc(ts)
 
     if spike_start is not None and spike_end is not None:
-        mask = (df_analysis["timestamp"] >= spike_start) & (df_analysis["timestamp"] < spike_end)
+        mask = (df_analysis["timestamp"] >= spike_start) & (
+            df_analysis["timestamp"] < spike_end
+        )
         if mask.any():
             df_analysis = df_analysis[~mask].reset_index(drop=True)
     elif spike_start is not None:
-        df_analysis = df_analysis[df_analysis["timestamp"] <= spike_start].reset_index(drop=True)
+        df_analysis = df_analysis[df_analysis["timestamp"] <= spike_start].reset_index(
+            drop=True
+        )
     elif spike_end is not None:
-        df_analysis = df_analysis[df_analysis["timestamp"] >= spike_end].reset_index(drop=True)
+        df_analysis = df_analysis[df_analysis["timestamp"] >= spike_end].reset_index(
+            drop=True
+        )
 
     for start_ts, end_ts in spike_periods:
-        mask = (df_analysis["timestamp"] >= start_ts) & (df_analysis["timestamp"] < end_ts)
+        mask = (df_analysis["timestamp"] >= start_ts) & (
+            df_analysis["timestamp"] < end_ts
+        )
         if mask.any():
             df_analysis = df_analysis[~mask].reset_index(drop=True)
 
@@ -264,7 +266,9 @@ def prepare_analysis_df(
             analysis_end = df_analysis["timestamp"].max()
 
     if analysis_end is not None:
-        df_analysis = df_analysis[df_analysis["timestamp"] <= analysis_end].reset_index(drop=True)
+        df_analysis = df_analysis[df_analysis["timestamp"] <= analysis_end].reset_index(
+            drop=True
+        )
     else:
         analysis_end = df_analysis["timestamp"].max()
 
@@ -284,8 +288,10 @@ def prepare_analysis_df(
         if args.slope is not None
         else float(drift_cfg.get("adc_drift_rate", 0.0))
     )
-    drift_mode = "linear" if args.slope is not None else drift_cfg.get(
-        "adc_drift_mode", "linear"
+    drift_mode = (
+        "linear"
+        if args.slope is not None
+        else drift_cfg.get("adc_drift_mode", "linear")
     )
     drift_params = drift_cfg.get("adc_drift_params")
 
@@ -417,7 +423,6 @@ def parse_args(argv=None):
         help="Background removal strategy (default: all)",
     )
     p.add_argument(
-
         "--allow-negative-baseline",
         action="store_true",
         help="Allow negative baseline-corrected rates",
@@ -513,7 +518,6 @@ def parse_args(argv=None):
         help=(
             "ADC threshold for the noise cut. Providing this option overrides "
             "`calibration.noise_cutoff` in config.yaml"
-
         ),
     )
     p.add_argument(
@@ -656,7 +660,9 @@ def main(argv=None):
         sys.exit(1)
 
     if args.baseline_range:
-        args.baseline_range = [parse_time_arg(t, tz=tzinfo) for t in args.baseline_range]
+        args.baseline_range = [
+            parse_time_arg(t, tz=tzinfo) for t in args.baseline_range
+        ]
     if args.analysis_end_time is not None:
         args.analysis_end_time = parse_time_arg(args.analysis_end_time, tz=tzinfo)
     if args.analysis_start_time is not None:
@@ -667,11 +673,13 @@ def main(argv=None):
         args.spike_end_time = parse_time_arg(args.spike_end_time, tz=tzinfo)
     if args.spike_period:
         args.spike_period = [
-            [parse_time_arg(s, tz=tzinfo), parse_time_arg(e, tz=tzinfo)] for s, e in args.spike_period
+            [parse_time_arg(s, tz=tzinfo), parse_time_arg(e, tz=tzinfo)]
+            for s, e in args.spike_period
         ]
     if args.run_period:
         args.run_period = [
-            [parse_time_arg(s, tz=tzinfo), parse_time_arg(e, tz=tzinfo)] for s, e in args.run_period
+            [parse_time_arg(s, tz=tzinfo), parse_time_arg(e, tz=tzinfo)]
+            for s, e in args.run_period
         ]
     if args.radon_interval:
         args.radon_interval = [
@@ -787,7 +795,6 @@ def main(argv=None):
         _log_override("time_fit", "hl_po218", [float(args.hl_po218), sig])
         tf["hl_po218"] = [float(args.hl_po218), sig]
 
-
     if args.time_bin_mode:
         _log_override("plotting", "plot_time_binning_mode", args.time_bin_mode)
         cfg.setdefault("plotting", {})["plot_time_binning_mode"] = args.time_bin_mode
@@ -829,7 +836,6 @@ def main(argv=None):
     if args.allow_negative_baseline:
         cfg["allow_negative_baseline"] = True
 
-
     if args.debug:
         cfg.setdefault("pipeline", {})["log_level"] = "DEBUG"
 
@@ -867,7 +873,6 @@ def main(argv=None):
         # Parse timestamps to UTC ``Timestamp`` objects
         events_all["timestamp"] = events_all["timestamp"].map(parse_timestamp)
 
-
     except Exception as e:
         print(f"ERROR: Could not load events from '{args.input}': {e}")
         sys.exit(1)
@@ -891,13 +896,13 @@ def main(argv=None):
         try:
             noise_thr_val = int(noise_thr)
         except (ValueError, TypeError):
-            logging.warning(
-                f"Invalid noise_cutoff '{noise_thr}' - skipping noise cut"
-            )
+            logging.warning(f"Invalid noise_cutoff '{noise_thr}' - skipping noise cut")
             noise_thr_val = None
         else:
             before = len(events_filtered)
-            events_filtered = events_filtered[events_filtered["adc"] > noise_thr_val].reset_index(drop=True)
+            events_filtered = events_filtered[
+                events_filtered["adc"] > noise_thr_val
+            ].reset_index(drop=True)
             n_removed_noise = before - len(events_filtered)
             logging.info(f"Noise cut removed {n_removed_noise} events")
 
@@ -920,7 +925,9 @@ def main(argv=None):
     )
 
     n_before_burst = len(events_filtered)
-    events_filtered, n_removed_burst = apply_burst_filter(events_filtered, cfg, mode=burst_mode)
+    events_filtered, n_removed_burst = apply_burst_filter(
+        events_filtered, cfg, mode=burst_mode
+    )
     if n_before_burst > 0:
         frac_removed = n_removed_burst / n_before_burst
         logging.info(
@@ -932,8 +939,6 @@ def main(argv=None):
             )
 
     _ensure_events(events_filtered, "burst filtering")
-
-
 
     # Global t₀ reference
     t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
@@ -1115,7 +1120,7 @@ def main(argv=None):
         a2, a2_sig = obj.get("a2", (0.0, 0.0))
 
         coeffs = [c, a]
-        cov = np.array([[c_sig ** 2, 0.0], [0.0, a_sig ** 2]])
+        cov = np.array([[c_sig**2, 0.0], [0.0, a_sig**2]])
 
         if "ac_covariance" in obj:
             cov_ac = float(np.asarray(obj["ac_covariance"], dtype=float)[0][1])
@@ -1124,7 +1129,7 @@ def main(argv=None):
         if "a2" in obj:
             coeffs.append(a2)
             cov = np.pad(cov, ((0, 1), (0, 1)), mode="constant", constant_values=0.0)
-            cov[2, 2] = a2_sig ** 2
+            cov[2, 2] = a2_sig**2
             cov[1, 2] = cov[2, 1] = float(obj.get("cov_a_a2", 0.0))
             cov[0, 2] = cov[2, 0] = float(obj.get("cov_a2_c", 0.0))
 
@@ -1144,7 +1149,9 @@ def main(argv=None):
         a2, a2_sig = cal_params.get("a2", (0.0, 0.0))
         c, c_sig = cal_params["c"]
         sigE_mean, sigE_sigma = cal_params["sigma_E"]
-        cov_mat = np.asarray(cal_params.get("ac_covariance", [[0.0, 0.0], [0.0, 0.0]]), dtype=float)
+        cov_mat = np.asarray(
+            cal_params.get("ac_covariance", [[0.0, 0.0], [0.0, 0.0]]), dtype=float
+        )
         cov_ac = float(cov_mat[0, 1])
         cov_a_a2 = float(cal_params.get("cov_a_a2", 0.0))
         cov_a2_c = float(cal_params.get("cov_a2_c", 0.0))
@@ -1187,6 +1194,16 @@ def main(argv=None):
     energies = cal_result.predict(df_analysis["adc"])
     df_analysis["energy_MeV"] = energies
     df_analysis["denergy_MeV"] = cal_result.uncertainty(df_analysis["adc"])
+
+    # Derive default time-fit windows from calibration peaks when missing
+    if getattr(cal_result, "peaks", None):
+        tf_cfg = cfg.setdefault("time_fit", {})
+        for iso in ("Po210", "Po218", "Po214"):
+            key = f"window_{iso.lower()}"
+            if tf_cfg.get(key) is None:
+                peak_E = cal_result.peaks.get(iso, {}).get("centroid_mev")
+                if peak_E is not None:
+                    tf_cfg[key] = [float(peak_E - 0.08), float(peak_E + 0.08)]
 
     # ────────────────────────────────────────────────────────────
     # 4. Baseline run (optional)
@@ -1233,7 +1250,7 @@ def main(argv=None):
         t_end_base = baseline_range[1]
         if t_end_base <= t_start_base:
             raise ValueError("baseline_range end time must be greater than start time")
-        events_all_ts = to_datetime_utc(events_all["timestamp"]) 
+        events_all_ts = to_datetime_utc(events_all["timestamp"])
         mask_base_full = (events_all_ts >= t_start_base) & (events_all_ts < t_end_base)
         mask_base = (df_analysis["timestamp"] >= t_start_base) & (
             df_analysis["timestamp"] < t_end_base
@@ -1376,11 +1393,7 @@ def main(argv=None):
                 # fd_width is measured in MeV since energies are in MeV
                 nbins = max(
                     1,
-                    int(
-                        np.ceil(
-                            (E_all.max() - E_all.min()) / float(fd_width)
-                        )
-                    ),
+                    int(np.ceil((E_all.max() - E_all.min()) / float(fd_width))),
                 )
             else:
                 nbins = default_bins
@@ -1545,7 +1558,10 @@ def main(argv=None):
 
             lo, hi = win_range
             probs = window_prob(
-                df_analysis["energy_MeV"].values, df_analysis["denergy_MeV"].values, lo, hi
+                df_analysis["energy_MeV"].values,
+                df_analysis["denergy_MeV"].values,
+                lo,
+                hi,
             )
             iso_mask = probs > 0
             iso_events = df_analysis[iso_mask].copy()
@@ -1565,9 +1581,7 @@ def main(argv=None):
         priors_time = {}
 
         # Efficiency prior per isotope
-        eff_val = cfg["time_fit"].get(
-            f"eff_{iso.lower()}", [1.0, 0.0]
-        )
+        eff_val = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0, 0.0])
         priors_time["eff"] = tuple(eff_val)
 
         # Half-life prior (user must supply [T₁/₂, σ(T₁/₂)] in seconds)
@@ -1593,9 +1607,7 @@ def main(argv=None):
             if iso in isotopes_to_subtract:
                 baseline_counts[iso] = n0_count
 
-            eff = cfg["time_fit"].get(
-                f"eff_{iso.lower()}", [1.0]
-            )[0]
+            eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
             if baseline_live_time > 0 and eff > 0:
                 n0_activity = n0_count / (baseline_live_time * eff)
                 n0_sigma = np.sqrt(n0_count) / (baseline_live_time * eff)
@@ -1630,9 +1642,7 @@ def main(argv=None):
             else:
                 if eff > 0 and live_time_iso > 0:
                     c_rate = analysis_counts / (live_time_iso * eff)
-                    c_sigma = math.sqrt(analysis_counts) / (
-                        live_time_iso * eff
-                    )
+                    c_sigma = math.sqrt(analysis_counts) / (live_time_iso * eff)
                 else:
                     c_rate = 0.0
                     c_sigma = 0.0
@@ -1640,7 +1650,7 @@ def main(argv=None):
                 "value": c_rate,
                 "uncertainty": c_sigma,
             }
-            weight_factor = 1.0 / (c_sigma ** 2) if c_sigma > 0 else 1.0
+            weight_factor = 1.0 / (c_sigma**2) if c_sigma > 0 else 1.0
             iso_events["weight"] *= weight_factor
         else:
             priors_time["N0"] = (
@@ -1653,15 +1663,11 @@ def main(argv=None):
 
             analysis_counts = float(np.sum(iso_events["weight"]))
             iso_counts_raw[iso] = analysis_counts
-            eff = cfg["time_fit"].get(
-                f"eff_{iso.lower()}", [1.0]
-            )[0]
+            eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
             live_time_iso = iso_live_time.get(iso, 0.0)
             if eff > 0 and live_time_iso > 0:
                 c_rate = analysis_counts / (live_time_iso * eff)
-                c_sigma = math.sqrt(analysis_counts) / (
-                    live_time_iso * eff
-                )
+                c_sigma = math.sqrt(analysis_counts) / (live_time_iso * eff)
             else:
                 c_rate = 0.0
                 c_sigma = 0.0
@@ -1669,7 +1675,7 @@ def main(argv=None):
                 "value": c_rate,
                 "uncertainty": c_sigma,
             }
-            weight_factor = 1.0 / (c_sigma ** 2) if c_sigma > 0 else 1.0
+            weight_factor = 1.0 / (c_sigma**2) if c_sigma > 0 else 1.0
             iso_events["weight"] *= weight_factor
 
         # Store priors for use in systematics scanning
@@ -1686,18 +1692,18 @@ def main(argv=None):
         fit_cfg = {
             "isotopes": {
                 iso: {
-                    "half_life_s": cfg["time_fit"].get(
-                        f"hl_{iso.lower()}", [np.nan]
-                    )[0],
-                    "efficiency": cfg["time_fit"].get(
-                        f"eff_{iso.lower()}", [1.0]
-                    )[0],
+                    "half_life_s": cfg["time_fit"].get(f"hl_{iso.lower()}", [np.nan])[
+                        0
+                    ],
+                    "efficiency": cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0],
                 }
             },
             "fit_background": not cfg["time_fit"]["flags"].get(
                 "fix_background_b", False
             ),
-            "fit_initial": not cfg["time_fit"]["flags"].get(f"fix_N0_{iso.lower()}", False),
+            "fit_initial": not cfg["time_fit"]["flags"].get(
+                f"fix_N0_{iso.lower()}", False
+            ),
             "background_guess": cfg["time_fit"].get("background_guess", 0.0),
             "n0_guess_fraction": cfg["time_fit"].get("n0_guess_fraction", 0.1),
         }
@@ -1795,7 +1801,9 @@ def main(argv=None):
                 cfg_fit = {
                     "isotopes": {
                         iso: {
-                            "half_life_s": cfg["time_fit"].get(f"hl_{iso.lower()}", [np.nan])[0],
+                            "half_life_s": cfg["time_fit"].get(
+                                f"hl_{iso.lower()}", [np.nan]
+                            )[0],
                             "efficiency": priors_mod["eff"][0],
                         }
                     },
@@ -1935,7 +1943,12 @@ def main(argv=None):
                 baseline_unc[iso] = 0.0
 
     dilution_factor = compute_dilution_factor(monitor_vol, sample_vol)
-    scales = {"Po214": dilution_factor, "Po218": dilution_factor, "Po210": 1.0, "noise": 1.0}
+    scales = {
+        "Po214": dilution_factor,
+        "Po218": dilution_factor,
+        "Po210": 1.0,
+        "noise": 1.0,
+    }
     baseline_info["scales"] = scales
     baseline_info["analysis_counts"] = iso_counts_raw
 
@@ -2003,10 +2016,12 @@ def main(argv=None):
         baseline_info["dilution_factor"] = dilution_factor
     if baseline_info.get("corrected_activity"):
         baseline_info["corrected_rate_Bq"] = {
-            iso: vals["value"] for iso, vals in baseline_info["corrected_activity"].items()
+            iso: vals["value"]
+            for iso, vals in baseline_info["corrected_activity"].items()
         }
         baseline_info["corrected_sigma_Bq"] = {
-            iso: vals["uncertainty"] for iso, vals in baseline_info["corrected_activity"].items()
+            iso: vals["uncertainty"]
+            for iso, vals in baseline_info["corrected_activity"].items()
         }
 
     try:
@@ -2271,7 +2286,11 @@ def main(argv=None):
             )
             normalise = bool(plot_cfg.get("plot_time_normalise_rate", False))
             model_errs = {}
-            iso_list_err = [iso] if not overlay else [i for i in ("Po214", "Po218", "Po210") if time_fit_results.get(i)]
+            iso_list_err = (
+                [iso]
+                if not overlay
+                else [i for i in ("Po214", "Po218", "Po210") if time_fit_results.get(i)]
+            )
             for iso_key in iso_list_err:
                 sigma_arr = _model_uncertainty(
                     centers,

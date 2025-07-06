@@ -5,6 +5,7 @@
 import os
 import numpy as np
 import matplotlib as _mpl
+
 _mpl.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -178,18 +179,6 @@ def plot_time_series(
         raise ValueError("hl_po218 must be positive")
 
     iso_params = {
-        "Po214": {
-            # Energy window for Po-214 events
-            "window": _cfg_get(config, "window_po214"),
-            "eff": float(_cfg_get(config, "eff_po214", [1.0])[0]),
-            "half_life": po214_hl,
-        },
-        "Po218": {
-            # Energy window for Po-218 events
-            "window": _cfg_get(config, "window_po218"),
-            "eff": float(_cfg_get(config, "eff_po218", [1.0])[0]),
-            "half_life": po218_hl,
-        },
         "Po210": {
             # Energy window for Po-210 events (optional)
             "window": _cfg_get(config, "window_po210"),
@@ -201,6 +190,18 @@ def plot_time_series(
                     [default_const.get("Po210", PO210).half_life_s],
                 )[0]
             ),
+        },
+        "Po218": {
+            # Energy window for Po-218 events
+            "window": _cfg_get(config, "window_po218"),
+            "eff": float(_cfg_get(config, "eff_po218", [1.0])[0]),
+            "half_life": po218_hl,
+        },
+        "Po214": {
+            # Energy window for Po-214 events
+            "window": _cfg_get(config, "window_po214"),
+            "eff": float(_cfg_get(config, "eff_po214", [1.0])[0]),
+            "half_life": po214_hl,
         },
     }
     iso_list = [iso for iso, p in iso_params.items() if p["window"] is not None]
@@ -426,7 +427,11 @@ def plot_spectrum(
         Plotting configuration dictionary.
     """
     show_res = bool(fit_vals)
-    if bin_edges is None and config is not None and "plot_spectrum_binsize_adc" in config:
+    if (
+        bin_edges is None
+        and config is not None
+        and "plot_spectrum_binsize_adc" in config
+    ):
         step = float(config["plot_spectrum_binsize_adc"])
         e_min, e_max = energies.min(), energies.max()
         bin_edges = np.arange(e_min, e_max + step, step)
@@ -441,8 +446,7 @@ def plot_spectrum(
 
     if show_res:
         fig, (ax_main, ax_res) = plt.subplots(
-            2, 1, sharex=True, figsize=(8, 6),
-            gridspec_kw={"height_ratios": [3, 1]}
+            2, 1, sharex=True, figsize=(8, 6), gridspec_kw={"height_ratios": [3, 1]}
         )
     else:
         fig, ax_main = plt.subplots(figsize=(8, 6))
@@ -471,7 +475,11 @@ def plot_spectrum(
             if mu_key in fit_vals and amp_key in fit_vals:
                 mu = fit_vals[mu_key]
                 amp = fit_vals[amp_key]
-                y += amp / (sigma_E * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mu) / sigma_E) ** 2)
+                y += (
+                    amp
+                    / (sigma_E * np.sqrt(2 * np.pi))
+                    * np.exp(-0.5 * ((x - mu) / sigma_E) ** 2)
+                )
         palette_name = str(config.get("palette", "default")) if config else "default"
         palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
         fit_color = palette.get("fit", "#ff0000")
@@ -486,9 +494,11 @@ def plot_spectrum(
                 if mu_key in fit_vals and amp_key in fit_vals:
                     mu = fit_vals[mu_key]
                     amp = fit_vals[amp_key]
-                    y_cent += amp / (
-                        sigma_E * np.sqrt(2 * np.pi)
-                    ) * np.exp(-0.5 * ((centers - mu) / sigma_E) ** 2)
+                    y_cent += (
+                        amp
+                        / (sigma_E * np.sqrt(2 * np.pi))
+                        * np.exp(-0.5 * ((centers - mu) / sigma_E) ** 2)
+                    )
             model_counts = y_cent * width
             residuals = hist - model_counts
             ax_res.bar(

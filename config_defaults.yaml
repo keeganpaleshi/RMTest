@@ -5,6 +5,12 @@ calibration:
   slope_MeV_per_ch: null
   intercept_MeV: null
 time_fit:
+  window_po214:
+  - 7.607
+  - 7.767
   window_po218:
-  - 3050000.0
-  - 3250000.0
+  - 5.922
+  - 6.082
+  window_po210:
+  - 5.224
+  - 5.384
