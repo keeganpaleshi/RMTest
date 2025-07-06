@@ -83,9 +83,9 @@ spectral_fit:
   tau_Po214_prior_sigma: 0.002
   spectral_peak_tolerance_mev: 0.3
   use_emg:
-    Po210: false
-    Po218: true
-    Po214: true
+    Po210: true
+    Po218: false
+    Po214: false
   float_sigma_E: true
   sigma_E_prior_source: 0.15
   peak_search_prominence: 30
