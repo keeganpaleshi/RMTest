@@ -118,6 +118,11 @@ The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--j
  - `equivalent_air.png` – equivalent air volume plot when `--ambient-file` or
    `--ambient-concentration` is provided.
 
+The behaviour of the radon activity calculation is controlled by the
+`analysis_isotope` setting (or `--iso` on the command line).  The default
+`radon` mode combines the Po‑218 and Po‑214 rates.  Selecting `po214` or
+`po218` reports only the chosen isotope without performing the combination.
+
 The `time_fit` routine still fits only Po‑214 and Po‑218.
 When `window_po210` is provided the Po‑210 events are extracted and a
 time‑series histogram is produced without a decay fit. The `hl_po210`
@@ -432,7 +437,7 @@ regions appear alongside the dashed model lines.
 `plot_time_series` takes its half-life values from the `time_fit` section.
 Specify custom values using the keys `hl_po214`, `hl_po218` and `hl_po210`.
 When these keys are omitted, `hl_po214` and `hl_po218` fall back to their
-physical half-lives (≈164 µs and ≈183 s). `hl_po210` defaults to its physical
+physical half-lives (≈164 µs for Po‑214 and ≈183 s for Po‑218). `hl_po210` defaults to its physical
 half-life (≈138 days). These custom half-lives control the decay model drawn
 over the time-series histogram.
 The same values are used in the `time_fit` routine itself, so changing
@@ -518,6 +523,16 @@ Example snippet:
     "monitor_volume_l": 10.0,
     "sample_volume_l": 5.0,
     "isotopes_to_subtract": ["Po214", "Po218"]
+}
+```
+
+For long background measurements spanning weeks the same configuration
+can be reused with the radon half-life in the time-fit section:
+
+```yaml
+"time_fit": {
+    "hl_po214": [328320, 0.0],
+    "hl_po218": [328320, 0.0]
 }
 ```
 

@@ -15,7 +15,7 @@ from fitting import FitResult, FitParams
 def test_baseline_noise_propagation(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},
-        "baseline": {"range": [0, 5], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
+        "baseline": {"range": [0, 5], "monitor_volume_l": 605.0, "sample_volume_l": 1.0},
         "calibration": {"noise_cutoff": 8},
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
