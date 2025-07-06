@@ -28,8 +28,16 @@ class CalibrationResult:
     sigma_E: float = 0.0
     sigma_E_error: float = 0.0
 
-    def __init__(self, *, coeffs, cov=None, peaks=None,
-                 sigma_E=0.0, sigma_E_error=0.0, covariance=None):
+    def __init__(
+        self,
+        *,
+        coeffs,
+        cov=None,
+        peaks=None,
+        sigma_E=0.0,
+        sigma_E_error=0.0,
+        covariance=None,
+    ):
         if covariance is not None:
             if cov is not None:
                 raise TypeError("Specify either 'cov' or 'covariance', not both")
@@ -57,7 +65,7 @@ class CalibrationResult:
     def predict(self, x):
         """Return calibrated energies for ``x``."""
         x_arr = np.atleast_1d(np.asarray(x, dtype=float))
-        powers = np.stack([x_arr ** p for p in self._exponents], axis=-1)
+        powers = np.stack([x_arr**p for p in self._exponents], axis=-1)
         out = powers @ np.asarray(self.coeffs, dtype=float)
         return out[0] if np.ndim(x) == 0 else out
 
@@ -70,7 +78,7 @@ class CalibrationResult:
         x_arr = np.atleast_1d(np.asarray(x, dtype=float))
         sig2 = []
         for val in x_arr:
-            J = np.array([val ** p for p in self._exponents], dtype=float)
+            J = np.array([val**p for p in self._exponents], dtype=float)
             sig2.append(J @ self.cov @ J)
         out = np.sqrt(np.clip(sig2, 0, None))
         return out[0] if np.ndim(x) == 0 else out
@@ -122,6 +130,7 @@ class CalibrationResult:
             return float(cov[i1, i2])
 
         raise KeyError(f"Coefficient(s) missing in covariance: {name1}, {name2}")
+
 
 def emg_left(x, mu, sigma, tau):
     """Exponentially modified Gaussian (left-skewed) PDF.
@@ -221,7 +230,7 @@ def apply_calibration(adc_values, slope, intercept, quadratic_coeff=0.0):
     """
 
     adc_arr = np.asarray(adc_values, dtype=float)
-    return quadratic_coeff * adc_arr ** 2 + slope * adc_arr + intercept
+    return quadratic_coeff * adc_arr**2 + slope * adc_arr + intercept
 
 
 def calibrate_run(adc_values, config, hist_bins=None):
@@ -326,9 +335,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
                 [0, mu0 - window, 1e-3, _TAU_MIN],  # lower bounds
                 [np.inf, mu0 + window, 50.0, 200.0],  # upper bounds (tunable)
             )
-            popt, pcov = curve_fit(
-                model_emg, x_slice, y_slice, p0=p0, bounds=bounds
-            )
+            popt, pcov = curve_fit(model_emg, x_slice, y_slice, p0=p0, bounds=bounds)
             A_fit, mu_fit, sigma_fit, tau_fit = popt
             peak_fits[iso] = {
                 "centroid_adc": float(mu_fit),
@@ -344,9 +351,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
             p0 = [amp0, mu0, sigma0]
             bounds = ([0, mu0 - window, 1e-3], [np.inf, mu0 + window, 50.0])
-            popt, pcov = curve_fit(
-                model_gauss, x_slice, y_slice, p0=p0, bounds=bounds
-            )
+            popt, pcov = curve_fit(model_gauss, x_slice, y_slice, p0=p0, bounds=bounds)
             A_fit, mu_fit, sigma_fit = popt
             peak_fits[iso] = {
                 "centroid_adc": float(mu_fit),
@@ -382,17 +387,35 @@ def calibrate_run(adc_values, config, hist_bins=None):
     E214 = energies["Po214"]
     E218 = energies["Po218"]
 
-    quadratic = bool(
-        config.get("calibration", {}).get("quadratic", False)
-    )
+    quad_opt = config.get("calibration", {}).get("use_quadratic")
+    if quad_opt is None:
+        quad_old = config.get("calibration", {}).get("quadratic")
+        if quad_old is not None:
+            quad_opt = "true" if quad_old else "false"
+        else:
+            quad_opt = "false"
+    if isinstance(quad_opt, bool):
+        quad_opt = "true" if quad_opt else "false"
+    quad_opt = str(quad_opt).lower()
+
+    if quad_opt == "auto":
+        a_lin, c_lin = two_point_calibration([adc210, adc214], [E210, E214])
+        resid = abs(apply_calibration(adc218, a_lin, c_lin) - E218)
+        quadratic = resid > 0.005
+    elif quad_opt == "true":
+        quadratic = True
+    else:
+        quadratic = False
 
     if quadratic:
         # Solve for quadratic coefficients a2, a, c using all three peaks
-        A = np.array([
-            [adc210 ** 2, adc210, 1.0],
-            [adc218 ** 2, adc218, 1.0],
-            [adc214 ** 2, adc214, 1.0],
-        ])
+        A = np.array(
+            [
+                [adc210**2, adc210, 1.0],
+                [adc218**2, adc218, 1.0],
+                [adc214**2, adc214, 1.0],
+            ]
+        )
         y = np.array([E210, E218, E214], dtype=float)
         a2, a, c = np.linalg.solve(A, y)
     else:
@@ -421,6 +444,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
     mu_err_218 = float(np.sqrt(peak_fits["Po218"]["covariance"][1][1]))
 
     if quadratic:
+
         def solve_coeff(m):
             A = np.array(
                 [
@@ -441,19 +465,20 @@ def calibrate_run(adc_values, config, hist_bins=None):
             J[:, i] = (solve_coeff(m_step) - coeff0) / eps
 
         sigma_vec = np.array([mu_err_210, mu_err_218, mu_err_214], dtype=float)
-        cov_coeff = J @ np.diag(sigma_vec ** 2) @ J.T
+        cov_coeff = J @ np.diag(sigma_vec**2) @ J.T
         var_a2, var_a, var_c = np.diag(cov_coeff)
         cov_a_a2 = cov_coeff[1, 0]
         cov_ac = cov_coeff[1, 2]
         cov_a2_c = cov_coeff[0, 2]
     else:
         delta = adc214 - adc210
-        var_a = (a / delta) ** 2 * (mu_err_210 ** 2 + mu_err_214 ** 2)
-        var_c = (
-            (a * adc214 / delta) ** 2 * mu_err_210 ** 2
-            + (a * adc210 / delta) ** 2 * mu_err_214 ** 2
+        var_a = (a / delta) ** 2 * (mu_err_210**2 + mu_err_214**2)
+        var_c = (a * adc214 / delta) ** 2 * mu_err_210**2 + (
+            a * adc210 / delta
+        ) ** 2 * mu_err_214**2
+        cov_ac = (a**2 / delta**2) * (
+            adc214 * mu_err_210**2 + adc210 * mu_err_214**2
         )
-        cov_ac = (a ** 2 / delta ** 2) * (adc214 * mu_err_210 ** 2 + adc210 * mu_err_214 ** 2)
         var_a2 = 0.0
         cov_a_a2 = 0.0
         cov_a2_c = 0.0
@@ -465,7 +490,9 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
     var_slope_local = var_a + (2 * adc214) ** 2 * var_a2 + 2 * (2 * adc214) * cov_a_a2
     var_sigma_adc = peak_fits["Po214"]["covariance"][2][2]
-    var_sigma_E = (sigma_adc214 ** 2) * var_slope_local + (slope_local ** 2) * var_sigma_adc
+    var_sigma_E = (sigma_adc214**2) * var_slope_local + (
+        slope_local**2
+    ) * var_sigma_adc
     dsigma_E = float(np.sqrt(max(var_sigma_E, 0.0)))
 
     # 8) Build result object:

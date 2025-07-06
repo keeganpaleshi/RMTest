@@ -54,6 +54,7 @@ def extract_time_series_events(events, cfg):
         out[iso] = events.loc[mask, "timestamp"].to_numpy()
     return out
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -156,7 +157,12 @@ CONFIG_SCHEMA = {
             "type": "object",
             "additionalProperties": False,
             "properties": {
-                "range": {"type": "array", "items": {"type": ["string", "number"]}, "minItems": 2, "maxItems": 2},
+                "range": {
+                    "type": "array",
+                    "items": {"type": ["string", "number"]},
+                    "minItems": 2,
+                    "maxItems": 2,
+                },
                 "monitor_volume_l": {"type": "number", "minimum": 0},
                 "sample_volume_l": {"type": "number", "minimum": 0},
                 "isotopes_to_subtract": {"type": "array", "items": {"type": "string"}},
@@ -190,6 +196,7 @@ CONFIG_SCHEMA = {
                 "init_tau_adc": {"type": "number", "minimum": 0},
                 "sanity_tolerance_mev": {"type": "number", "minimum": 0},
                 "known_energies": {"type": "object"},
+                "use_quadratic": {"type": ["string", "boolean"]},
             },
         },
         "analysis": {
@@ -202,13 +209,28 @@ CONFIG_SCHEMA = {
                 "spike_end_time": {"type": ["string", "number", "null"]},
                 "spike_periods": {
                     "type": ["array", "null"],
-                    "items": {"type": "array", "items": {"type": ["string", "number"]}, "minItems": 2, "maxItems": 2},
+                    "items": {
+                        "type": "array",
+                        "items": {"type": ["string", "number"]},
+                        "minItems": 2,
+                        "maxItems": 2,
+                    },
                 },
                 "run_periods": {
                     "type": "array",
-                    "items": {"type": "array", "items": {"type": ["string", "number"]}, "minItems": 2, "maxItems": 2},
+                    "items": {
+                        "type": "array",
+                        "items": {"type": ["string", "number"]},
+                        "minItems": 2,
+                        "maxItems": 2,
+                    },
                 },
-                "radon_interval": {"type": "array", "items": {"type": ["string", "number"]}, "minItems": 2, "maxItems": 2},
+                "radon_interval": {
+                    "type": "array",
+                    "items": {"type": ["string", "number"]},
+                    "minItems": 2,
+                    "maxItems": 2,
+                },
                 "ambient_concentration": {"type": ["number", "null"]},
                 "settle_s": {"type": ["number", "null"], "minimum": 0},
             },
@@ -256,7 +278,9 @@ def ensure_dir(path):
 # :mod:`utils` for backward compatibility with older code.
 
 
-def merge_cfg(base: Mapping[str, Any], user: Mapping[str, Any], *, _path: str = "") -> dict:
+def merge_cfg(
+    base: Mapping[str, Any], user: Mapping[str, Any], *, _path: str = ""
+) -> dict:
     """Return a new dictionary with ``user`` merged onto ``base``.
 
     The merge is performed recursively without modifying either input
@@ -280,9 +304,7 @@ def merge_cfg(base: Mapping[str, Any], user: Mapping[str, Any], *, _path: str = 
                 result[key] = merge_cfg(b_val, u_val, _path=new_path)
             else:
                 if b_val != u_val:
-                    logger.debug(
-                        "Config override %s: %r -> %r", new_path, b_val, u_val
-                    )
+                    logger.debug("Config override %s: %r -> %r", new_path, b_val, u_val)
                 result[key] = u_val
         elif in_user:
             result[key] = user[key]
@@ -334,7 +356,6 @@ def load_config(config_path):
 
     if defaults:
         cfg = merge_cfg(defaults, cfg)
-
 
     try:
         jsonschema.validate(cfg, CONFIG_SCHEMA)
@@ -390,6 +411,7 @@ def load_events(csv_path, *, start=None, end=None, column_map=None):
 
     # Parse timestamps directly to timezone-aware ``Timestamp`` values
     if "timestamp" in df.columns:
+
         def _safe_parse(val):
             try:
                 return parse_timestamp(val)
@@ -432,9 +454,7 @@ def load_events(csv_path, *, start=None, end=None, column_map=None):
         end_dt = parse_timestamp(end)
         df = df[df["timestamp"] <= end_dt]
 
-    logger.info(
-        f"Loaded {len(df)} events from {csv_path} ({discarded} discarded)."
-    )
+    logger.info(f"Loaded {len(df)} events from {csv_path} ({discarded} discarded).")
     return df
 
 
@@ -545,25 +565,27 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
         roll = bcfg.get("rolling_median_window")
         mult = bcfg.get("burst_multiplier")
 
-        if win is not None and roll is not None and mult is not None and len(out_df) > 0:
+        if (
+            win is not None
+            and roll is not None
+            and mult is not None
+            and len(out_df) > 0
+        ):
             t0 = times_sec.min()
-            bins = pd.Series(((times_sec - t0) // float(win)).astype(int), index=out_df.index)
+            bins = pd.Series(
+                ((times_sec - t0) // float(win)).astype(int), index=out_df.index
+            )
 
             counts = bins.value_counts().sort_index()
             full_index = range(counts.index.min(), counts.index.max() + 1)
             counts_full = counts.reindex(full_index, fill_value=0)
 
-            med = (
-                counts_full
-                .rolling(int(roll), center=True, min_periods=1)
-                .median()
-            )
+            med = counts_full.rolling(int(roll), center=True, min_periods=1).median()
 
             threshold = mult * med
-            burst_bins = (
-                counts_full.astype(float)[counts_full.astype(float) > threshold]
-                .index.to_numpy(dtype=np.int64)
-            )
+            burst_bins = counts_full.astype(float)[
+                counts_full.astype(float) > threshold
+            ].index.to_numpy(dtype=np.int64)
             mask = ~bins.isin(burst_bins)
 
             removed_total += int((~mask).sum())

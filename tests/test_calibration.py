@@ -92,11 +92,13 @@ def test_derive_calibration_constants_peak_search_radius():
 def test_calibration_uses_known_energies_from_config():
     """Custom energies in config should override defaults."""
     rng = np.random.default_rng(1)
-    adc = np.concatenate([
-        rng.normal(1000, 2, 300),
-        rng.normal(1500, 2, 300),
-        rng.normal(2000, 2, 300),
-    ])
+    adc = np.concatenate(
+        [
+            rng.normal(1000, 2, 300),
+            rng.normal(1500, 2, 300),
+            rng.normal(2000, 2, 300),
+        ]
+    )
 
     cfg = {
         "calibration": {
@@ -123,11 +125,13 @@ def test_calibration_sanity_check_triggers_error():
     """Misidentified peaks should cause calibrate_run to raise."""
     rng = np.random.default_rng(2)
     # True peaks: 800 (Po210), 1000 (Po218), 1200 (Po214)
-    adc = np.concatenate([
-        rng.normal(800, 2, 300),
-        rng.normal(1000, 2, 300),
-        rng.normal(1200, 2, 300),
-    ])
+    adc = np.concatenate(
+        [
+            rng.normal(800, 2, 300),
+            rng.normal(1000, 2, 300),
+            rng.normal(1200, 2, 300),
+        ]
+    )
 
     cfg = {
         "calibration": {
@@ -151,11 +155,13 @@ def test_calibration_sanity_check_triggers_error():
 def test_peak_ordering_violation_raises():
     """Swapped nominal guesses should trigger ordering check."""
     rng = np.random.default_rng(42)
-    adc = np.concatenate([
-        rng.normal(800, 2, 300),
-        rng.normal(1000, 2, 300),
-        rng.normal(1200, 2, 300),
-    ])
+    adc = np.concatenate(
+        [
+            rng.normal(800, 2, 300),
+            rng.normal(1000, 2, 300),
+            rng.normal(1200, 2, 300),
+        ]
+    )
 
     cfg = {
         "calibration": {
@@ -180,11 +186,13 @@ def test_peak_ordering_violation_raises():
 def test_calibrate_run_quadratic_option(caplog):
     """calibrate_run should warn and fall back to linear when quadratic requested."""
     rng = np.random.default_rng(3)
-    adc = np.concatenate([
-        rng.normal(1000, 2, 300),
-        rng.normal(1500, 2, 300),
-        rng.normal(2000, 2, 300),
-    ])
+    adc = np.concatenate(
+        [
+            rng.normal(1000, 2, 300),
+            rng.normal(1500, 2, 300),
+            rng.normal(2000, 2, 300),
+        ]
+    )
 
     cfg = {
         "calibration": {
@@ -217,6 +225,36 @@ def test_calibrate_run_quadratic_option(caplog):
     assert out.coeffs[2] != 0.0
 
 
+def test_use_quadratic_auto():
+    rng = np.random.default_rng(4)
+    adc = np.concatenate(
+        [
+            rng.normal(1000, 2, 300),
+            rng.normal(1500, 2, 300),
+            rng.normal(2000, 2, 300),
+        ]
+    )
+
+    cfg = {
+        "calibration": {
+            "peak_prominence": 5,
+            "peak_width": 1,
+            "nominal_adc": {"Po210": 1000, "Po218": 1500, "Po214": 2000},
+            "fit_window_adc": 20,
+            "use_emg": False,
+            "init_sigma_adc": 2.0,
+            "init_tau_adc": 0.0,
+            "peak_search_radius": 5,
+            "use_quadratic": "auto",
+            "sanity_tolerance_mev": 1.0,
+        }
+    }
+
+    out = derive_calibration_constants(adc, cfg)
+
+    assert len(out.coeffs) == 3
+
+
 def test_energy_uncertainty_clipping():
     """Negative covariance should not produce NaNs in uncertainty."""
     import pandas as pd
@@ -233,18 +271,20 @@ def test_energy_uncertainty_clipping():
     var_energy = (
         (events["adc"] * a_sig) ** 2
         + (events["adc"] ** 2 * a2_sig) ** 2
-        + c_sig ** 2
+        + c_sig**2
         + 2 * events["adc"] * cov_ac
         + 2 * events["adc"] ** 3 * cov_a_a2
         + 2 * events["adc"] ** 2 * cov_a2_c
     )
     assert var_energy.iloc[0] < 0
 
-    cov = np.array([
-        [c_sig ** 2, cov_ac, cov_a2_c],
-        [cov_ac, a_sig ** 2, cov_a_a2],
-        [cov_a2_c, cov_a_a2, a2_sig ** 2],
-    ])
+    cov = np.array(
+        [
+            [c_sig**2, cov_ac, cov_a2_c],
+            [cov_ac, a_sig**2, cov_a_a2],
+            [cov_a2_c, cov_a_a2, a2_sig**2],
+        ]
+    )
     calib = CalibrationResult(coeffs=[0.0, 1.0, 0.0], covariance=cov)
 
     expected = np.sqrt(np.clip(var_energy, 0, None))
@@ -258,11 +298,11 @@ def test_calibrationresult_uncertainty_linear():
     """CalibrationResult.uncertainty should match analytic propagation."""
     from calibration import CalibrationResult
 
-    cov = np.array([[0.2 ** 2, 0.0], [0.0, 0.1 ** 2]])
+    cov = np.array([[0.2**2, 0.0], [0.0, 0.1**2]])
     calib = CalibrationResult(coeffs=[1.0, 2.0], cov=cov)
 
     adc = np.array([5.0])
-    expected = np.sqrt((adc * 0.1) ** 2 + 0.2 ** 2)
+    expected = np.sqrt((adc * 0.1) ** 2 + 0.2**2)
 
     assert np.allclose(calib.uncertainty(adc), expected)
 
@@ -271,20 +311,22 @@ def test_calibrationresult_uncertainty_quadratic():
     """Quadratic coefficient and covariance should propagate correctly."""
     from calibration import CalibrationResult
 
-    cov = np.array([
-        [0.1 ** 2, 0.0, 0.0],
-        [0.0, 0.1 ** 2, 0.005],
-        [0.0, 0.005, 0.02 ** 2],
-    ])
+    cov = np.array(
+        [
+            [0.1**2, 0.0, 0.0],
+            [0.0, 0.1**2, 0.005],
+            [0.0, 0.005, 0.02**2],
+        ]
+    )
     calib = CalibrationResult(coeffs=[0.5, 1.0, 0.05], cov=cov)
 
     adc = 2.0
     var = (
         (adc * 0.1) ** 2
-        + (adc ** 2 * 0.02) ** 2
-        + 0.1 ** 2
+        + (adc**2 * 0.02) ** 2
+        + 0.1**2
         + 2 * adc * 0.0
-        + 2 * adc ** 3 * 0.005
+        + 2 * adc**3 * 0.005
     )
     expected = np.sqrt(var)
 
@@ -295,7 +337,7 @@ def test_calibrationresult_uncertainty_negative_covariance():
     """Non-positive covariance should not yield NaN uncertainties."""
     from calibration import CalibrationResult
 
-    cov = np.array([[0.02 ** 2, -0.5], [-0.5, 0.001 ** 2]])
+    cov = np.array([[0.02**2, -0.5], [-0.5, 0.001**2]])
     calib = CalibrationResult(coeffs=[0.0, 1.0], cov=cov)
 
     sigma = calib.uncertainty([1.0])
