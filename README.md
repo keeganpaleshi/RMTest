@@ -465,6 +465,9 @@ Example snippet:
 
 ```yaml
 "time_fit": {
+    "eff_po214": null,
+    "eff_po218": null,
+    "eff_po210": null,
     "hl_po214": [328320, 0.0],
     "hl_po218": [328320, 0.0],
     "hl_po210": [11923200, 0.0],
