@@ -372,11 +372,11 @@ def print_activity_breakdown(rows: list[dict[str, object]]) -> None:
     rate214 = err214 = None
     for row in rows:
         if row.get("iso") == "Po218":
-            rate218 = float(row.get("corrected", 0.0))
-            err218 = float(row.get("err_corrected", 0.0))
+            rate218 = float(cast(float, row.get("corrected", 0.0)))
+            err218 = float(cast(float, row.get("err_corrected", 0.0)))
         elif row.get("iso") == "Po214":
-            rate214 = float(row.get("corrected", 0.0))
-            err214 = float(row.get("err_corrected", 0.0))
+            rate214 = float(cast(float, row.get("corrected", 0.0)))
+            err214 = float(cast(float, row.get("err_corrected", 0.0)))
 
     total, sigma = compute_radon_activity(rate218, err218, 1.0, rate214, err214, 1.0)
     print(f"Total radon: {total:.3f} ± {sigma:.3f} Bq")
