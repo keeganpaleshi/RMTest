@@ -1194,7 +1194,11 @@ def main(argv=None):
     baseline_info = {}
     baseline_counts = {}
     baseline_cfg = cfg.get("baseline", {})
-    isotopes_to_subtract = baseline_cfg.get("isotopes_to_subtract", ["Po214", "Po218"])
+    isotopes_to_subtract = baseline_cfg.get(
+        "isotopes_to_subtract", ["Po214", "Po218"]
+    )
+    if args.baseline_mode == "none":
+        isotopes_to_subtract = []
     baseline_range = None
     if args.baseline_range:
         _log_override("baseline", "range", args.baseline_range)

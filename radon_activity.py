@@ -203,11 +203,16 @@ def compute_total_radon(
         raise ValueError("err_bq must be non-negative")
 
     was_neg = activity_bq < 0
-    activity_bq, err_bq = clamp_non_negative(activity_bq, err_bq)
-    if was_neg and not allow_negative_activity:
-        raise RuntimeError(
-            "Negative activity encountered. Re-run with --allow_negative_activity to override"
+    if was_neg:
+        if not allow_negative_activity:
+            raise RuntimeError(
+                "Negative activity encountered. Re-run with --allow_negative_activity to override"
+            )
+        logging.warning(
+            f"Negative activity (value = {activity_bq:.2f} Bq)"
         )
+    else:
+        activity_bq, err_bq = clamp_non_negative(activity_bq, err_bq)
     if math.isnan(activity_bq):
         raise ValueError("activity_bq must not be NaN")
     if err_bq == 0:
