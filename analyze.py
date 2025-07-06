@@ -576,6 +576,11 @@ def parse_args(argv=None):
         ),
     )
     p.add_argument(
+        "--eff-fixed",
+        action="store_true",
+        help="Fix all efficiencies to exactly 1.0 (no prior)",
+    )
+    p.add_argument(
         "--debug",
         action="store_true",
         help="Enable debug logging. Providing this option overrides `pipeline.log_level` in config.yaml",
@@ -1633,12 +1638,16 @@ def main(argv=None):
         priors_time = {}
 
         # Efficiency prior per isotope
-        eff_cfg_val = cfg["time_fit"].get(f"eff_{iso.lower()}")
-        if eff_cfg_val is not None:
-            eff_val = eff_cfg_val if isinstance(eff_cfg_val, (list, tuple)) else [eff_cfg_val, 0.0]
-            priors_time["eff"] = tuple(eff_val)
+        eff_cfg_val = cfg["time_fit"].get(f"eff_{iso.lower()}", 1.0)
+        eff_nom = eff_cfg_val[0] if isinstance(eff_cfg_val, (list, tuple)) else eff_cfg_val
+        if args.eff_fixed:
+            eff = 1.0
+            sigma = np.inf  # freezes parameter
         else:
-            eff_val = None
+            eff = eff_nom
+            sigma = eff * cfg["time_fit"].get("eff_prior_sigma", 1.0)
+        priors_time["eff"] = (eff, sigma)
+        eff_val = eff
 
         # Half-life prior (user must supply [T₁/₂, σ(T₁/₂)] in seconds)
         hl_key = f"hl_{iso.lower()}"
@@ -1761,11 +1770,10 @@ def main(argv=None):
         times_dict = {iso: ts_vals}
         weights_map = {iso: iso_events["weight"].values}
         eff_cfg_val = cfg["time_fit"].get(f"eff_{iso.lower()}")
-        eff_value = (
-            eff_cfg_val[0]
-            if isinstance(eff_cfg_val, list)
-            else eff_cfg_val
-        )
+        if args.eff_fixed:
+            eff_value = 1.0
+        else:
+            eff_value = None
         fit_cfg = {
             "isotopes": {
                 iso: {
