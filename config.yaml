@@ -105,15 +105,9 @@ time_fit:
   window_po210:
   - 5.2
   - 5.4
-  eff_po214:
-  - 0.4
-  - 0.05
-  eff_po218:
-  - 0.2
-  - 0.05
-  eff_po210:
-  - 0.1
-  - 0.05
+  eff_po214: null
+  eff_po218: null
+  eff_po210: null
   hl_po214:
   - 328320
   - 0.0
