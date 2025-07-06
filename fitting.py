@@ -567,6 +567,10 @@ def _neg_log_likelihood_time(
     for iso in iso_list:
         lam = lam_map[iso]
         eff = eff_map[iso]
+        if eff is None:
+            eff = p[f"eff_{iso}"]
+        if eff <= 0:
+            return 1e50
 
         # Extract parameters (some may be fixed to zero):
         E_iso = p[f"E_{iso}"]
@@ -661,10 +665,14 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
         if hl <= 0:
             raise ValueError("half_life_s must be positive")
         lam_map[iso] = np.log(2.0) / hl
-        eff = float(iso_cfg.get("efficiency", 1.0))
-        if eff <= 0:
-            raise ValueError("efficiency must be positive")
-        eff_map[iso] = eff
+        eff_val = iso_cfg.get("efficiency", 1.0)
+        if eff_val is None:
+            eff_map[iso] = None
+        else:
+            eff = float(eff_val)
+            if eff <= 0:
+                raise ValueError("efficiency must be positive")
+            eff_map[iso] = eff
         fix_b_map[iso] = not bool(config.get("fit_background", False))
         fix_n0_map[iso] = not bool(config.get("fit_initial", False))
 
@@ -688,12 +696,19 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
         else:
             Ntot = float(np.sum(w_arr))
         T_rel = t_end - t_start
-        eff = eff_map[iso]
-        guess_E = max((Ntot / (T_rel * eff))
-                      if (T_rel > 0 and eff > 0) else 0.0, 1e-6)
+        eff_known = eff_map[iso] if eff_map[iso] is not None else 1.0
+        guess_E = max((Ntot / (T_rel * eff_known))
+                      if (T_rel > 0 and eff_known > 0) else 0.0, 1e-6)
         initial_guesses.append(guess_E)
         limits[f"E_{iso}"] = (0.0, None)
         idx += 1
+
+        #    efficiency parameter if not fixed
+        if eff_map[iso] is None:
+            param_indices[f"eff_{iso}"] = idx
+            initial_guesses.append(1.0)
+            limits[f"eff_{iso}"] = (0.0, None)
+            idx += 1
 
         #    B_iso (if not fixed)
         if not fix_b_map[iso]:
