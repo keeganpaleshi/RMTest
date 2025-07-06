@@ -359,7 +359,11 @@ def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
         "Po210": default_const.get("Po210", PO210).half_life_s,
     }[iso]
     hl = cfg.get("time_fit", {}).get(f"hl_{iso.lower()}", [hl_default])[0]
-    eff = cfg.get("time_fit", {}).get(f"eff_{iso.lower()}", [1.0])[0]
+    eff_cfg = cfg.get("time_fit", {}).get(f"eff_{iso.lower()}")
+    if isinstance(eff_cfg, list):
+        eff = eff_cfg[0]
+    else:
+        eff = eff_cfg if eff_cfg is not None else 1.0
     lam = math.log(2.0) / float(hl)
     dE = params.get("dE_corrected", params.get(f"dE_{iso}", 0.0))
     dN0 = params.get(f"dN0_{iso}", 0.0)
@@ -1611,8 +1615,12 @@ def main(argv=None):
         priors_time = {}
 
         # Efficiency prior per isotope
-        eff_val = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0, 0.0])
-        priors_time["eff"] = tuple(eff_val)
+        eff_cfg_val = cfg["time_fit"].get(f"eff_{iso.lower()}")
+        if eff_cfg_val is not None:
+            eff_val = eff_cfg_val if isinstance(eff_cfg_val, (list, tuple)) else [eff_cfg_val, 0.0]
+            priors_time["eff"] = tuple(eff_val)
+        else:
+            eff_val = None
 
         # Half-life prior (user must supply [T₁/₂, σ(T₁/₂)] in seconds)
         hl_key = f"hl_{iso.lower()}"
@@ -1637,7 +1645,11 @@ def main(argv=None):
             if iso in isotopes_to_subtract:
                 baseline_counts[iso] = n0_count
 
-            eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
+            eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
+            if isinstance(eff_cfg, list):
+                eff = eff_cfg[0]
+            else:
+                eff = eff_cfg if eff_cfg is not None else 1.0
             if baseline_live_time > 0 and eff > 0:
                 n0_activity = n0_count / (baseline_live_time * eff)
                 n0_sigma = np.sqrt(n0_count) / (baseline_live_time * eff)
@@ -1693,7 +1705,11 @@ def main(argv=None):
 
             analysis_counts = float(np.sum(iso_events["weight"]))
             iso_counts_raw[iso] = analysis_counts
-            eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
+            eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
+            if isinstance(eff_cfg, list):
+                eff = eff_cfg[0]
+            else:
+                eff = eff_cfg if eff_cfg is not None else 1.0
             live_time_iso = iso_live_time.get(iso, 0.0)
             if eff > 0 and live_time_iso > 0:
                 c_rate = analysis_counts / (live_time_iso * eff)
@@ -1719,13 +1735,17 @@ def main(argv=None):
         ts_vals = iso_events["timestamp"].map(to_epoch_seconds).to_numpy()
         times_dict = {iso: ts_vals}
         weights_map = {iso: iso_events["weight"].values}
+        eff_cfg_val = cfg["time_fit"].get(f"eff_{iso.lower()}")
+        eff_value = (
+            eff_cfg_val[0]
+            if isinstance(eff_cfg_val, list)
+            else eff_cfg_val
+        )
         fit_cfg = {
             "isotopes": {
                 iso: {
-                    "half_life_s": cfg["time_fit"].get(f"hl_{iso.lower()}", [np.nan])[
-                        0
-                    ],
-                    "efficiency": cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0],
+                    "half_life_s": cfg["time_fit"].get(f"hl_{iso.lower()}", [np.nan])[0],
+                    "efficiency": eff_value,
                 }
             },
             "fit_background": not cfg["time_fit"]["flags"].get(
@@ -1964,7 +1984,11 @@ def main(argv=None):
     baseline_unc = {}
     if baseline_live_time > 0:
         for iso, n in baseline_counts.items():
-            eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
+            eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
+            if isinstance(eff_cfg, list):
+                eff = eff_cfg[0]
+            else:
+                eff = eff_cfg if eff_cfg is not None else 1.0
             if eff > 0:
                 baseline_rates[iso] = n / (baseline_live_time * eff)
                 baseline_unc[iso] = np.sqrt(n) / (baseline_live_time * eff)
@@ -1997,7 +2021,11 @@ def main(argv=None):
         err_fit = params.get(f"dE_{iso}", 0.0)
         live_time_iso = iso_live_time.get(iso, 0.0)
         count = iso_counts_raw.get(iso, baseline_counts.get(iso, 0.0))
-        eff = cfg["time_fit"].get(f"eff_{iso.lower()}", [1.0])[0]
+        eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
+        if isinstance(eff_cfg, list):
+            eff = eff_cfg[0]
+        else:
+            eff = eff_cfg if eff_cfg is not None else 1.0
         base_cnt = baseline_counts.get(iso, 0.0)
         s = scales.get(iso, 1.0)
 
@@ -2076,8 +2104,14 @@ def main(argv=None):
     from radon_activity import compute_radon_activity, compute_total_radon
 
     radon_results = {}
-    eff_po214 = cfg.get("time_fit", {}).get("eff_po214", [1.0])[0]
-    eff_po218 = cfg.get("time_fit", {}).get("eff_po218", [1.0])[0]
+    def _eff_value_local(key):
+        val = cfg.get("time_fit", {}).get(key)
+        if isinstance(val, list):
+            return val[0]
+        return val if val is not None else 1.0
+
+    eff_po214 = _eff_value_local("eff_po214")
+    eff_po218 = _eff_value_local("eff_po218")
 
     rate214 = None
     err214 = None
