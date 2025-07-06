@@ -368,6 +368,20 @@ def load_config(config_path):
 
     if "analysis_isotope" not in cfg:
         cfg["analysis_isotope"] = "radon"
+
+    # Fill in default EMG usage for spectral fits when not explicitly provided
+    spec = cfg.setdefault("spectral_fit", {})
+    default_emg = {"Po210": True, "Po218": False, "Po214": False}
+    emg_cfg = spec.get("use_emg")
+    if emg_cfg is None:
+        spec["use_emg"] = default_emg.copy()
+    elif isinstance(emg_cfg, Mapping):
+        merged = default_emg.copy()
+        merged.update(emg_cfg)
+        spec["use_emg"] = merged
+    else:
+        val = bool(emg_cfg)
+        spec["use_emg"] = {iso: val for iso in default_emg}
     # CONFIG_SCHEMA validation already checks required keys
 
     return cfg

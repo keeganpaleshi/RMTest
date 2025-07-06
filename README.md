@@ -345,6 +345,9 @@ fit.  Important keys include:
   `use_emg` enables that tail.  Use a strictly positive prior mean (e.g.
   ``0.005``) to prevent numerical overflow when the tail constant
   approaches zero.
+- `use_emg` – mapping of isotopes to boolean flags selecting an
+  exponentially modified Gaussian tail.  If omitted Po‑210 defaults to
+  `true` while Po‑218 and Po‑214 default to `false`.
 - `mu_bounds` – optional lower/upper limits for each peak centroid.
   Set for example `{"Po218": [5.9, 6.2]}` to keep the Po‑218 fit from
   drifting into the Po‑210 region.  Centroid guesses found during peak
