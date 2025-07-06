@@ -1834,6 +1834,44 @@ def main(argv=None):
             "events_energy": events_p210["energy_MeV"].values,
         }
 
+    # MODULE L – RadonCombineHook
+    radon_combined = {}
+    if cfg.get("analysis_isotope", "radon") == "radon":
+        from radon_activity import compute_radon_activity
+
+        def _eff_val(key: str) -> float:
+            val = cfg.get("time_fit", {}).get(key)
+            if isinstance(val, list):
+                return val[0]
+            return val if val is not None else 1.0
+
+        eff214 = _eff_val("eff_po214")
+        eff218 = _eff_val("eff_po218")
+
+        fit214 = time_fit_results.get("Po214")
+        rate214 = err214 = None
+        if fit214:
+            p214 = _fit_params(fit214)
+            rate214 = p214.get("E_Po214")
+            err214 = p214.get("dE_Po214")
+
+        fit218 = time_fit_results.get("Po218")
+        rate218 = err218 = None
+        if fit218:
+            p218 = _fit_params(fit218)
+            rate218 = p218.get("E_Po218")
+            err218 = p218.get("dE_Po218")
+
+        Rn_bq, dRn_bq = compute_radon_activity(
+            rate218=rate218,
+            err218=err218,
+            eff218=eff218,
+            rate214=rate214,
+            err214=err214,
+            eff214=eff214,
+        )
+        radon_combined = {"activity_Bq": Rn_bq, "unc_Bq": dRn_bq}
+
     # ────────────────────────────────────────────────────────────
     # 7. Systematics scan (optional)
     # ────────────────────────────────────────────────────────────
@@ -2282,6 +2320,7 @@ def main(argv=None):
         systematics=systematics_results,
         baseline=baseline_info,
         radon_results=radon_results,
+        radon_combined=radon_combined,
         noise_cut={"removed_events": int(n_removed_noise)},
         burst_filter={
             "removed_events": int(n_removed_burst),
@@ -2488,6 +2527,18 @@ def main(argv=None):
             Path(out_dir) / "radon_activity.png",
             config=cfg.get("plotting", {}),
         )
+
+        if radon_combined:
+            try:
+                plot_radon_activity(
+                    [t0_global.timestamp()],
+                    [radon_combined["activity_Bq"]],
+                    [radon_combined["unc_Bq"]],
+                    Path(out_dir) / "radon_activity_combined.png",
+                    config=cfg.get("plotting", {}),
+                )
+            except Exception as e:
+                print(f"WARNING: Could not create combined radon plot -> {e}")
 
         if radon_interval is not None:
             times_trend = np.linspace(
