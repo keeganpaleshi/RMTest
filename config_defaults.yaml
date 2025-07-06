@@ -7,11 +7,11 @@ calibration:
   intercept_MeV: null
 time_fit:
   window_po214:
-  - 7.607
-  - 7.767
+  - 7.55
+  - 7.80
   window_po218:
-  - 5.922
-  - 6.082
+  - 5.90
+  - 6.10
   window_po210:
-  - 5.224
-  - 5.384
+  - 5.25
+  - 5.37
