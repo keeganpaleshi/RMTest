@@ -417,6 +417,11 @@ def parse_args(argv=None):
         help="Background removal strategy (default: all)",
     )
     p.add_argument(
+        "--iso",
+        choices=["radon", "po218", "po214"],
+        help="Analysis isotope mode (overrides analysis_isotope in config.yaml)",
+    )
+    p.add_argument(
 
         "--allow-negative-baseline",
         action="store_true",
@@ -825,6 +830,15 @@ def main(argv=None):
             int(args.noise_cutoff),
         )
         cfg.setdefault("calibration", {})["noise_cutoff"] = int(args.noise_cutoff)
+
+    if args.iso is not None:
+        prev = cfg.get("analysis_isotope")
+        if prev is not None and prev != args.iso:
+            logging.info(
+                f"Overriding analysis_isotope={prev!r} with {args.iso!r} from CLI"
+            )
+        cfg["analysis_isotope"] = args.iso
+    assert cfg.get("analysis_isotope", "radon") in {"radon", "po218", "po214"}
 
     if args.allow_negative_baseline:
         cfg["allow_negative_baseline"] = True

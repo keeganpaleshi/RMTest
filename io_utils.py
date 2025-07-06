@@ -112,6 +112,7 @@ CONFIG_SCHEMA = {
         "allow_fallback": {"type": "boolean"},
         "allow_negative_baseline": {"type": "boolean"},
         "allow_negative_activity": {"type": "boolean"},
+        "analysis_isotope": {"type": "string", "enum": ["radon", "po218", "po214"]},
         "spectral_fit": {
             "type": "object",
             "properties": {"expected_peaks": {"type": "object"}},
@@ -344,6 +345,8 @@ def load_config(config_path):
 
     cfg["nuclide_constants"] = load_nuclide_overrides(cfg)
 
+    if "analysis_isotope" not in cfg:
+        cfg["analysis_isotope"] = "radon"
     # CONFIG_SCHEMA validation already checks required keys
 
     return cfg

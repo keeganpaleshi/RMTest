@@ -3,6 +3,8 @@
 
 import numpy as np
 from dataclasses import dataclass
+from pathlib import Path
+import yaml
 
 # Minimum allowed value for the exponential tail constant used in EMG fits.
 _TAU_MIN = 1e-6
@@ -54,10 +56,31 @@ class NuclideConst:
     Q_value_MeV: float | None = None
 
 
-PO214 = NuclideConst(half_life_s=1.64e-4)
-PO218 = NuclideConst(half_life_s=183.0)
-PO210 = NuclideConst(half_life_s=138.376 * 24 * 3600)
-RN222 = NuclideConst(half_life_s=3.8 * 86400.0)
+def _read_yaml_defaults() -> dict:
+    path = Path(__file__).resolve().with_name("constants.yaml")
+    if not path.is_file():
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    return data.get("nuclide_constants", {})
+
+
+_YAML_DEFAULTS = _read_yaml_defaults()
+
+PO214 = NuclideConst(
+    half_life_s=float(_YAML_DEFAULTS.get("Po214", {}).get("half_life_s", 1.64e-4))
+)
+PO218 = NuclideConst(
+    half_life_s=float(_YAML_DEFAULTS.get("Po218", {}).get("half_life_s", 183.0))
+)
+PO210 = NuclideConst(
+    half_life_s=float(
+        _YAML_DEFAULTS.get("Po210", {}).get("half_life_s", 138.376 * 24 * 3600)
+    )
+)
+RN222 = NuclideConst(
+    half_life_s=float(_YAML_DEFAULTS.get("Rn222", {}).get("half_life_s", 3.8 * 86400.0))
+)
 
 
 _NUCLIDE_DEFAULTS = {

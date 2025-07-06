@@ -1,4 +1,5 @@
 allow_fallback: false
+analysis_isotope: radon
 allow_negative_baseline: false
 allow_negative_activity: false
 calibration:
