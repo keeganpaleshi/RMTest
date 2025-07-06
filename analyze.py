@@ -522,6 +522,14 @@ def parse_args(argv=None):
         ),
     )
     p.add_argument(
+        "--calibration-method",
+        choices=["two-point", "auto"],
+        help=(
+            "Energy calibration method. Providing this option overrides "
+            "`calibration.method` in config.yaml"
+        ),
+    )
+    p.add_argument(
         "--settle-s",
         type=float,
         help="Discard events occurring this many seconds after the start",
@@ -831,6 +839,7 @@ def main(argv=None):
         )
         cfg.setdefault("calibration", {})["noise_cutoff"] = int(args.noise_cutoff)
 
+
     if args.iso is not None:
         prev = cfg.get("analysis_isotope")
         if prev is not None and prev != args.iso:
@@ -839,6 +848,11 @@ def main(argv=None):
             )
         cfg["analysis_isotope"] = args.iso
     assert cfg.get("analysis_isotope", "radon") in {"radon", "po218", "po214"}
+
+    if args.calibration_method is not None:
+        _log_override("calibration", "method", args.calibration_method)
+        cfg.setdefault("calibration", {})["method"] = args.calibration_method
+
 
     if args.allow_negative_baseline:
         cfg["allow_negative_baseline"] = True

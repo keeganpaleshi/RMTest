@@ -1,5 +1,9 @@
 allow_fallback: true
+
 analysis_isotope: radon
+
+allow_negative_baseline: false
+
 pipeline:
   log_level: INFO
   random_seed: null
@@ -24,13 +28,12 @@ columns:
   adc: adc_channels
 baseline:
   range:
-  - '2023-08-01T00:00:00Z'
-  - '2023-08-02T23:59:59Z'
+  - '2023-09-28T00:00:00Z'
+  - '2023-10-28T23:59:59Z'
   monitor_volume_l: 605.0
   sample_volume_l: 0.0
   isotopes_to_subtract:
-  - Po214
-  - Po218
+  - noise
 burst_filter:
   burst_mode: rate
   burst_window_size_s: 60
