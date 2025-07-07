@@ -1854,6 +1854,7 @@ def main(argv=None):
             "events_energy": iso_events["energy_MeV"].values,
         }
 
+    # --- Radon combination ---
     from radon_joint_estimator import estimate_radon_activity
     from types import SimpleNamespace
 
