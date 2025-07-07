@@ -130,11 +130,12 @@ def _eff_prior(eff_cfg: Any) -> tuple[float, float]:
 from plot_utils import (
     plot_spectrum,
     plot_time_series,
-    plot_radon_activity,
     plot_equivalent_air,
+    plot_radon_activity,
     plot_radon_trend,
+    plot_radon_activity_full,
+    plot_radon_trend_full,
 )
-import plotting
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
 from utils import (
@@ -2451,13 +2452,13 @@ def main(argv=None):
     out_dir = write_summary(results_dir, summary)
 
     if iso_mode == "radon":
-        rad_ts = summary.get("radon", {}).get("time_series")
+        try:
+            rad_ts = summary["radon"]["time_series"]
+        except KeyError:
+            rad_ts = None
         if rad_ts is not None:
-            try:
-                plotting.plot_radon_activity(rad_ts, Path(out_dir))
-                plotting.plot_radon_trend(rad_ts, Path(out_dir))
-            except Exception as e:
-                print(f"WARNING: Could not create radon pipeline plots -> {e}")
+            plot_radon_activity(rad_ts, out_dir)
+            plot_radon_trend(rad_ts, out_dir)
 
     # Generate plots now that the output directory exists
     if spec_plot_data:
@@ -2561,7 +2562,7 @@ def main(argv=None):
 
         if radon_combined_info is not None:
             try:
-                _ = plot_radon_activity(
+                _ = plot_radon_activity_full(
                     [t0_global.timestamp(), t_end_global_ts],
                     [radon_combined_info["activity_Bq"]] * 2,
                     [radon_combined_info["unc_Bq"]] * 2,
@@ -2582,7 +2583,7 @@ def main(argv=None):
             hl = _hl_value(cfg, "Po214")
             cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
             A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
-            plot_radon_activity(
+            plot_radon_activity_full(
                 times,
                 A214,
                 dA214,
@@ -2628,7 +2629,7 @@ def main(argv=None):
             activity_arr.fill(radon_results["radon_activity_Bq"]["value"])
             err_arr.fill(radon_results["radon_activity_Bq"]["uncertainty"])
 
-        plot_radon_activity(
+        plot_radon_activity_full(
             times,
             activity_arr,
             err_arr,
@@ -2676,7 +2677,7 @@ def main(argv=None):
                 r218 = A218_tr[i] if A218_tr is not None else None
                 A, _ = compute_radon_activity(r218, None, 1.0, r214, None, 1.0)
                 trend[i] = A
-            plot_radon_trend(
+            plot_radon_trend_full(
                 times_trend,
                 trend,
                 Path(out_dir) / "radon_trend.png",
