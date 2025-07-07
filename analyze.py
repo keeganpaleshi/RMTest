@@ -112,6 +112,20 @@ def _hl_value(cfg: Mapping[str, Any], iso: str) -> float:
         val = consts.get(iso, NUCLIDES[iso]).half_life_s
     return float(val)
 
+
+def _eff_prior(eff_cfg: Any) -> tuple[float, float]:
+    """Return efficiency prior ``(mean, sigma)`` from configuration.
+
+    ``None`` or the string ``"null"`` yields a flat prior ``(1.0, 1e6)``.
+    Lists or tuples are returned as-is. Numeric values get a 5 % width.
+    """
+    if eff_cfg in (None, "null"):
+        return (1.0, 1e6)
+    if isinstance(eff_cfg, (list, tuple)):
+        return tuple(eff_cfg)
+    val = float(eff_cfg)
+    return (val, 0.05 * val)
+
 from plot_utils import (
     plot_spectrum,
     plot_time_series,
@@ -1639,16 +1653,13 @@ def main(argv=None):
         priors_time = {}
 
         # Efficiency prior per isotope
-        eff_cfg_val = cfg["time_fit"].get(f"eff_{iso.lower()}", 1.0)
-        eff_nom = eff_cfg_val[0] if isinstance(eff_cfg_val, (list, tuple)) else eff_cfg_val
+        eff_cfg_val = cfg["time_fit"].get(f"eff_{iso.lower()}")
         if args.eff_fixed:
-            eff = 1.0
-            sigma = np.inf  # freezes parameter
+            priors_time["eff"] = (1.0, np.inf)
+            eff_val = 1.0
         else:
-            eff = eff_nom
-            sigma = eff * cfg["time_fit"].get("eff_prior_sigma", 1.0)
-        priors_time["eff"] = (eff, sigma)
-        eff_val = eff
+            eff_val, sigma = _eff_prior(eff_cfg_val)
+            priors_time["eff"] = (eff_val, sigma)
 
         # Half-life prior (user must supply [T₁/₂, σ(T₁/₂)] in seconds)
         hl_key = f"hl_{iso.lower()}"
