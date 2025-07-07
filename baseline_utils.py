@@ -121,9 +121,8 @@ def apply_baseline_subtraction(
     ``t_base0`` and ``t_base1`` may be naïve or timezone-aware. They are
     interpreted in UTC and compared using integer nanoseconds to avoid
     issues with differing time zone information between ``df_full`` and
-    the provided range. When ``allow_fallback`` is ``False`` (default), a
-    :class:`RuntimeError` is raised if the baseline range contains no
-    events.
+    the provided range. When ``baseline_range`` matches no events a warning is
+    logged and a copy of ``df_analysis`` is returned.
     """
 
     assert mode in ("none", "electronics", "radon", "all")
@@ -151,11 +150,11 @@ def apply_baseline_subtraction(
     mask = (ts_int >= t0_ns) & (ts_int <= t1_ns)
     if not mask.any():
         logging.warning(
-            "baseline_range matched no events – subtraction will have no effect"
+            "baseline_range matched no events – subtraction skipped"
         )
-        baseline_subset = df_full.loc[mask]
-    else:
-        baseline_subset = df_full.loc[mask]
+        return df_analysis.copy()
+
+    baseline_subset = df_full.loc[mask]
 
     rate_bl, live_bl = rate_histogram(baseline_subset, bins)
 
@@ -184,10 +183,9 @@ def subtract(
     """Return baseline-corrected spectra and statistical errors.
 
     Uncertainties are propagated in quadrature from the analysis and
-    baseline histograms unless ``kw.get("uncert_prop") == "none"``.
-    If ``allow_fallback`` is ``False`` (default) a
-    :class:`RuntimeError` is raised when the baseline interval contains
-    no events.
+    baseline histograms unless ``kw.get("uncert_prop") == "none"``.  When the
+    baseline interval contains no events a warning is logged and
+    ``df_analysis`` is returned unchanged.
     """
 
     df_corr = apply_baseline_subtraction(
