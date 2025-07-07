@@ -423,9 +423,9 @@ def test_plot_radon_activity_output(tmp_path):
     errors = [0.1, 0.2, 0.3]
     out_png = tmp_path / "radon.png"
 
-    from plot_utils import plot_radon_activity
+    from plot_utils import plot_radon_activity_full
 
-    plot_radon_activity(times, activity, errors, str(out_png))
+    plot_radon_activity_full(times, activity, errors, str(out_png))
 
     assert out_png.exists()
 
@@ -450,9 +450,9 @@ def test_plot_radon_activity_array(tmp_path):
     errors = np.array([0.05, 0.1, 0.15])
     out_png = tmp_path / "radon_arr.png"
 
-    from plot_utils import plot_radon_activity
+    from plot_utils import plot_radon_activity_full
 
-    plot_radon_activity(times, activity, errors, str(out_png))
+    plot_radon_activity_full(times, activity, errors, str(out_png))
 
     assert out_png.exists()
 
@@ -497,9 +497,9 @@ def test_plot_radon_activity_time_variation(tmp_path, monkeypatch):
     monkeypatch.setattr("plot_utils.plt.errorbar", fake_errorbar)
     monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
 
-    from plot_utils import plot_radon_activity
+    from plot_utils import plot_radon_activity_full
 
-    plot_radon_activity(times, activity, errors, str(tmp_path / "var.png"))
+    plot_radon_activity_full(times, activity, errors, str(tmp_path / "var.png"))
 
     assert "y" in captured
     assert not np.allclose(captured["y"], captured["y"][0])
@@ -510,9 +510,9 @@ def test_plot_radon_activity_small_array(tmp_path):
     errors = np.array([0.1, 0.1, 0.1])
     out_png = tmp_path / "radon_small.png"
 
-    from plot_utils import plot_radon_activity
+    from plot_utils import plot_radon_activity_full
 
-    plot_radon_activity(times, activity, errors, str(out_png))
+    plot_radon_activity_full(times, activity, errors, str(out_png))
 
     assert out_png.exists()
 
@@ -585,9 +585,9 @@ def test_plot_radon_activity_multiple_formats(tmp_path):
     errors = np.array([0.1, 0.1, 0.1])
     out_png = tmp_path / "radon_multi.png"
 
-    from plot_utils import plot_radon_activity
+    from plot_utils import plot_radon_activity_full
 
-    plot_radon_activity(times, activity, errors, str(out_png), config={"plot_save_formats": ["png", "pdf"]})
+    plot_radon_activity_full(times, activity, errors, str(out_png), config={"plot_save_formats": ["png", "pdf"]})
 
     assert out_png.exists()
     assert out_png.with_suffix('.pdf').exists()
@@ -614,9 +614,9 @@ def test_plot_radon_activity_default_extension(tmp_path):
     errors = np.array([0.1, 0.1, 0.1])
     out_png = tmp_path / "radon_default"
 
-    from plot_utils import plot_radon_activity
+    from plot_utils import plot_radon_activity_full
 
-    plot_radon_activity(times, activity, errors, str(out_png))
+    plot_radon_activity_full(times, activity, errors, str(out_png))
 
     assert out_png.with_suffix('.png').exists()
 
@@ -668,9 +668,9 @@ def test_plot_radon_activity_bare_filename(tmp_path, monkeypatch):
     errors = np.array([0.1, 0.1, 0.1])
     monkeypatch.chdir(tmp_path)
 
-    from plot_utils import plot_radon_activity
+    from plot_utils import plot_radon_activity_full
 
-    plot_radon_activity(times, activity, errors, "bare_radon.png")
+    plot_radon_activity_full(times, activity, errors, "bare_radon.png")
 
     assert Path("bare_radon.png").exists()
 
@@ -689,13 +689,13 @@ def test_plot_equivalent_air_bare_filename(tmp_path, monkeypatch):
 
 
 def test_plot_radon_trend_output(tmp_path):
-    from plot_utils import plot_radon_trend
+    from plot_utils import plot_radon_trend_full
 
     times = [0.0, 1.0, 2.0]
     activity = [1.0, 1.2, 1.4]
     out_png = tmp_path / "trend.png"
 
-    plot_radon_trend(times, activity, str(out_png))
+    plot_radon_trend_full(times, activity, str(out_png))
 
     assert out_png.exists()
 
@@ -706,9 +706,9 @@ def test_plot_radon_activity_po214(tmp_path):
     errors = [0.1, 0.2, 0.3]
     out_png = tmp_path / "radon_activity_po214.png"
 
-    from plot_utils import plot_radon_activity
+    from plot_utils import plot_radon_activity_full
 
-    plot_radon_activity(times, activity, errors, str(out_png))
+    plot_radon_activity_full(times, activity, errors, str(out_png))
 
     assert out_png.exists()
 
@@ -763,9 +763,9 @@ def test_plot_radon_activity_axis_labels(tmp_path, monkeypatch):
 
     monkeypatch.setattr(matplotlib.axes.Axes, "secondary_xaxis", wrapper)
 
-    from plot_utils import plot_radon_activity
+    from plot_utils import plot_radon_activity_full
 
-    plot_radon_activity(times, activity, errors, str(out_png))
+    plot_radon_activity_full(times, activity, errors, str(out_png))
 
     ax = plt.gca()
     assert ax.get_xlabel() == "Time (UTC)"

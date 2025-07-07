@@ -24,10 +24,12 @@ __all__ = [
     "extract_time_series",
     "plot_time_series",
     "plot_spectrum",
-    "plot_radon_activity",
     "plot_equivalent_air",
     "plot_modeled_radon_activity",
+    "plot_radon_activity",
     "plot_radon_trend",
+    "plot_radon_activity_full",
+    "plot_radon_trend_full",
 ]
 
 
@@ -523,7 +525,7 @@ def plot_spectrum(
     return ax_main
 
 
-def plot_radon_activity(times, activity, errors, out_png, config=None):
+def plot_radon_activity_full(times, activity, errors, out_png, config=None):
     """Plot radon activity versus time with uncertainties."""
     times = np.asarray(times, dtype=float)
     activity = np.asarray(activity, dtype=float)
@@ -635,10 +637,10 @@ def plot_modeled_radon_activity(
     from radon_activity import radon_activity_curve
 
     activity, sigma = radon_activity_curve(times, E, dE, N0, dN0, half_life_s)
-    plot_radon_activity(times, activity, sigma, out_png, config=config)
+    plot_radon_activity_full(times, activity, sigma, out_png, config=config)
 
 
-def plot_radon_trend(times, activity, out_png, config=None):
+def plot_radon_trend_full(times, activity, out_png, config=None):
     """Plot modeled radon activity trend without uncertainties."""
     times = np.asarray(times, dtype=float)
     activity = np.asarray(activity, dtype=float)
@@ -668,6 +670,38 @@ def plot_radon_trend(times, activity, out_png, config=None):
     targets = get_targets(config, out_png)
     for p in targets.values():
         plt.savefig(p, dpi=300)
+    plt.close()
+
+
+def plot_radon_activity(ts_dict, outdir):
+    """Simple wrapper to plot radon activity time series."""
+    import matplotlib.pyplot as plt
+    outdir = Path(outdir)
+    t = ts_dict["time"]
+    y = ts_dict["activity"]
+    e = ts_dict["error"]
+    plt.errorbar(t, y, yerr=e, fmt="o")
+    plt.ylabel("Radon activity [Bq]")
+    plt.xlabel("Time (UTC)")
+    plt.tight_layout()
+    plt.savefig(outdir / "radon_activity.png", dpi=300)
+    plt.close()
+
+
+def plot_radon_trend(ts_dict, outdir):
+    """Simple wrapper to plot a radon activity trend."""
+    import numpy as np
+    import matplotlib.pyplot as plt
+    outdir = Path(outdir)
+    t = np.asarray(ts_dict["time"])
+    y = np.asarray(ts_dict["activity"])
+    coeff = np.polyfit(t, y, 1)
+    plt.plot(t, y, "o")
+    plt.plot(t, np.polyval(coeff, t))
+    plt.ylabel("Radon activity [Bq]")
+    plt.xlabel("Time (UTC)")
+    plt.tight_layout()
+    plt.savefig(outdir / "radon_trend.png", dpi=300)
     plt.close()
 
 
