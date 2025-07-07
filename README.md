@@ -53,6 +53,10 @@ python analyze.py [--config config.yaml] --input merged_data.csv \
     [--hierarchical-summary OUT.json]
 ```
 
+### Radon vs. progeny mode
+`--iso radon` (default) combines Po-218 & Po-214 counts via BLUE to yield the parent Rn-222 activity.
+`--iso po218` or `--iso po214` fits an individual progeny chain only (useful for diagnostics).
+
 
 The script exits with an error message if filtering removes all events at any stage
 (noise cut, burst filter, time-window selection or baseline subtraction).
