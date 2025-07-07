@@ -15,6 +15,7 @@ from pathlib import Path
 from color_schemes import COLOR_SCHEMES
 from constants import PO214, PO218, PO210
 from .paths import get_targets
+from .radon import plot_radon_activity, plot_radon_trend
 
 # Half-life constants used for the time-series overlay [seconds]
 PO214_HALF_LIFE_S = PO214.half_life_s
@@ -670,38 +671,6 @@ def plot_radon_trend_full(times, activity, out_png, config=None):
     targets = get_targets(config, out_png)
     for p in targets.values():
         plt.savefig(p, dpi=300)
-    plt.close()
-
-
-def plot_radon_activity(ts_dict, outdir):
-    """Simple wrapper to plot radon activity time series."""
-    import matplotlib.pyplot as plt
-    outdir = Path(outdir)
-    t = ts_dict["time"]
-    y = ts_dict["activity"]
-    e = ts_dict["error"]
-    plt.errorbar(t, y, yerr=e, fmt="o")
-    plt.ylabel("Radon activity [Bq]")
-    plt.xlabel("Time (UTC)")
-    plt.tight_layout()
-    plt.savefig(outdir / "radon_activity.png", dpi=300)
-    plt.close()
-
-
-def plot_radon_trend(ts_dict, outdir):
-    """Simple wrapper to plot a radon activity trend."""
-    import numpy as np
-    import matplotlib.pyplot as plt
-    outdir = Path(outdir)
-    t = np.asarray(ts_dict["time"])
-    y = np.asarray(ts_dict["activity"])
-    coeff = np.polyfit(t, y, 1)
-    plt.plot(t, y, "o")
-    plt.plot(t, np.polyval(coeff, t))
-    plt.ylabel("Radon activity [Bq]")
-    plt.xlabel("Time (UTC)")
-    plt.tight_layout()
-    plt.savefig(outdir / "radon_trend.png", dpi=300)
     plt.close()
 
 
