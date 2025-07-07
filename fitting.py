@@ -79,6 +79,7 @@ class FitResult:
 
     ndf: int
     param_index: dict[str, int] | None = None
+    counts: int | None = None
     _cov_df: pd.DataFrame | None = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
@@ -257,6 +258,7 @@ def fit_spectrum(
         flags = {}
 
     e = np.asarray(energies, dtype=float)
+    n_events = e.size
     if e.size == 0:
         raise RuntimeError("No energies provided to fit_spectrum")
 
@@ -439,7 +441,7 @@ def fit_spectrum(
                 err = float(m.errors[pname]) if pname in m.errors else np.nan
                 out["d" + pname] = err
             cov = np.zeros((len(param_order), len(param_order)))
-            return FitResult(out, cov, int(ndf), param_index)
+            return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
 
         m.hesse()
         cov = np.array(m.covariance)
@@ -471,7 +473,7 @@ def fit_spectrum(
         for i, pname in enumerate(param_order):
             out[pname] = float(m.values[pname])
             out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
-        return FitResult(out, cov, int(ndf), param_index)
+        return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
 
     perr = np.sqrt(np.clip(np.diag(pcov), 0, None))
     try:
@@ -506,7 +508,7 @@ def fit_spectrum(
 
     ndf = hist.size - len(popt)
     param_index = {name: i for i, name in enumerate(param_order)}
-    return FitResult(out, pcov, int(ndf), param_index)
+    return FitResult(out, pcov, int(ndf), param_index, counts=int(n_events))
 
 
 def _integral_model(E, N0, B, lam, eff, T):
@@ -777,7 +779,7 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
             i1 = ordered_params.index("E_Po214")
             i2 = ordered_params.index("N0_Po214")
             out["cov_E_Po214_N0_Po214"] = float(cov[i1, i2])
-        return FitResult(out, cov, int(ndf), param_index)
+        return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
 
     m.hesse()  # compute uncertainties
     cov = np.array(m.covariance)
@@ -815,7 +817,7 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
         i2 = ordered_params.index("N0_Po214")
         out["cov_E_Po214_N0_Po214"] = float(cov[i1, i2])
 
-    return FitResult(out, cov, int(ndf), param_index)
+    return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
 
 
 # -----------------------------------------------------
