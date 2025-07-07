@@ -131,8 +131,6 @@ from plot_utils import (
     plot_spectrum,
     plot_time_series,
     plot_equivalent_air,
-    plot_radon_activity,
-    plot_radon_trend,
     plot_radon_activity_full,
     plot_radon_trend_full,
 )
@@ -2453,12 +2451,13 @@ def main(argv=None):
 
     if iso_mode == "radon":
         try:
-            rad_ts = summary["radon"]["time_series"]
+            radon = summary["radon"]
         except KeyError:
-            rad_ts = None
-        if rad_ts is not None:
-            plot_radon_activity(rad_ts, out_dir)
-            plot_radon_trend(rad_ts, out_dir)
+            radon = None
+        if radon is not None:
+            from plot_utils.radon import plot_radon_activity, plot_radon_trend
+            plot_radon_activity(radon["time_series"], out_dir)
+            plot_radon_trend(radon["time_series"], out_dir)
 
     # Generate plots now that the output directory exists
     if spec_plot_data:
