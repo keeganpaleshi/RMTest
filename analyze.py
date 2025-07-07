@@ -1864,35 +1864,65 @@ def main(argv=None):
         fit214 = SimpleNamespace(
             rate=p.get("E_corrected", p.get("E_Po214")),
             err=p.get("dE_corrected", p.get("dE_Po214")),
+            counts=getattr(fit214_obj, "counts", None),
+            params=p,
         )
     if fit218_obj:
         p = _fit_params(fit218_obj)
         fit218 = SimpleNamespace(
             rate=p.get("E_corrected", p.get("E_Po218")),
             err=p.get("dE_corrected", p.get("dE_Po218")),
+            counts=getattr(fit218_obj, "counts", None),
+            params=p,
         )
 
-    iso_mode = cfg.get("analysis_isotope", "radon").lower()
+    iso_mode = (args.iso or cfg.get("analysis_isotope", "radon")).lower()
 
     if iso_mode == "radon":
-        if (fit214 and fit214.rate is not None) or (fit218 and fit218.rate is not None):
+        have_218 = (
+            fit218
+            and fit218.counts is not None
+            and ("eff" in fit218.params or "eff_Po218" in fit218.params)
+        )
+        have_214 = (
+            fit214
+            and fit214.counts is not None
+            and ("eff" in fit214.params or "eff_Po214" in fit214.params)
+        )
+        if have_218 or have_214:
+            N218 = fit218.counts if have_218 else None
+            N214 = fit214.counts if have_214 else None
+            eps218 = (
+                fit218.params.get("eff", fit218.params.get("eff_Po218", 1.0))
+                if fit218
+                else 1.0
+            )
+            eps214 = (
+                fit214.params.get("eff", fit214.params.get("eff_Po214", 1.0))
+                if fit214
+                else 1.0
+            )
+            radon_estimate_info = estimate_radon_activity(
+                N218=N218,
+                epsilon218=eps218,
+                f218=1.0,
+                N214=N214,
+                epsilon214=eps214,
+                f214=1.0,
+            )
+        elif (fit214 and fit214.rate is not None) or (fit218 and fit218.rate is not None):
             radon_estimate_info = estimate_radon_activity(
                 rate214=fit214.rate if fit214 else None,
                 err214=fit214.err if fit214 else None,
                 rate218=fit218.rate if fit218 else None,
                 err218=fit218.err if fit218 else None,
             )
-    elif iso_mode in {"po214", "po218"}:
-        chosen = fit214 if iso_mode == "po214" else fit218
-        if chosen and chosen.rate is not None:
-            info = {
-                "activity_Bq": chosen.rate,
-                "stat_unc_Bq": chosen.err,
-            }
-            if iso_mode == "po214":
-                po214_estimate_info = info
-            else:
-                po218_estimate_info = info
+    elif iso_mode == "po218":
+        if fit218:
+            po218_estimate_info = {"activity_Bq": fit218.rate, "stat_unc_Bq": fit218.err}
+    elif iso_mode == "po214":
+        if fit214:
+            po214_estimate_info = {"activity_Bq": fit214.rate, "stat_unc_Bq": fit214.err}
     else:
         raise ValueError(f"Unknown analysis isotope {iso_mode}")
 
