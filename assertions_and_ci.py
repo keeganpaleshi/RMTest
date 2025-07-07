@@ -16,6 +16,8 @@ def run_assertions(summary: Mapping[str, Any], constants: Mapping[str, Any], con
     config : mapping
         Loaded configuration dictionary.
     """
-    assert summary["baseline"]["corrected_activity"]["Po214"]["value"] >= 0
+    if "radon" in summary:
+        assert summary["radon"]["Rn_activity_Bq"] >= 0
+        assert summary["radon"]["stat_unc_Bq"] > 0
     assert constants["Po214"]["half_life_s"] < 1e3
     assert config["baseline"]["sample_volume_l"] > 0
