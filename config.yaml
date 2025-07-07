@@ -109,10 +109,9 @@ time_fit:
   window_po210:
   - 5.25
   - 5.37
-  eff_po214: 1.0        # nominal × (±100 %)
-  eff_po218: 1.0
-  eff_po210: 1.0
-  eff_prior_sigma: 1.0  # 100 % relative σ
+  eff_po214: null
+  eff_po218: null
+  eff_po210: null
   hl_po214: null
   hl_po218: null
   bkg_po214:
