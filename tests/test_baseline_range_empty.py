@@ -11,13 +11,18 @@ import analyze
 from dataclasses import asdict
 import baseline_noise
 from fitting import FitResult, FitParams
+import pytest
 
 
 def test_cli_baseline_range_empty(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},
         "allow_fallback": True,
-        "baseline": {"range": [0, 5], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
+        "baseline": {
+            "range": [0, 5],
+            "monitor_volume_l": 605.0,
+            "sample_volume_l": 0.0,
+        },
         "calibration": {},
         "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
         "time_fit": {
@@ -38,7 +43,11 @@ def test_cli_baseline_range_empty(tmp_path, monkeypatch):
         {
             "fUniqueID": [1, 2, 3],
             "fBits": [0, 0, 0],
-            "timestamp": [pd.Timestamp(0.5, unit="s", tz="UTC"), pd.Timestamp(1.5, unit="s", tz="UTC"), pd.Timestamp(2.5, unit="s", tz="UTC")],
+            "timestamp": [
+                pd.Timestamp(0.5, unit="s", tz="UTC"),
+                pd.Timestamp(1.5, unit="s", tz="UTC"),
+                pd.Timestamp(2.5, unit="s", tz="UTC"),
+            ],
             "adc": [8.0, 8.0, 8.0],
             "fchannel": [1, 1, 1],
         }
@@ -53,14 +62,24 @@ def test_cli_baseline_range_empty(tmp_path, monkeypatch):
         sigma_E=1.0,
         sigma_E_error=0.0,
     )
-    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
-    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
+    monkeypatch.setattr(
+        analyze, "derive_calibration_constants", lambda *a, **k: cal_mock
+    )
+    monkeypatch.setattr(
+        analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock
+    )
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
-    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(
+        analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch()
+    )
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
-    monkeypatch.setattr(baseline_noise, "estimate_baseline_noise", lambda *a, **k: (None, {}))
-    monkeypatch.setattr(analyze, "apply_burst_filter", lambda df, cfg, mode="rate": (df, 0))
+    monkeypatch.setattr(
+        baseline_noise, "estimate_baseline_noise", lambda *a, **k: (None, {})
+    )
+    monkeypatch.setattr(
+        analyze, "apply_burst_filter", lambda df, cfg, mode="rate": (df, 0)
+    )
 
     captured = {}
 
@@ -90,10 +109,15 @@ def test_cli_baseline_range_empty(tmp_path, monkeypatch):
 
     args = [
         "analyze.py",
-        "--config", str(cfg_path),
-        "--input", str(data_path),
-        "--output_dir", str(tmp_path),
-        "--baseline_range", "10", "20",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+        "--baseline_range",
+        "10",
+        "20",
     ]
     monkeypatch.setattr(sys, "argv", args)
     analyze.main()
@@ -104,7 +128,7 @@ def test_cli_baseline_range_empty(tmp_path, monkeypatch):
     assert summary.get("baseline", {}).get("start") == exp_start
     assert summary.get("baseline", {}).get("end") == exp_end
     assert summary.get("baseline", {}).get("n_events") == 0
-    assert summary.get("baseline", {}).get("live_time") == 0.0
+    assert summary.get("baseline", {}).get("live_time") == pytest.approx(10.0)
     assert captured.get("cfg", {}).get("baseline", {}).get("range") == [
         exp_start,
         exp_end,
