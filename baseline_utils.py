@@ -32,8 +32,6 @@ __all__ = [
 ]
 
 
-
-
 def compute_dilution_factor(monitor_volume: float, sample_volume: float) -> float:
     """Return dilution factor ``monitor_volume / (monitor_volume + sample_volume)``.
 
@@ -140,23 +138,26 @@ def apply_baseline_subtraction(
     t0 = parse_timestamp(t_base0)
     t1 = parse_timestamp(t_base1)
     ts_full = _to_datetime64(df_full)
-    if ts_full.size > 0 and baseline_period_before_data(t1, ts_full.min()):
-        logging.warning(
-            "Baseline window ends after data start – subtraction skipped"
-        )
-        return df_analysis.copy()
+    if ts_full.size > 0:
+        events_start = pd.Timestamp(ts_full.min(), tz="UTC")
+        events_end = pd.Timestamp(ts_full.max(), tz="UTC")
+        if t1 < events_start or t0 > events_end:
+            logging.warning(
+                "Baseline interval outside data range – taking counts anyway"
+            )
     ts_int = ts_full.view("int64")
     t0_ns = t0.value
     t1_ns = t1.value
     mask = (ts_int >= t0_ns) & (ts_int <= t1_ns)
     if not mask.any():
-        msg = "baseline_range matched no events – skipping subtraction"
-        if not allow_fallback:
-            raise RuntimeError(msg)
-        logging.warning(msg)
-        return df_analysis.copy()
+        logging.warning(
+            "baseline_range matched no events – subtraction will have no effect"
+        )
+        baseline_subset = df_full.loc[mask]
+    else:
+        baseline_subset = df_full.loc[mask]
 
-    rate_bl, live_bl = rate_histogram(df_full.loc[mask], bins)
+    rate_bl, live_bl = rate_histogram(baseline_subset, bins)
 
     if mode in ("electronics", "radon", "all"):
         net_counts = (rate_an - rate_bl) * live_time_analysis
@@ -235,11 +236,12 @@ def subtract(
 subtract_baseline_dataframe = apply_baseline_subtraction
 
 
-
 # thin wrappers are imported above from :mod:`radon.baseline`
 
 
-def summarize_baseline(cfg: dict, isotopes: list[str]) -> dict[str, tuple[float, float, float]]:
+def summarize_baseline(
+    cfg: dict, isotopes: list[str]
+) -> dict[str, tuple[float, float, float]]:
     """Return baseline subtraction summary for selected isotopes.
 
     Parameters
@@ -282,4 +284,3 @@ def summarize_baseline(cfg: dict, isotopes: list[str]) -> dict[str, tuple[float,
             raise BaselineError(f"negative corrected rate for {iso}")
 
     return summary
-

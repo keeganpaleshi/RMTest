@@ -113,6 +113,7 @@ def _hl_value(cfg: Mapping[str, Any], iso: str) -> float:
     return float(val)
 
 
+
 def _eff_prior(eff_cfg: Any) -> tuple[float, float]:
     """Return efficiency prior ``(mean, sigma)`` from configuration.
 
@@ -256,7 +257,15 @@ def prepare_analysis_df(
     t0_global: datetime,
     cfg: dict,
     args,
-) -> tuple[pd.DataFrame, datetime, datetime, float, float, str | None, Any,]:
+) -> tuple[
+    pd.DataFrame,
+    datetime,
+    datetime,
+    float,
+    float,
+    str | None,
+    Any,
+]:
     """Apply time window cuts and derive drift parameters."""
 
     df_analysis = df.copy()
@@ -462,8 +471,6 @@ def parse_args(argv=None):
         help="Analysis isotope mode (overrides analysis_isotope in config.yaml)",
     )
     p.add_argument(
-
-
         "--allow-negative-baseline",
         action="store_true",
         help="Allow negative baseline-corrected rates",
@@ -887,7 +894,6 @@ def main(argv=None):
         )
         cfg.setdefault("calibration", {})["noise_cutoff"] = int(args.noise_cutoff)
 
-
     if args.iso is not None:
         prev = cfg.get("analysis_isotope")
         if prev is not None and prev != args.iso:
@@ -900,7 +906,6 @@ def main(argv=None):
     if args.calibration_method is not None:
         _log_override("calibration", "method", args.calibration_method)
         cfg.setdefault("calibration", {})["method"] = args.calibration_method
-
 
     if args.allow_negative_baseline:
         cfg["allow_negative_baseline"] = True
@@ -1324,6 +1329,12 @@ def main(argv=None):
         mask_base = (df_analysis["timestamp"] >= t_start_base) & (
             df_analysis["timestamp"] < t_end_base
         )
+        if events_all_ts.size > 0 and (
+            t_end_base < events_all_ts.min() or t_start_base > events_all_ts.max()
+        ):
+            logging.warning(
+                "Baseline interval outside data range – taking counts anyway"
+            )
         base_events = events_all[mask_base_full].copy()
         # Apply calibration to the baseline events
         if not base_events.empty:
@@ -1333,13 +1344,8 @@ def main(argv=None):
             base_events["energy_MeV"] = np.array([], dtype=float)
             base_events["denergy_MeV"] = np.array([], dtype=float)
         if len(base_events) == 0:
-            msg = "baseline_range yielded zero events \u2013 skipping baseline subtraction"
-            if not cfg.get("allow_fallback"):
-                raise RuntimeError(msg)
-            logging.warning(msg)
-            baseline_live_time = 0.0
-        else:
-            baseline_live_time = float((t_end_base - t_start_base).total_seconds())
+            logging.warning("baseline_range yielded zero events")
+        baseline_live_time = float((t_end_base - t_start_base).total_seconds())
         cfg.setdefault("baseline", {})["range"] = [
             t_start_base,
             t_end_base,
@@ -1653,7 +1659,13 @@ def main(argv=None):
         priors_time = {}
 
         # Efficiency prior per isotope
+
         eff_cfg_val = cfg["time_fit"].get(f"eff_{iso.lower()}")
+
+        eff_nom = (
+            eff_cfg_val[0] if isinstance(eff_cfg_val, (list, tuple)) else eff_cfg_val
+        )
+
         if args.eff_fixed:
             priors_time["eff"] = (1.0, np.inf)
             eff_val = 1.0
@@ -2191,6 +2203,7 @@ def main(argv=None):
 
     radon_results = {}
     radon_combined_info = None
+
     def _eff_value_local(key):
         val = cfg.get("time_fit", {}).get(key)
         if isinstance(val, list):
