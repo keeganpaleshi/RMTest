@@ -2431,12 +2431,27 @@ def main(argv=None):
     if radon_combined_info is not None:
         summary.radon_combined = radon_combined_info
 
-    if radon_estimate_info is not None:
-        summary.radon = radon_estimate_info
-    if po214_estimate_info is not None:
-        summary.po214 = po214_estimate_info
-    if po218_estimate_info is not None:
-        summary.po218 = po218_estimate_info
+    from radon_joint_estimator import estimate_radon_activity
+
+    iso_mode = cfg.get("analysis_isotope", "radon").lower()
+    if iso_mode == "radon":
+        radon = estimate_radon_activity(
+            N218=fit218.counts if fit218 else None,
+            epsilon218=fit218.params.get("eff", 1.0) if fit218 else 1.0,
+            N214=fit214.counts if fit214 else None,
+            epsilon214=fit214.params.get("eff", 1.0) if fit214 else 1.0,
+            f218=1.0,
+            f214=1.0,
+        )
+        summary["radon"] = radon
+    elif iso_mode == "po218":
+        if fit218:
+            summary["po218"] = {"activity_Bq": fit218.rate, "stat_unc_Bq": fit218.err}
+    elif iso_mode == "po214":
+        if fit214:
+            summary["po214"] = {"activity_Bq": fit214.rate, "stat_unc_Bq": fit214.err}
+    else:
+        raise ValueError(f"Unknown analysis_isotope {iso_mode!r}")
 
     if weights is not None:
         summary.efficiency["blue_weights"] = list(weights)

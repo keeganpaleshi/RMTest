@@ -100,6 +100,9 @@ class Summary(Mapping[str, Any]):
     def get(self, key: str, default=None) -> Any:
         return getattr(self, key, default)
 
+    def __setitem__(self, key: str, value: Any) -> None:
+        setattr(self, key, value)
+
 
 CONFIG_SCHEMA = {
     "type": "object",
