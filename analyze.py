@@ -2468,6 +2468,7 @@ def main(argv=None):
         raise ValueError(f"Unknown analysis_isotope {iso_mode!r}")
 
     if weights is not None:
+        summary.efficiency = summary.efficiency or {}
         summary.efficiency["blue_weights"] = list(weights)
 
     results_dir = Path(args.output_dir) / (args.job_id or now_str)
