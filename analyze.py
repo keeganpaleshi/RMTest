@@ -2436,13 +2436,22 @@ def main(argv=None):
     iso_mode = cfg.get("analysis_isotope", "radon").lower()
     if iso_mode == "radon":
         radon = estimate_radon_activity(
-            N218=fit218.counts if fit218 else None,
-            epsilon218=fit218.params.get("eff", 1.0) if fit218 else 1.0,
-            N214=fit214.counts if fit214 else None,
-            epsilon214=fit214.params.get("eff", 1.0) if fit214 else 1.0,
-            f218=1.0,
-            f214=1.0,
+            N218       = fit218.counts if fit218 else 0,
+            epsilon218 = fit218.params.get("eff", 1.0) if fit218 else 1.0,
+            N214       = fit214.counts if fit214 else 0,
+            epsilon214 = fit214.params.get("eff", 1.0) if fit214 else 1.0,
+            f218 = 1.0,
+            f214 = 1.0,
         )
+
+        # ── Construct a one-point time-series so the plotters don’t crash ──
+        run_midpoint = 0.5 * (t0_global.timestamp() + t_end_global_ts)
+        radon["time_series"] = {
+            "time":     [run_midpoint],
+            "activity": [radon["Rn_activity_Bq"]],
+            "error":    [radon["stat_unc_Bq"]],
+        }
+
         summary["radon"] = radon
     elif iso_mode == "po218":
         if fit218:
@@ -2464,16 +2473,12 @@ def main(argv=None):
             raise FileExistsError(f"Results folder already exists: {results_dir}")
 
     copy_config(results_dir, cfg, exist_ok=args.overwrite)
-    out_dir = write_summary(results_dir, summary)
+    out_dir = Path(write_summary(results_dir, summary))
 
     if iso_mode == "radon":
-        try:
-            rad_ts = summary["radon"]["time_series"]
-        except KeyError:
-            rad_ts = None
-        if rad_ts is not None:
-            plot_radon_activity(rad_ts, out_dir)
-            plot_radon_trend(rad_ts, out_dir)
+        rad_ts = summary["radon"]["time_series"]
+        plot_radon_activity(rad_ts, out_dir)
+        plot_radon_trend(rad_ts, out_dir)
 
     # Generate plots now that the output directory exists
     if spec_plot_data:
