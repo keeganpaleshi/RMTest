@@ -894,7 +894,7 @@ def main(argv=None):
         )
         cfg.setdefault("calibration", {})["noise_cutoff"] = int(args.noise_cutoff)
 
-    if args.iso is not None:
+    if args.iso:
         prev = cfg.get("analysis_isotope")
         if prev is not None and prev != args.iso:
             logging.info(
@@ -1882,7 +1882,7 @@ def main(argv=None):
             params=p,
         )
 
-    iso_mode = (args.iso or cfg.get("analysis_isotope", "radon")).lower()
+    iso_mode = cfg.get("analysis_isotope", "radon").lower()
 
     if iso_mode == "radon":
         have_218 = (
@@ -2482,8 +2482,16 @@ def main(argv=None):
 
     if iso_mode == "radon" and "radon" in summary:
         rad_ts = summary["radon"]["time_series"]
-        plot_radon_activity(rad_ts, out_dir)
-        plot_radon_trend(rad_ts, out_dir)
+        plot_radon_activity(
+            rad_ts,
+            out_dir,
+            Path(out_dir) / "radon_activity.png",
+        )
+        plot_radon_trend(
+            rad_ts,
+            out_dir,
+            Path(out_dir) / "radon_trend.png",
+        )
 
     # Generate plots now that the output directory exists
     if spec_plot_data:
