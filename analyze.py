@@ -2488,9 +2488,11 @@ def main(argv=None):
 
     copy_config(results_dir, cfg, exist_ok=args.overwrite)
     out_dir = Path(write_summary(results_dir, summary))
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     if iso_mode == "radon" and "radon" in summary:
         rad_ts = summary["radon"]["time_series"]
+
         plot_radon_activity(
             rad_ts["time"],
             rad_ts["activity"],
@@ -2504,6 +2506,7 @@ def main(argv=None):
             Path(out_dir) / "radon_trend.png",
             config=cfg.get("plotting", {}),
         )
+
 
     # Generate plots now that the output directory exists
     if spec_plot_data:
