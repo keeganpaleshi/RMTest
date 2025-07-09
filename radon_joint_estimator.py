@@ -100,6 +100,17 @@ def estimate_radon_activity(
     if f218 <= 0 or f214 <= 0:
         raise ValueError("fractions must be positive")
 
+    # Handle the special case when both counts are zero.  This avoids
+    # propagating NaNs further down in the calculation and signals that the
+    # activity is unconstrained.
+    if (N218 or 0) + (N214 or 0) == 0:
+        return {
+            "isotope_mode": analysis_isotope.lower(),
+            "Rn_activity_Bq": 0.0,
+            "stat_unc_Bq": float("inf"),
+            "components": {},
+        }
+
     consts = load_nuclide_overrides(nuclide_constants)
     lam_rn = _decay_constant(consts.get("Rn222", RN222).half_life_s)
     lam_218 = _decay_constant(consts.get("Po218", PO218).half_life_s)

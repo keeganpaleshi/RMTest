@@ -9,7 +9,7 @@ def _save(fig, outdir: Path, name: str) -> None:
     plt.close(fig)
 
 
-def plot_radon_activity(ts_dict, outdir: Path) -> None:
+def plot_radon_activity(ts_dict, outdir: Path, out_png: str | Path | None = None) -> None:
     t = np.asarray(ts_dict["time"])
     a = np.asarray(ts_dict["activity"])
     e = np.asarray(ts_dict["error"])
@@ -17,10 +17,14 @@ def plot_radon_activity(ts_dict, outdir: Path) -> None:
     ax.errorbar(t, a, yerr=e, fmt="o")
     ax.set_ylabel("Rn-222 activity [Bq]")
     ax.set_xlabel("Time (UTC)")
-    _save(fig, outdir, "radon_activity")
+    if out_png is not None:
+        fig.savefig(out_png, dpi=300)
+        plt.close(fig)
+    else:
+        _save(fig, outdir, "radon_activity")
 
 
-def plot_radon_trend(ts_dict, outdir: Path) -> None:
+def plot_radon_trend(ts_dict, outdir: Path, out_png: str | Path | None = None) -> None:
     t = np.asarray(ts_dict["time"])
     a = np.asarray(ts_dict["activity"])
     if t.size < 2:
@@ -33,4 +37,8 @@ def plot_radon_trend(ts_dict, outdir: Path) -> None:
     ax.set_ylabel("Rn-222 activity [Bq]")
     ax.set_xlabel("Time (UTC)")
     ax.legend()
-    _save(fig, outdir, "radon_trend")
+    if out_png is not None:
+        fig.savefig(out_png, dpi=300)
+        plt.close(fig)
+    else:
+        _save(fig, outdir, "radon_trend")

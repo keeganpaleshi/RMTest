@@ -134,6 +134,7 @@ from plot_utils import (
     plot_radon_activity_full,
     plot_radon_trend_full,
 )
+
 from plot_utils.radon import (
     plot_radon_activity as _plot_radon_activity,
     plot_radon_trend as _plot_radon_trend,
@@ -152,6 +153,8 @@ def plot_radon_trend(ts_dict, outdir, maybe_outdir=None, *_, **__):
     target = maybe_outdir or outdir
     Path(target).mkdir(parents=True, exist_ok=True)
     return _plot_radon_trend(ts_dict, target)
+
+  
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
 from utils import (
@@ -174,6 +177,16 @@ from baseline_utils import (
     BaselineError,
 )
 import baseline
+
+
+def plot_radon_activity(times, activity, out_png, errors=None, *, config=None):
+    """Wrapper used by tests expecting output path as third argument."""
+    return plot_radon_activity_full(times, activity, errors, out_png, config=config)
+
+
+def plot_radon_trend(times, activity, out_png, *, config=None):
+    """Wrapper used by tests expecting output path as third argument."""
+    return plot_radon_trend_full(times, activity, out_png, config=config)
 
 
 def _fit_params(obj: FitResult | Mapping[str, float] | None) -> FitParams:
@@ -1899,7 +1912,7 @@ def main(argv=None):
             params=p,
         )
 
-    iso_mode = (args.iso or cfg.get("analysis_isotope", "radon")).lower()
+    iso_mode = cfg.get("analysis_isotope", "radon").lower()
 
     if iso_mode == "radon":
         have_218 = (
@@ -2497,11 +2510,27 @@ def main(argv=None):
 
     copy_config(results_dir, cfg, exist_ok=args.overwrite)
     out_dir = Path(write_summary(results_dir, summary))
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     if iso_mode == "radon" and "radon" in summary:
         rad_ts = summary["radon"]["time_series"]
-        plot_radon_activity(rad_ts, out_dir, out_dir)
-        plot_radon_trend(rad_ts, out_dir, out_dir)
+
+
+        plot_radon_activity(
+            rad_ts["time"],
+            rad_ts["activity"],
+            Path(out_dir) / "radon_activity.png",
+            rad_ts.get("error"),
+            config=cfg.get("plotting", {}),
+        )
+        plot_radon_trend(
+            rad_ts["time"],
+            rad_ts["activity"],
+            Path(out_dir) / "radon_trend.png",
+            config=cfg.get("plotting", {}),
+        )
+
+
 
     # Generate plots now that the output directory exists
     if spec_plot_data:
@@ -2605,11 +2634,11 @@ def main(argv=None):
 
         if radon_combined_info is not None:
             try:
-                _ = plot_radon_activity_full(
+                _ = plot_radon_activity(
                     [t0_global.timestamp(), t_end_global_ts],
                     [radon_combined_info["activity_Bq"]] * 2,
-                    [radon_combined_info["unc_Bq"]] * 2,
                     Path(out_dir) / "radon_activity_combined.png",
+                    [radon_combined_info["unc_Bq"]] * 2,
                     config=cfg.get("plotting", {}),
                 )
             except Exception as e:
@@ -2626,11 +2655,11 @@ def main(argv=None):
             hl = _hl_value(cfg, "Po214")
             cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
             A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
-            plot_radon_activity_full(
+            plot_radon_activity(
                 times,
                 A214,
-                dA214,
                 Path(out_dir) / "radon_activity_po214.png",
+                dA214,
                 config=cfg.get("plotting", {}),
             )
 
@@ -2672,11 +2701,11 @@ def main(argv=None):
             activity_arr.fill(radon_results["radon_activity_Bq"]["value"])
             err_arr.fill(radon_results["radon_activity_Bq"]["uncertainty"])
 
-        plot_radon_activity_full(
+        plot_radon_activity(
             times,
             activity_arr,
-            err_arr,
             Path(out_dir) / "radon_activity.png",
+            err_arr,
             config=cfg.get("plotting", {}),
         )
 
@@ -2720,7 +2749,7 @@ def main(argv=None):
                 r218 = A218_tr[i] if A218_tr is not None else None
                 A, _ = compute_radon_activity(r218, None, 1.0, r214, None, 1.0)
                 trend[i] = A
-            plot_radon_trend_full(
+            plot_radon_trend(
                 times_trend,
                 trend,
                 Path(out_dir) / "radon_trend.png",
