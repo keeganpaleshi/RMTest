@@ -1019,6 +1019,7 @@ def main(argv=None):
     if t0_cfg is not None:
         try:
             t0_global = to_utc_datetime(t0_cfg)
+            t0_cfg = t0_global
             cfg.setdefault("analysis", {})["analysis_start_time"] = t0_global
         except Exception:
             logging.warning(
@@ -1027,6 +1028,7 @@ def main(argv=None):
             t0_global = to_utc_datetime(events_filtered["timestamp"].min())
     else:
         t0_global = to_utc_datetime(events_filtered["timestamp"].min())
+        t0_cfg = t0_global
 
     t_end_cfg = cfg.get("analysis", {}).get("analysis_end_time")
     t_end_global = None
@@ -1036,6 +1038,7 @@ def main(argv=None):
             t_end_dt = to_utc_datetime(t_end_cfg)
             t_end_global = t_end_dt
             t_end_global_ts = t_end_dt.timestamp()
+            t_end_cfg = t_end_dt
             cfg.setdefault("analysis", {})["analysis_end_time"] = t_end_dt
         except Exception:
             logging.warning(
@@ -1138,6 +1141,8 @@ def main(argv=None):
         args=args,
     )
     t_end_global = analysis_end
+    if t_end_cfg is None:
+        t_end_cfg = t_end_global
 
     if drift_rate != 0.0 or drift_mode != "linear" or drift_params is not None:
         try:
@@ -2445,7 +2450,7 @@ def main(argv=None):
         )
 
         # ── Construct a one-point time-series so the plotters don’t crash ──
-        run_midpoint = 0.5 * (t0_global.timestamp() + t_end_global_ts)
+        run_midpoint = 0.5 * (t0_cfg.timestamp() + t_end_cfg.timestamp())
         radon["time_series"] = {
             "time":     [run_midpoint],
             "activity": [radon["Rn_activity_Bq"]],
@@ -2475,7 +2480,7 @@ def main(argv=None):
     copy_config(results_dir, cfg, exist_ok=args.overwrite)
     out_dir = Path(write_summary(results_dir, summary))
 
-    if iso_mode == "radon":
+    if iso_mode == "radon" and "radon" in summary:
         rad_ts = summary["radon"]["time_series"]
         plot_radon_activity(rad_ts, out_dir)
         plot_radon_trend(rad_ts, out_dir)
