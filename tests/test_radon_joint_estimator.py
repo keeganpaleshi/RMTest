@@ -37,3 +37,9 @@ def test_radon_joint_estimator_combination():
     sigma = result["stat_unc_Bq"]
     assert abs(est - A_true) <= sigma
 
+
+def test_radon_joint_estimator_zero_counts():
+    result = estimate_radon_activity(0, 1.0, 1.0, 0, 1.0, 1.0)
+    assert result["Rn_activity_Bq"] == 0.0
+    assert math.isinf(result["stat_unc_Bq"])
+
