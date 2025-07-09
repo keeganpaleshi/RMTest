@@ -134,6 +134,27 @@ from plot_utils import (
     plot_radon_activity_full,
     plot_radon_trend_full,
 )
+
+from plot_utils.radon import (
+    plot_radon_activity as _plot_radon_activity,
+    plot_radon_trend as _plot_radon_trend,
+)
+
+
+def plot_radon_activity(ts_dict, outdir, maybe_outdir=None, *_, **__):
+    """Compatibility wrapper for tests expecting three arguments."""
+    target = maybe_outdir or outdir
+    Path(target).mkdir(parents=True, exist_ok=True)
+    return _plot_radon_activity(ts_dict, target)
+
+
+def plot_radon_trend(ts_dict, outdir, maybe_outdir=None, *_, **__):
+    """Compatibility wrapper for tests expecting three arguments."""
+    target = maybe_outdir or outdir
+    Path(target).mkdir(parents=True, exist_ok=True)
+    return _plot_radon_trend(ts_dict, target)
+
+  
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
 from utils import (
@@ -2477,6 +2498,7 @@ def main(argv=None):
         raise ValueError(f"Unknown analysis_isotope {iso_mode!r}")
 
     if weights is not None:
+        summary.efficiency = summary.efficiency or {}
         summary.efficiency["blue_weights"] = list(weights)
 
     results_dir = Path(args.output_dir) / (args.job_id or now_str)
@@ -2493,6 +2515,7 @@ def main(argv=None):
     if iso_mode == "radon" and "radon" in summary:
         rad_ts = summary["radon"]["time_series"]
 
+
         plot_radon_activity(
             rad_ts["time"],
             rad_ts["activity"],
@@ -2506,6 +2529,7 @@ def main(argv=None):
             Path(out_dir) / "radon_trend.png",
             config=cfg.get("plotting", {}),
         )
+
 
 
     # Generate plots now that the output directory exists
