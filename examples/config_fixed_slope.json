@@ -72,6 +72,8 @@
         "sigma_E_prior_source": 0.15,
         "peak_search_prominence": 30,
         "peak_search_width_adc": 3,
+        "peak_search_method": "prominence",
+        "peak_search_cwt_widths": null,
         "use_plot_bins_for_fit": false,
         "unbinned_likelihood": false,
         "mu_bounds": {

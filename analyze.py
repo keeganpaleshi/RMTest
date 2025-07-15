@@ -1538,6 +1538,8 @@ def main(argv=None):
             window=cfg["spectral_fit"].get("peak_search_width_adc", 50),
             prominence=cfg["spectral_fit"].get("peak_search_prominence", 0),
             width=cfg["spectral_fit"].get("peak_search_width_adc", None),
+            method=cfg["spectral_fit"].get("peak_search_method", "prominence"),
+            cwt_widths=cfg["spectral_fit"].get("peak_search_cwt_widths"),
         )
 
         # Build priors for the unbinned spectrum fit:

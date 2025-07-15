@@ -1,7 +1,7 @@
 # utils.py
 
 import numpy as np
-from scipy.signal import find_peaks
+from scipy.signal import find_peaks, find_peaks_cwt
 import math
 from dataclasses import is_dataclass, asdict
 import argparse
@@ -71,7 +71,16 @@ def to_native(obj):
     return obj
 
 
-def find_adc_bin_peaks(adc_values, expected, window=50, prominence=0.0, width=None):
+def find_adc_bin_peaks(
+    adc_values,
+    expected,
+    window=50,
+    prominence=0.0,
+    width=None,
+    *,
+    method="prominence",
+    cwt_widths=None,
+):
     """Locate peak centroids in an ADC array.
 
     Parameters
@@ -84,8 +93,19 @@ def find_adc_bin_peaks(adc_values, expected, window=50, prominence=0.0, width=No
         Search window around each expected centroid (± window).
     prominence : float, optional
         Minimum prominence passed to :func:`scipy.signal.find_peaks`.
+        Ignored when ``method`` is ``"cwt"``.
     width : float or None, optional
         Minimum peak width passed to :func:`scipy.signal.find_peaks`.
+        Ignored when ``method`` is ``"cwt"``.
+    method : {"prominence", "cwt"}, optional
+        Peak detection algorithm. ``"prominence"`` uses
+        :func:`scipy.signal.find_peaks` with the ``prominence`` and ``width``
+        thresholds. ``"cwt"`` applies
+        :func:`scipy.signal.find_peaks_cwt` with ``cwt_widths`` to search across
+        multiple scales.
+    cwt_widths : sequence of float, optional
+        Widths passed to :func:`scipy.signal.find_peaks_cwt` when ``method`` is
+        ``"cwt"``. Defaults to ``np.arange(1, 10)``.
 
     Returns
     -------
@@ -104,7 +124,14 @@ def find_adc_bin_peaks(adc_values, expected, window=50, prominence=0.0, width=No
     centers = 0.5 * (edges[:-1] + edges[1:])
 
     # Global peak search with optional thresholds
-    peak_indices, _ = find_peaks(hist, prominence=prominence, width=width)
+    if method not in {"prominence", "cwt"}:
+        raise ValueError("Unsupported method: %s" % method)
+    if method == "prominence":
+        peak_indices, _ = find_peaks(hist, prominence=prominence, width=width)
+    else:
+        if cwt_widths is None:
+            cwt_widths = np.arange(1, 10)
+        peak_indices = find_peaks_cwt(hist, cwt_widths)
 
     results = {}
     for name, guess in expected.items():
