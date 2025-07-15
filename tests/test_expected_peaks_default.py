@@ -24,6 +24,7 @@ def test_expected_peaks_default(tmp_path, monkeypatch):
             "amp_prior_scale": 1.0,
             "b0_prior": [0.0, 1.0],
             "b1_prior": [0.0, 1.0],
+            "peak_search_method": "cwt",
         },
         "time_fit": {"do_time_fit": False},
         "systematics": {"enable": False},
@@ -75,6 +76,7 @@ def test_expected_peaks_default(tmp_path, monkeypatch):
 
     def fake_find_adc_bin_peaks(adc_values, expected, **kwargs):
         captured["expected"] = expected
+        captured["method"] = kwargs.get("method")
         return {k: float(v) for k, v in expected.items()}
 
     monkeypatch.setattr(analyze, "find_adc_bin_peaks", fake_find_adc_bin_peaks)
@@ -93,4 +95,5 @@ def test_expected_peaks_default(tmp_path, monkeypatch):
     analyze.main()
 
     assert captured.get("expected") == DEFAULT_ADC_CENTROIDS
+    assert captured.get("method") == "cwt"
 

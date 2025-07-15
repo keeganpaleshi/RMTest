@@ -360,6 +360,12 @@ fit.  Important keys include:
 - `expected_peaks` – approximate ADC centroids used to locate the
   Po‑210, Po‑218 and Po‑214 peaks before fitting. The default is
   `{"Po210": 1250, "Po218": 1400, "Po214": 1800}`.
+- `peak_search_method` – algorithm used for the initial centroid search.
+  `"prominence"` applies `find_peaks` with the `peak_search_prominence` and
+  `peak_search_width_adc` thresholds. `"cwt"` uses
+  `find_peaks_cwt` with widths from `peak_search_cwt_widths`.
+- `peak_search_cwt_widths` – list of widths for wavelet peak detection
+  when `peak_search_method` is `"cwt"`.
 - `unbinned_likelihood` – when `true` use an extended unbinned likelihood
   instead of the default χ² fit to histogrammed data.
 - `emg_left` evaluations are wrapped in `np.errstate` and passed through
@@ -621,9 +627,10 @@ centroids. Time parsing utilities are available from `utils.time_utils`:
 - `to_epoch_seconds(ts_or_str)` from `utils.time_utils` converts these inputs to
   Unix seconds.
 
-- `find_adc_bin_peaks(adc_values, expected, window=50, prominence=0.0, width=None)`
+- `find_adc_bin_peaks(adc_values, expected, window=50, prominence=0.0, width=None, method="prominence")`
   histogramises the raw ADC spectrum, searches for maxima near each expected
-  centroid and returns a `{peak: adc_centroid}` mapping in ADC units.
+  centroid and returns a `{peak: adc_centroid}` mapping in ADC units.  Set
+  `method="cwt"` to use wavelet-based peak detection via `find_peaks_cwt`.
 
 You can invoke these from the command line:
 
