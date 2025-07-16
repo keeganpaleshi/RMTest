@@ -111,7 +111,7 @@ def plot_time_series(
     model_errors : dict[str, array-like], optional
         Mapping of isotope name to 1D arrays of uncertainties for the
         model curve. When provided, ``fill_between`` is used to draw
-        ±1σ bands around the corresponding model.
+        +/-1 sigma bands around the corresponding model.
     """
 
     if fit_results is None:
@@ -247,7 +247,7 @@ def plot_time_series(
             n_bins = 1
 
     # ------------------------------------------------------------------
-    # Build equally-spaced edges so Δt is identical for each bin
+    # Build equally-spaced edges so delta t is identical for each bin
     # ------------------------------------------------------------------
     if bin_mode not in ("fd", "auto"):
         edges = np.arange(0, (n_bins + 1) * dt, dt, dtype=float)

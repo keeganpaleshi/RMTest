@@ -201,7 +201,7 @@ To disable the cut:
 ```
 
 `slope_MeV_per_ch` may also be specified under `calibration` to fix the
-ADC→MeV conversion. When this slope is given the two‑point fit is skipped
+ADC->MeV conversion. When this slope is given the two-point fit is skipped
 and the provided value is used directly. If `intercept_MeV` is also
 supplied the calibration is fully fixed and Po‑214 is no longer searched.
 Set either value to `null` to retain the automatic calibration.
@@ -439,7 +439,7 @@ Example snippet:
 `plot_time_series` can also display uncertainty bands around the model
 curves.  Pass arrays of propagated errors via the optional
 `model_errors` argument.  When running `analyze.py` these arrays are
-derived from the fitted parameters (`corrected_sigma`) so shaded ±1σ
+derived from the fitted parameters (`corrected_sigma`) so shaded +/-1 sigma
 regions appear alongside the dashed model lines.
 
 `plot_time_series` takes its half-life values from the `time_fit` section.
@@ -643,7 +643,7 @@ python utils.py 0.5 --to bq --volume_liters 10
 
 `calibration.CalibrationResult` stores the energy calibration
 parameters.  Use `predict()` to convert ADC values to MeV and
-`uncertainty()` to propagate the 1‑σ error:
+`uncertainty()` to propagate the 1-sigma error:
 
 ```python
 from calibration import CalibrationResult

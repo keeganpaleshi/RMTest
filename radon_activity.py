@@ -324,7 +324,7 @@ def print_activity_breakdown(rows: list[dict[str, object]]) -> None:
                 "Raw (Bq)",
                 "Baseline (Bq)",
                 "Corrected (Bq)",
-                "σ (Bq)",
+                "Err (Bq)",
             ]
         )
         for row in rows:
@@ -339,7 +339,7 @@ def print_activity_breakdown(rows: list[dict[str, object]]) -> None:
             )
         print(table.draw())
     except Exception:
-        headings = ["Isotope", "Raw (Bq)", "Baseline (Bq)", "Corrected (Bq)", "σ (Bq)"]
+        headings = ["Isotope", "Raw (Bq)", "Baseline (Bq)", "Corrected (Bq)", "Err (Bq)"]
         str_rows = [
             [
                 str(row.get("iso", "")),
@@ -355,16 +355,16 @@ def print_activity_breakdown(rows: list[dict[str, object]]) -> None:
             for i, val in enumerate(r):
                 widths[i] = max(widths[i], len(val))
 
-        top = "┌" + "┬".join("─" * w for w in widths) + "┐"
+        top = "+" + "+".join("-" * w for w in widths) + "+"
         print(top)
-        header = "│" + "│".join(h.ljust(widths[i]) for i, h in enumerate(headings)) + "│"
+        header = "|" + "|".join(h.ljust(widths[i]) for i, h in enumerate(headings)) + "|"
         print(header)
-        middle = "├" + "┼".join("─" * w for w in widths) + "┤"
+        middle = "+" + "+".join("-" * w for w in widths) + "+"
         print(middle)
         for r in str_rows:
-            line = "│" + "│".join(r[i].ljust(widths[i]) for i in range(len(widths))) + "│"
+            line = "|" + "|".join(r[i].ljust(widths[i]) for i in range(len(widths))) + "|"
             print(line)
-        bottom = "└" + "┴".join("─" * w for w in widths) + "┘"
+        bottom = "+" + "+".join("-" * w for w in widths) + "+"
         print(bottom)
 
     # Compute total radon activity from the corrected rates
@@ -379,4 +379,4 @@ def print_activity_breakdown(rows: list[dict[str, object]]) -> None:
             err214 = float(cast(float, row.get("err_corrected", 0.0)))
 
     total, sigma = compute_radon_activity(rate218, err218, 1.0, rate214, err214, 1.0)
-    print(f"Total radon: {total:.3f} ± {sigma:.3f} Bq")
+    print(f"Total radon: {total:.3f} +/- {sigma:.3f} Bq")
