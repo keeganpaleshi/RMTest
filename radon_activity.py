@@ -339,7 +339,17 @@ def print_activity_breakdown(rows: list[dict[str, object]]) -> None:
             )
         print(table.draw())
     except Exception:
-        headings = ["Isotope", "Raw (Bq)", "Baseline (Bq)", "Corrected (Bq)", "σ (Bq)"]
+        # Fallback to an ASCII table if texttable fails or the console encoding
+        # does not support the Unicode characters used above.  Using only ASCII
+        # avoids UnicodeEncodeError on terminals with limited encodings (e.g.
+        # Windows cmd.exe with cp1252).
+        headings = [
+            "Isotope",
+            "Raw (Bq)",
+            "Baseline (Bq)",
+            "Corrected (Bq)",
+            "Sigma (Bq)",
+        ]
         str_rows = [
             [
                 str(row.get("iso", "")),
@@ -355,17 +365,19 @@ def print_activity_breakdown(rows: list[dict[str, object]]) -> None:
             for i, val in enumerate(r):
                 widths[i] = max(widths[i], len(val))
 
-        top = "┌" + "┬".join("─" * w for w in widths) + "┐"
-        print(top)
-        header = "│" + "│".join(h.ljust(widths[i]) for i, h in enumerate(headings)) + "│"
+        border = "+" + "+".join("-" * (w + 2) for w in widths) + "+"
+        print(border)
+        header = "|" + "|".join(
+            f" {headings[i].ljust(widths[i])} " for i in range(len(headings))
+        ) + "|"
         print(header)
-        middle = "├" + "┼".join("─" * w for w in widths) + "┤"
-        print(middle)
+        print(border)
         for r in str_rows:
-            line = "│" + "│".join(r[i].ljust(widths[i]) for i in range(len(widths))) + "│"
+            line = "|" + "|".join(
+                f" {r[i].ljust(widths[i])} " for i in range(len(widths))
+            ) + "|"
             print(line)
-        bottom = "└" + "┴".join("─" * w for w in widths) + "┘"
-        print(bottom)
+        print(border)
 
     # Compute total radon activity from the corrected rates
     rate218 = err218 = None
