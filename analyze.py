@@ -8,7 +8,7 @@ Full Radon Monitor Analysis Pipeline
 Usage:
     python analyze.py \
         --config   config.yaml \
-        --input    merged_output.csv \
+        [--input   merged_output.csv] \
         --output_dir  results \
         [--baseline_range ISO_START ISO_END]
 
@@ -41,7 +41,6 @@ To run (without baseline) for a single merged CSV:
 
     python analyze.py \
        --config    config.yaml \
-       --input     merged_output.csv \
        --output_dir  results
 """
 
@@ -460,11 +459,15 @@ def parse_args(argv=None):
         default=str(default_cfg),
         help="Path to YAML or JSON configuration file (default: config.yaml)",
     )
+    default_input = Path.cwd() / "merged_output.csv"
     p.add_argument(
         "--input",
         "-i",
-        required=True,
-        help="CSV of merged event data (must contain at least: timestamp, adc)",
+        default=str(default_input),
+        help=(
+            "CSV of merged event data (must contain at least: timestamp, adc) "
+            f"(default: {default_input})"
+        ),
     )
     p.add_argument(
         "--output_dir",
