@@ -28,7 +28,7 @@ This script performs the following steps:
      -> Subtract global t₀ so that model always starts at t=0.
      -> Fit unbinned decay (with efficiency, background, N₀, half‐life priors).
      -> Overlay fit curve on a time‐binned histogram (default 1 h bins), at 95% CL.
-  7. (Optional) Systematics scan around user‐specified σ shifts.
+  7. (Optional) Systematics scan around user-specified sigma shifts.
   8. Produce a single JSON summary with:
        • calibration parameters
        • spectral‐fit outputs
@@ -1547,7 +1547,7 @@ def main(argv=None):
 
         # Build priors for the unbinned spectrum fit:
         priors_spec = {}
-        # σ_E prior
+        # sigma_E prior
         priors_spec["sigma_E"] = (
             sigE_mean,
             cfg["spectral_fit"].get("sigma_E_prior_source", sigE_sigma),
@@ -1713,7 +1713,7 @@ def main(argv=None):
             eff_val, sigma = _eff_prior(eff_cfg_val)
             priors_time["eff"] = (eff_val, sigma)
 
-        # Half-life prior (user must supply [T₁/₂, σ(T₁/₂)] in seconds)
+        # Half-life prior (user must supply [T1/2, sigma(T1/2)] in seconds)
         hl_key = f"hl_{iso.lower()}"
         hl_val = cfg["time_fit"].get(hl_key)
         if hl_val is not None:

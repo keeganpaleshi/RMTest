@@ -90,7 +90,7 @@ def find_adc_bin_peaks(
     expected : dict
         Mapping of peak name -> expected ADC centroid.
     window : int, optional
-        Search window around each expected centroid (± window).
+        Search window around each expected centroid (+/- window).
     prominence : float, optional
         Minimum prominence passed to :func:`scipy.signal.find_peaks`.
         Ignored when ``method`` is ``"cwt"``.

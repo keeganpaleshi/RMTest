@@ -225,7 +225,7 @@ def fit_spectrum(
     flags : dict, optional
         Flags such as ``{"fix_sigma0": True}`` to fix parameters. Fixed
         parameters are implemented by constraining the optimizer to a tiny
-        interval (``±1e-12``) around the provided mean value.
+        interval (``+/-1e-12``) around the provided mean value.
     bins : int or sequence, optional
         Number of bins or bin edges to use when histogramming the input
         energies.  Ignored if ``bin_edges`` is provided.  If both ``bins``
@@ -238,7 +238,7 @@ def fit_spectrum(
         defined by ``bin_edges``.
     bounds : dict, optional
         Mapping of parameter name to ``(lower, upper)`` tuples overriding the
-        default ±5σ range derived from the priors.  ``None`` values disable a
+        default +/-5 sigma range derived from the priors.  ``None`` values disable a
         limit on that side.
     unbinned : bool, optional
         When ``True`` use an extended unbinned likelihood fit instead of the

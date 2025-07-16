@@ -301,7 +301,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
     # 4) For each chosen peak, perform a local fit with EMG or Gaussian:
     peak_fits = {}
-    window = config["calibration"]["fit_window_adc"]  # e.g. ±50 ADC channels
+    window = config["calibration"]["fit_window_adc"]  # e.g. +/-50 ADC channels
     use_emg = config["calibration"]["use_emg"]  # True/False
     for iso, idx_center in chosen_idx.items():
         x0 = centers[idx_center]
@@ -435,7 +435,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
         if diff > tol:
             raise RuntimeError(
                 f"{iso} peak at {peak_fits[iso]['centroid_mev']:.3f} MeV "
-                f"outside ±{tol} MeV of expected {energies[iso]}"
+                f"outside +/-{tol} MeV of expected {energies[iso]}"
             )
 
     # 7) Propagate centroid uncertainties to calibration coefficients
@@ -483,7 +483,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
         cov_a_a2 = 0.0
         cov_a2_c = 0.0
 
-    # 8) Convert σADC -> σE (MeV) using local derivative at the Po-214 peak.
+    # 8) Convert sigma_ADC -> sigma_E (MeV) using local derivative at the Po-214 peak.
     slope_local = 2 * a2 * adc214 + a
     sigma_adc214 = peak_fits["Po214"]["sigma_adc"]
     sigma_E = abs(slope_local) * sigma_adc214
