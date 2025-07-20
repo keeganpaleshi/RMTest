@@ -92,6 +92,7 @@ spectral_fit:
   peak_search_width_adc: 3
   peak_search_method: prominence
   peak_search_cwt_widths: null
+  refit_aic_threshold: 2.0
   use_plot_bins_for_fit: false
   unbinned_likelihood: true
   mu_bounds:

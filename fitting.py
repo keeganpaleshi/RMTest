@@ -220,6 +220,8 @@ def fit_spectrum(
     bounds=None,
     unbinned=False,
     strict=False,
+    *,
+    max_tau_ratio=None,
 ):
     """Fit the radon spectrum using either χ² histogram or unbinned likelihood.
 
@@ -254,6 +256,9 @@ def fit_spectrum(
         When ``True`` raise a :class:`RuntimeError` if the fit covariance
         matrix is not positive definite.  The default is ``False`` which
         attempts to stabilise the covariance by adding a tiny jitter.
+    max_tau_ratio : float, optional
+        If given, enforce an upper bound ``tau <= max_tau_ratio * sigma0`` for
+        EMG tail parameters.
 
     Returns
     -------
@@ -325,12 +330,12 @@ def fit_spectrum(
     p0 = []
     bounds_lo, bounds_hi = [], []
     eps = 1e-12
+    sigma0_mean = p("sigma0", 1.0)[0]
     for name in param_order:
         mean, sig = p(name, 1.0)
         # Enforce a strictly positive initial tau to avoid singular EMG tails
         if name.startswith("tau_"):
             mean = max(mean, _TAU_MIN)
-        p0.append(mean)
         if flags.get(f"fix_{name}", False) or sig == 0:
             # curve_fit requires lower < upper; use a tiny width around fixed values
             lo = mean - eps
@@ -347,8 +352,16 @@ def fit_spectrum(
                 hi = min(hi, user_hi)
         if name.startswith("tau_"):
             lo = max(lo, _TAU_MIN)
+            if max_tau_ratio is not None:
+                hi = min(hi, max_tau_ratio * sigma0_mean)
         if name in ("sigma0", "F"):
             lo = max(lo, 0.0)
+        if name.startswith("S_"):
+            lo = max(lo, 0.0)
+        if hi <= lo:
+            hi = lo + eps
+        mean = np.clip(mean, lo, hi)
+        p0.append(mean)
         bounds_lo.append(lo)
         bounds_hi.append(hi)
 
@@ -453,6 +466,8 @@ def fit_spectrum(
                 err = float(m.errors[pname]) if pname in m.errors else np.nan
                 out["d" + pname] = err
             cov = np.zeros((len(param_order), len(param_order)))
+            k = len(param_order)
+            out["aic"] = float(2 * m.fval + 2 * k)
             return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
 
         m.hesse()
@@ -485,6 +500,8 @@ def fit_spectrum(
         for i, pname in enumerate(param_order):
             out[pname] = float(m.values[pname])
             out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
+        k = len(param_order)
+        out["aic"] = float(2 * m.fval + 2 * k)
         return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
 
     perr = np.sqrt(np.clip(np.diag(pcov), 0, None))
@@ -523,6 +540,8 @@ def fit_spectrum(
     chi2 = float(np.sum(((hist - model_counts) ** 2) / np.clip(hist, 1, None)))
     out["chi2"] = chi2
     out["chi2_ndf"] = chi2 / ndf if ndf != 0 else np.nan
+    k = len(popt)
+    out["aic"] = float(chi2 + 2 * k)
     param_index = {name: i for i, name in enumerate(param_order)}
     return FitResult(out, pcov, int(ndf), param_index, counts=int(n_events))
 
