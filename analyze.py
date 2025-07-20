@@ -126,12 +126,72 @@ def _eff_prior(eff_cfg: Any) -> tuple[float, float]:
     val = float(eff_cfg)
     return (val, 0.05 * val)
 
+
+def _roi_diff(pre: np.ndarray, post: np.ndarray, cfg: Mapping[str, Any]) -> dict:
+    """Return counts difference per ROI between post and pre arrays."""
+    diff = {}
+    for iso in ("Po210", "Po218", "Po214"):
+        win = cfg.get("time_fit", {}).get(f"window_{iso.lower()}")
+        if win is None:
+            continue
+        lo, hi = win
+        c_pre = int(((pre >= lo) & (pre <= hi)).sum())
+        c_post = int(((post >= lo) & (post <= hi)).sum())
+        diff[iso] = c_post - c_pre
+    return diff
+
+
+def _burst_sensitivity_scan(events: pd.DataFrame, cfg: Mapping[str, Any], cal_result) -> tuple[dict, tuple[int, int]]:
+    """Evaluate radon activity over a grid of burst parameters."""
+    from radon_joint_estimator import estimate_radon_activity
+
+    mult0 = int(cfg.get("burst_filter", {}).get("burst_multiplier", 5))
+    win0 = int(cfg.get("burst_filter", {}).get("burst_window_size_s", 60))
+    mult_values = [max(1, mult0 - 2), mult0, mult0 + 2]
+    win_values = [max(1, win0 // 2), win0, win0 * 2]
+
+    results = {}
+    for m in mult_values:
+        for w in win_values:
+            local_cfg = {"burst_filter": {"burst_window_size_s": w, "burst_multiplier": m}}
+            filtered, _ = apply_burst_filter(events, local_cfg, mode="rate")
+            if filtered.empty:
+                results[(m, w)] = 0.0
+                continue
+            energies = cal_result.predict(filtered["adc"])
+            counts = {}
+            for iso in ("Po218", "Po214"):
+                win = cfg.get("time_fit", {}).get(f"window_{iso.lower()}")
+                if win is None:
+                    counts[iso] = 0
+                else:
+                    counts[iso] = int(((energies >= win[0]) & (energies <= win[1])).sum())
+            eff214 = cfg.get("time_fit", {}).get("eff_po214")
+            eff214 = eff214[0] if isinstance(eff214, list) else (eff214 if eff214 is not None else 1.0)
+            eff218 = cfg.get("time_fit", {}).get("eff_po218")
+            eff218 = eff218[0] if isinstance(eff218, list) else (eff218 if eff218 is not None else 1.0)
+            est = estimate_radon_activity(
+                N218=counts.get("Po218"),
+                epsilon218=eff218,
+                f218=1.0,
+                N214=counts.get("Po214"),
+                epsilon214=eff214,
+                f214=1.0,
+            )
+            results[(m, w)] = float(est.get("Rn_activity_Bq", 0.0))
+
+    mean_val = np.nanmean(list(results.values())) if results else 0.0
+    best = min(results.items(), key=lambda kv: abs(kv[1] - mean_val))[0] if results else (mult0, win0)
+    return results, best
+
 from plot_utils import (
     plot_spectrum,
     plot_time_series,
     plot_equivalent_air,
     plot_radon_activity_full,
     plot_radon_trend_full,
+    plot_spectrum_comparison,
+    plot_activity_grid,
 )
 
 from plot_utils.radon import (
@@ -524,6 +584,11 @@ def parse_args(argv=None):
         help="Burst filtering mode to pass to apply_burst_filter. Providing this option overrides `burst_filter.burst_mode` in config.yaml",
     )
     p.add_argument(
+        "--burst-sensitivity-scan",
+        action="store_true",
+        help="Scan burst parameters and plot activity vs burst window/multiplier",
+    )
+    p.add_argument(
         "--job-id",
         help="Optional identifier used for the results folder instead of the timestamp",
     )
@@ -746,6 +811,12 @@ def main(argv=None):
         args.ambient_file = Path(args.ambient_file)
     if args.hierarchical_summary:
         args.hierarchical_summary = Path(args.hierarchical_summary)
+
+    pre_spec_energies = np.array([])
+    post_spec_energies = np.array([])
+    roi_diff = {}
+    scan_results = {}
+    best_params = None
 
     # Resolve timezone for subsequent time parsing
     tzinfo = gettz(args.timezone)
@@ -1015,6 +1086,8 @@ def main(argv=None):
 
     _ensure_events(events_filtered, "noise cut")
 
+    events_after_noise = events_filtered.copy()
+
     # Optional burst filter to remove high-rate clusters
     total_span = events_filtered["timestamp"].max() - events_filtered["timestamp"].min()
     if isinstance(total_span, (np.timedelta64, pd.Timedelta)):
@@ -1035,6 +1108,7 @@ def main(argv=None):
     events_filtered, n_removed_burst = apply_burst_filter(
         events_filtered, cfg, mode=burst_mode
     )
+    events_after_burst = events_filtered.copy()
     if n_before_burst > 0:
         frac_removed = n_removed_burst / n_before_burst
         logging.info(
@@ -1306,6 +1380,12 @@ def main(argv=None):
     energies = cal_result.predict(df_analysis["adc"])
     df_analysis["energy_MeV"] = energies
     df_analysis["denergy_MeV"] = cal_result.uncertainty(df_analysis["adc"])
+
+    energies_pre_burst = cal_result.predict(events_after_noise["adc"])
+    energies_post_burst = cal_result.predict(events_after_burst["adc"])
+    roi_diff = _roi_diff(energies_pre_burst, energies_post_burst, cfg)
+    pre_spec_energies = energies_pre_burst
+    post_spec_energies = energies_post_burst
 
     # Derive default time-fit windows from calibration peaks when missing
     if getattr(cal_result, "peaks", None):
@@ -2332,6 +2412,11 @@ def main(argv=None):
         "uncertainty": dtotal_bq,
     }
 
+    scan_results = {}
+    best_params = None
+    if args.burst_sensitivity_scan:
+        scan_results, best_params = _burst_sensitivity_scan(events_after_noise, cfg, cal_result)
+
     if args.debug:
         from radon_activity import print_activity_breakdown
 
@@ -2443,6 +2528,14 @@ def main(argv=None):
         burst_filter={
             "removed_events": int(n_removed_burst),
             "burst_mode": burst_mode,
+            "roi_diff": roi_diff,
+            "sensitivity_scan": {
+                "grid": {f"{m}_{w}": v for (m, w), v in scan_results.items()},
+                "best": {
+                    "burst_multiplier": best_params[0] if best_params else None,
+                    "burst_window_size_s": best_params[1] if best_params else None,
+                },
+            },
         },
         adc_drift_rate=drift_rate,
         adc_drift_mode=drift_mode,
@@ -2550,6 +2643,28 @@ def main(argv=None):
             )
         except Exception as e:
             print(f"WARNING: Could not create spectrum plot: {e}")
+
+    try:
+        _ = plot_spectrum_comparison(
+            pre_spec_energies,
+            post_spec_energies,
+            bins=spec_plot_data.get("bins", 400) if spec_plot_data else 400,
+            bin_edges=spec_plot_data.get("bin_edges") if spec_plot_data else None,
+            out_png=Path(out_dir) / "spectrum_pre_post.png",
+            config=cfg.get("time_fit", {}),
+        )
+    except Exception as e:
+        print(f"WARNING: Could not create pre/post spectrum plot -> {e}")
+
+    if args.burst_sensitivity_scan and scan_results:
+        try:
+            plot_activity_grid(
+                scan_results,
+                out_png=Path(out_dir) / "burst_scan.png",
+                config=cfg.get("plotting", {}),
+            )
+        except Exception as e:
+            print(f"WARNING: Could not create burst scan plot -> {e}")
 
     overlay = cfg.get("plotting", {}).get("overlay_isotopes", False)
 
