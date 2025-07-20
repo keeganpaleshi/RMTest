@@ -1548,10 +1548,12 @@ def main(argv=None):
         # Build priors for the unbinned spectrum fit:
         priors_spec = {}
         # sigma_E prior
-        priors_spec["sigma_E"] = (
-            sigE_mean,
-            cfg["spectral_fit"].get("sigma_E_prior_source", sigE_sigma),
-        )
+        sigma_E_prior = cfg["spectral_fit"].get("sigma_E_prior_source", sigE_sigma)
+        if not cfg["spectral_fit"].get("float_sigma_E", True) and sigma_E_prior != 0:
+            raise ValueError(
+                "float_sigma_E is false but sigma_E_prior_source is nonzero"
+            )
+        priors_spec["sigma_E"] = (sigE_mean, sigma_E_prior)
 
         for peak, centroid_adc in adc_peaks.items():
             mu = apply_calibration(centroid_adc, a, c, quadratic_coeff=a2)
@@ -1606,7 +1608,13 @@ def main(argv=None):
         # Flags controlling the spectral fit
         spec_flags = cfg["spectral_fit"].get("flags", {}).copy()
         if not cfg["spectral_fit"].get("float_sigma_E", True):
-            spec_flags["fix_sigma_E"] = True
+            spec_flags["fix_sigma0"] = True
+            spec_flags.setdefault("fix_F", True)
+
+        if "fix_sigma_E" in spec_flags:
+            if spec_flags.pop("fix_sigma_E"):
+                spec_flags.setdefault("fix_sigma0", True)
+                spec_flags.setdefault("fix_F", True)
 
         # Launch the spectral fit
         spec_fit_out = None
