@@ -2,20 +2,20 @@ import json
 import sys
 from pathlib import Path
 import pandas as pd
+import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
-import numpy as np
 from calibration import CalibrationResult
 from fitting import FitResult, FitParams
 from dataclasses import asdict
 
 
-def test_summary_includes_git_and_cli(tmp_path, monkeypatch):
+def test_runs_with_same_seed_reproduce(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},
         "calibration": {},
-        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "spectral_fit": {"expected_peaks": {"Po210": 0}},
         "time_fit": {"do_time_fit": False},
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
@@ -44,20 +44,25 @@ def test_summary_includes_git_and_cli(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
     monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
+
+    def random_spectrum(*a, **k):
+        val = float(np.random.normal())
+        return FitResult(FitParams({"mu_Po214": val}), np.zeros((1,1)), 0)
+
+    monkeypatch.setattr(analyze, "fit_spectrum", random_spectrum)
     monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
     monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
     monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
     monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
 
-    captured = {}
-
-    def fake_write_summary(out_dir, summary, timestamp=None):
-        captured["summary"] = asdict(summary)
+    results = []
+    def fake_write(out_dir, summary, timestamp=None):
+        results.append(asdict(summary))
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
         return str(d)
 
-    monkeypatch.setattr(analyze, "write_summary", fake_write_summary)
+    monkeypatch.setattr(analyze, "write_summary", fake_write)
     monkeypatch.setattr(analyze, "copy_config", lambda *a, **k: None)
 
     args = [
@@ -68,15 +73,16 @@ def test_summary_includes_git_and_cli(tmp_path, monkeypatch):
         str(data_path),
         "--output_dir",
         str(tmp_path),
+        "--seed",
+        "42",
     ]
     monkeypatch.setattr(sys, "argv", args)
     analyze.main()
 
-    summary = captured.get("summary")
-    assert summary is not None
-    assert "git_commit" in summary
-    assert "requirements_sha256" in summary
-    assert "cli_sha256" in summary
-    assert "cli_args" in summary
-    assert "config_sha256" in summary
-    assert summary.get("random_seed") is not None
+    monkeypatch.setattr(sys, "argv", args)
+    analyze.main()
+
+    assert len(results) == 2
+    first = results[0]["spectral_fit"].get("mu_Po214")
+    second = results[1]["spectral_fit"].get("mu_Po214")
+    assert first == second
