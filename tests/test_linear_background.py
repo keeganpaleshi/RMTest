@@ -8,7 +8,10 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from background import estimate_linear_background
+from background import (
+    estimate_linear_background,
+    estimate_polynomial_background_auto,
+)
 import analyze
 from calibration import CalibrationResult
 from fitting import FitResult, FitParams
@@ -29,6 +32,23 @@ def generate_spectrum():
     # Linear continuum: b0=50, b1=2
     e_bg = np.linspace(5.0, 8.0, 60)
     counts = (50 + 2 * e_bg).astype(int)
+    cont = np.concatenate([np.full(c, e) for e, c in zip(e_bg, counts)])
+    energies = np.concatenate([energies, cont])
+    return energies, peaks
+
+
+def generate_poly_spectrum(bg_func):
+    rng = np.random.default_rng(1)
+    peaks = {"Po210": 5.3, "Po218": 6.0, "Po214": 7.7}
+    energies = np.concatenate(
+        [
+            rng.normal(peaks["Po210"], 0.05, 150),
+            rng.normal(peaks["Po218"], 0.05, 150),
+            rng.normal(peaks["Po214"], 0.05, 150),
+        ]
+    )
+    e_bg = np.linspace(5.0, 8.0, 60)
+    counts = bg_func(e_bg).astype(int)
     cont = np.concatenate([np.full(c, e) for e, c in zip(e_bg, counts)])
     energies = np.concatenate([energies, cont])
     return energies, peaks
@@ -139,3 +159,16 @@ def test_zero_count_bins():
     b0, b1 = estimate_linear_background(energies, peaks, peak_width=0.3, bins=50)
     assert not np.isnan(b0)
     assert not np.isnan(b1)
+
+
+def test_polynomial_background_order_selection():
+    flat = lambda e: np.full_like(e, 30)
+    slope = lambda e: 20 + 5 * (e - 6)
+    quad = lambda e: 10 + 2 * (e - 6) ** 2
+
+    for func, expected in [(flat, 0), (slope, 1), (quad, 2)]:
+        energies, peaks = generate_poly_spectrum(func)
+        coeffs, order = estimate_polynomial_background_auto(
+            energies, peaks, max_order=2
+        )
+        assert order == expected

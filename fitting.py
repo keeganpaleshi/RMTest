@@ -519,6 +519,10 @@ def fit_spectrum(
     out["fit_valid"] = fit_valid
 
     ndf = hist.size - len(popt)
+    model_counts = _model_binned(centers, *popt)
+    chi2 = float(np.sum(((hist - model_counts) ** 2) / np.clip(hist, 1, None)))
+    out["chi2"] = chi2
+    out["chi2_ndf"] = chi2 / ndf if ndf != 0 else np.nan
     param_index = {name: i for i, name in enumerate(param_order)}
     return FitResult(out, pcov, int(ndf), param_index, counts=int(n_events))
 

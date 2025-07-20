@@ -1601,6 +1601,24 @@ def main(argv=None):
             )
             priors_spec["b0"] = (b0_est, abs(b0_est) * 0.1 + 1e-3)
             priors_spec["b1"] = (b1_est, abs(b1_est) * 0.1 + 1e-3)
+        elif bkg_mode.startswith("auto_poly"):
+            from background import estimate_polynomial_background_auto
+
+            mu_map = {k: priors_spec[f"mu_{k}"][0] for k in adc_peaks.keys()}
+            peak_tol = cfg["spectral_fit"].get("spectral_peak_tolerance_mev", 0.3)
+            try:
+                max_n = int(bkg_mode.split("auto_poly")[-1])
+            except ValueError:
+                max_n = 2
+            coeffs, order = estimate_polynomial_background_auto(
+                df_analysis["energy_MeV"].values,
+                mu_map,
+                max_order=max_n,
+                peak_width=peak_tol,
+            )
+            for i, c in enumerate(coeffs):
+                priors_spec[f"b{i}"] = (float(c), abs(float(c)) * 0.1 + 1e-3)
+            priors_spec["poly_order"] = order
         else:
             priors_spec["b0"] = tuple(cfg["spectral_fit"].get("b0_prior"))
             priors_spec["b1"] = tuple(cfg["spectral_fit"].get("b1_prior"))
