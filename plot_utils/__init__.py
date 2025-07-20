@@ -705,6 +705,90 @@ def plot_radon_trend(ts_dict, outdir):
     plt.close()
 
 
+def plot_spectrum_comparison(
+    pre_energies,
+    post_energies,
+    *,
+    bins=400,
+    bin_edges=None,
+    out_png="spectrum_pre_post.png",
+    config=None,
+):
+    """Overlay spectra before and after filtering and return ROI differences."""
+
+    pre = np.asarray(pre_energies, dtype=float)
+    post = np.asarray(post_energies, dtype=float)
+    if bin_edges is None:
+        data = np.concatenate([pre, post])
+        if data.size == 0:
+            bin_edges = np.linspace(0.0, 1.0, bins + 1)
+        else:
+            bin_edges = np.histogram_bin_edges(data, bins=bins)
+
+    hist_pre, edges = np.histogram(pre, bins=bin_edges)
+    hist_post, _ = np.histogram(post, bins=edges)
+
+    width = np.diff(edges)
+    centers = edges[:-1] + width / 2.0
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    palette_name = str(config.get("palette", "default")) if config else "default"
+    palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
+    color_pre = palette.get("hist", "#808080")
+    color_post = palette.get("fit", "#ff0000")
+    ax.bar(centers, hist_pre, width=width, color=color_pre, alpha=0.5, label="Pre")
+    ax.bar(centers, hist_post, width=width, color=color_post, alpha=0.5, label="Post")
+    ax.set_xlabel("Energy (MeV)")
+    ax.set_ylabel("Counts per bin")
+    ax.legend()
+    plt.tight_layout()
+    Path(out_png).parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_png, dpi=300)
+    plt.close()
+
+    roi_diff = {}
+    if config is not None:
+        for iso in ("Po210", "Po218", "Po214"):
+            win = config.get(f"window_{iso.lower()}")
+            if win is None:
+                continue
+            c_pre = int(((pre >= win[0]) & (pre <= win[1])).sum())
+            c_post = int(((post >= win[0]) & (post <= win[1])).sum())
+            roi_diff[iso] = c_post - c_pre
+
+    return roi_diff
+
+
+def plot_activity_grid(result_map, out_png="burst_scan.png", config=None):
+    """Visualise radon activity on a parameter grid."""
+
+    if not result_map:
+        return
+
+    mults = sorted({m for m, _ in result_map})
+    wins = sorted({w for _, w in result_map})
+    grid = np.empty((len(mults), len(wins)))
+    for i, m in enumerate(mults):
+        for j, w in enumerate(wins):
+            grid[i, j] = result_map.get((m, w), np.nan)
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    im = ax.imshow(
+        grid,
+        origin="lower",
+        aspect="auto",
+        extent=[min(wins), max(wins), min(mults), max(mults)],
+    )
+    ax.set_xlabel("burst_window_size_s")
+    ax.set_ylabel("burst_multiplier")
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label("Radon Activity (Bq)")
+    plt.tight_layout()
+    Path(out_png).parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_png, dpi=300)
+    plt.close()
+
+
 # -----------------------------------------------------
 # End of plot_utils.py
 # -----------------------------------------------------
