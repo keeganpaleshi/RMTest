@@ -74,6 +74,7 @@ from io_utils import (
     apply_burst_filter,
     Summary,
 )
+from utils import to_native
 from calibration import (
     derive_calibration_constants,
     derive_calibration_constants_auto,
@@ -696,6 +697,11 @@ def parse_args(argv=None):
             "write a hierarchical fit summary to OUTFILE"
         ),
     )
+    p.add_argument(
+        "--reproduce",
+        metavar="SUMMARY",
+        help="Load config and seed from SUMMARY to reproduce a previous run",
+    )
 
     args = p.parse_args(argv)
 
@@ -734,6 +740,18 @@ def main(argv=None):
         requirements_sha256 = "unknown"
 
     args = parse_args(argv)
+
+    if args.reproduce:
+        rep_path = Path(args.reproduce)
+        try:
+            with open(rep_path, "r", encoding="utf-8") as f:
+                rep_summary = json.load(f)
+        except Exception as e:
+            print(f"ERROR: Could not load summary '{args.reproduce}': {e}")
+            sys.exit(1)
+        args.config = rep_path.parent / "config_used.json"
+        args.seed = rep_summary.get("random_seed")
+
     # Convert CLI paths to Path objects
     args.config = Path(args.config)
     args.input = Path(args.input)
@@ -949,13 +967,17 @@ def main(argv=None):
     if args.palette:
         cfg.setdefault("plotting", {})["palette"] = args.palette
 
+    # Timestamp for this analysis run
+    now_str = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+    base_cfg_sha = hashlib.sha256(
+        json.dumps(to_native(cfg), sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
     # Configure logging as early as possible
     log_level = cfg.get("pipeline", {}).get("log_level", "INFO")
     numeric_level = getattr(logging, log_level.upper(), logging.INFO)
-    logging.basicConfig(
-        level=numeric_level,
-        format="%(levelname)s:%(name)s:%(message)s",
-    )
+    logging.basicConfig(level=numeric_level, format="%(levelname)s:%(name)s:%(message)s")
 
     seed = cfg.get("pipeline", {}).get("random_seed")
     seed_used = None
@@ -967,9 +989,19 @@ def main(argv=None):
             seed_used = seed_int
         except Exception:
             logging.warning(f"Invalid random_seed '{seed}' ignored")
+    else:
+        derived_seed = int(
+            hashlib.sha256((base_cfg_sha + now_str).encode("utf-8")).hexdigest()[:8],
+            16,
+        )
+        np.random.seed(derived_seed)
+        random.seed(derived_seed)
+        seed_used = derived_seed
+        cfg.setdefault("pipeline", {})["random_seed"] = derived_seed
 
-    # Timestamp for this analysis run
-    now_str = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    cfg_sha256 = hashlib.sha256(
+        json.dumps(to_native(cfg), sort_keys=True).encode("utf-8")
+    ).hexdigest()
 
     # ────────────────────────────────────────────────────────────
     # 2. Load event data
@@ -2432,6 +2464,7 @@ def main(argv=None):
     summary = Summary(
         timestamp=now_str,
         config_used=args.config.name,
+        config_sha256=cfg_sha256,
         calibration=cal_summary,
         calibration_valid=calibration_valid,
         spectral_fit=spec_dict,

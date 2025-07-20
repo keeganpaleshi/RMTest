@@ -64,6 +64,7 @@ class Summary(Mapping[str, Any]):
 
     timestamp: str | None = None
     config_used: str | None = None
+    config_sha256: str | None = None
     calibration: dict = field(default_factory=dict)
     calibration_valid: bool | None = None
     spectral_fit: dict = field(default_factory=dict)
@@ -323,16 +324,14 @@ def merge_cfg(
 
 def load_config(config_path):
     """
-    Load ``config_path`` and merge it with ``config_defaults.yaml`` (or
-    ``config_defaults.json``) if present. The resulting dictionary is validated
+    Load ``config_path`` (path or mapping) and merge it with ``config_defaults.yaml``
+    (or ``config_defaults.json``) if present. The resulting dictionary is validated
     against ``CONFIG_SCHEMA``.
 
-    Returns the merged configuration dictionary.
-    Raises ``FileNotFoundError`` or ``json.JSONDecodeError, yaml.YAMLError`` on failure.
+    Returns the merged configuration dictionary. Raises ``FileNotFoundError`` or
+    ``json.JSONDecodeError, yaml.YAMLError`` on failure when ``config_path`` is a
+    path-like object.
     """
-    path = Path(config_path)
-    if not path.is_file():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
 
     defaults_path_yaml = Path(__file__).resolve().with_name("config_defaults.yaml")
     defaults_path_json = Path(__file__).resolve().with_name("config_defaults.json")
@@ -344,11 +343,18 @@ def load_config(config_path):
         with open(defaults_path_json, "r", encoding="utf-8") as f:
             defaults = json.load(f, object_pairs_hook=_no_duplicates_object_pairs_hook)
 
-    with open(path, "r", encoding="utf-8") as f:
-        if path.suffix in {".yaml", ".yml"}:
-            cfg = yaml.safe_load(f) or {}
-        else:
-            cfg = json.load(f, object_pairs_hook=_no_duplicates_object_pairs_hook)
+    if isinstance(config_path, Mapping):
+        cfg = dict(config_path)
+        path = None
+    else:
+        path = Path(config_path)
+        if not path.is_file():
+            raise FileNotFoundError(f"Config file not found: {config_path}")
+        with open(path, "r", encoding="utf-8") as f:
+            if path.suffix in {".yaml", ".yml"}:
+                cfg = yaml.safe_load(f) or {}
+            else:
+                cfg = json.load(f, object_pairs_hook=_no_duplicates_object_pairs_hook)
 
     # Validate user config for required keys before applying defaults
     validator = jsonschema.Draft7Validator(CONFIG_SCHEMA)
