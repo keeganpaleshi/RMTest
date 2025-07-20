@@ -413,6 +413,64 @@ def test_fit_spectrum_unbinned_consistent():
     assert diff < 0.2
 
 
+def test_fit_spectrum_fixed_resolution():
+    rng = np.random.default_rng(42)
+    energies = rng.normal(5.3, 0.05, 200)
+    priors = {
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (200, 20),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (200, 20),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (200, 20),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+    out = fit_spectrum(energies, priors, flags={"fix_sigma0": True, "fix_F": True})
+    assert out.params["sigma0"] == pytest.approx(priors["sigma0"][0])
+
+
+def test_fit_spectrum_resolution_floats():
+    rng = np.random.default_rng(43)
+    energies = rng.normal(5.3, 0.07, 200)
+    priors = {
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (200, 20),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (200, 20),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (200, 20),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+    out = fit_spectrum(energies, priors)
+    assert out.params["sigma0"] > priors["sigma0"][0]
+
+
+def test_fit_spectrum_legacy_fix_sigma_E():
+    rng = np.random.default_rng(44)
+    energies = rng.normal(5.3, 0.05, 150)
+    priors = {
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (150, 15),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (150, 15),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (150, 15),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+    out_legacy = fit_spectrum(energies, priors, flags={"fix_sigma_E": True})
+    out_new = fit_spectrum(energies, priors, flags={"fix_sigma0": True, "fix_F": True})
+    assert out_legacy.params == out_new.params
+
+
 def test_fit_spectrum_covariance_checks(monkeypatch):
     """fit_valid should reflect covariance positive definiteness."""
     rng = np.random.default_rng(5)

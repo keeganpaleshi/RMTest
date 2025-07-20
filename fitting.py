@@ -184,6 +184,13 @@ def fit_decay(times, priors, t0=0.0, t_end=None, flags=None):
 
     if flags is None:
         flags = {}
+    if flags.get("fix_sigma_E"):
+        flags.setdefault("fix_sigma0", True)
+        flags.setdefault("fix_F", True)
+
+    if flags.get("fix_sigma_E"):
+        flags.setdefault("fix_sigma0", True)
+        flags.setdefault("fix_F", True)
 
     t = np.asarray(times, dtype=float)
     if t_end is None:
@@ -256,6 +263,9 @@ def fit_spectrum(
 
     if flags is None:
         flags = {}
+    if flags.get("fix_sigma_E"):
+        flags.setdefault("fix_sigma0", True)
+        flags.setdefault("fix_F", True)
 
     e = np.asarray(energies, dtype=float)
     n_events = e.size
@@ -427,6 +437,8 @@ def fit_spectrum(
         m.errordef = Minuit.LIKELIHOOD
         for name, lo, hi in zip(param_order, bounds_lo, bounds_hi):
             m.limits[name] = (lo, hi)
+            if flags.get(f"fix_{name}", False):
+                m.fixed[name] = True
         m.migrad()
         if not m.valid:
             m.simplex()
