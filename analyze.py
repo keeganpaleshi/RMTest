@@ -1769,6 +1769,45 @@ def main(argv=None):
                 if bounds_map:
                     fit_kwargs["bounds"] = bounds_map
             spec_fit_out = fit_spectrum(**fit_kwargs)
+            if isinstance(spec_fit_out, FitResult) and not spec_fit_out.params.get("fit_valid", True):
+                tau_keys = [k for k in priors_spec if k.startswith("tau_")]
+                if tau_keys:
+                    priors_shrunk = priors_spec.copy()
+                    for t in tau_keys:
+                        mu, sig = priors_shrunk[t]
+                        priors_shrunk[t] = (mu, sig * 0.5)
+                    flags_fix = spec_flags.copy()
+                    for t in tau_keys:
+                        flags_fix[f"fix_{t}"] = True
+                    refit = fit_spectrum(
+                        df_analysis["energy_MeV"].values,
+                        priors_shrunk,
+                        flags=flags_fix,
+                        bins=fit_kwargs.get("bins"),
+                        bin_edges=fit_kwargs.get("bin_edges"),
+                        bounds=fit_kwargs.get("bounds"),
+                        unbinned=fit_kwargs.get("unbinned", False),
+                        strict=fit_kwargs.get("strict", False),
+                    )
+                    if isinstance(refit, FitResult) and refit.params.get("fit_valid", False):
+                        thresh = cfg["spectral_fit"].get("refit_aic_threshold", 2.0)
+                        if refit.params.get("aic", float("inf")) > spec_fit_out.params.get("aic", float("inf")) - thresh:
+                            spec_fit_out = refit
+                        else:
+                            free_fit = fit_spectrum(
+                                df_analysis["energy_MeV"].values,
+                                priors_shrunk,
+                                flags=spec_flags,
+                                bins=fit_kwargs.get("bins"),
+                                bin_edges=fit_kwargs.get("bin_edges"),
+                                bounds=fit_kwargs.get("bounds"),
+                                unbinned=fit_kwargs.get("unbinned", False),
+                                strict=fit_kwargs.get("strict", False),
+                            )
+                            if isinstance(free_fit, FitResult) and free_fit.params.get("fit_valid", False) and free_fit.params.get("aic", float("inf")) < refit.params.get("aic", float("inf")) - thresh:
+                                spec_fit_out = free_fit
+                            else:
+                                spec_fit_out = refit
             spectrum_results = spec_fit_out
         except Exception as e:
             print(f"WARNING: Spectral fit failed -> {e}")

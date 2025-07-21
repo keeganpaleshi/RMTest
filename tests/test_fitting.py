@@ -653,3 +653,59 @@ def test_model_uncertainty_nan_covariance():
     sigma_zero = analyze._model_uncertainty(centers, widths, fr_zero, "Po214", cfg, True)
     assert np.all(np.isfinite(sigma_nan))
     assert np.allclose(sigma_nan, sigma_zero)
+
+
+def test_spectrum_tail_amplitude_stability():
+    rng = np.random.default_rng(50)
+    base = np.concatenate([
+        rng.normal(5.3, 0.05, 300),
+        rng.normal(6.0, 0.05, 300),
+        rng.normal(7.7, 0.05, 300),
+    ])
+    tail = 6.0 + rng.exponential(0.15, 100)
+    energies = np.concatenate([base, tail])
+
+    priors = {
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (300, 30),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (400, 40),
+        "tau_Po218": (0.1, 0.05),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (300, 30),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+
+    res = fit_spectrum(energies, priors, unbinned=True)
+    assert res.params["fit_valid"]
+    assert abs(res.params["S_Po218"] - 400) / 400 < 0.03
+
+
+def test_spectrum_positive_amplitude_bound():
+    rng = np.random.default_rng(51)
+    energies = np.concatenate([
+        rng.normal(5.3, 0.05, 50),
+        rng.normal(6.0, 0.05, 50),
+        rng.normal(7.7, 0.05, 50),
+    ])
+
+    priors = {
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (-100, 20),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (-100, 20),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (-100, 20),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+
+    res = fit_spectrum(energies, priors)
+    assert res.params["fit_valid"]
+    for key in ("S_Po210", "S_Po218", "S_Po214"):
+        assert res.params[key] >= 0

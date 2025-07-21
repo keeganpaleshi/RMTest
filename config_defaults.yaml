@@ -8,6 +8,7 @@ calibration:
 spectral_fit:
   peak_search_method: prominence
   peak_search_cwt_widths: null
+  refit_aic_threshold: 2.0
 time_fit:
   window_po214:
   - 7.55
