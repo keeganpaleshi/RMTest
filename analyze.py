@@ -89,6 +89,7 @@ from constants import (
     PO214,
     PO218,
     DEFAULT_ADC_CENTROIDS,
+    DEFAULT_KNOWN_ENERGIES,
 )
 
 NUCLIDES = {
@@ -280,6 +281,72 @@ def _ensure_events(events: pd.DataFrame, stage: str) -> None:
     if len(events) == 0:
         print(f"No events remaining after {stage}. Exiting.")
         sys.exit(1)
+
+
+def _centroid_deviation(params: Mapping[str, float], known: Mapping[str, float]) -> dict[str, float]:
+    """Return |mu_fit - E_known| for each isotope present in ``params``."""
+    dev: dict[str, float] = {}
+    for iso, e_known in known.items():
+        key = f"mu_{iso}"
+        if key in params:
+            dev[iso] = abs(float(params[key]) - float(e_known))
+    return dev
+
+
+def _spectral_fit_with_check(
+    energies: np.ndarray,
+    priors: Mapping[str, tuple[float, float]],
+    flags: Mapping[str, bool],
+    cfg: Mapping[str, Any],
+    *,
+    bins: int | None = None,
+    bin_edges: np.ndarray | None = None,
+    bounds: Mapping[str, tuple[float | None, float | None]] | None = None,
+    unbinned: bool = False,
+    strict: bool = False,
+) -> tuple[FitResult | dict[str, float], dict[str, float]]:
+    """Run :func:`fit_spectrum` and apply centroid consistency checks."""
+
+    fit_kwargs = {
+        "energies": energies,
+        "priors": priors,
+        "flags": flags,
+    }
+    if bins is not None or bin_edges is not None:
+        fit_kwargs.update({"bins": bins, "bin_edges": bin_edges})
+    if bounds:
+        fit_kwargs["bounds"] = bounds
+    if unbinned:
+        fit_kwargs["unbinned"] = True
+    if strict:
+        fit_kwargs["strict"] = True
+
+    result = fit_spectrum(**fit_kwargs)
+    params = result.params if isinstance(result, FitResult) else result
+    known = cfg.get("calibration", {}).get("known_energies", DEFAULT_KNOWN_ENERGIES)
+    tol = cfg.get("spectral_fit", {}).get("spectral_peak_tolerance_mev", 0.2)
+    dev = _centroid_deviation(params, known)
+
+    for iso, dval in dev.items():
+        if dval > tol:
+            logging.warning(
+                f"{iso} centroid deviates by {dval:.3f} MeV from calibration"
+            )
+
+    if any(d > 0.5 * tol for d in dev.values()):
+        new_bounds = dict(bounds or {})
+        for iso, dval in dev.items():
+            if dval > 0.5 * tol:
+                e_known = known[iso]
+                new_bounds[f"mu_{iso}"] = (e_known - 0.5 * tol, e_known + 0.5 * tol)
+        fit_kwargs["bounds"] = new_bounds
+        refit = fit_spectrum(**fit_kwargs)
+        ref_params = refit.params if isinstance(refit, FitResult) else refit
+        ref_dev = _centroid_deviation(ref_params, known)
+        if max(ref_dev.values(), default=0.0) < max(dev.values(), default=0.0):
+            result, dev = refit, ref_dev
+
+    return result, dev
 
 
 def window_prob(E, sigma, lo, hi):
@@ -1595,6 +1662,7 @@ def main(argv=None):
     # ────────────────────────────────────────────────────────────
     spectrum_results = {}
     spec_plot_data = None
+    peak_deviation = {}
     if cfg.get("spectral_fit", {}).get("do_spectral_fit", False):
         # Decide binning: new 'binning' dict or legacy keys
         bin_cfg = cfg["spectral_fit"].get("binning")
@@ -1748,6 +1816,7 @@ def main(argv=None):
 
         # Launch the spectral fit
         spec_fit_out = None
+        peak_deviation = {}
         try:
             fit_kwargs = {
                 "energies": df_analysis["energy_MeV"].values,
@@ -1768,7 +1837,18 @@ def main(argv=None):
                         bounds_map[f"mu_{iso}"] = tuple(bnd)
                 if bounds_map:
                     fit_kwargs["bounds"] = bounds_map
-            spec_fit_out = fit_spectrum(**fit_kwargs)
+
+            spec_fit_out, peak_deviation = _spectral_fit_with_check(
+                df_analysis["energy_MeV"].values,
+                priors_spec,
+                spec_flags,
+                cfg,
+                bins=fit_kwargs.get("bins"),
+                bin_edges=fit_kwargs.get("bin_edges"),
+                bounds=fit_kwargs.get("bounds"),
+                unbinned=fit_kwargs.get("unbinned", False),
+                strict=fit_kwargs.get("strict", False),
+            )
             if isinstance(spec_fit_out, FitResult) and not spec_fit_out.params.get("fit_valid", True):
                 tau_keys = [k for k in priors_spec if k.startswith("tau_")]
                 if tau_keys:
@@ -2587,6 +2667,8 @@ def main(argv=None):
         spec_dict["ndf"] = spectrum_results.ndf
     elif isinstance(spectrum_results, dict):
         spec_dict = spectrum_results
+    if peak_deviation:
+        spec_dict["peak_deviation"] = peak_deviation
 
     time_fit_serializable = {}
     for iso, fit in time_fit_results.items():
