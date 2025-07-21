@@ -275,6 +275,22 @@ def _cov_lookup(
     return 0.0
 
 
+def _fallback_uncertainty(
+    rate: float | None, fit_result: FitResult | Mapping[str, float] | None, param: str
+) -> float | None:
+    """Return uncertainty from covariance or a Poisson estimate."""
+    if isinstance(fit_result, FitResult):
+        if fit_result.cov is not None and fit_result.param_index is not None:
+            idx = fit_result.param_index.get(param)
+            if idx is not None and idx < fit_result.cov.shape[0]:
+                var = float(fit_result.cov[idx, idx])
+                if var > 0:
+                    return math.sqrt(var)
+    if rate is None or rate == 0:
+        return math.nan
+    return math.sqrt(abs(rate))
+
+
 def _ensure_events(events: pd.DataFrame, stage: str) -> None:
     """Exit if ``events`` is empty, printing a helpful message."""
     if len(events) == 0:
@@ -2467,6 +2483,12 @@ def main(argv=None):
         fit_dict = _fit_params(time_fit_results["Po214"])
         rate214 = fit_dict.get("E_corrected", fit_dict.get("E_Po214"))
         err214 = fit_dict.get("dE_corrected", fit_dict.get("dE_Po214"))
+        if err214 is None or not math.isfinite(float(err214)):
+            err214 = _fallback_uncertainty(
+                rate214,
+                time_fit_results.get("Po214"),
+                "E_Po214",
+            )
 
     rate218 = None
     err218 = None
@@ -2474,6 +2496,12 @@ def main(argv=None):
         fit_dict = _fit_params(time_fit_results["Po218"])
         rate218 = fit_dict.get("E_corrected", fit_dict.get("E_Po218"))
         err218 = fit_dict.get("dE_corrected", fit_dict.get("dE_Po218"))
+        if err218 is None or not math.isfinite(float(err218)):
+            err218 = _fallback_uncertainty(
+                rate218,
+                time_fit_results.get("Po218"),
+                "E_Po218",
+            )
 
     A_radon, dA_radon = compute_radon_activity(
         rate218, err218, eff_po218, rate214, err214, eff_po214
