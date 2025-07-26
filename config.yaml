@@ -81,7 +81,7 @@ spectral_fit:
   tau_Po218_prior_sigma: 0.002
   tau_Po214_prior_mean: 0.005
   tau_Po214_prior_sigma: 0.002
-  spectral_peak_tolerance_mev: 0.3
+  spectral_peak_tolerance_mev: 0.2
   use_emg:
     Po210: true
     Po218: false
