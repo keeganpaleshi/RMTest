@@ -19,3 +19,4 @@ time_fit:
   window_po210:
   - 5.25
   - 5.37
+  min_counts: 20

@@ -378,7 +378,7 @@ def plot_time_series(
     if config.get("dump_time_series_json", False):
         import json
 
-        ts_summary = {"centers_s": centers.tolist()}
+        ts_summary = {"centers_s": centers.tolist(), "widths_s": bin_widths.tolist()}
         for iso in iso_list:
             emin, emax = iso_params[iso]["window"]
             ts_summary[f"counts_{iso}"] = np.histogram(
@@ -390,6 +390,8 @@ def plot_time_series(
                 ],
                 bins=edges,
             )[0].tolist()
+            ts_summary[f"live_time_{iso}_s"] = bin_widths.tolist()
+            ts_summary[f"eff_{iso}"] = [iso_params[iso]["eff"]] * len(bin_widths)
         base = Path(out_png).with_suffix("")
         json_path = base.with_name(base.name + "_ts.json")
         with open(json_path, "w") as jf:

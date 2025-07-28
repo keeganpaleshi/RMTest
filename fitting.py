@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 from iminuit import Minuit
 from scipy.optimize import curve_fit, OptimizeWarning
+from scipy.stats import chi2
 from calibration import emg_left, gaussian
 from constants import _TAU_MIN, CURVE_FIT_MAX_EVALS, safe_exp as _safe_exp
 
@@ -842,6 +843,34 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
             perr = np.sqrt(np.clip(np.diag(cov), 0, None))
         except np.linalg.LinAlgError:
             fit_valid = False
+
+    # Likelihood ratio test against background-only model
+    best_nll = float(m.fval)
+    null_params = [float(m.values[p]) for p in ordered_params]
+    for iso in iso_list:
+        idx = param_indices.get(f"E_{iso}")
+        if idx is not None:
+            null_params[idx] = 0.0
+    nll_null = _neg_log_likelihood_time(
+        null_params,
+        times_dict,
+        weights_dict,
+        t_start,
+        t_end,
+        iso_list,
+        lam_map,
+        eff_map,
+        fix_b_map,
+        fix_n0_map,
+        param_indices,
+    )
+    ts_val = max(0.0, 2.0 * (nll_null - best_nll))
+    out["lrt_ts"] = ts_val
+    try:
+        crit = chi2.ppf(0.95, df=len(iso_list))
+    except Exception:
+        crit = 0.0
+    fit_valid = fit_valid and ts_val >= crit
     out["fit_valid"] = fit_valid
     for i, pname in enumerate(ordered_params):
         out[pname] = float(m.values[pname])
