@@ -33,6 +33,13 @@ This project requires **Python 3.11** or newer.
 pip install -r requirements.txt
 ```
 
+Verify your NumPy and SciPy versions if desired:
+
+```python
+import RMTest
+RMTest.check_versions()
+```
+
 ## Usage
 
 ```bash
