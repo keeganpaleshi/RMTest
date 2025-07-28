@@ -243,11 +243,11 @@ def radon_activity_curve(
         Initial activity parameter.
     dN0 : float
         Uncertainty on ``N0``.
+    half_life_s : float
+        Half-life used for the decay model.
     cov_en0 : float, optional
         Covariance between ``E`` and ``N0``. Default is ``0.0`` and disables
         the cross term in the uncertainty propagation.
-    half_life_s : float
-        Half-life used for the decay model.
 
     Returns
     -------
