@@ -86,7 +86,7 @@ spectral_fit:
     Po210: true
     Po218: false
     Po214: false
-  float_sigma_E: true
+  float_sigma_E: false
   sigma_E_prior_source: 0.15
   peak_search_prominence: 30
   peak_search_width_adc: 3
