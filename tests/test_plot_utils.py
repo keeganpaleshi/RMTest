@@ -70,6 +70,9 @@ def test_plot_time_series_auto_fd(tmp_path):
         data = json.load(f)
 
     centers = data["centers_s"]
+    assert "widths_s" in data
+    assert "eff_Po214" in data
+    assert "live_time_Po214_s" in data
     arr = times - 1000.0
     q25, q75 = np.percentile(arr[(arr >= 0) & (arr <= 5)], [25, 75])
     iqr = q75 - q25

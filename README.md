@@ -311,8 +311,9 @@ The CLI options `--plot-time-binning-mode` (deprecated alias
 `--time-bin-mode`) and `--plot-time-bin-width` override
 `plot_time_binning_mode` and `plot_time_bin_width_s` in the configuration
 to control the time-series histogram. Passing `--dump-time-series-json`
-(alias `--dump-ts-json`) writes the histogram counts to a `*_ts.json`
-file alongside the plot.
+(alias `--dump-ts-json`) writes a `*_ts.json` file alongside the plot
+containing the binned counts together with per-bin live time and
+detection efficiency.
 
 Additional convenience flags include `--spike-count` (with optional
 `--spike-count-err`) to override spike efficiency inputs, `--slope` to

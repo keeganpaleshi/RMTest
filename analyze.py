@@ -401,6 +401,30 @@ def window_prob(E, sigma, lo, hi):
     return prob
 
 
+def auto_expand_window(df, window, threshold, step=0.05, max_width=1.0):
+    """Return events within an expanded energy window.
+
+    The window is symmetrically expanded in ``step`` increments until the
+    number of selected events meets ``threshold`` or the width reaches
+    ``max_width``.
+    """
+
+    lo, hi = map(float, window)
+    energies = df["energy_MeV"].values
+    sigma = df["denergy_MeV"].values
+
+    while True:
+        probs = window_prob(energies, sigma, lo, hi)
+        count = np.sum(probs > 0)
+        if count >= threshold or (hi - lo) >= max_width:
+            mask = probs > 0
+            out = df[mask].copy()
+            out["weight"] = probs[mask]
+            return out, (lo, hi)
+        lo -= float(step)
+        hi += float(step)
+
+
 _spike_eff_cache = {}
 
 
@@ -1957,8 +1981,21 @@ def main(argv=None):
             iso_mask = probs > 0
             iso_events = df_analysis[iso_mask].copy()
             iso_events["weight"] = probs[iso_mask]
+
+            thr = int(cfg.get("time_fit", {}).get("min_counts", 20))
+            if len(iso_events) < thr:
+                iso_events, (lo, hi) = auto_expand_window(
+                    df_analysis, (lo, hi), thr
+                )
+                if len(iso_events) >= thr:
+                    print(
+                        f"INFO: expanded {iso} window to [{lo:.2f}, {hi:.2f}] MeV"
+                    )
+
             if iso_events.empty:
-                print(f"WARNING: No events found for {iso} in [{lo}, {hi}] MeV.")
+                print(
+                    f"WARNING: No events found for {iso} in [{lo}, {hi}] MeV."
+                )
                 continue
 
             first_ts = to_datetime_utc(iso_events["timestamp"].iloc[0])
