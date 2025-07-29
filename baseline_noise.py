@@ -72,6 +72,13 @@ def estimate_baseline_noise(
         return A, {"A": A}
 
     if model == "exponential":
+        if hist.max() <= 0:
+            # Guard against zero-count histograms which can make the
+            # exponential fit unstable or fail completely.
+            if return_mask:
+                return 0.0, {"A": 0.0}, mask
+            return 0.0, {"A": 0.0}
+
         p0 = [hist.max(), 0.001]
         try:
             popt, _ = curve_fit(
@@ -79,7 +86,7 @@ def estimate_baseline_noise(
                 centers,
                 hist,
                 p0=p0,
-                bounds=([0.0, -np.inf], [np.inf, np.inf]),
+                bounds=([0.0, 0.0], [np.inf, np.inf]),
                 maxfev=CURVE_FIT_MAX_EVALS,
             )
             A, k = popt
