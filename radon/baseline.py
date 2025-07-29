@@ -38,7 +38,12 @@ def subtract_baseline_counts(
     baseline_live_time: float,
     isotopes=None,
 ) -> tuple[float, float]:
-    """Return background-corrected rate and uncertainty."""
+    """Return background-corrected rate and uncertainty.
+
+    ``baseline_counts`` may be negative when noise subtraction is applied.
+    The variance contribution therefore uses the absolute value to avoid a
+    negative result.
+    """
 
     if isotopes is not None:
         _validate_subtraction(isotopes)
@@ -56,7 +61,7 @@ def subtract_baseline_counts(
     corrected_rate = net / live_time / efficiency
 
     sigma_sq = counts / live_time**2 / efficiency**2
-    baseline_sigma_sq = baseline_counts * scale**2 / live_time**2 / efficiency**2
+    baseline_sigma_sq = abs(baseline_counts) * scale**2 / live_time**2 / efficiency**2
     corrected_sigma = np.sqrt(sigma_sq + baseline_sigma_sq)
     return corrected_rate, corrected_sigma
 
@@ -71,7 +76,11 @@ def subtract_baseline_rate(
     baseline_live_time: float,
     scale: float = 1.0,
 ) -> tuple[float, float, float, float]:
-    """Apply baseline subtraction to a fitted decay rate."""
+    """Apply baseline subtraction to a fitted decay rate.
+
+    ``baseline_counts`` may be negative in some workflows; the uncertainty on
+    the baseline rate uses its absolute value to avoid invalid variances.
+    """
 
     if live_time <= 0:
         raise ValueError("live_time must be positive for baseline correction")
@@ -81,7 +90,7 @@ def subtract_baseline_rate(
         raise ValueError("efficiency must be positive for baseline correction")
 
     baseline_rate = baseline_counts / (baseline_live_time * efficiency)
-    baseline_sigma = np.sqrt(baseline_counts) / (baseline_live_time * efficiency)
+    baseline_sigma = np.sqrt(abs(baseline_counts)) / (baseline_live_time * efficiency)
 
     _, sigma_rate = subtract_baseline_counts(
         counts,
