@@ -719,6 +719,11 @@ Here `activity_bq` is the spike activity expressed in decays per second (Bq).
 The helper `blue_combine.py` exposes a small wrapper so the combination
 can be used independently via ``from blue_combine import BLUE``.
 
+When measurements are strongly correlated the optimal BLUE weights can
+be slightly negative.  Negative weights are allowed by default and
+emit a warning.  Pass ``allow_negative=False`` to ``blue_combine`` if
+such weights should instead raise an exception.
+
 The option `--efficiency-json PATH` may be supplied on the command line to
 load the efficiency section from a separate file instead of embedding it
 directly in the main configuration.  Similarly `--systematics-json PATH`

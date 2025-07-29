@@ -12,9 +12,15 @@ def blue_combine(
     errors: Sequence[float],
     corr: Optional[np.ndarray] = None,
     *,
-    allow_negative: bool = False,
+    allow_negative: bool = True,
 ):
-    """Passthrough to :func:`efficiency.blue_combine` with kwarg support."""
+    """Passthrough to :func:`efficiency.blue_combine` with kwarg support.
+
+    Parameters
+    ----------
+    allow_negative : bool, optional
+        Permit negative BLUE weights (default: ``True``).
+    """
     return _efficiency_blue_combine(
         values,
         errors,
@@ -31,8 +37,14 @@ class Measurements:
     corr: Optional[np.ndarray] = None
 
 
-def BLUE(measurements: Measurements, *, allow_negative: bool = False):
-    """Return BLUE combination of the given measurements."""
+def BLUE(measurements: Measurements, *, allow_negative: bool = True):
+    """Return BLUE combination of the given measurements.
+
+    Parameters
+    ----------
+    allow_negative : bool, optional
+        Permit negative BLUE weights (default: ``True``).
+    """
     return blue_combine(
         measurements.values,
         measurements.errors,
