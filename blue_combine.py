@@ -12,7 +12,7 @@ def blue_combine(
     errors: Sequence[float],
     corr: Optional[np.ndarray] = None,
     *,
-    allow_negative: bool = False,
+    allow_negative: bool = True,
 ):
     """Passthrough to :func:`efficiency.blue_combine` with kwarg support."""
     return _efficiency_blue_combine(
@@ -31,7 +31,7 @@ class Measurements:
     corr: Optional[np.ndarray] = None
 
 
-def BLUE(measurements: Measurements, *, allow_negative: bool = False):
+def BLUE(measurements: Measurements, *, allow_negative: bool = True):
     """Return BLUE combination of the given measurements."""
     return blue_combine(
         measurements.values,
