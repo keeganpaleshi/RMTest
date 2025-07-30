@@ -1,5 +1,6 @@
 import json
 import sys
+import logging
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -255,7 +256,7 @@ def test_adc_drift_piecewise_cfg(tmp_path, monkeypatch):
     assert captured.get("mode") == "piecewise"
     assert captured.get("params") == {"times": [0.0, 1.0], "shifts": [0.0, 1.0]}
 
-def test_adc_drift_warning_on_failure(tmp_path, monkeypatch, capsys):
+def test_adc_drift_warning_on_failure(tmp_path, monkeypatch, caplog):
     """ADC drift correction failure should emit a warning but not abort."""
     cfg_path, data_path = _write_basic(tmp_path, 1.0, allow_fallback=True)
 
@@ -296,8 +297,8 @@ def test_adc_drift_warning_on_failure(tmp_path, monkeypatch, capsys):
         "--output_dir", str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
-    analyze.main()
-    out = capsys.readouterr().out
+    with caplog.at_level(logging.WARNING):
+        analyze.main()
 
-    assert "Could not apply ADC drift correction" in out
+    assert "Could not apply ADC drift correction" in caplog.text
     assert captured["summary"].get("adc_drift_rate") == 1.0

@@ -49,6 +49,9 @@ import argparse
 import sys
 import logging
 import random
+
+logger = logging.getLogger(__name__)
+random.seed(0)
 from datetime import datetime, timezone, timedelta
 import subprocess
 import hashlib
@@ -295,7 +298,7 @@ def _fallback_uncertainty(
 def _ensure_events(events: pd.DataFrame, stage: str) -> None:
     """Exit if ``events`` is empty, printing a helpful message."""
     if len(events) == 0:
-        print(f"No events remaining after {stage}. Exiting.")
+        logger.error("No events remaining after %s. Exiting.", stage)
         sys.exit(1)
 
 
@@ -919,7 +922,7 @@ def main(argv=None):
             with open(rep_path, "r", encoding="utf-8") as f:
                 rep_summary = json.load(f)
         except Exception as e:
-            print(f"ERROR: Could not load summary '{args.reproduce}': {e}")
+            logger.error("Could not load summary '%s': %s", args.reproduce, e)
             sys.exit(1)
         args.config = rep_path.parent / "config_used.json"
         args.seed = rep_summary.get("random_seed")
@@ -946,7 +949,7 @@ def main(argv=None):
     # Resolve timezone for subsequent time parsing
     tzinfo = gettz(args.timezone)
     if tzinfo is None:
-        print(f"ERROR: Unknown timezone '{args.timezone}'")
+        logger.error("Unknown timezone '%s'", args.timezone)
         sys.exit(1)
 
     if args.baseline_range:
@@ -983,7 +986,7 @@ def main(argv=None):
     try:
         cfg = load_config(args.config)
     except Exception as e:
-        print(f"ERROR: Could not load config '{args.config}': {e}")
+        logger.error("Could not load config '%s': %s", args.config, e)
         sys.exit(1)
 
     def _log_override(section, key, new_val):
@@ -999,8 +1002,8 @@ def main(argv=None):
             with open(args.efficiency_json, "r", encoding="utf-8") as f:
                 cfg["efficiency"] = json.load(f)
         except Exception as e:
-            print(
-                f"ERROR: Could not load efficiency JSON '{args.efficiency_json}': {e}"
+            logger.error(
+                "Could not load efficiency JSON '%s': %s", args.efficiency_json, e
             )
             sys.exit(1)
 
@@ -1009,8 +1012,10 @@ def main(argv=None):
             with open(args.systematics_json, "r", encoding="utf-8") as f:
                 cfg["systematics"] = json.load(f)
         except Exception as e:
-            print(
-                f"ERROR: Could not load systematics JSON '{args.systematics_json}': {e}"
+            logger.error(
+                "Could not load systematics JSON '%s': %s",
+                args.systematics_json,
+                e,
             )
             sys.exit(1)
 
@@ -1191,11 +1196,11 @@ def main(argv=None):
         events_all["timestamp"] = events_all["timestamp"].map(parse_timestamp)
 
     except Exception as e:
-        print(f"ERROR: Could not load events from '{args.input}': {e}")
+        logger.error("Could not load events from '%s': %s", args.input, e)
         sys.exit(1)
 
     if events_all.empty:
-        print("No events found in the input CSV. Exiting.")
+        logger.info("No events found in the input CSV. Exiting.")
         sys.exit(0)
 
     # ``load_events()`` already returns timezone-aware ``datetime64`` values.
@@ -1404,7 +1409,7 @@ def main(argv=None):
         except Exception as e:
             if not cfg.get("allow_fallback"):
                 raise
-            print(f"WARNING: Could not apply ADC drift correction -> {e}")
+            logger.warning("Could not apply ADC drift correction -> %s", e)
 
     # ────────────────────────────────────────────────────────────
     # 3. Energy calibration
@@ -1637,7 +1642,7 @@ def main(argv=None):
         except Exception as e:
             if not cfg.get("allow_fallback"):
                 raise
-            print(f"WARNING: Baseline noise estimation failed -> {e}")
+            logger.warning("Baseline noise estimation failed -> %s", e)
 
         if noise_level is not None:
             # Store estimated noise peak amplitude in counts (not ADC units)
@@ -1653,7 +1658,7 @@ def main(argv=None):
         try:
             summary = summarize_baseline(cfg, isotopes_to_subtract)
         except BaselineError as e:
-            print(f"BaselineError: {e}")
+            logger.error("BaselineError: %s", e)
             sys.exit(1)
         try:
             from tabulate import tabulate
@@ -1672,7 +1677,7 @@ def main(argv=None):
                 f"{iso}: raw={vals[0]:.3f} baseline={vals[1]:.3f} corrected={vals[2]:.3f}"
                 for iso, vals in summary.items()
             )
-        print(table)
+        logger.info("%s", table)
         if not args.allow_negative_baseline and any(v[2] < 0 for v in summary.values()):
             sys.exit(1)
         sys.exit(0)
@@ -1695,7 +1700,7 @@ def main(argv=None):
         except Exception as e:
             if not cfg.get("allow_fallback"):
                 raise
-            print(f"WARNING: Baseline subtraction failed -> {e}")
+            logger.warning("Baseline subtraction failed -> %s", e)
 
     # ────────────────────────────────────────────────────────────
     # 5. Spectral fit (optional)
@@ -1930,7 +1935,7 @@ def main(argv=None):
                                 spec_fit_out = refit
             spectrum_results = spec_fit_out
         except Exception as e:
-            print(f"WARNING: Spectral fit failed -> {e}")
+            logger.warning("Spectral fit failed -> %s", e)
             spectrum_results = {}
 
         # Store plotting inputs (bin_edges now in energy units)
@@ -1966,8 +1971,10 @@ def main(argv=None):
             # Missing energy window for this isotope -> skip gracefully
             win_range = cfg.get("time_fit", {}).get(win_key)
             if win_range is None:
-                print(
-                    f"INFO: Config key '{win_key}' not found. Skipping time fit for {iso}."
+                logger.info(
+                    "Config key '%s' not found. Skipping time fit for %s.",
+                    win_key,
+                    iso,
                 )
                 continue
 
@@ -1988,13 +1995,13 @@ def main(argv=None):
                     df_analysis, (lo, hi), thr
                 )
                 if len(iso_events) >= thr:
-                    print(
-                        f"INFO: expanded {iso} window to [{lo:.2f}, {hi:.2f}] MeV"
+                    logger.info(
+                        "expanded %s window to [%.2f, %.2f] MeV", iso, lo, hi
                     )
 
             if iso_events.empty:
-                print(
-                    f"WARNING: No events found for {iso} in [{lo}, {hi}] MeV."
+                logger.warning(
+                    "No events found for %s in [%.3f, %.3f] MeV.", iso, lo, hi
                 )
                 continue
 
@@ -2194,7 +2201,7 @@ def main(argv=None):
                 )
             time_fit_results[iso] = decay_out
         except Exception as e:
-            print(f"WARNING: Decay‐curve fit for {iso} failed -> {e}")
+            logger.warning("Decay-curve fit for %s failed -> %s", iso, e)
             time_fit_results[iso] = {}
 
         # Store inputs for plotting later
@@ -2372,7 +2379,7 @@ def main(argv=None):
                 )
                 systematics_results[iso] = {"deltas": deltas, "total_unc": total_unc}
             except Exception as e:
-                print(f"WARNING: Systematics scan for {iso} -> {e}")
+                logger.warning("Systematics scan for %s -> %s", iso, e)
 
     # ────────────────────────────────────────────────────────────
     # 7b. Optional efficiency calculations
@@ -2402,7 +2409,7 @@ def main(argv=None):
                     vals.append(val)
                     errs.append(err)
                 except Exception as e:
-                    print(f"WARNING: Spike efficiency -> {e}")
+                    logger.warning("Spike efficiency -> %s", e)
 
         if "assay" in eff_cfg:
             acfg = eff_cfg["assay"]
@@ -2421,7 +2428,7 @@ def main(argv=None):
                     vals.append(val)
                     errs.append(err)
                 except Exception as e:
-                    print(f"WARNING: Assay efficiency -> {e}")
+                    logger.warning("Assay efficiency -> %s", e)
 
         if "decay" in eff_cfg:
             dcfg = eff_cfg["decay"]
@@ -2434,7 +2441,7 @@ def main(argv=None):
                 vals.append(val)
                 errs.append(err)
             except Exception as e:
-                print(f"WARNING: Decay efficiency -> {e}")
+                logger.warning("Decay efficiency -> %s", e)
 
         efficiency_results["sources"] = sources
         if vals:
@@ -2446,7 +2453,7 @@ def main(argv=None):
                     "weights": weights.tolist(),
                 }
             except Exception as e:
-                print(f"WARNING: BLUE combination failed -> {e}")
+                logger.warning("BLUE combination failed -> %s", e)
 
     # ────────────────────────────────────────────────────────────
     # Baseline subtraction
@@ -2574,7 +2581,7 @@ def main(argv=None):
             isotopes_to_subtract,
         )
     except BaselineError as e:
-        print(f"ERROR: {e}")
+        logger.error("%s", e)
         sys.exit(1)
 
     # ────────────────────────────────────────────────────────────
@@ -2641,7 +2648,7 @@ def main(argv=None):
             allow_negative_activity=args.allow_negative_activity,
         )
     except RuntimeError as e:
-        print(f"ERROR: {e}")
+        logger.error("%s", e)
         sys.exit(1)
 
     radon_results["radon_activity_Bq"] = {"value": A_radon, "uncertainty": dA_radon}
@@ -2887,7 +2894,7 @@ def main(argv=None):
                 config=cfg.get("plotting", {}),
             )
         except Exception as e:
-            print(f"WARNING: Could not create spectrum plot: {e}")
+            logger.warning("Could not create spectrum plot: %s", e)
 
     try:
         _ = plot_spectrum_comparison(
@@ -2899,7 +2906,7 @@ def main(argv=None):
             config=cfg.get("time_fit", {}),
         )
     except Exception as e:
-        print(f"WARNING: Could not create pre/post spectrum plot -> {e}")
+        logger.warning("Could not create pre/post spectrum plot -> %s", e)
 
     if args.burst_sensitivity_scan and scan_results:
         try:
@@ -2909,7 +2916,7 @@ def main(argv=None):
                 config=cfg.get("plotting", {}),
             )
         except Exception as e:
-            print(f"WARNING: Could not create burst scan plot -> {e}")
+            logger.warning("Could not create burst scan plot -> %s", e)
 
     overlay = cfg.get("plotting", {}).get("overlay_isotopes", False)
 
@@ -2966,7 +2973,7 @@ def main(argv=None):
                 model_errors=model_errs,
             )
         except Exception as e:
-            print(f"WARNING: Could not create time-series plot for {iso} -> {e}")
+            logger.warning("Could not create time-series plot for %s -> %s", iso, e)
 
     # Additional visualizations
     if efficiency_results.get("sources"):
@@ -2987,7 +2994,7 @@ def main(argv=None):
                 config=cfg.get("plotting", {}),
             )
         except Exception as e:
-            print(f"WARNING: Could not create efficiency plots -> {e}")
+            logger.warning("Could not create efficiency plots -> %s", e)
 
     # Radon activity and equivalent air plots
     try:
@@ -3007,7 +3014,7 @@ def main(argv=None):
                     config=cfg.get("plotting", {}),
                 )
             except Exception as e:
-                print(f"WARNING: Could not create radon combined plot -> {e}")
+                logger.warning("Could not create radon combined plot -> %s", e)
 
         A214 = dA214 = None
         if "Po214" in time_fit_results:
@@ -3128,8 +3135,8 @@ def main(argv=None):
                 dat = np.loadtxt(args.ambient_file, usecols=(0, 1))
                 ambient_interp = np.interp(times, dat[:, 0], dat[:, 1])
             except Exception as e:
-                print(
-                    f"WARNING: Could not read ambient file '{args.ambient_file}': {e}"
+                logger.warning(
+                    "Could not read ambient file '%s': %s", args.ambient_file, e
                 )
 
         if ambient_interp is not None:
@@ -3173,7 +3180,7 @@ def main(argv=None):
                     config=cfg.get("plotting", {}),
                 )
     except Exception as e:
-        print(f"WARNING: Could not create radon activity plots -> {e}")
+        logger.warning("Could not create radon activity plots -> %s", e)
 
     if args.hierarchical_summary:
         try:
@@ -3183,7 +3190,7 @@ def main(argv=None):
                     with open(p, "r", encoding="utf-8") as f:
                         dat = json.load(f)
                 except Exception as e:
-                    print(f"WARNING: Skipping {p} -> {e}")
+                    logger.warning("Skipping %s -> %s", p, e)
                     continue
                 hl = dat.get("half_life")
                 dhl = dat.get("dhalf_life")
@@ -3206,9 +3213,9 @@ def main(argv=None):
                 with open(args.hierarchical_summary, "w", encoding="utf-8") as f:
                     json.dump(hier_out, f, indent=4)
         except Exception as e:
-            print(f"WARNING: hierarchical fit failed -> {e}")
+            logger.warning("hierarchical fit failed -> %s", e)
 
-    print(f"Analysis complete. Results written to -> {out_dir}")
+    logger.info("Analysis complete. Results written to -> %s", out_dir)
 
 
 if __name__ == "__main__":
