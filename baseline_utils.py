@@ -46,11 +46,24 @@ def compute_dilution_factor(monitor_volume: float, sample_volume: float) -> floa
 
 
 def baseline_period_before_data(baseline_end, data_start):
-    """Return True if baseline interval ends before data interval starts."""
+    """Return ``True`` if the baseline interval ends before data starts.
 
-    end = parse_timestamp(pd.Timestamp(baseline_end))
-    start = parse_timestamp(pd.Timestamp(data_start))
-    return end < start
+    Parameters
+    ----------
+    baseline_end, data_start:
+        ``str``, numeric seconds or ``datetime`` objects.  Values may be
+        timezone-naive or timezone-aware and are interpreted in UTC.
+
+    Notes
+    -----
+    Inputs are converted to UTC using :func:`utils.time_utils.parse_timestamp`
+    and compared on their integer nanoseconds to avoid issues with mixed time
+    zone information.
+    """
+
+    end_ns = parse_timestamp(pd.Timestamp(baseline_end)).value
+    start_ns = parse_timestamp(pd.Timestamp(data_start)).value
+    return end_ns < start_ns
 
 
 def _to_datetime64(events: pd.DataFrame | pd.Series) -> np.ndarray:
