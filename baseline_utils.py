@@ -115,8 +115,8 @@ def apply_baseline_subtraction(
     live_time_analysis: float | None = None,
     *,
     allow_fallback: bool = False,
-) -> pd.DataFrame:
-    """Return new ``DataFrame`` with baseline-subtracted spectra.
+) -> tuple[pd.DataFrame, np.ndarray]:
+    """Return baseline-corrected ``DataFrame`` and histogram.
 
     ``t_base0`` and ``t_base1`` may be naïve or timezone-aware. They are
     interpreted in UTC and compared using integer nanoseconds to avoid
@@ -128,7 +128,11 @@ def apply_baseline_subtraction(
     assert mode in ("none", "electronics", "radon", "all")
 
     if mode == "none":
-        return df_analysis.copy()
+        rate_an, live_an = rate_histogram(df_analysis, bins)
+        if live_time_analysis is None:
+            live_time_analysis = live_an
+        hist = rate_an * live_time_analysis
+        return df_analysis.copy(), hist
 
     rate_an, live_an = rate_histogram(df_analysis, bins)
     if live_time_analysis is None:
@@ -152,7 +156,8 @@ def apply_baseline_subtraction(
         logging.warning(
             "baseline_range matched no events – subtraction skipped"
         )
-        return df_analysis.copy()
+        hist = rate_an * live_time_analysis
+        return df_analysis.copy(), hist
 
     baseline_subset = df_full.loc[mask]
 
@@ -164,8 +169,7 @@ def apply_baseline_subtraction(
         net_counts = rate_an * live_time_analysis
 
     df_out = df_analysis.copy()
-    df_out["subtracted_adc_hist"] = [net_counts] * len(df_out)
-    return df_out
+    return df_out, net_counts
 
 
 def subtract(
@@ -179,8 +183,8 @@ def subtract(
     live_time_analysis: float | None = None,
     allow_fallback: bool = False,
     **kw,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Return baseline-corrected spectra and statistical errors.
+) -> tuple[pd.DataFrame, tuple[np.ndarray, np.ndarray]]:
+    """Return corrected ``DataFrame`` and (histogram, error).
 
     Uncertainties are propagated in quadrature from the analysis and
     baseline histograms unless ``kw.get("uncert_prop") == "none"``.  When the
@@ -188,7 +192,7 @@ def subtract(
     ``df_analysis`` is returned unchanged.
     """
 
-    df_corr = apply_baseline_subtraction(
+    df_corr, hist = apply_baseline_subtraction(
         df_analysis,
         df_full,
         bins,
@@ -224,10 +228,7 @@ def subtract(
         var = counts_an + (scale**2) * counts_bl
         err_hist = np.sqrt(var)
 
-    df_err = df_corr.copy()
-    df_err["subtracted_adc_hist"] = [err_hist] * len(df_err)
-
-    return df_corr, df_err
+    return df_corr, (hist, err_hist)
 
 
 # Backwards compatibility
