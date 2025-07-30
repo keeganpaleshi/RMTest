@@ -681,9 +681,10 @@ The Po‑214 activity alone is plotted in `radon_activity_po214.png`. When
 ambient concentration data are available, `equivalent_air_po214.png`
 shows the equivalent air volume derived from this Po‑214 activity.
 
-If the combined activity of Po‑214 and Po‑218 is negative it is clamped to
-zero by default and the pipeline aborts.  Pass `--allow-negative-activity`
-to continue processing with a total radon value of `0 Bq`.
+If the combined activity of Po‑214 and Po‑218 is negative the pipeline
+aborts by default after clamping the result to zero.  Passing
+`--allow-negative-activity` preserves the negative value and processing
+continues.
 
 ### Radon vs Po214 Mode
 
