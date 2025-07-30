@@ -634,6 +634,9 @@ centroids. Time parsing utilities are available from `utils.time_utils`:
   always yields a UTC `pandas.Timestamp`.
 - `to_epoch_seconds(ts_or_str)` from `utils.time_utils` converts these inputs to
   Unix seconds.
+- `baseline_utils.baseline_period_before_data(end, start)` returns ``True`` if
+  the baseline interval ends before the data window begins.  Both inputs may be
+  naïve or timezone-aware and are compared in UTC to avoid subtle mismatches.
 
 - `find_adc_bin_peaks(adc_values, expected, window=50, prominence=0.0, width=None, method="prominence")`
   histogramises the raw ADC spectrum, searches for maxima near each expected
