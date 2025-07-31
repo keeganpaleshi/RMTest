@@ -364,6 +364,9 @@ fit.  Important keys include:
   Set for example `{"Po218": [5.9, 6.2]}` to keep the Po‑218 fit from
   drifting into the Po‑210 region.  Centroid guesses found during peak
   search are clamped to this range before the fit starts.
+- `sigma_E_prior_source` – one-sigma width of the prior on the common
+  energy resolution parameter. When omitted the uncertainty from the
+  calibration step is used.
 
 - `expected_peaks` – approximate ADC centroids used to locate the
   Po‑210, Po‑218 and Po‑214 peaks before fitting. The default is
