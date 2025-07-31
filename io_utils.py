@@ -481,7 +481,11 @@ def load_events(csv_path, *, start=None, end=None, column_map=None):
         end_dt = parse_timestamp(end)
         df = df[df["timestamp"] <= end_dt]
 
-    logger.info(f"Loaded {len(df)} events from {csv_path} ({discarded} discarded).")
+    frac_discarded = discarded / start_len if start_len > 0 else 0
+    logger.info(
+        f"Loaded {len(df)} events from {csv_path} "
+        f"({discarded} discarded, {frac_discarded:.1%})."
+    )
     return df
 
 

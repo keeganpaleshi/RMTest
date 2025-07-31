@@ -1226,7 +1226,13 @@ def main(argv=None):
                 events_filtered["adc"] > noise_thr_val
             ].reset_index(drop=True)
             n_removed_noise = before - len(events_filtered)
-            logging.info(f"Noise cut removed {n_removed_noise} events")
+            if before > 0:
+                frac_removed_noise = n_removed_noise / before
+                logging.info(
+                    f"Noise cut removed {n_removed_noise} events ({frac_removed_noise:.1%})"
+                )
+            else:
+                logging.info(f"Noise cut removed {n_removed_noise} events")
 
     _ensure_events(events_filtered, "noise cut")
 
