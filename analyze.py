@@ -117,7 +117,6 @@ def _hl_value(cfg: Mapping[str, Any], iso: str) -> float:
     return float(val)
 
 
-
 def _eff_prior(eff_cfg: Any) -> tuple[float, float]:
     """Return efficiency prior ``(mean, sigma)`` from configuration.
 
@@ -146,7 +145,9 @@ def _roi_diff(pre: np.ndarray, post: np.ndarray, cfg: Mapping[str, Any]) -> dict
     return diff
 
 
-def _burst_sensitivity_scan(events: pd.DataFrame, cfg: Mapping[str, Any], cal_result) -> tuple[dict, tuple[int, int]]:
+def _burst_sensitivity_scan(
+    events: pd.DataFrame, cfg: Mapping[str, Any], cal_result
+) -> tuple[dict, tuple[int, int]]:
     """Evaluate radon activity over a grid of burst parameters."""
     from radon_joint_estimator import estimate_radon_activity
 
@@ -158,7 +159,9 @@ def _burst_sensitivity_scan(events: pd.DataFrame, cfg: Mapping[str, Any], cal_re
     results = {}
     for m in mult_values:
         for w in win_values:
-            local_cfg = {"burst_filter": {"burst_window_size_s": w, "burst_multiplier": m}}
+            local_cfg = {
+                "burst_filter": {"burst_window_size_s": w, "burst_multiplier": m}
+            }
             filtered, _ = apply_burst_filter(events, local_cfg, mode="rate")
             if filtered.empty:
                 results[(m, w)] = 0.0
@@ -170,11 +173,21 @@ def _burst_sensitivity_scan(events: pd.DataFrame, cfg: Mapping[str, Any], cal_re
                 if win is None:
                     counts[iso] = 0
                 else:
-                    counts[iso] = int(((energies >= win[0]) & (energies <= win[1])).sum())
+                    counts[iso] = int(
+                        ((energies >= win[0]) & (energies <= win[1])).sum()
+                    )
             eff214 = cfg.get("time_fit", {}).get("eff_po214")
-            eff214 = eff214[0] if isinstance(eff214, list) else (eff214 if eff214 is not None else 1.0)
+            eff214 = (
+                eff214[0]
+                if isinstance(eff214, list)
+                else (eff214 if eff214 is not None else 1.0)
+            )
             eff218 = cfg.get("time_fit", {}).get("eff_po218")
-            eff218 = eff218[0] if isinstance(eff218, list) else (eff218 if eff218 is not None else 1.0)
+            eff218 = (
+                eff218[0]
+                if isinstance(eff218, list)
+                else (eff218 if eff218 is not None else 1.0)
+            )
             est = estimate_radon_activity(
                 N218=counts.get("Po218"),
                 epsilon218=eff218,
@@ -186,8 +199,13 @@ def _burst_sensitivity_scan(events: pd.DataFrame, cfg: Mapping[str, Any], cal_re
             results[(m, w)] = float(est.get("Rn_activity_Bq", 0.0))
 
     mean_val = np.nanmean(list(results.values())) if results else 0.0
-    best = min(results.items(), key=lambda kv: abs(kv[1] - mean_val))[0] if results else (mult0, win0)
+    best = (
+        min(results.items(), key=lambda kv: abs(kv[1] - mean_val))[0]
+        if results
+        else (mult0, win0)
+    )
     return results, best
+
 
 from plot_utils import (
     plot_spectrum,
@@ -218,7 +236,7 @@ def plot_radon_trend(ts_dict, outdir, maybe_outdir=None, *_, **__):
     Path(target).mkdir(parents=True, exist_ok=True)
     return _plot_radon_trend(ts_dict, target)
 
-  
+
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
 from utils import (
@@ -302,7 +320,9 @@ def _ensure_events(events: pd.DataFrame, stage: str) -> None:
         sys.exit(1)
 
 
-def _centroid_deviation(params: Mapping[str, float], known: Mapping[str, float]) -> dict[str, float]:
+def _centroid_deviation(
+    params: Mapping[str, float], known: Mapping[str, float]
+) -> dict[str, float]:
     """Return |mu_fit - E_known| for each isotope present in ``params``."""
     dev: dict[str, float] = {}
     for iso, e_known in known.items():
@@ -326,9 +346,15 @@ def _spectral_fit_with_check(
 ) -> tuple[FitResult | dict[str, float], dict[str, float]]:
     """Run :func:`fit_spectrum` and apply centroid consistency checks."""
 
+    priors_mapped = dict(priors)
+    if "sigma_E" in priors_mapped:
+        mean, sig = priors_mapped.pop("sigma_E")
+        priors_mapped.setdefault("sigma0", (mean, sig))
+        priors_mapped.setdefault("F", (0.0, sig))
+
     fit_kwargs = {
         "energies": energies,
-        "priors": priors,
+        "priors": priors_mapped,
         "flags": flags,
     }
     if bins is not None or bin_edges is not None:
@@ -343,6 +369,22 @@ def _spectral_fit_with_check(
     result = fit_spectrum(**fit_kwargs)
     params = result.params if isinstance(result, FitResult) else result
     known = cfg.get("calibration", {}).get("known_energies", DEFAULT_KNOWN_ENERGIES)
+    if isinstance(result, FitResult) and "sigma0" in params and "F" in params:
+        e_ref = float(known.get("Po214", 0.0))
+        sigma0 = float(params["sigma0"])
+        F_val = float(params["F"])
+        sigma_E_val = math.sqrt(max(sigma0**2 + F_val * e_ref, 0.0))
+        result.params["sigma_E"] = sigma_E_val
+        if result.cov is not None:
+            var = (
+                (sigma0 / sigma_E_val) ** 2 * result.get_cov("sigma0", "sigma0")
+                + (0.5 * e_ref / sigma_E_val) ** 2 * result.get_cov("F", "F")
+                + 2
+                * (sigma0 / sigma_E_val)
+                * (0.5 * e_ref / sigma_E_val)
+                * result.get_cov("sigma0", "F")
+            )
+            result.params["dsigma_E"] = float(np.sqrt(max(var, 0.0)))
     tol = cfg.get("spectral_fit", {}).get("spectral_peak_tolerance_mev", 0.2)
     dev = _centroid_deviation(params, known)
 
@@ -1160,7 +1202,9 @@ def main(argv=None):
     # Configure logging as early as possible
     log_level = cfg.get("pipeline", {}).get("log_level", "INFO")
     numeric_level = getattr(logging, log_level.upper(), logging.INFO)
-    logging.basicConfig(level=numeric_level, format="%(levelname)s:%(name)s:%(message)s")
+    logging.basicConfig(
+        level=numeric_level, format="%(levelname)s:%(name)s:%(message)s"
+    )
 
     seed = cfg.get("pipeline", {}).get("random_seed")
     seed_used = None
@@ -1900,7 +1944,9 @@ def main(argv=None):
                 unbinned=fit_kwargs.get("unbinned", False),
                 strict=fit_kwargs.get("strict", False),
             )
-            if isinstance(spec_fit_out, FitResult) and not spec_fit_out.params.get("fit_valid", True):
+            if isinstance(spec_fit_out, FitResult) and not spec_fit_out.params.get(
+                "fit_valid", True
+            ):
                 tau_keys = [k for k in priors_spec if k.startswith("tau_")]
                 if tau_keys:
                     priors_shrunk = priors_spec.copy()
@@ -1920,9 +1966,14 @@ def main(argv=None):
                         unbinned=fit_kwargs.get("unbinned", False),
                         strict=fit_kwargs.get("strict", False),
                     )
-                    if isinstance(refit, FitResult) and refit.params.get("fit_valid", False):
+                    if isinstance(refit, FitResult) and refit.params.get(
+                        "fit_valid", False
+                    ):
                         thresh = cfg["spectral_fit"].get("refit_aic_threshold", 2.0)
-                        if refit.params.get("aic", float("inf")) > spec_fit_out.params.get("aic", float("inf")) - thresh:
+                        if (
+                            refit.params.get("aic", float("inf"))
+                            > spec_fit_out.params.get("aic", float("inf")) - thresh
+                        ):
                             spec_fit_out = refit
                         else:
                             free_fit = fit_spectrum(
@@ -1935,7 +1986,12 @@ def main(argv=None):
                                 unbinned=fit_kwargs.get("unbinned", False),
                                 strict=fit_kwargs.get("strict", False),
                             )
-                            if isinstance(free_fit, FitResult) and free_fit.params.get("fit_valid", False) and free_fit.params.get("aic", float("inf")) < refit.params.get("aic", float("inf")) - thresh:
+                            if (
+                                isinstance(free_fit, FitResult)
+                                and free_fit.params.get("fit_valid", False)
+                                and free_fit.params.get("aic", float("inf"))
+                                < refit.params.get("aic", float("inf")) - thresh
+                            ):
                                 spec_fit_out = free_fit
                             else:
                                 spec_fit_out = refit
@@ -1997,13 +2053,9 @@ def main(argv=None):
 
             thr = int(cfg.get("time_fit", {}).get("min_counts", 20))
             if len(iso_events) < thr:
-                iso_events, (lo, hi) = auto_expand_window(
-                    df_analysis, (lo, hi), thr
-                )
+                iso_events, (lo, hi) = auto_expand_window(df_analysis, (lo, hi), thr)
                 if len(iso_events) >= thr:
-                    logger.info(
-                        "expanded %s window to [%.2f, %.2f] MeV", iso, lo, hi
-                    )
+                    logger.info("expanded %s window to [%.2f, %.2f] MeV", iso, lo, hi)
 
             if iso_events.empty:
                 logger.warning(
@@ -2274,7 +2326,9 @@ def main(argv=None):
                 epsilon214=eps214,
                 f214=1.0,
             )
-        elif (fit214 and fit214.rate is not None) or (fit218 and fit218.rate is not None):
+        elif (fit214 and fit214.rate is not None) or (
+            fit218 and fit218.rate is not None
+        ):
             radon_estimate_info = estimate_radon_activity(
                 rate214=fit214.rate if fit214 else None,
                 err214=fit214.err if fit214 else None,
@@ -2283,10 +2337,16 @@ def main(argv=None):
             )
     elif iso_mode == "po218":
         if fit218:
-            po218_estimate_info = {"activity_Bq": fit218.rate, "stat_unc_Bq": fit218.err}
+            po218_estimate_info = {
+                "activity_Bq": fit218.rate,
+                "stat_unc_Bq": fit218.err,
+            }
     elif iso_mode == "po214":
         if fit214:
-            po214_estimate_info = {"activity_Bq": fit214.rate, "stat_unc_Bq": fit214.err}
+            po214_estimate_info = {
+                "activity_Bq": fit214.rate,
+                "stat_unc_Bq": fit214.err,
+            }
     else:
         raise ValueError(f"Unknown analysis isotope {iso_mode}")
 
@@ -2670,7 +2730,9 @@ def main(argv=None):
     scan_results = {}
     best_params = None
     if args.burst_sensitivity_scan:
-        scan_results, best_params = _burst_sensitivity_scan(events_after_noise, cfg, cal_result)
+        scan_results, best_params = _burst_sensitivity_scan(
+            events_after_noise, cfg, cal_result
+        )
 
     if args.debug:
         from radon_activity import print_activity_breakdown
@@ -2827,20 +2889,20 @@ def main(argv=None):
     iso_mode = cfg.get("analysis_isotope", "radon").lower()
     if iso_mode == "radon":
         radon = estimate_radon_activity(
-            N218       = fit218.counts if fit218 else 0,
-            epsilon218 = fit218.params.get("eff", 1.0) if fit218 else 1.0,
-            N214       = fit214.counts if fit214 else 0,
-            epsilon214 = fit214.params.get("eff", 1.0) if fit214 else 1.0,
-            f218 = 1.0,
-            f214 = 1.0,
+            N218=fit218.counts if fit218 else 0,
+            epsilon218=fit218.params.get("eff", 1.0) if fit218 else 1.0,
+            N214=fit214.counts if fit214 else 0,
+            epsilon214=fit214.params.get("eff", 1.0) if fit214 else 1.0,
+            f218=1.0,
+            f214=1.0,
         )
 
         # ── Construct a one-point time-series so the plotters don’t crash ──
         run_midpoint = 0.5 * (t0_cfg.timestamp() + t_end_cfg.timestamp())
         radon["time_series"] = {
-            "time":     [run_midpoint],
+            "time": [run_midpoint],
             "activity": [radon["Rn_activity_Bq"]],
-            "error":    [radon["stat_unc_Bq"]],
+            "error": [radon["stat_unc_Bq"]],
         }
 
         summary["radon"] = radon
@@ -2871,7 +2933,6 @@ def main(argv=None):
     if iso_mode == "radon" and "radon" in summary:
         rad_ts = summary["radon"]["time_series"]
 
-
         plot_radon_activity(
             rad_ts["time"],
             rad_ts["activity"],
@@ -2885,8 +2946,6 @@ def main(argv=None):
             Path(out_dir) / "radon_trend.png",
             config=cfg.get("plotting", {}),
         )
-
-
 
     # Generate plots now that the output directory exists
     if spec_plot_data:
