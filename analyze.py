@@ -1778,13 +1778,21 @@ def main(argv=None):
 
         # Build priors for the unbinned spectrum fit:
         priors_spec = {}
-        # sigma_E prior
+        # Resolution prior: map calibrated sigma_E -> sigma0 parameter
         sigma_E_prior = cfg["spectral_fit"].get("sigma_E_prior_source", sigE_sigma)
-        if not cfg["spectral_fit"].get("float_sigma_E", True) and sigma_E_prior != 0:
-            raise ValueError(
-                "float_sigma_E is false but sigma_E_prior_source is nonzero"
+        if cfg["spectral_fit"].get("float_sigma_E", True):
+            priors_spec["sigma0"] = (sigE_mean, sigma_E_prior)
+            priors_spec["F"] = (
+                0.0,
+                cfg["spectral_fit"].get("F_prior_sigma", 0.01),
             )
-        priors_spec["sigma_E"] = (sigE_mean, sigma_E_prior)
+        else:
+            if sigma_E_prior != 0:
+                raise ValueError(
+                    "float_sigma_E is false but sigma_E_prior_source is nonzero"
+                )
+            priors_spec["sigma0"] = (sigE_mean, sigma_E_prior)
+            priors_spec["F"] = (0.0, 0.0)
 
         for peak, centroid_adc in adc_peaks.items():
             mu = apply_calibration(centroid_adc, a, c, quadratic_coeff=a2)
