@@ -1829,6 +1829,11 @@ def main(argv=None):
                 "float_sigma_E is false but sigma_E_prior_source is nonzero"
             )
         priors_spec["sigma_E"] = (sigE_mean, sigma_E_prior)
+        # Fit_spectrum expects separate ``sigma0`` and ``F`` resolution terms.
+        # Initialise sigma0 from the calibration-derived resolution and
+        # constrain the energy-dependence slope ``F`` to zero.
+        priors_spec["sigma0"] = (sigE_mean, sigma_E_prior)
+        priors_spec["F"] = (0.0, 0.0)
 
         for peak, centroid_adc in adc_peaks.items():
             mu = apply_calibration(centroid_adc, a, c, quadratic_coeff=a2)

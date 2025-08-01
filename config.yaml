@@ -94,6 +94,8 @@ spectral_fit:
   refit_aic_threshold: 2.0
   use_plot_bins_for_fit: false
   unbinned_likelihood: true
+  flags:
+    fix_F: true
   mu_bounds:
     Po210: null
     Po218:
