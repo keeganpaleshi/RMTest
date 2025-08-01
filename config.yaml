@@ -49,9 +49,9 @@ calibration:
   peak_prominence: 5
   peak_width: 5
   nominal_adc:
-    Po210: 1250
-    Po218: 1405
-    Po214: 1800
+    Po210: 1246
+    Po218: 1399
+    Po214: 1802
   fit_window_adc: 40
   use_emg: true
   init_sigma_adc: 10.0
@@ -66,26 +66,28 @@ spectral_fit:
   spectral_binning_mode: adc
   adc_bin_width: 1
   fd_hist_bins: 400
-  mu_sigma: 0.05
-  amp_prior_scale: 1.0
-  bkg_mode: auto
+  mu_sigma: 0.02
+  amp_prior_scale: 5.0
+  bkg_mode: constant
   b0_prior:
   - 0.0
-  - 1.0
+  - 5.0
   b1_prior:
   - 0.0
-  - 1.0
-  tau_Po210_prior_mean: 0.0
-  tau_Po210_prior_sigma: 0.0
-  tau_Po218_prior_mean: 0.005
-  tau_Po218_prior_sigma: 0.002
-  tau_Po214_prior_mean: 0.005
-  tau_Po214_prior_sigma: 0.002
+  - 0.1
+  tau_Po210_prior_mean: 0.010
+  tau_Po210_prior_sigma: 0.005
+  tau_Po218_prior_mean: 0.015
+  tau_Po218_prior_sigma: 0.007
+  tau_Po214_prior_mean: 0.010
+  tau_Po214_prior_sigma: 0.005
   spectral_peak_tolerance_mev: 0.2
+  sigma_E_prior_source: "calibration"
+  sigma_E_prior_sigma: 0.02
   use_emg:
     Po210: true
-    Po218: false
-    Po214: false
+    Po218: true
+    Po214: true
   float_sigma_E: false
   peak_search_prominence: 30
   peak_search_width_adc: 3
@@ -97,11 +99,15 @@ spectral_fit:
   flags:
     fix_F: true
   mu_bounds:
-    Po210: null
+    Po210:
+    - 5.28
+    - 5.33
     Po218:
-    - 5.9
-    - 6.2
-    Po214: null
+    - 5.95
+    - 6.05
+    Po214:
+    - 7.66
+    - 7.71
 time_fit:
   do_time_fit: true
   window_po214:
