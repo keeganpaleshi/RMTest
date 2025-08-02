@@ -1540,15 +1540,25 @@ def main(argv=None):
         calibration_valid = False
         cal_params = {"a": (0.005, 0.001), "c": (0.02, 0.005), "sigma_E": (0.3, 0.1)}
 
+    def _value_sigma(val):
+        if isinstance(val, (list, tuple, np.ndarray)):
+            if len(val) >= 2:
+                return float(val[0]), float(val[1])
+            if len(val) == 1:
+                return float(val[0]), 0.0
+            return 0.0, 0.0
+        return float(val), 0.0
+
     def _as_cal_result(obj):
         from calibration import CalibrationResult
 
         if isinstance(obj, CalibrationResult):
             return obj
 
-        a, a_sig = obj.get("a", (0.0, 0.0))
-        c, c_sig = obj.get("c", (0.0, 0.0))
-        a2, a2_sig = obj.get("a2", (0.0, 0.0))
+        a, a_sig = _value_sigma(obj.get("a", 0.0))
+        c, c_sig = _value_sigma(obj.get("c", 0.0))
+        a2, a2_sig = _value_sigma(obj.get("a2", 0.0))
+        sigma_E, sigma_E_error = _value_sigma(obj.get("sigma_E", 0.0))
 
         coeffs = [c, a]
         cov = np.array([[c_sig**2, 0.0], [0.0, a_sig**2]])
@@ -1567,8 +1577,8 @@ def main(argv=None):
         return CalibrationResult(
             coeffs=coeffs,
             cov=cov,
-            sigma_E=obj.get("sigma_E", (0.0, 0.0))[0],
-            sigma_E_error=obj.get("sigma_E", (0.0, 0.0))[1],
+            sigma_E=sigma_E,
+            sigma_E_error=sigma_E_error,
             peaks=obj.get("peaks"),
         )
 
@@ -1576,10 +1586,10 @@ def main(argv=None):
 
     # Save “a, c, sigma_E” so we can reconstruct energies
     if isinstance(cal_params, dict):
-        a, a_sig = cal_params["a"]
-        a2, a2_sig = cal_params.get("a2", (0.0, 0.0))
-        c, c_sig = cal_params["c"]
-        sigE_mean, sigE_sigma = cal_params["sigma_E"]
+        a, a_sig = _value_sigma(cal_params.get("a", 0.0))
+        a2, a2_sig = _value_sigma(cal_params.get("a2", 0.0))
+        c, c_sig = _value_sigma(cal_params.get("c", 0.0))
+        sigE_mean, sigE_sigma = _value_sigma(cal_params.get("sigma_E", 0.0))
         cov_mat = np.asarray(
             cal_params.get("ac_covariance", [[0.0, 0.0], [0.0, 0.0]]), dtype=float
         )
