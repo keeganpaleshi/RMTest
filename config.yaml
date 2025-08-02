@@ -48,6 +48,10 @@ calibration:
   peak_search_radius: 100
   peak_prominence: 5
   peak_width: 5
+  peak_widths:
+    Po210: 5
+    Po218: 5
+    Po214: 5
   slope_MeV_per_ch: 0.00427
   float_slope: false
   nominal_adc:
@@ -57,6 +61,7 @@ calibration:
   fit_window_adc: 40
   use_emg: true
   init_sigma_adc: 10.0
+  sigma_E_init: null
   init_tau_adc: 1.0
   sanity_tolerance_mev: 1.0
   known_energies:
