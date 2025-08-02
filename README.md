@@ -46,7 +46,8 @@ RMTest.check_versions()
 python analyze.py [--config config.yaml] --input merged_data.csv \
     [--output_dir results] [--job-id MYRUN] [--overwrite] \
     [--efficiency-json eff.json] [--systematics-json syst.json] \
-    [--spike-count N --spike-count-err S] [--slope RATE] \
+    [--spike-count N --spike-count-err S --spike-activity BQ --spike-duration SEC] \
+    [--no-spike] [--slope RATE] \
     [--noise-cutoff N] [--calibration-slope M] \
     [--analysis-start-time ISO --analysis-end-time ISO --spike-end-time ISO] \
     [--spike-period START END] [--run-period START END] \
@@ -328,10 +329,11 @@ containing the binned counts together with per-bin live time and
 detection efficiency.
 
 Additional convenience flags include `--spike-count` (with optional
-`--spike-count-err`) to override spike efficiency inputs, `--slope` to
-apply a linear ADC drift correction, `--analysis-start-time`, `--analysis-end-time`,
-`--spike-start-time` and `--spike-end-time` to clip the dataset, one or more `--spike-period`
-options to exclude specific time windows, `--settle-s` to skip the
+`--spike-count-err`, `--spike-activity` and `--spike-duration`) to override spike
+efficiency inputs, `--no-spike` to disable the spike contribution,
+`--slope` to apply a linear ADC drift correction, `--analysis-start-time`,
+`--analysis-end-time`, `--spike-start-time` and `--spike-end-time` to clip the dataset,
+one or more `--spike-period` options to exclude specific time windows, `--settle-s` to skip the
 initial settling period in the decay fit, `--seed` to set the random
 seed used by the analysis, `--hierarchical-summary PATH` to produce a
 Bayesian combination across runs and `--debug` to increase log verbosity.
@@ -716,14 +718,17 @@ which will be combined.  When the configuration file provides an
 ```yaml
 "efficiency": {
     "spike": [
-        {"counts": 1000, "activity_bq": 50, "live_time_s": 3600}
+        {"counts": 1000, "activity_bq": 50, "live_time_s": 3600, "enabled": true}
     ],
     "assay": [
         {"rate_cps": 0.8, "reference_bq": 2.0}
     ]
 }
 ```
-Here `activity_bq` is the spike activity expressed in decays per second (Bq).
+Each spike entry may include an `enabled` flag (defaulting to `true`) to
+control whether the spike information contributes to the combined
+efficiency. `activity_bq` is the spike activity expressed in decays per
+second (Bq).
 
 `analyze.py` stores the calculated values and their BLUE combination in
 `summary.json` under the `efficiency` key.

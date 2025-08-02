@@ -554,6 +554,8 @@ def test_spike_count_cli(tmp_path, monkeypatch):
 
     def fake_spike(cnt, act, live):
         recorded["cnt"] = cnt
+        recorded["act"] = act
+        recorded["live"] = live
         return 0.1
 
     monkeypatch.setattr(efficiency, "calc_spike_efficiency", fake_spike)
@@ -581,11 +583,17 @@ def test_spike_count_cli(tmp_path, monkeypatch):
         "42",
         "--spike-count-err",
         "2",
+        "--spike-activity",
+        "43",
+        "--spike-duration",
+        "44",
     ]
     monkeypatch.setattr(sys, "argv", args)
     analyze.main()
 
     assert recorded.get("cnt") == 42.0
+    assert recorded.get("act") == 43.0
+    assert recorded.get("live") == 44.0
     assert saved["summary"]["efficiency"]["sources"]["spike"]["error"] == 2.0
 
 
@@ -643,6 +651,68 @@ def test_spike_count_single_call(tmp_path, monkeypatch):
     analyze.main()
 
     assert len(calls) == 1
+
+
+def test_no_spike_cli(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {"do_time_fit": False},
+        "systematics": {"enable": False},
+        "efficiency": {"spike": {"counts": 10, "activity_bq": 5, "live_time_s": 100}},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    cfg_path = tmp_path / "cfg.json"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    df = pd.DataFrame({"fUniqueID": [1], "fBits": [0], "timestamp": [pd.Timestamp(0, unit="s", tz="UTC")], "adc": [1], "fchannel": [1]})
+    data_path = tmp_path / "d.csv"
+    df.to_csv(data_path, index=False)
+
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: CalibrationResult(coeffs=[0.0, 1.0], cov=np.zeros((2, 2)), peaks={}, sigma_E=1.0, sigma_E_error=0.0))
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0,0)), 0))
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+
+    import efficiency
+
+    calls = []
+
+    def fake_spike(cnt, act, live):
+        calls.append((cnt, act, live))
+        return 0.1
+
+    monkeypatch.setattr(efficiency, "calc_spike_efficiency", fake_spike)
+
+    saved = {}
+
+    def fake_write(out_dir, summary, timestamp=None):
+        saved["summary"] = asdict(summary)
+        d = Path(out_dir) / "x"
+        d.mkdir(parents=True, exist_ok=True)
+        return str(d)
+
+    monkeypatch.setattr(analyze, "write_summary", fake_write)
+    monkeypatch.setattr(analyze, "copy_config", lambda *a, **k: None)
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+        "--no-spike",
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+    analyze.main()
+
+    assert calls == []
+    assert "spike" not in saved["summary"]["efficiency"]["sources"]
 
 
 def test_assay_efficiency_list(tmp_path, monkeypatch):
