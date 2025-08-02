@@ -186,14 +186,20 @@ def fixed_slope_calibration(adc_values, cfg):
     expected = {"Po214": cal_cfg["nominal_adc"]["Po214"]}
     window = cal_cfg.get("peak_search_radius", 50)
     prominence = cal_cfg.get("peak_prominence", 0.0)
-    width = cal_cfg.get("peak_width")
+
+    # Optional per-isotope width overrides
+    width_cfg = cal_cfg.get("peak_widths") or {}
+    if isinstance(width_cfg, Mapping):
+        width_po214 = width_cfg.get("Po214", cal_cfg.get("peak_width"))
+    else:
+        width_po214 = cal_cfg.get("peak_width")
 
     peaks = utils.find_adc_bin_peaks(
         adc_values,
         expected,
         window=window,
         prominence=prominence,
-        width=width,
+        width=width_po214,
     )
 
     adc_peak = peaks["Po214"]
@@ -206,10 +212,26 @@ def fixed_slope_calibration(adc_values, cfg):
     E_known = energies["Po214"]
     c = float(E_known - a * adc_peak)
 
+    # Determine initial width guess: prefer energy-based config when provided
+    sigma_E_init = cal_cfg.get("sigma_E_init")
+    if sigma_E_init is not None:
+        if isinstance(sigma_E_init, Mapping):
+            sigma_E = sigma_E_init.get("Po214")
+        else:
+            sigma_E = sigma_E_init
+    else:
+        # Fall back to ADC-based width
+        sigma_adc_cfg = cal_cfg.get("init_sigma_adc", 0.0)
+        if isinstance(sigma_adc_cfg, Mapping):
+            sigma_adc = sigma_adc_cfg.get("Po214", 0.0)
+        else:
+            sigma_adc = sigma_adc_cfg
+        sigma_E = sigma_adc * a
+
     return {
         "a": a,
         "c": c,
-        "sigma_E": cal_cfg["init_sigma_adc"],
+        "sigma_E": sigma_E,
         "calibration_valid": True,
     }
 
@@ -271,8 +293,9 @@ def calibrate_run(adc_values, config, hist_bins=None):
     #    We look for up to 5 peaks (Po-210, Po-218, Po-214, maybe background bumps).
     #    Use config thresholds for prominence & width.
     prom = config["calibration"]["peak_prominence"]
-    wid = config["calibration"]["peak_width"]
-    peaks, props = find_peaks(hist, prominence=prom, width=wid)
+    width_cfg = config["calibration"].get("peak_widths") or {}
+    wid_global = config["calibration"].get("peak_width")
+    peaks, props = find_peaks(hist, prominence=prom, width=wid_global)
 
     # 3) From the found peaks, pick the three that best match expected energies:
     #    Convert expected energy->ADC guess via last calibration or central ADC->MeV mapping if available.
@@ -285,8 +308,14 @@ def calibrate_run(adc_values, config, hist_bins=None):
     # 2024-03: renamed from ``peak_search_radius_adc`` to ``peak_search_radius``
     radius = config["calibration"]["peak_search_radius"]
     candidates = {iso: [] for iso in ("Po210", "Po218", "Po214")}
+    peak_widths_found = props.get("widths", np.zeros_like(peaks))
     for iso, adc_guess in nominal_adc.items():
-        for idx in peaks:
+        req_width = None
+        if isinstance(width_cfg, Mapping):
+            req_width = width_cfg.get(iso)
+        for idx, pwidth in zip(peaks, peak_widths_found):
+            if req_width is not None and pwidth < req_width:
+                continue
             if abs(centers[idx] - adc_guess) <= radius:
                 candidates[iso].append(idx)
     # If multiple candidates per isotope, pick the one with highest histogram count:
@@ -320,8 +349,22 @@ def calibrate_run(adc_values, config, hist_bins=None):
         # Initial guesses:
         amp0 = float(np.max(y_slice))
         mu0 = float(x0)
-        # e.g. ~10 ADC channels
-        sigma0 = config["calibration"]["init_sigma_adc"]
+        sigma_cfg = config["calibration"].get("init_sigma_adc", 10.0)
+        if isinstance(sigma_cfg, Mapping):
+            sigma0 = sigma_cfg.get(iso, sigma_cfg.get("default", 10.0))
+        else:
+            sigma0 = sigma_cfg
+
+        sigma_E_cfg = config["calibration"].get("sigma_E_init")
+        if sigma_E_cfg is not None:
+            if isinstance(sigma_E_cfg, Mapping):
+                sigma_E_guess = sigma_E_cfg.get(iso, sigma_E_cfg.get("default"))
+            else:
+                sigma_E_guess = sigma_E_cfg
+            slope_guess = config["calibration"].get("slope_MeV_per_ch")
+            if slope_guess:
+                sigma0 = sigma_E_guess / slope_guess
+
         tau_cfg = config["calibration"].get("init_tau_adc", 0.0)
         # Avoid zero or negative starting tau which can cause numerical issues
         tau0 = max(tau_cfg, _TAU_MIN) if use_emg else 0.0

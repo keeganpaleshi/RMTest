@@ -6,6 +6,8 @@ calibration:
   slope_MeV_per_ch: null
   intercept_MeV: null
   float_slope: false
+  sigma_E_init: null
+  peak_widths: null
 spectral_fit:
   peak_search_method: prominence
   peak_search_cwt_widths: null
