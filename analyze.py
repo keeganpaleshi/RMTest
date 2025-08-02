@@ -769,6 +769,21 @@ def parse_args(argv=None):
         help="Uncertainty on spike counts",
     )
     p.add_argument(
+        "--spike-activity",
+        type=float,
+        help="Known spike activity in Bq",
+    )
+    p.add_argument(
+        "--spike-duration",
+        type=float,
+        help="Duration of the spike run in seconds",
+    )
+    p.add_argument(
+        "--no-spike",
+        action="store_true",
+        help="Disable spike efficiency",
+    )
+    p.add_argument(
         "--analysis-end-time",
         type=str,
         help="Ignore events occurring after this ISO timestamp. Providing this option overrides `analysis.analysis_end_time` in config.yaml",
@@ -1164,12 +1179,24 @@ def main(argv=None):
         _log_override("burst_filter", "burst_mode", args.burst_mode)
         cfg.setdefault("burst_filter", {})["burst_mode"] = args.burst_mode
 
-    if args.spike_count is not None or args.spike_count_err is not None:
+    if (
+        args.spike_count is not None
+        or args.spike_count_err is not None
+        or args.spike_activity is not None
+        or args.spike_duration is not None
+        or args.no_spike
+    ):
         eff_sec = cfg.setdefault("efficiency", {}).setdefault("spike", {})
         if args.spike_count is not None:
             eff_sec["counts"] = float(args.spike_count)
         if args.spike_count_err is not None:
             eff_sec["error"] = float(args.spike_count_err)
+        if args.spike_activity is not None:
+            eff_sec["activity_bq"] = float(args.spike_activity)
+        if args.spike_duration is not None:
+            eff_sec["live_time_s"] = float(args.spike_duration)
+        if args.no_spike:
+            eff_sec["enabled"] = False
 
     if args.slope is not None:
         _log_override("systematics", "adc_drift_rate", float(args.slope))
@@ -2500,10 +2527,13 @@ def main(argv=None):
             scfg_raw = eff_cfg["spike"]
             scfg_list = [scfg_raw] if isinstance(scfg_raw, dict) else list(scfg_raw)
             for idx, scfg in enumerate(scfg_list, start=1):
+                key = "spike" if isinstance(scfg_raw, dict) else f"spike_{idx}"
+                if not scfg.get("enabled", True):
+                    logger.info("Spike efficiency '%s' disabled", key)
+                    continue
                 try:
                     val = get_spike_efficiency(scfg)
                     err = float(scfg.get("error", 0.0))
-                    key = "spike" if isinstance(scfg_raw, dict) else f"spike_{idx}"
                     sources[key] = {"value": val, "error": err}
                     vals.append(val)
                     errs.append(err)
