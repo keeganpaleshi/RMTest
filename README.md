@@ -47,7 +47,7 @@ python analyze.py [--config config.yaml] --input merged_data.csv \
     [--output_dir results] [--job-id MYRUN] [--overwrite] \
     [--efficiency-json eff.json] [--systematics-json syst.json] \
     [--spike-count N --spike-count-err S] [--slope RATE] \
-    [--noise-cutoff N] \
+    [--noise-cutoff N] [--calibration-slope M] \
     [--analysis-start-time ISO --analysis-end-time ISO --spike-end-time ISO] \
     [--spike-period START END] [--run-period START END] \
     [--radon-interval START END] \
@@ -75,6 +75,7 @@ subtraction are performed directly by `analyze.py`. Configure them in
 `config.yaml` or override the values via command-line options:
 
 - `calibration.noise_cutoff` / `--noise-cutoff` for the pedestal cut
+- `calibration.slope_MeV_per_ch` / `--calibration-slope` to fix the ADC→MeV conversion
 - `burst_filter.burst_mode` / `--burst-mode` for burst vetoing
 - `analysis_*` timestamps and periods to clip or exclude data
 - `baseline.range` or `--baseline-range` to enable baseline subtraction
@@ -180,6 +181,7 @@ deviates by more than this amount.
 Po‑214 peak is used to determine the intercept so the two‑point fit is skipped.
 Alternatively `intercept_MeV` may be supplied along with the slope to bypass
 searching for the Po‑214 peak entirely.
+The command-line option `--calibration-slope` overrides this value from the CLI.
 
 `noise_cutoff` defines a pedestal noise threshold in ADC.  Events with raw
 ADC values at or below this threshold are removed before any fits.  The

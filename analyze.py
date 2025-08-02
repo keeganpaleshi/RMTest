@@ -820,6 +820,14 @@ def parse_args(argv=None):
         ),
     )
     p.add_argument(
+        "--calibration-slope",
+        type=float,
+        help=(
+            "Fixed MeV per ADC conversion slope. Providing this option overrides "
+            "`calibration.slope_MeV_per_ch` in config.yaml"
+        ),
+    )
+    p.add_argument(
         "--calibration-method",
         choices=["two-point", "auto"],
         help=(
@@ -1169,6 +1177,14 @@ def main(argv=None):
             int(args.noise_cutoff),
         )
         cfg.setdefault("calibration", {})["noise_cutoff"] = int(args.noise_cutoff)
+
+    if args.calibration_slope is not None:
+        _log_override(
+            "calibration",
+            "slope_MeV_per_ch",
+            float(args.calibration_slope),
+        )
+        cfg.setdefault("calibration", {})["slope_MeV_per_ch"] = float(args.calibration_slope)
 
     if args.iso is not None:
         prev = cfg.get("analysis_isotope")
