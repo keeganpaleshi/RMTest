@@ -526,8 +526,28 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
 def derive_calibration_constants(adc_values, config):
     """Return calibration constants for ``adc_values`` using ``config``."""
-    if config.get("calibration", {}).get("slope_MeV_per_ch") is not None:
+    cal_cfg = config.get("calibration", {})
+    slope = cal_cfg.get("slope_MeV_per_ch")
+    float_slope = cal_cfg.get("float_slope", False)
+
+    if slope is not None and not float_slope:
         return fixed_slope_calibration(adc_values, config)
+
+    if slope is not None and float_slope:
+        intercept = cal_cfg.get("intercept_MeV") or 0.0
+        energies = {
+            **DEFAULT_KNOWN_ENERGIES,
+            **(cal_cfg.get("known_energies") or {}),
+        }
+        nominal = {}
+        for iso in ("Po210", "Po218", "Po214"):
+            nominal[iso] = int(round((energies[iso] - intercept) / slope))
+
+        cal_cfg = config.setdefault("calibration", {})
+        prev_nom = dict(cal_cfg.get("nominal_adc", {}))
+        prev_nom.update(nominal)
+        cal_cfg["nominal_adc"] = prev_nom
+
     return calibrate_run(adc_values, config)
 
 

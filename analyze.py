@@ -828,6 +828,14 @@ def parse_args(argv=None):
         ),
     )
     p.add_argument(
+        "--float-slope",
+        action="store_true",
+        help=(
+            "Treat provided slope as a prior and let calibration determine the "
+            "actual value. Requires `calibration.slope_MeV_per_ch`."
+        ),
+    )
+    p.add_argument(
         "--calibration-method",
         choices=["two-point", "auto"],
         help=(
@@ -1185,6 +1193,10 @@ def main(argv=None):
             float(args.calibration_slope),
         )
         cfg.setdefault("calibration", {})["slope_MeV_per_ch"] = float(args.calibration_slope)
+
+    if args.float_slope:
+        _log_override("calibration", "float_slope", True)
+        cfg.setdefault("calibration", {})["float_slope"] = True
 
     if args.iso is not None:
         prev = cfg.get("analysis_isotope")
