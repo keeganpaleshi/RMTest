@@ -14,6 +14,8 @@ def test_fixed_slope_calibration():
             "peak_search_radius": 5,
             "peak_prominence": 0.0,
             "peak_width": 1,
+            "fit_window_adc": 20,
+            "use_emg": False,
             "init_sigma_adc": 5.0,
             "known_energies": {"Po214": 7.687},
         }
@@ -23,6 +25,8 @@ def test_fixed_slope_calibration():
     assert res["a"] == 0.00435
     assert res["c"] == pytest.approx(-0.14, abs=0.02)
     assert res["calibration_valid"] is True
+    # Expected sigma_E is slope * true sigma (~2 ADC)
+    assert res["sigma_E"] == pytest.approx(0.00435 * 2, rel=0.2)
 
 
 def test_float_slope_calibration():

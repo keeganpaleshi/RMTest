@@ -5,7 +5,6 @@ from copy import deepcopy
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 from scipy.stats import exponnorm
-import utils
 from constants import (
     _TAU_MIN,
     DEFAULT_NOISE_CUTOFF,
@@ -183,34 +182,110 @@ def fixed_slope_calibration(adc_values, cfg):
     a = cfg["calibration"]["slope_MeV_per_ch"]
 
     cal_cfg = cfg.get("calibration", {})
-    expected = {"Po214": cal_cfg["nominal_adc"]["Po214"]}
-    window = cal_cfg.get("peak_search_radius", 50)
-    prominence = cal_cfg.get("peak_prominence", 0.0)
-    width = cal_cfg.get("peak_width")
 
-    peaks = utils.find_adc_bin_peaks(
-        adc_values,
-        expected,
-        window=window,
-        prominence=prominence,
-        width=width,
-    )
+    # Histogram with one bin per ADC channel
+    adc_arr = np.asarray(adc_values, dtype=float)
+    min_adc = int(np.min(adc_arr))
+    max_adc = int(np.max(adc_arr))
+    edges = np.arange(min_adc, max_adc + 2)
+    hist, edges = np.histogram(adc_arr, bins=edges)
+    centers = 0.5 * (edges[:-1] + edges[1:])
 
-    adc_peak = peaks["Po214"]
+    # Locate candidate peaks using SciPy
+    prom = cal_cfg.get("peak_prominence", 0.0)
+    wid = cal_cfg.get("peak_width")
+    found_peaks, _ = find_peaks(hist, prominence=prom, width=wid)
+
+    nominal = cal_cfg.get("nominal_adc", {})
+    radius = cal_cfg.get("peak_search_radius", 50)
+
+    # Only require Po214 but optionally fit Po210 if supplied
+    isotopes = [iso for iso in ("Po214", "Po210") if iso in nominal]
+    candidates = {iso: [] for iso in isotopes}
+    for iso in isotopes:
+        guess = nominal[iso]
+        for idx in found_peaks:
+            if abs(centers[idx] - guess) <= radius:
+                candidates[iso].append(idx)
+
+    chosen_idx = {}
+    for iso in isotopes:
+        if not candidates[iso]:
+            raise RuntimeError(
+                f"No candidate peak found for {iso} around ADC={nominal[iso]}."
+            )
+        chosen_idx[iso] = max(candidates[iso], key=lambda i: hist[i])
+
+    # Fit each selected peak with EMG or Gaussian
+    peak_fits = {}
+    window = cal_cfg.get("fit_window_adc", 50)
+    use_emg = cal_cfg.get("use_emg", False)
+    sigma0 = cal_cfg.get("init_sigma_adc", 4.0)
+    tau_cfg = cal_cfg.get("init_tau_adc", 0.0)
+    tau0 = max(tau_cfg, _TAU_MIN) if use_emg else 0.0
+
+    for iso, idx_center in chosen_idx.items():
+        x0 = centers[idx_center]
+        lo = x0 - window
+        hi = x0 + window
+        mask = (centers >= lo) & (centers <= hi)
+        x_slice = centers[mask]
+        y_slice = hist[mask].astype(float)
+        if len(x_slice) < 5:
+            raise RuntimeError(
+                f"Not enough points to fit peak for {iso} (only {len(x_slice)} bins)."
+            )
+
+        amp0 = float(np.max(y_slice))
+        mu0 = float(x0)
+
+        if use_emg and iso == "Po210":
+            def model_emg(x, A, mu, sigma, tau):
+                return A * emg_left(x, mu, sigma, tau)
+
+            p0 = [amp0, mu0, sigma0, tau0]
+            bounds = (
+                [0, mu0 - window, 1e-3, _TAU_MIN],
+                [np.inf, mu0 + window, 50.0, 200.0],
+            )
+            popt, pcov = curve_fit(model_emg, x_slice, y_slice, p0=p0, bounds=bounds)
+            A_fit, mu_fit, sigma_fit, tau_fit = popt
+        else:
+            def model_gauss(x, A, mu, sigma):
+                return A * gaussian(x, mu, sigma)
+
+            p0 = [amp0, mu0, sigma0]
+            bounds = ([0, mu0 - window, 1e-3], [np.inf, mu0 + window, 50.0])
+            popt, pcov = curve_fit(model_gauss, x_slice, y_slice, p0=p0, bounds=bounds)
+            A_fit, mu_fit, sigma_fit = popt
+            tau_fit = 0.0
+
+        peak_fits[iso] = {
+            "centroid_adc": float(mu_fit),
+            "sigma_adc": float(sigma_fit),
+            "tau_adc": float(tau_fit),
+            "amplitude": float(A_fit),
+            "covariance": pcov.tolist(),
+        }
+
+    adc_peak = peak_fits["Po214"]["centroid_adc"]
 
     energies = {
         **DEFAULT_KNOWN_ENERGIES,
         **cal_cfg.get("known_energies", {}),
     }
-
     E_known = energies["Po214"]
     c = float(E_known - a * adc_peak)
+
+    sigma_adc = peak_fits["Po214"]["sigma_adc"]
+    sigma_E = float(abs(a) * sigma_adc)
 
     return {
         "a": a,
         "c": c,
-        "sigma_E": cal_cfg["init_sigma_adc"],
+        "sigma_E": sigma_E,
         "calibration_valid": True,
+        "peaks": peak_fits,
     }
 
 
