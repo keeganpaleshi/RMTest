@@ -76,6 +76,7 @@ subtraction are performed directly by `analyze.py`. Configure them in
 
 - `calibration.noise_cutoff` / `--noise-cutoff` for the pedestal cut
 - `calibration.slope_MeV_per_ch` / `--calibration-slope` to fix the ADC→MeV conversion
+- `calibration.float_slope` / `--float-slope` to treat a provided slope as a prior
 - `burst_filter.burst_mode` / `--burst-mode` for burst vetoing
 - `analysis_*` timestamps and periods to clip or exclude data
 - `baseline.range` or `--baseline-range` to enable baseline subtraction
@@ -179,9 +180,11 @@ deviates by more than this amount.
 
 `slope_MeV_per_ch` fixes the linear calibration slope. When provided only the
 Po‑214 peak is used to determine the intercept so the two‑point fit is skipped.
-Alternatively `intercept_MeV` may be supplied along with the slope to bypass
-searching for the Po‑214 peak entirely.
-The command-line option `--calibration-slope` overrides this value from the CLI.
+Set `float_slope: true` (or pass `--float-slope`) to instead treat the slope as a
+prior and let the Po‑210/Po‑214 peaks determine the exact value. Alternatively
+`intercept_MeV` may be supplied along with the slope to bypass searching for the
+Po‑214 peak entirely. The command-line option `--calibration-slope` overrides
+this value from the CLI.
 
 `noise_cutoff` defines a pedestal noise threshold in ADC.  Events with raw
 ADC values at or below this threshold are removed before any fits.  The
