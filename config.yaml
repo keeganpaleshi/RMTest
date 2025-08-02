@@ -48,7 +48,7 @@ calibration:
   peak_search_radius: 100
   peak_prominence: 5
   peak_width: 5
-  slope_MeV_per_ch: 0.00427
+  slope_MeV_per_ch: 0.00435
   nominal_adc:
     Po210: 1246
     Po218: 1399
