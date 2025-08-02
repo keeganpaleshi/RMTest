@@ -5,6 +5,7 @@ allow_negative_activity: false
 calibration:
   slope_MeV_per_ch: null
   intercept_MeV: null
+  float_slope: false
 spectral_fit:
   peak_search_method: prominence
   peak_search_cwt_widths: null

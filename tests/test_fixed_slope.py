@@ -23,3 +23,38 @@ def test_fixed_slope_calibration():
     assert res["a"] == 0.00435
     assert res["c"] == pytest.approx(-0.14, abs=0.02)
     assert res["calibration_valid"] is True
+
+
+def test_float_slope_calibration():
+    rng = np.random.default_rng(1)
+    adc = np.concatenate(
+        [
+            rng.normal(1242, 2, 200),
+            rng.normal(1405, 2, 200),
+            rng.normal(1800, 2, 200),
+        ]
+    )
+
+    cfg = {
+        "calibration": {
+            "slope_MeV_per_ch": 0.004,
+            "float_slope": True,
+            "nominal_adc": {"Po210": 0, "Po218": 0, "Po214": 0},
+            "peak_search_radius": 200,
+            "peak_prominence": 0.0,
+            "peak_width": 1,
+            "fit_window_adc": 20,
+            "use_emg": False,
+            "init_sigma_adc": 4.0,
+            "init_tau_adc": 0.0,
+            "known_energies": {
+                "Po210": 5.304,
+                "Po218": 6.002,
+                "Po214": 7.687,
+            },
+            "sanity_tolerance_mev": 1.0,
+        }
+    }
+
+    res = derive_calibration_constants(adc, cfg)
+    assert res.coeffs[1] == pytest.approx(0.00427, rel=0.05)

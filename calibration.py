@@ -1,6 +1,7 @@
 import numpy as np
 from dataclasses import dataclass
 from collections.abc import Sequence, Mapping
+from copy import deepcopy
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 from scipy.stats import exponnorm
@@ -526,9 +527,20 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
 def derive_calibration_constants(adc_values, config):
     """Return calibration constants for ``adc_values`` using ``config``."""
-    if config.get("calibration", {}).get("slope_MeV_per_ch") is not None:
+    cal_cfg = config.get("calibration", {})
+    slope = cal_cfg.get("slope_MeV_per_ch")
+    float_slope = cal_cfg.get("float_slope", False)
+
+    if slope is not None and not float_slope:
         return fixed_slope_calibration(adc_values, config)
-    return calibrate_run(adc_values, config)
+
+    cfg = config if slope is None or not float_slope else deepcopy(config)
+    if slope is not None and float_slope:
+        energies = {**DEFAULT_KNOWN_ENERGIES, **cal_cfg.get("known_energies", {})}
+        cfg.setdefault("calibration", {})["nominal_adc"] = {
+            iso: int(round(energies[iso] / slope)) for iso in ("Po210", "Po218", "Po214")
+        }
+    return calibrate_run(adc_values, cfg)
 
 
 def derive_calibration_constants_auto(

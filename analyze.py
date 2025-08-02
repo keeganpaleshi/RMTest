@@ -828,6 +828,11 @@ def parse_args(argv=None):
         ),
     )
     p.add_argument(
+        "--float-slope",
+        action="store_true",
+        help="Allow provided calibration slope to float during the two-point fit",
+    )
+    p.add_argument(
         "--calibration-method",
         choices=["two-point", "auto"],
         help=(
@@ -1185,6 +1190,9 @@ def main(argv=None):
             float(args.calibration_slope),
         )
         cfg.setdefault("calibration", {})["slope_MeV_per_ch"] = float(args.calibration_slope)
+
+    if args.float_slope:
+        cfg.setdefault("calibration", {})["float_slope"] = True
 
     if args.iso is not None:
         prev = cfg.get("analysis_isotope")

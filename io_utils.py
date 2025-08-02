@@ -200,6 +200,7 @@ CONFIG_SCHEMA = {
                 "nominal_adc": {"type": "object"},
                 "fit_window_adc": {"type": "number", "minimum": 0},
                 "use_emg": {"type": "boolean"},
+                "float_slope": {"type": "boolean"},
                 "init_sigma_adc": {"type": "number", "minimum": 0},
                 "init_tau_adc": {"type": "number", "minimum": 0},
                 "sanity_tolerance_mev": {"type": "number", "minimum": 0},
