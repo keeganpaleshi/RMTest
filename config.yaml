@@ -126,14 +126,12 @@ time_fit:
   window_po210:
   - 5.25
   - 5.37
-  eff_po214: null
+  eff_po214: 0.25               # ZnS(Ag) typical; change if you measured it
   eff_po218: null
   eff_po210: null
   hl_po214: null
   hl_po218: null
-  bkg_po214:
-  - 0.0
-  - 0.0
+  bkg_po214: [0.0, 0.2]         # allow a flat residual background
   bkg_po218:
   - 0.0
   - 0.0
@@ -141,6 +139,7 @@ time_fit:
   sig_n0_po218: 1.0
   background_guess: 0.0
   n0_guess_fraction: 0.1
+  min_counts: 200               # skip fit if too few events
   flags:
     fix_background_b: false
     fix_N0_Po218: false

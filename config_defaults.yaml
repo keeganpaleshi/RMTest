@@ -22,4 +22,6 @@ time_fit:
   window_po210:
   - 5.25
   - 5.37
+  eff_po214: 0.25               # ZnS(Ag) typical; change if you measured it
+  bkg_po214: [0.0, 0.2]         # allow a flat residual background
   min_counts: 20
