@@ -179,6 +179,26 @@ peak energies must be to their known values.  The default of `0.5` MeV
 causes calibration to fail when any Po‑210, Po‑218 or Po‑214 centroid
 deviates by more than this amount.
 
+`sigma_E_init` optionally supplies an initial guess for the peak energy
+resolution in MeV. When provided it is converted to an ADC width using the
+calibration slope and used as the starting point for the peak fits. This
+value takes precedence over the ADC-based `init_sigma_adc`.
+
+Per-isotope width thresholds may also be specified via `peak_widths` to
+override the global `peak_width` used during calibration. For example:
+
+```yaml
+"calibration": {
+    "peak_width": 5,
+    "peak_widths": {
+        "Po210": 5,
+        "Po218": 5,
+        "Po214": 6
+    }
+}
+```
+Any isotope omitted from `peak_widths` falls back to the global setting.
+
 `slope_MeV_per_ch` fixes the linear calibration slope. When provided only the
 Po‑214 peak is used to determine the intercept so the two‑point fit is skipped.
 Set `float_slope` to `true` to treat the slope as a prior instead of fixing it;
