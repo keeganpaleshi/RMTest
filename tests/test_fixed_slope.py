@@ -58,3 +58,31 @@ def test_float_slope_calibration():
 
     res = derive_calibration_constants(adc, cfg)
     assert res.coeffs[1] == pytest.approx(0.00427, rel=0.05)
+
+
+def test_fixed_slope_two_point():
+    rng = np.random.default_rng(2)
+    adc = np.concatenate([
+        rng.normal(1200, 2, 200),
+        rng.normal(1800, 2, 200),
+    ])
+
+    cfg = {
+        "calibration": {
+            "slope_MeV_per_ch": 0.00435,
+            "use_two_point": True,
+            "float_slope": False,
+            "nominal_adc": {"Po210": 1200, "Po214": 1800},
+            "peak_search_radius": 5,
+            "peak_prominence": 0.0,
+            "peak_width": 1,
+            "known_energies": {"Po210": 5.304, "Po214": 7.687},
+        }
+    }
+
+    res = derive_calibration_constants(adc, cfg)
+    expected = (
+        (5.304 - 0.00435 * 1200) + (7.687 - 0.00435 * 1800)
+    ) / 2.0
+    assert res.coeffs[0] == pytest.approx(expected, abs=0.02)
+    assert res.coeffs[1] == 0.00435

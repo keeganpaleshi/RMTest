@@ -314,6 +314,50 @@ def fixed_slope_calibration(adc_values, cfg):
     return result
 
 
+def intercept_fit_two_point(adc_values, cfg):
+    """Return intercept using both Po-210 and Po-214 with a fixed slope.
+
+    The slope ``slope_MeV_per_ch`` is taken from ``cfg``. Peak centroids for
+    ``Po210`` and ``Po214`` are located using :func:`utils.find_adc_bin_peaks`.
+    The intercept is then obtained from a one-parameter fit ``E = a*ADC + c``
+    that uses the known energies of the two peaks.
+    """
+
+    cal_cfg = cfg.get("calibration", {})
+    a = cal_cfg["slope_MeV_per_ch"]
+
+    expected = {
+        "Po210": cal_cfg["nominal_adc"]["Po210"],
+        "Po214": cal_cfg["nominal_adc"]["Po214"],
+    }
+    window = cal_cfg.get("peak_search_radius", 50)
+    prominence = cal_cfg.get("peak_prominence", 0.0)
+    width = cal_cfg.get("peak_width")
+
+    peaks = utils.find_adc_bin_peaks(
+        adc_values,
+        expected,
+        window=window,
+        prominence=prominence,
+        width=width,
+    )
+
+    energies = {**DEFAULT_KNOWN_ENERGIES, **cal_cfg.get("known_energies", {})}
+    intercepts = [energies[iso] - a * peaks[iso] for iso in ("Po210", "Po214")]
+    c = float(np.mean(intercepts))
+
+    peak_info = {iso: {"centroid_adc": float(peaks[iso])} for iso in peaks}
+    cov = np.zeros((2, 2))
+    result = CalibrationResult(
+        coeffs=[c, a],
+        cov=cov,
+        peaks=peak_info,
+        sigma_E=0.0,
+        sigma_E_error=0.0,
+    )
+    return result
+
+
 def apply_calibration(adc_values, slope, intercept, quadratic_coeff=0.0):
     """Convert ADC values to energy using calibration coefficients.
 
@@ -653,6 +697,8 @@ def derive_calibration_constants(adc_values, config):
     float_slope = cal_cfg.get("float_slope", False)
 
     if slope is not None and not float_slope:
+        if cal_cfg.get("use_two_point", False):
+            return intercept_fit_two_point(adc_values, config)
         return fixed_slope_calibration(adc_values, config)
 
     cfg = config if slope is None or not float_slope else deepcopy(config)
