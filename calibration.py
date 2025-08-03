@@ -178,6 +178,14 @@ def fixed_slope_calibration(adc_values, cfg):
         Raw ADC values from a single run.
     cfg : dict
         Configuration dictionary containing ``calibration`` options.
+
+    Notes
+    -----
+    - Returns a CalibrationResult dataclass (keeps #1049 API).
+    - If ``calibration.sigma_E_init`` is provided (scalar or mapping),
+      it is used to set the **initial guess** for the peak width by
+      converting MeV -> ADC via the fixed slope. It does not override
+      the fitted sigma_E in the result.
     """
 
     a = cfg["calibration"]["slope_MeV_per_ch"]
@@ -186,32 +194,124 @@ def fixed_slope_calibration(adc_values, cfg):
     expected = {"Po214": cal_cfg["nominal_adc"]["Po214"]}
     window = cal_cfg.get("peak_search_radius", 50)
     prominence = cal_cfg.get("peak_prominence", 0.0)
-    width = cal_cfg.get("peak_width")
+
+    # Optional per-isotope width overrides (used by the discrete peak finder)
+    width_cfg = cal_cfg.get("peak_widths") or {}
+    if isinstance(width_cfg, Mapping):
+        width_po214 = width_cfg.get("Po214", cal_cfg.get("peak_width"))
+    else:
+        width_po214 = cal_cfg.get("peak_width")
 
     peaks = utils.find_adc_bin_peaks(
         adc_values,
         expected,
         window=window,
         prominence=prominence,
-        width=width,
+        width=width_po214,
     )
-
     adc_peak = peaks["Po214"]
 
-    energies = {
-        **DEFAULT_KNOWN_ENERGIES,
-        **cal_cfg.get("known_energies", {}),
+    # Build histogram with 1 channel per bin for the fit
+    adc_arr = np.asarray(adc_values, dtype=float)
+    min_adc = int(np.min(adc_arr))
+    max_adc = int(np.max(adc_arr))
+    edges = np.arange(min_adc, max_adc + 2)
+    hist, edges = np.histogram(adc_arr, bins=edges)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+
+    fit_window = cal_cfg.get("fit_window_adc", 50)
+    use_emg = cal_cfg.get("use_emg", False)
+    lo = adc_peak - fit_window
+    hi = adc_peak + fit_window
+    mask = (centers >= lo) & (centers <= hi)
+    x_slice = centers[mask]
+    y_slice = hist[mask].astype(float)
+    if len(x_slice) < 5:
+        raise RuntimeError(
+            f"Not enough points to fit peak for Po214 (only {len(x_slice)} bins)."
+        )
+
+    # Initial guesses
+    amp0 = float(np.max(y_slice))
+    mu0 = float(adc_peak)
+
+    # Base ADC-space width guess
+    sigma_cfg = cal_cfg.get("init_sigma_adc", 10.0)
+    if isinstance(sigma_cfg, Mapping):
+        sigma0 = sigma_cfg.get("Po214", sigma_cfg.get("default", 10.0))
+    else:
+        sigma0 = sigma_cfg
+
+    # Optional energy-space width guess -> convert to ADC using fixed slope
+    sigma_E_cfg = cal_cfg.get("sigma_E_init")
+    if sigma_E_cfg is not None:
+        if isinstance(sigma_E_cfg, Mapping):
+            sigma_E_guess = sigma_E_cfg.get("Po214", sigma_E_cfg.get("default"))
+        else:
+            sigma_E_guess = sigma_E_cfg
+        if sigma_E_guess is not None:
+            # guard against zero slope, though config should never set that
+            if a == 0:
+                raise ValueError("Fixed slope 'a' must be nonzero for sigma_E_init conversion")
+            sigma0 = float(abs(sigma_E_guess) / abs(a))
+
+    tau_cfg = cal_cfg.get("init_tau_adc", 0.0)
+    tau0 = max(tau_cfg, _TAU_MIN) if use_emg else 0.0
+
+    if use_emg:
+        def model_emg(x, A, mu, sigma, tau):
+            return A * emg_left(x, mu, sigma, tau)
+
+        p0 = [amp0, mu0, sigma0, tau0]
+        bounds = (
+            [0, mu0 - fit_window, 1e-3, _TAU_MIN],
+            [np.inf, mu0 + fit_window, 50.0, 200.0],
+        )
+        popt, pcov = curve_fit(model_emg, x_slice, y_slice, p0=p0, bounds=bounds)
+        A_fit, mu_fit, sigma_fit, tau_fit = popt
+    else:
+        def model_gauss(x, A, mu, sigma):
+            return A * gaussian(x, mu, sigma)
+
+        p0 = [amp0, mu0, sigma0]
+        bounds = ([0, mu0 - fit_window, 1e-3], [np.inf, mu0 + fit_window, 50.0])
+        popt, pcov = curve_fit(model_gauss, x_slice, y_slice, p0=p0, bounds=bounds)
+        A_fit, mu_fit, sigma_fit = popt
+        tau_fit = 0.0
+
+    peak_info = {
+        "centroid_adc": float(mu_fit),
+        "sigma_adc": float(sigma_fit),
+        "tau_adc": float(tau_fit),
+        "amplitude": float(A_fit),
+        "covariance": pcov.tolist(),
     }
 
+    # Intercept from the known Po214 energy and fixed slope
+    energies = {**DEFAULT_KNOWN_ENERGIES, **cal_cfg.get("known_energies", {})}
     E_known = energies["Po214"]
-    c = float(E_known - a * adc_peak)
+    c = float(E_known - a * mu_fit)
+    peak_info["centroid_mev"] = float(apply_calibration(mu_fit, a, c))
 
-    return {
-        "a": a,
-        "c": c,
-        "sigma_E": cal_cfg["init_sigma_adc"],
-        "calibration_valid": True,
-    }
+    # Convert sigma from ADC to energy using fixed slope and propagate errors
+    sigma_adc = float(sigma_fit)
+    sigma_E = abs(a) * sigma_adc
+    var_sigma_adc = float(pcov[2][2])
+    dsigma_E = abs(a) * float(np.sqrt(max(var_sigma_adc, 0.0)))
+
+    # Intercept uncertainty from centroid fit; slope is fixed
+    mu_err = float(np.sqrt(pcov[1][1]))
+    var_c = (a * mu_err) ** 2
+    cov = np.array([[var_c, 0.0], [0.0, 0.0]])
+
+    result = CalibrationResult(
+        coeffs=[c, a],
+        cov=cov,
+        peaks={"Po214": peak_info},
+        sigma_E=float(sigma_E),
+        sigma_E_error=dsigma_E,
+    )
+    return result
 
 
 def apply_calibration(adc_values, slope, intercept, quadratic_coeff=0.0):
@@ -271,8 +371,9 @@ def calibrate_run(adc_values, config, hist_bins=None):
     #    We look for up to 5 peaks (Po-210, Po-218, Po-214, maybe background bumps).
     #    Use config thresholds for prominence & width.
     prom = config["calibration"]["peak_prominence"]
-    wid = config["calibration"]["peak_width"]
-    peaks, props = find_peaks(hist, prominence=prom, width=wid)
+    width_cfg = config["calibration"].get("peak_widths") or {}
+    wid_global = config["calibration"].get("peak_width")
+    peaks, props = find_peaks(hist, prominence=prom, width=wid_global)
 
     # 3) From the found peaks, pick the three that best match expected energies:
     #    Convert expected energy->ADC guess via last calibration or central ADC->MeV mapping if available.
@@ -285,8 +386,14 @@ def calibrate_run(adc_values, config, hist_bins=None):
     # 2024-03: renamed from ``peak_search_radius_adc`` to ``peak_search_radius``
     radius = config["calibration"]["peak_search_radius"]
     candidates = {iso: [] for iso in ("Po210", "Po218", "Po214")}
+    peak_widths_found = props.get("widths", np.zeros_like(peaks))
     for iso, adc_guess in nominal_adc.items():
-        for idx in peaks:
+        req_width = None
+        if isinstance(width_cfg, Mapping):
+            req_width = width_cfg.get(iso)
+        for idx, pwidth in zip(peaks, peak_widths_found):
+            if req_width is not None and pwidth < req_width:
+                continue
             if abs(centers[idx] - adc_guess) <= radius:
                 candidates[iso].append(idx)
     # If multiple candidates per isotope, pick the one with highest histogram count:
@@ -320,8 +427,22 @@ def calibrate_run(adc_values, config, hist_bins=None):
         # Initial guesses:
         amp0 = float(np.max(y_slice))
         mu0 = float(x0)
-        # e.g. ~10 ADC channels
-        sigma0 = config["calibration"]["init_sigma_adc"]
+        sigma_cfg = config["calibration"].get("init_sigma_adc", 10.0)
+        if isinstance(sigma_cfg, Mapping):
+            sigma0 = sigma_cfg.get(iso, sigma_cfg.get("default", 10.0))
+        else:
+            sigma0 = sigma_cfg
+
+        sigma_E_cfg = config["calibration"].get("sigma_E_init")
+        if sigma_E_cfg is not None:
+            if isinstance(sigma_E_cfg, Mapping):
+                sigma_E_guess = sigma_E_cfg.get(iso, sigma_E_cfg.get("default"))
+            else:
+                sigma_E_guess = sigma_E_cfg
+            slope_guess = config["calibration"].get("slope_MeV_per_ch")
+            if slope_guess:
+                sigma0 = sigma_E_guess / slope_guess
+
         tau_cfg = config["calibration"].get("init_tau_adc", 0.0)
         # Avoid zero or negative starting tau which can cause numerical issues
         tau0 = max(tau_cfg, _TAU_MIN) if use_emg else 0.0
