@@ -272,6 +272,18 @@ def fit_spectrum(
     if flags.get("fix_sigma_E"):
         flags.setdefault("fix_sigma0", True)
         flags.setdefault("fix_F", True)
+    priors = priors.copy()
+    fixed_values = {}
+    sigma0_fixed = None
+    F_fixed = None
+    if flags.get("fix_sigma0", False):
+        sigma0_fixed = priors.get("sigma0", (1.0, 1.0))[0]
+        fixed_values["sigma0"] = sigma0_fixed
+        priors.pop("sigma0", None)
+    if flags.get("fix_F", False):
+        F_fixed = priors.get("F", (0.0, 1.0))[0]
+        fixed_values["F"] = F_fixed
+        priors.pop("F", None)
 
     e = np.asarray(energies, dtype=float)
     n_events = e.size
@@ -321,7 +333,11 @@ def fit_spectrum(
         "Po214": "tau_Po214" in priors,
     }
 
-    param_order = ["sigma0", "F"]
+    param_order = []
+    if sigma0_fixed is None:
+        param_order.append("sigma0")
+    if F_fixed is None:
+        param_order.append("F")
     for iso in ("Po210", "Po218", "Po214"):
         param_order.extend([f"mu_{iso}", f"S_{iso}"])
         if use_emg[iso]:
@@ -331,7 +347,7 @@ def fit_spectrum(
     p0 = []
     bounds_lo, bounds_hi = [], []
     eps = 1e-12
-    sigma0_mean = p("sigma0", 1.0)[0]
+    sigma0_mean = sigma0_fixed if sigma0_fixed is not None else p("sigma0", 1.0)[0]
     for name in param_order:
         mean, sig = p(name, 1.0)
         # Enforce a strictly positive initial tau to avoid singular EMG tails
@@ -370,10 +386,16 @@ def fit_spectrum(
 
     def _model_density(x, *params):
         idx = 0
-        sigma0 = params[idx]
-        idx += 1
-        F_val = params[idx]
-        idx += 1
+        if sigma0_fixed is None:
+            sigma0 = params[idx]
+            idx += 1
+        else:
+            sigma0 = sigma0_fixed
+        if F_fixed is None:
+            F_val = params[idx]
+            idx += 1
+        else:
+            F_val = F_fixed
         y = np.zeros_like(x)
         for iso in iso_list:
             mu = params[idx]
@@ -431,7 +453,11 @@ def fit_spectrum(
             rate = _model_density(e, *params)
             if np.any(rate <= 0) or not np.isfinite(rate).all():
                 return 1e50
-            idx = 2
+            idx = 0
+            if sigma0_fixed is None:
+                idx += 1
+            if F_fixed is None:
+                idx += 1
             S_sum = 0.0
             for iso in iso_list:
                 idx += 1  # mu
@@ -466,6 +492,9 @@ def fit_spectrum(
                 out[pname] = float(m.values[pname])
                 err = float(m.errors[pname]) if pname in m.errors else np.nan
                 out["d" + pname] = err
+            for pname, val in fixed_values.items():
+                out[pname] = float(val)
+                out["d" + pname] = 0.0
             cov = np.zeros((len(param_order), len(param_order)))
             k = len(param_order)
             out["aic"] = float(2 * m.fval + 2 * k)
@@ -501,6 +530,9 @@ def fit_spectrum(
         for i, pname in enumerate(param_order):
             out[pname] = float(m.values[pname])
             out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
+        for pname, val in fixed_values.items():
+            out[pname] = float(val)
+            out["d" + pname] = 0.0
         k = len(param_order)
         out["aic"] = float(2 * m.fval + 2 * k)
         return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
@@ -533,6 +565,9 @@ def fit_spectrum(
     for i, name in enumerate(param_order):
         out[name] = float(popt[i])
         out["d" + name] = float(perr[i])
+    for pname, val in fixed_values.items():
+        out[pname] = float(val)
+        out["d" + pname] = 0.0
 
     out["fit_valid"] = fit_valid
 
