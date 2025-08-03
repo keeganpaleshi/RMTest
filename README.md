@@ -15,13 +15,9 @@ This repository provides a complete pipeline to analyze electrostatic radon moni
 - `systematics.py`: Scan for systematic uncertainties (optional).
 - `plot_utils.py`: Plotting routines for spectrum and time-series.
 
-- `utils.py`: Miscellaneous utilities providing JSON validation and
-  count-rate conversions. Time helpers are available via
-  `utils.time_utils.parse_timestamp` and `utils.time_utils.to_epoch_seconds`.
-
-- `utils.py`: Miscellaneous utilities providing `parse_datetime` and other
-  helpers. Time conversion functions such as `parse_timestamp` and
-  `to_epoch_seconds` reside in `utils.time_utils`.
+- `utils.py`: Miscellaneous utilities providing JSON helpers, count-rate
+  conversions, and `parse_datetime`. Time conversion functions such as
+  `parse_timestamp` and `to_epoch_seconds` reside in `utils.time_utils`.
 
 - `tests/`: `pytest` unit tests for calibration, fitting, and I/O.
 
@@ -179,6 +175,7 @@ peak energies must be to their known values.  The default of `0.5` MeV
 causes calibration to fail when any Po‑210, Po‑218 or Po‑214 centroid
 deviates by more than this amount.
 
+
 sigma_E_init — optional initial guess for the peak energy resolution (MeV).
 When present it is converted to an ADC width with the fixed calibration slope
 and used only as the starting σ for the Po‑214 peak fit; it never replaces the
@@ -217,6 +214,31 @@ CLI override: --calibration-slope VALUE always supersedes
 calibration.slope_MeV_per_ch.
 
 
+Per-isotope width thresholds may also be specified via `peak_widths` to
+override the global `peak_width` used during calibration. For example:
+
+```yaml
+calibration:
+    peak_width: 5
+    peak_widths:
+        Po210: 5
+        Po218: 5
+        Po214: 6
+```
+Any isotope omitted from `peak_widths` falls back to the global setting.
+
+`slope_MeV_per_ch` fixes the linear calibration slope:
+
+- When provided, only the Po‑214 peak is used to determine the intercept, so the
+  two‑point fit is skipped.
+- Set `float_slope` to `true` to treat the slope as a prior instead of fixing
+  it; the two‑point fit will refine the slope using the data.
+- Provide `intercept_MeV` along with the slope to bypass searching for the
+  Po‑214 peak entirely.
+- The command-line option `--calibration-slope` overrides this value from the
+  CLI.
+
+
 `noise_cutoff` defines a pedestal noise threshold in ADC.  Events with raw
 ADC values at or below this threshold are removed before any fits.  The
 default is `400`.  Set it to `null` to skip the cut entirely.  The
@@ -230,17 +252,15 @@ value from the configuration file.
 Example snippet:
 
 ```yaml
-"calibration": {
-    "noise_cutoff": 400
-}
+calibration:
+  noise_cutoff: 400
 ```
 
 To disable the cut:
 
 ```yaml
-"calibration": {
-    "noise_cutoff": null
-}
+calibration:
+  noise_cutoff: null
 ```
 
 `slope_MeV_per_ch` may also be specified under `calibration` to fix the
