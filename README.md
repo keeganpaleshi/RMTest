@@ -15,13 +15,9 @@ This repository provides a complete pipeline to analyze electrostatic radon moni
 - `systematics.py`: Scan for systematic uncertainties (optional).
 - `plot_utils.py`: Plotting routines for spectrum and time-series.
 
-- `utils.py`: Miscellaneous utilities providing JSON validation and
-  count-rate conversions. Time helpers are available via
-  `utils.time_utils.parse_timestamp` and `utils.time_utils.to_epoch_seconds`.
-
-- `utils.py`: Miscellaneous utilities providing `parse_datetime` and other
-  helpers. Time conversion functions such as `parse_timestamp` and
-  `to_epoch_seconds` reside in `utils.time_utils`.
+- `utils.py`: Miscellaneous utilities providing JSON helpers, count-rate
+  conversions, and `parse_datetime`. Time conversion functions such as
+  `parse_timestamp` and `to_epoch_seconds` reside in `utils.time_utils`.
 
 - `tests/`: `pytest` unit tests for calibration, fitting, and I/O.
 
