@@ -217,6 +217,33 @@ CLI override: --calibration-slope VALUE always supersedes
 calibration.slope_MeV_per_ch.
 
 
+Per-isotope width thresholds may also be specified via `peak_widths` to
+override the global `peak_width` used during calibration. For example:
+
+```yaml
+"calibration": {
+    "peak_width": 5,
+    "peak_widths": {
+        "Po210": 5,
+        "Po218": 5,
+        "Po214": 6
+    }
+}
+```
+Any isotope omitted from `peak_widths` falls back to the global setting.
+
+`slope_MeV_per_ch` fixes the linear calibration slope:
+
+- When provided, only the Po‑214 peak is used to determine the intercept, so the
+  two‑point fit is skipped.
+- Set `float_slope` to `true` to treat the slope as a prior instead of fixing
+  it; the two‑point fit will refine the slope using the data.
+- Provide `intercept_MeV` along with the slope to bypass searching for the
+  Po‑214 peak entirely.
+- The command-line option `--calibration-slope` overrides this value from the
+  CLI.
+
+
 `noise_cutoff` defines a pedestal noise threshold in ADC.  Events with raw
 ADC values at or below this threshold are removed before any fits.  The
 default is `400`.  Set it to `null` to skip the cut entirely.  The
