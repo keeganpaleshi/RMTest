@@ -202,7 +202,9 @@ calibration:
 slope_MeV_per_ch — fixes the linear calibration slope.
 
 • If float_slope is false (default) the slope is locked; only the Po‑214
-peak is fitted and its centroid gives the intercept.
+peak is fitted and its centroid gives the intercept unless `use_two_point`
+is true, in which case the Po‑210 and Po‑214 centroids determine the
+intercept.
 • If float_slope is true the value acts as a starting guess; a two‑point
 fit (Po‑210 & Po‑214) refines both slope and intercept.
 • You may also supply intercept_MeV together with the slope to bypass the
@@ -245,8 +247,9 @@ To disable the cut:
 
 `slope_MeV_per_ch` may also be specified under `calibration` to fix the
 ADC->MeV conversion. When this slope is given the two-point fit is skipped
-and the provided value is used directly. If `intercept_MeV` is also
-supplied the calibration is fully fixed and Po‑214 is no longer searched.
+unless `use_two_point` is set, in which case the intercept is solved from
+the Po‑210 and Po‑214 peaks. If `intercept_MeV` is also supplied the
+calibration is fully fixed and Po‑214 is no longer searched.
 Set either value to `null` to retain the automatic calibration.
 
 When the cut is applied the analysis logs how many events were removed. This
