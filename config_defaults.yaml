@@ -6,6 +6,7 @@ calibration:
   slope_MeV_per_ch: null
   intercept_MeV: null
   float_slope: false
+  use_two_point: false
   sigma_E_init: null
   peak_widths: null
 spectral_fit:
