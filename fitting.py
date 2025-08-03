@@ -688,6 +688,11 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
     """
     iso_list = list(config["isotopes"].keys())
 
+    n_events = sum(len(np.asarray(times_dict.get(iso, []))) for iso in iso_list)
+    min_counts = config.get("min_counts")
+    if min_counts is not None and n_events < min_counts:
+        return FitResult({"fit_valid": False}, None, 0, {}, counts=int(n_events))
+
     # Normalize weights mapping
     if weights is None:
         weights_dict = {iso: None for iso in iso_list}
