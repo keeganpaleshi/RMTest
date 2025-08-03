@@ -178,6 +178,14 @@ def fixed_slope_calibration(adc_values, cfg):
         Raw ADC values from a single run.
     cfg : dict
         Configuration dictionary containing ``calibration`` options.
+
+    Notes
+    -----
+    - Returns a CalibrationResult dataclass (keeps #1049 API).
+    - If ``calibration.sigma_E_init`` is provided (scalar or mapping),
+      it is used to set the **initial guess** for the peak width by
+      converting MeV -> ADC via the fixed slope. It does not override
+      the fitted sigma_E in the result.
     """
 
     a = cfg["calibration"]["slope_MeV_per_ch"]
@@ -187,7 +195,7 @@ def fixed_slope_calibration(adc_values, cfg):
     window = cal_cfg.get("peak_search_radius", 50)
     prominence = cal_cfg.get("peak_prominence", 0.0)
 
-    # Optional per-isotope width overrides
+    # Optional per-isotope width overrides (used by the discrete peak finder)
     width_cfg = cal_cfg.get("peak_widths") or {}
     if isinstance(width_cfg, Mapping):
         width_po214 = width_cfg.get("Po214", cal_cfg.get("peak_width"))
@@ -201,39 +209,109 @@ def fixed_slope_calibration(adc_values, cfg):
         prominence=prominence,
         width=width_po214,
     )
-
     adc_peak = peaks["Po214"]
 
-    energies = {
-        **DEFAULT_KNOWN_ENERGIES,
-        **cal_cfg.get("known_energies", {}),
-    }
+    # Build histogram with 1 channel per bin for the fit
+    adc_arr = np.asarray(adc_values, dtype=float)
+    min_adc = int(np.min(adc_arr))
+    max_adc = int(np.max(adc_arr))
+    edges = np.arange(min_adc, max_adc + 2)
+    hist, edges = np.histogram(adc_arr, bins=edges)
+    centers = 0.5 * (edges[:-1] + edges[1:])
 
-    E_known = energies["Po214"]
-    c = float(E_known - a * adc_peak)
+    fit_window = cal_cfg.get("fit_window_adc", 50)
+    use_emg = cal_cfg.get("use_emg", False)
+    lo = adc_peak - fit_window
+    hi = adc_peak + fit_window
+    mask = (centers >= lo) & (centers <= hi)
+    x_slice = centers[mask]
+    y_slice = hist[mask].astype(float)
+    if len(x_slice) < 5:
+        raise RuntimeError(
+            f"Not enough points to fit peak for Po214 (only {len(x_slice)} bins)."
+        )
 
-    # Determine initial width guess: prefer energy-based config when provided
-    sigma_E_init = cal_cfg.get("sigma_E_init")
-    if sigma_E_init is not None:
-        if isinstance(sigma_E_init, Mapping):
-            sigma_E = sigma_E_init.get("Po214")
-        else:
-            sigma_E = sigma_E_init
+    # Initial guesses
+    amp0 = float(np.max(y_slice))
+    mu0 = float(adc_peak)
+
+    # Base ADC-space width guess
+    sigma_cfg = cal_cfg.get("init_sigma_adc", 10.0)
+    if isinstance(sigma_cfg, Mapping):
+        sigma0 = sigma_cfg.get("Po214", sigma_cfg.get("default", 10.0))
     else:
-        # Fall back to ADC-based width
-        sigma_adc_cfg = cal_cfg.get("init_sigma_adc", 0.0)
-        if isinstance(sigma_adc_cfg, Mapping):
-            sigma_adc = sigma_adc_cfg.get("Po214", 0.0)
-        else:
-            sigma_adc = sigma_adc_cfg
-        sigma_E = sigma_adc * a
+        sigma0 = sigma_cfg
 
-    return {
-        "a": a,
-        "c": c,
-        "sigma_E": sigma_E,
-        "calibration_valid": True,
+    # Optional energy-space width guess -> convert to ADC using fixed slope
+    sigma_E_cfg = cal_cfg.get("sigma_E_init")
+    if sigma_E_cfg is not None:
+        if isinstance(sigma_E_cfg, Mapping):
+            sigma_E_guess = sigma_E_cfg.get("Po214", sigma_E_cfg.get("default"))
+        else:
+            sigma_E_guess = sigma_E_cfg
+        if sigma_E_guess is not None:
+            # guard against zero slope, though config should never set that
+            if a == 0:
+                raise ValueError("Fixed slope 'a' must be nonzero for sigma_E_init conversion")
+            sigma0 = float(abs(sigma_E_guess) / abs(a))
+
+    tau_cfg = cal_cfg.get("init_tau_adc", 0.0)
+    tau0 = max(tau_cfg, _TAU_MIN) if use_emg else 0.0
+
+    if use_emg:
+        def model_emg(x, A, mu, sigma, tau):
+            return A * emg_left(x, mu, sigma, tau)
+
+        p0 = [amp0, mu0, sigma0, tau0]
+        bounds = (
+            [0, mu0 - fit_window, 1e-3, _TAU_MIN],
+            [np.inf, mu0 + fit_window, 50.0, 200.0],
+        )
+        popt, pcov = curve_fit(model_emg, x_slice, y_slice, p0=p0, bounds=bounds)
+        A_fit, mu_fit, sigma_fit, tau_fit = popt
+    else:
+        def model_gauss(x, A, mu, sigma):
+            return A * gaussian(x, mu, sigma)
+
+        p0 = [amp0, mu0, sigma0]
+        bounds = ([0, mu0 - fit_window, 1e-3], [np.inf, mu0 + fit_window, 50.0])
+        popt, pcov = curve_fit(model_gauss, x_slice, y_slice, p0=p0, bounds=bounds)
+        A_fit, mu_fit, sigma_fit = popt
+        tau_fit = 0.0
+
+    peak_info = {
+        "centroid_adc": float(mu_fit),
+        "sigma_adc": float(sigma_fit),
+        "tau_adc": float(tau_fit),
+        "amplitude": float(A_fit),
+        "covariance": pcov.tolist(),
     }
+
+    # Intercept from the known Po214 energy and fixed slope
+    energies = {**DEFAULT_KNOWN_ENERGIES, **cal_cfg.get("known_energies", {})}
+    E_known = energies["Po214"]
+    c = float(E_known - a * mu_fit)
+    peak_info["centroid_mev"] = float(apply_calibration(mu_fit, a, c))
+
+    # Convert sigma from ADC to energy using fixed slope and propagate errors
+    sigma_adc = float(sigma_fit)
+    sigma_E = abs(a) * sigma_adc
+    var_sigma_adc = float(pcov[2][2])
+    dsigma_E = abs(a) * float(np.sqrt(max(var_sigma_adc, 0.0)))
+
+    # Intercept uncertainty from centroid fit; slope is fixed
+    mu_err = float(np.sqrt(pcov[1][1]))
+    var_c = (a * mu_err) ** 2
+    cov = np.array([[var_c, 0.0], [0.0, 0.0]])
+
+    result = CalibrationResult(
+        coeffs=[c, a],
+        cov=cov,
+        peaks={"Po214": peak_info},
+        sigma_E=float(sigma_E),
+        sigma_E_error=dsigma_E,
+    )
+    return result
 
 
 def apply_calibration(adc_values, slope, intercept, quadratic_coeff=0.0):
