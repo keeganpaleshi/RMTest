@@ -38,6 +38,20 @@ def test_fit_time_series_po214_only():
     assert abs(E_fit - E_true) / E_true < 1.0
 
 
+def test_fit_time_series_respects_min_counts():
+    times = np.linspace(0, 1, 10)
+    times_dict = {"Po214": times}
+    cfg = {
+        "isotopes": {"Po214": {"half_life_s": 1.0, "efficiency": 1.0}},
+        "fit_background": True,
+        "fit_initial": True,
+        "min_counts": 20,
+    }
+    res = fit_time_series(times_dict, 0.0, 1.0, cfg)
+    assert res.params.get("fit_valid") is False
+    assert res.counts == len(times)
+
+
 def test_fit_time_series_time_window_config():
     """Changing the energy window should alter the events passed to fit_time_series."""
     # Two groups of events at different energies

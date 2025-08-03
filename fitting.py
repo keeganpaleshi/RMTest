@@ -694,6 +694,19 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
     else:
         weights_dict = {iso: np.asarray(weights.get(iso), dtype=float) if weights.get(iso) is not None else None for iso in iso_list}
 
+    # Optional guard for low statistics
+    min_counts = int(config.get("min_counts", 0))
+    total_counts = 0
+    for iso in iso_list:
+        arr = times_dict.get(iso, [])
+        w_arr = weights_dict.get(iso)
+        if w_arr is None:
+            total_counts += len(arr)
+        else:
+            total_counts += float(np.sum(w_arr))
+    if total_counts < min_counts:
+        return FitResult({"fit_valid": False}, np.zeros((0, 0)), 0, counts=int(total_counts))
+
     # 1) Build maps: lam_map, eff_map, fix_b_map, fix_n0_map
     lam_map, eff_map = {}, {}
     fix_b_map, fix_n0_map = {}, {}
