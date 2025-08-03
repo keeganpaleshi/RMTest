@@ -199,13 +199,16 @@ override the global `peak_width` used during calibration. For example:
 ```
 Any isotope omitted from `peak_widths` falls back to the global setting.
 
-`slope_MeV_per_ch` fixes the linear calibration slope. When provided only the
-Po‑214 peak is used to determine the intercept so the two‑point fit is skipped.
-Set `float_slope` to `true` to treat the slope as a prior instead of fixing it;
-the two‑point fit will refine the slope using the data. Alternatively
-`intercept_MeV` may be supplied along with the slope to bypass searching for
-the Po‑214 peak entirely.
-The command-line option `--calibration-slope` overrides this value from the CLI.
+`slope_MeV_per_ch` fixes the linear calibration slope:
+
+- When provided, only the Po‑214 peak is used to determine the intercept, so the
+  two‑point fit is skipped.
+- Set `float_slope` to `true` to treat the slope as a prior instead of fixing
+  it; the two‑point fit will refine the slope using the data.
+- Provide `intercept_MeV` along with the slope to bypass searching for the
+  Po‑214 peak entirely.
+- The command-line option `--calibration-slope` overrides this value from the
+  CLI.
 
 `noise_cutoff` defines a pedestal noise threshold in ADC.  Events with raw
 ADC values at or below this threshold are removed before any fits.  The
