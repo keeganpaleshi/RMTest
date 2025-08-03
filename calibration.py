@@ -198,20 +198,89 @@ def fixed_slope_calibration(adc_values, cfg):
 
     adc_peak = peaks["Po214"]
 
+    # Build histogram with 1 channel per bin for the fit
+    adc_arr = np.asarray(adc_values, dtype=float)
+    min_adc = int(np.min(adc_arr))
+    max_adc = int(np.max(adc_arr))
+    edges = np.arange(min_adc, max_adc + 2)
+    hist, edges = np.histogram(adc_arr, bins=edges)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+
+    fit_window = cal_cfg.get("fit_window_adc", 50)
+    use_emg = cal_cfg.get("use_emg", False)
+    lo = adc_peak - fit_window
+    hi = adc_peak + fit_window
+    mask = (centers >= lo) & (centers <= hi)
+    x_slice = centers[mask]
+    y_slice = hist[mask].astype(float)
+    if len(x_slice) < 5:
+        raise RuntimeError(
+            f"Not enough points to fit peak for Po214 (only {len(x_slice)} bins)."
+        )
+
+    amp0 = float(np.max(y_slice))
+    mu0 = float(adc_peak)
+    sigma0 = cal_cfg.get("init_sigma_adc", 10.0)
+    tau_cfg = cal_cfg.get("init_tau_adc", 0.0)
+    tau0 = max(tau_cfg, _TAU_MIN) if use_emg else 0.0
+
+    if use_emg:
+        def model_emg(x, A, mu, sigma, tau):
+            return A * emg_left(x, mu, sigma, tau)
+
+        p0 = [amp0, mu0, sigma0, tau0]
+        bounds = (
+            [0, mu0 - fit_window, 1e-3, _TAU_MIN],
+            [np.inf, mu0 + fit_window, 50.0, 200.0],
+        )
+        popt, pcov = curve_fit(model_emg, x_slice, y_slice, p0=p0, bounds=bounds)
+        A_fit, mu_fit, sigma_fit, tau_fit = popt
+    else:
+        def model_gauss(x, A, mu, sigma):
+            return A * gaussian(x, mu, sigma)
+
+        p0 = [amp0, mu0, sigma0]
+        bounds = ([0, mu0 - fit_window, 1e-3], [np.inf, mu0 + fit_window, 50.0])
+        popt, pcov = curve_fit(model_gauss, x_slice, y_slice, p0=p0, bounds=bounds)
+        A_fit, mu_fit, sigma_fit = popt
+        tau_fit = 0.0
+
+    peak_info = {
+        "centroid_adc": float(mu_fit),
+        "sigma_adc": float(sigma_fit),
+        "tau_adc": float(tau_fit),
+        "amplitude": float(A_fit),
+        "covariance": pcov.tolist(),
+    }
+
     energies = {
         **DEFAULT_KNOWN_ENERGIES,
         **cal_cfg.get("known_energies", {}),
     }
 
     E_known = energies["Po214"]
-    c = float(E_known - a * adc_peak)
+    c = float(E_known - a * mu_fit)
+    peak_info["centroid_mev"] = float(apply_calibration(mu_fit, a, c))
 
-    return {
-        "a": a,
-        "c": c,
-        "sigma_E": cal_cfg["init_sigma_adc"],
-        "calibration_valid": True,
-    }
+    # Convert sigma from ADC to energy using fixed slope
+    sigma_adc = float(sigma_fit)
+    sigma_E = abs(a) * sigma_adc
+    var_sigma_adc = pcov[2][2]
+    dsigma_E = abs(a) * float(np.sqrt(max(var_sigma_adc, 0.0)))
+
+    # Intercept uncertainty from centroid fit; slope is fixed
+    mu_err = float(np.sqrt(pcov[1][1]))
+    var_c = (a * mu_err) ** 2
+    cov = np.array([[var_c, 0.0], [0.0, 0.0]])
+
+    result = CalibrationResult(
+        coeffs=[c, a],
+        cov=cov,
+        peaks={"Po214": peak_info},
+        sigma_E=float(sigma_E),
+        sigma_E_error=dsigma_E,
+    )
+    return result
 
 
 def apply_calibration(adc_values, slope, intercept, quadratic_coeff=0.0):
