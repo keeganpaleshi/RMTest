@@ -179,33 +179,43 @@ peak energies must be to their known values.  The default of `0.5` MeV
 causes calibration to fail when any Po‑210, Po‑218 or Po‑214 centroid
 deviates by more than this amount.
 
-`sigma_E_init` optionally supplies an initial guess for the peak energy
-resolution in MeV. When provided it is converted to an ADC width using the
-calibration slope and used as the starting point for the peak fits. This
-value takes precedence over the ADC-based `init_sigma_adc`.
+sigma_E_init — optional initial guess for the peak energy resolution (MeV).
+When present it is converted to an ADC width with the fixed calibration slope
+and used only as the starting σ for the Po‑214 peak fit; it never replaces the
+fitted σ_E that is written to summary.json.
 
-Per-isotope width thresholds may also be specified via `peak_widths` to
-override the global `peak_width` used during calibration. For example:
+calibration:
+  sigma_E_init: 0.015        # one value for all isotopes, in MeV
+  # or, per isotope:
+  sigma_E_init:
+    Po214: 0.012
+    Po218: 0.014
 
-```yaml
-"calibration": {
-    "peak_width": 5,
-    "peak_widths": {
-        "Po210": 5,
-        "Po218": 5,
-        "Po214": 6
-    }
-}
-```
-Any isotope omitted from `peak_widths` falls back to the global setting.
+peak_widths — per‑isotope minimum widths (ADC channels) used when searching
+for peaks.  Isotopes not listed fall back to the global peak_width.
 
-`slope_MeV_per_ch` fixes the linear calibration slope. When provided only the
-Po‑214 peak is used to determine the intercept so the two‑point fit is skipped.
-Set `float_slope` to `true` to treat the slope as a prior instead of fixing it;
-the two‑point fit will refine the slope using the data. Alternatively
-`intercept_MeV` may be supplied along with the slope to bypass searching for
-the Po‑214 peak entirely.
-The command-line option `--calibration-slope` overrides this value from the CLI.
+calibration:
+  peak_width: 5              # global default
+  peak_widths:
+    Po214: 6                 # override for Po‑214 only
+
+slope_MeV_per_ch — fixes the linear calibration slope.
+
+• If float_slope is false (default) the slope is locked; only the Po‑214
+peak is fitted and its centroid gives the intercept.
+• If float_slope is true the value acts as a starting guess; a two‑point
+fit (Po‑210 & Po‑214) refines both slope and intercept.
+• You may also supply intercept_MeV together with the slope to bypass the
+Po‑214 search entirely.
+
+calibration:
+  slope_MeV_per_ch: 0.00430
+  float_slope: true          # let the data refine it
+  # intercept_MeV: -0.12     # uncomment to skip Po‑214 search
+
+CLI override: --calibration-slope VALUE always supersedes
+calibration.slope_MeV_per_ch.
+
 
 `noise_cutoff` defines a pedestal noise threshold in ADC.  Events with raw
 ADC values at or below this threshold are removed before any fits.  The
