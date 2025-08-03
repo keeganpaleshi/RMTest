@@ -30,4 +30,8 @@ time_fit:
   window_po210:
   - 5.25
   - 5.37
-  min_counts: 20
+  eff_po214: 0.25
+  bkg_po214:
+  - 0.0
+  - 0.2
+  min_counts: 200

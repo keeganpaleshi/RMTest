@@ -2298,6 +2298,7 @@ def main(argv=None):
             ),
             "background_guess": cfg["time_fit"].get("background_guess", 0.0),
             "n0_guess_fraction": cfg["time_fit"].get("n0_guess_fraction", 0.1),
+            "min_counts": cfg["time_fit"].get("min_counts", 0),
         }
 
         # Run time-series fit
