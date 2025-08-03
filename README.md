@@ -179,13 +179,25 @@ peak energies must be to their known values.  The default of `0.5` MeV
 causes calibration to fail when any Po‑210, Po‑218 or Po‑214 centroid
 deviates by more than this amount.
 
-`slope_MeV_per_ch` fixes the linear calibration slope. When provided only the
-Po‑214 peak is used to determine the intercept so the two‑point fit is skipped.
-Set `float_slope` to `true` to treat the slope as a prior instead of fixing it;
-the two‑point fit will refine the slope using the data. Alternatively
-`intercept_MeV` may be supplied along with the slope to bypass searching for
-the Po‑214 peak entirely.
-The command-line option `--calibration-slope` overrides this value from the CLI.
+`slope_MeV_per_ch` sets the linear calibration slope.  When provided and
+`float_slope` remains `false` (the default), the two‑point fit is disabled and
+the calibration line is fixed; only the Po‑214 peak is used to determine the
+intercept unless `intercept_MeV` is also supplied.  Set `float_slope` to
+`true` to treat the slope as a starting scale—the two‑point fit will then
+refine the slope using the data. Alternatively `intercept_MeV` may be supplied
+along with the slope to bypass searching for the Po‑214 peak entirely.  The
+command-line option `--calibration-slope` overrides this value from the CLI.
+
+Example snippet to provide an initial slope while still fitting the peaks:
+
+```yaml
+calibration:
+  slope_MeV_per_ch: 0.0043
+  float_slope: true
+```
+
+This begins the fit near 0.0043 MeV/channel but allows the data to adjust the
+final slope.
 
 `noise_cutoff` defines a pedestal noise threshold in ADC.  Events with raw
 ADC values at or below this threshold are removed before any fits.  The
