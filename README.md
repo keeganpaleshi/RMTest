@@ -179,6 +179,7 @@ peak energies must be to their known values.  The default of `0.5` MeV
 causes calibration to fail when any Po‑210, Po‑218 or Po‑214 centroid
 deviates by more than this amount.
 
+
 sigma_E_init — optional initial guess for the peak energy resolution (MeV).
 When present it is converted to an ADC width with the fixed calibration slope
 and used only as the starting σ for the Po‑214 peak fit; it never replaces the
