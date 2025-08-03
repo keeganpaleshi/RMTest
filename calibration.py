@@ -169,6 +169,53 @@ def two_point_calibration(adc_centroids, energies):
     return float(a), float(c)
 
 
+def intercept_fit_two_point(adc_values, cfg):
+    """Fit intercept using fixed slope and Po-210/Po-214 centroids.
+
+    This helper first fits the three radon peaks using :func:`calibrate_run`
+    to obtain precise ADC centroids.  With a user-supplied fixed slope
+    ``a``, the intercept is solved from the Po-210 and Po-214 centroids via
+    ``c = mean(E_i - a * ADC_i)``.  The slope uncertainty is set to zero and
+    the intercept variance is propagated from the centroid errors.
+    """
+
+    cal_cfg = cfg.get("calibration", {})
+    a = cal_cfg["slope_MeV_per_ch"]
+
+    # Reuse calibrate_run to determine centroid locations and widths
+    result = calibrate_run(adc_values, cfg)
+    peaks = result.peaks or {}
+
+    energies = {**DEFAULT_KNOWN_ENERGIES, **cal_cfg.get("known_energies", {})}
+    adc210 = peaks["Po210"]["centroid_adc"]
+    adc214 = peaks["Po214"]["centroid_adc"]
+
+    c210 = energies["Po210"] - a * adc210
+    c214 = energies["Po214"] - a * adc214
+    c = 0.5 * (c210 + c214)
+
+    # Centroid uncertainties -> intercept variance
+    mu_err_210 = float(np.sqrt(peaks["Po210"]["covariance"][1][1]))
+    mu_err_214 = float(np.sqrt(peaks["Po214"]["covariance"][1][1]))
+    var_c = (a ** 2 / 4.0) * (mu_err_210**2 + mu_err_214**2)
+
+    # Propagate sigma_E from Po-214 peak width
+    sigma_adc = peaks["Po214"]["sigma_adc"]
+    var_sigma_adc = peaks["Po214"]["covariance"][2][2]
+    sigma_E = abs(a) * sigma_adc
+    dsigma_E = abs(a) * np.sqrt(var_sigma_adc)
+
+    cov = np.array([[var_c, 0.0], [0.0, 0.0]])
+
+    return CalibrationResult(
+        coeffs=[float(c), float(a)],
+        cov=cov,
+        sigma_E=float(sigma_E),
+        sigma_E_error=float(dsigma_E),
+        peaks=peaks,
+    )
+
+
 def fixed_slope_calibration(adc_values, cfg):
     """Return calibration constants when the slope is fixed.
 
@@ -759,6 +806,7 @@ def derive_calibration_constants_auto(
 __all__ = [
     "CalibrationResult",
     "two_point_calibration",
+    "intercept_fit_two_point",
     "fixed_slope_calibration",
     "intercept_fit_two_point",
     "apply_calibration",

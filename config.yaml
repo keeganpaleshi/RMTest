@@ -54,6 +54,7 @@ calibration:
     Po214: 5
   slope_MeV_per_ch: 0.00427
   float_slope: false
+  use_two_point: true
   nominal_adc:
     Po210: 1246
     Po218: 1399
