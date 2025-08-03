@@ -327,6 +327,12 @@ def fit_spectrum(
         if use_emg[iso]:
             param_order.append(f"tau_{iso}")
     param_order.extend(["b0", "b1"])
+    # Indices of parameters that are free during the fit.  Fixed parameters
+    # lead to nearly-singular covariance rows/cols, so exclude them from
+    # positive-definiteness checks.
+    free_idx = [
+        i for i, name in enumerate(param_order) if not flags.get(f"fix_{name}", False)
+    ]
 
     p0 = []
     bounds_lo, bounds_hi = [], []
@@ -475,8 +481,11 @@ def fit_spectrum(
         cov = np.array(m.covariance)
         perr = np.sqrt(np.clip(np.diag(cov), 0, None))
         try:
-            eigvals = np.linalg.eigvals(cov)
-            fit_valid = bool(np.all(eigvals > 0))
+            if free_idx:
+                eigvals = np.linalg.eigvals(cov[np.ix_(free_idx, free_idx)])
+                fit_valid = bool(np.all(eigvals > 0))
+            else:
+                fit_valid = True
         except np.linalg.LinAlgError:
             fit_valid = False
         if not fit_valid:
@@ -492,7 +501,8 @@ def fit_spectrum(
                 jitter = 1e-12
             cov = cov + jitter * np.eye(cov.shape[0])
             try:
-                np.linalg.cholesky(cov)
+                if free_idx:
+                    np.linalg.cholesky(cov[np.ix_(free_idx, free_idx)])
                 fit_valid = True
                 perr = np.sqrt(np.clip(np.diag(cov), 0, None))
             except np.linalg.LinAlgError:
@@ -507,8 +517,11 @@ def fit_spectrum(
 
     perr = np.sqrt(np.clip(np.diag(pcov), 0, None))
     try:
-        eigvals = np.linalg.eigvals(pcov)
-        fit_valid = bool(np.all(eigvals > 0))
+        if free_idx:
+            eigvals = np.linalg.eigvals(pcov[np.ix_(free_idx, free_idx)])
+            fit_valid = bool(np.all(eigvals > 0))
+        else:
+            fit_valid = True
     except np.linalg.LinAlgError:
         fit_valid = False
 
@@ -524,7 +537,8 @@ def fit_spectrum(
             jitter = 1e-12
         pcov = pcov + jitter * np.eye(pcov.shape[0])
         try:
-            np.linalg.cholesky(pcov)
+            if free_idx:
+                np.linalg.cholesky(pcov[np.ix_(free_idx, free_idx)])
             fit_valid = True
             perr = np.sqrt(np.clip(np.diag(pcov), 0, None))
         except np.linalg.LinAlgError:
