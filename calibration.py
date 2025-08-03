@@ -314,6 +314,143 @@ def fixed_slope_calibration(adc_values, cfg):
     return result
 
 
+def intercept_fit_two_point(adc_values, cfg):
+    """Return intercept using fixed slope and Po-210/Po-214 peaks."""
+
+    a = cfg["calibration"]["slope_MeV_per_ch"]
+
+    cal_cfg = cfg.get("calibration", {})
+    expected = {
+        iso: cal_cfg["nominal_adc"][iso] for iso in ("Po210", "Po214")
+    }
+    window = cal_cfg.get("peak_search_radius", 50)
+    prominence = cal_cfg.get("peak_prominence", 0.0)
+
+    width_cfg = cal_cfg.get("peak_widths") or {}
+    width_global = cal_cfg.get("peak_width")
+
+    peaks = {}
+    for iso in ("Po210", "Po214"):
+        if isinstance(width_cfg, Mapping):
+            width = width_cfg.get(iso, width_global)
+        else:
+            width = width_global
+        found = utils.find_adc_bin_peaks(
+            adc_values,
+            {iso: expected[iso]},
+            window=window,
+            prominence=prominence,
+            width=width,
+        )
+        peaks.update(found)
+
+    adc_arr = np.asarray(adc_values, dtype=float)
+    min_adc = int(np.min(adc_arr))
+    max_adc = int(np.max(adc_arr))
+    edges = np.arange(min_adc, max_adc + 2)
+    hist, edges = np.histogram(adc_arr, bins=edges)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+
+    fit_window = cal_cfg.get("fit_window_adc", 50)
+    use_emg = cal_cfg.get("use_emg", False)
+
+    peak_fits = {}
+    for iso in ("Po210", "Po214"):
+        adc_peak = peaks[iso]
+        lo = adc_peak - fit_window
+        hi = adc_peak + fit_window
+        mask = (centers >= lo) & (centers <= hi)
+        x_slice = centers[mask]
+        y_slice = hist[mask].astype(float)
+        if len(x_slice) < 5:
+            raise RuntimeError(
+                f"Not enough points to fit peak for {iso} (only {len(x_slice)} bins)."
+            )
+
+        amp0 = float(np.max(y_slice))
+        mu0 = float(adc_peak)
+
+        sigma_cfg = cal_cfg.get("init_sigma_adc", 10.0)
+        if isinstance(sigma_cfg, Mapping):
+            sigma0 = sigma_cfg.get(iso, sigma_cfg.get("default", 10.0))
+        else:
+            sigma0 = sigma_cfg
+
+        sigma_E_cfg = cal_cfg.get("sigma_E_init")
+        if sigma_E_cfg is not None:
+            if isinstance(sigma_E_cfg, Mapping):
+                sigma_E_guess = sigma_E_cfg.get(iso, sigma_E_cfg.get("default"))
+            else:
+                sigma_E_guess = sigma_E_cfg
+            if sigma_E_guess is not None:
+                if a == 0:
+                    raise ValueError(
+                        "Fixed slope 'a' must be nonzero for sigma_E_init conversion"
+                    )
+                sigma0 = float(abs(sigma_E_guess) / abs(a))
+
+        tau_cfg = cal_cfg.get("init_tau_adc", 0.0)
+        tau0 = max(tau_cfg, _TAU_MIN) if use_emg else 0.0
+
+        if use_emg:
+            def model_emg(x, A, mu, sigma, tau):
+                return A * emg_left(x, mu, sigma, tau)
+
+            p0 = [amp0, mu0, sigma0, tau0]
+            bounds = (
+                [0, mu0 - fit_window, 1e-3, _TAU_MIN],
+                [np.inf, mu0 + fit_window, 50.0, 200.0],
+            )
+            popt, pcov = curve_fit(model_emg, x_slice, y_slice, p0=p0, bounds=bounds)
+            A_fit, mu_fit, sigma_fit, tau_fit = popt
+        else:
+            def model_gauss(x, A, mu, sigma):
+                return A * gaussian(x, mu, sigma)
+
+            p0 = [amp0, mu0, sigma0]
+            bounds = ([0, mu0 - fit_window, 1e-3], [np.inf, mu0 + fit_window, 50.0])
+            popt, pcov = curve_fit(model_gauss, x_slice, y_slice, p0=p0, bounds=bounds)
+            A_fit, mu_fit, sigma_fit = popt
+            tau_fit = 0.0
+
+        peak_fits[iso] = {
+            "centroid_adc": float(mu_fit),
+            "sigma_adc": float(sigma_fit),
+            "tau_adc": float(tau_fit),
+            "amplitude": float(A_fit),
+            "covariance": pcov.tolist(),
+        }
+
+    energies = {**DEFAULT_KNOWN_ENERGIES, **cal_cfg.get("known_energies", {})}
+    c210 = energies["Po210"] - a * peak_fits["Po210"]["centroid_adc"]
+    c214 = energies["Po214"] - a * peak_fits["Po214"]["centroid_adc"]
+    c = 0.5 * (c210 + c214)
+
+    for iso in ("Po210", "Po214"):
+        peak_fits[iso]["centroid_mev"] = float(
+            apply_calibration(peak_fits[iso]["centroid_adc"], a, c)
+        )
+
+    sigma_adc = peak_fits["Po214"]["sigma_adc"]
+    sigma_E = abs(a) * sigma_adc
+    var_sigma_adc = float(peak_fits["Po214"]["covariance"][2][2])
+    dsigma_E = abs(a) * float(np.sqrt(max(var_sigma_adc, 0.0)))
+
+    mu_err_210 = float(np.sqrt(peak_fits["Po210"]["covariance"][1][1]))
+    mu_err_214 = float(np.sqrt(peak_fits["Po214"]["covariance"][1][1]))
+    var_c = (a**2 / 4.0) * (mu_err_210**2 + mu_err_214**2)
+    cov = np.array([[var_c, 0.0], [0.0, 0.0]])
+
+    result = CalibrationResult(
+        coeffs=[float(c), float(a)],
+        cov=cov,
+        peaks=peak_fits,
+        sigma_E=float(sigma_E),
+        sigma_E_error=dsigma_E,
+    )
+    return result
+
+
 def apply_calibration(adc_values, slope, intercept, quadratic_coeff=0.0):
     """Convert ADC values to energy using calibration coefficients.
 
@@ -653,6 +790,8 @@ def derive_calibration_constants(adc_values, config):
     float_slope = cal_cfg.get("float_slope", False)
 
     if slope is not None and not float_slope:
+        if cal_cfg.get("use_two_point", False):
+            return intercept_fit_two_point(adc_values, config)
         return fixed_slope_calibration(adc_values, config)
 
     cfg = config if slope is None or not float_slope else deepcopy(config)
@@ -726,6 +865,7 @@ __all__ = [
     "CalibrationResult",
     "two_point_calibration",
     "fixed_slope_calibration",
+    "intercept_fit_two_point",
     "apply_calibration",
     "calibrate_run",
     "derive_calibration_constants",

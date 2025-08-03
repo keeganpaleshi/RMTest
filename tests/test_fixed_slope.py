@@ -25,6 +25,38 @@ def test_fixed_slope_calibration():
     assert res.sigma_E == pytest.approx(0.00435 * 2, rel=0.2)
 
 
+def test_two_point_intercept():
+    rng = np.random.default_rng(2)
+    a = 0.00435
+    c_true = -0.02
+    mu210 = (5.304 - c_true) / a
+    mu214 = (7.687 - c_true) / a
+    adc = np.concatenate(
+        [rng.normal(mu210, 2, 200), rng.normal(mu214, 2, 200)]
+    )
+
+    cfg = {
+        "calibration": {
+            "slope_MeV_per_ch": a,
+            "float_slope": False,
+            "use_two_point": True,
+            "nominal_adc": {"Po210": int(mu210), "Po214": int(mu214)},
+            "peak_search_radius": 20,
+            "peak_prominence": 0.0,
+            "peak_width": 1,
+            "fit_window_adc": 20,
+            "use_emg": False,
+            "init_sigma_adc": 4.0,
+            "init_tau_adc": 0.0,
+            "known_energies": {"Po210": 5.304, "Po214": 7.687},
+        }
+    }
+
+    res = derive_calibration_constants(adc, cfg)
+    assert res.coeffs[1] == a
+    assert res.coeffs[0] == pytest.approx(c_true, abs=0.05)
+
+
 def test_float_slope_calibration():
     rng = np.random.default_rng(1)
     adc = np.concatenate(
