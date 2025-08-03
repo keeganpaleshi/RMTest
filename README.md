@@ -188,14 +188,12 @@ Per-isotope width thresholds may also be specified via `peak_widths` to
 override the global `peak_width` used during calibration. For example:
 
 ```yaml
-"calibration": {
-    "peak_width": 5,
-    "peak_widths": {
-        "Po210": 5,
-        "Po218": 5,
-        "Po214": 6
-    }
-}
+calibration:
+    peak_width: 5
+    peak_widths:
+        Po210: 5
+        Po218: 5
+        Po214: 6
 ```
 Any isotope omitted from `peak_widths` falls back to the global setting.
 
