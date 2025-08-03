@@ -254,17 +254,15 @@ value from the configuration file.
 Example snippet:
 
 ```yaml
-"calibration": {
-    "noise_cutoff": 400
-}
+calibration:
+  noise_cutoff: 400
 ```
 
 To disable the cut:
 
 ```yaml
-"calibration": {
-    "noise_cutoff": null
-}
+calibration:
+  noise_cutoff: null
 ```
 
 `slope_MeV_per_ch` may also be specified under `calibration` to fix the
