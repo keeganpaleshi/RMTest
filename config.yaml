@@ -126,17 +126,18 @@ time_fit:
   window_po210:
   - 5.25
   - 5.37
-  eff_po214: null
+  eff_po214: 0.25
   eff_po218: null
   eff_po210: null
   hl_po214: null
   hl_po218: null
   bkg_po214:
   - 0.0
-  - 0.0
+  - 0.2
   bkg_po218:
   - 0.0
   - 0.0
+  min_counts: 200
   sig_n0_po214: 1.0
   sig_n0_po218: 1.0
   background_guess: 0.0
