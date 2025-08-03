@@ -81,8 +81,8 @@ spectral_fit:
   - 0.0
   - 5.0
   b1_prior:
-  - 0.0
-  - 0.1
+  - -0.2
+  - 0.2
   tau_Po210_prior_mean: 0.025
   tau_Po210_prior_sigma: 0.010
   tau_Po218_prior_mean: 0.015
