@@ -54,6 +54,7 @@ calibration:
     Po214: 5
   slope_MeV_per_ch: 0.00427
   float_slope: false
+  use_two_point: true
   nominal_adc:
     Po210: 1246
     Po218: 1399
@@ -82,8 +83,8 @@ spectral_fit:
   b1_prior:
   - -0.2
   - 0.2
-  tau_Po210_prior_mean: 0.010
-  tau_Po210_prior_sigma: 0.005
+  tau_Po210_prior_mean: 0.025
+  tau_Po210_prior_sigma: 0.010
   tau_Po218_prior_mean: 0.015
   tau_Po218_prior_sigma: 0.007
   tau_Po214_prior_mean: 0.010
