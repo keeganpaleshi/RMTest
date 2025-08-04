@@ -1,3 +1,4 @@
+
 allow_fallback: false
 analysis_isotope: radon
 allow_negative_baseline: false
@@ -40,7 +41,7 @@ time_fit:
   window_po210:
     - 5.25
     - 5.37
-  eff_po214: 0.25
+  eff_po214: 0.99
   bkg_po214:
     - 0.0
     - 0.2
