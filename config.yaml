@@ -78,11 +78,11 @@ spectral_fit:
   amp_prior_scale: 5.0
   bkg_mode: linear
   b0_prior:
-  - 0.0
-  - 5.0
+    - 0.0
+    - 5.0
   b1_prior:
-  - -0.2
-  - 0.2
+    - -0.2
+    - 0.2
   tau_Po210_prior_mean: 0.025
   tau_Po210_prior_sigma: 0.010
   tau_Po218_prior_mean: 0.015
@@ -96,7 +96,7 @@ spectral_fit:
     Po210: true
     Po218: true
     Po214: true
-  float_sigma_E: false
+  float_sigma_E: true
   peak_search_prominence: 30
   peak_search_width_adc: 3
   peak_search_method: prominence
@@ -120,25 +120,25 @@ spectral_fit:
 time_fit:
   do_time_fit: true
   window_po214:
-  - 7.55
-  - 7.80
+    - 7.55
+    - 7.80
   window_po218:
-  - 5.90
-  - 6.10
+    - 5.90
+    - 6.10
   window_po210:
-  - 5.25
-  - 5.37
-  eff_po214: 0.25
+    - 5.25
+    - 5.37
+  eff_po214: 0.99
   eff_po218: null
   eff_po210: null
   hl_po214: null
   hl_po218: null
   bkg_po214:
-  - 0.0
-  - 0.2
+    - 0.0
+    - 0.2
   bkg_po218:
-  - 0.0
-  - 0.0
+    - 0.0
+    - 0.0
   min_counts: 200
   sig_n0_po214: 1.0
   sig_n0_po218: 1.0
