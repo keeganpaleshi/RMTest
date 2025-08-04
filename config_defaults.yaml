@@ -20,8 +20,8 @@ spectral_fit:
   # Flags controlling resolution parameters; letting both float keeps the
   # optimiser well-constrained
   flags:
-    fix_sigma0: false  # let the width refit
-    fix_F: false       # let the Fano factor float
+    fix_sigma0: true  # fix the width
+    fix_F: true       # fix the Fano factor
 
   # your existing background priors
   bkg_mode: linear
