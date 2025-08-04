@@ -2121,11 +2121,20 @@ def main(argv=None):
             iso_events = df_analysis[iso_mask].copy()
             iso_events["weight"] = probs[iso_mask]
 
-            thr = int(cfg.get("time_fit", {}).get("min_counts", 20))
-            if len(iso_events) < thr:
-                iso_events, (lo, hi) = auto_expand_window(df_analysis, (lo, hi), thr)
-                if len(iso_events) >= thr:
-                    logger.info("expanded %s window to [%.2f, %.2f] MeV", iso, lo, hi)
+            # Derive minimum counts automatically if not provided
+            thr_cfg = cfg.get("time_fit", {}).get("min_counts")
+            if thr_cfg is not None:
+                thr = int(thr_cfg)
+                if len(iso_events) < thr:
+                    iso_events, (lo, hi) = auto_expand_window(
+                        df_analysis, (lo, hi), thr
+                    )
+                    if len(iso_events) >= thr:
+                        logger.info(
+                            "expanded %s window to [%.2f, %.2f] MeV", iso, lo, hi
+                        )
+            else:
+                thr = len(iso_events)
 
             if iso_events.empty:
                 logger.warning(
