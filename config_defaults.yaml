@@ -2,6 +2,7 @@ allow_fallback: false
 analysis_isotope: radon
 allow_negative_baseline: false
 allow_negative_activity: false
+
 calibration:
   slope_MeV_per_ch: null
   intercept_MeV: null
@@ -9,29 +10,38 @@ calibration:
   use_two_point: false
   sigma_E_init: null
   peak_widths: null
+
 spectral_fit:
   peak_search_method: prominence
   peak_search_cwt_widths: null
   refit_aic_threshold: 2.0
+
+  # new flags to silence covariance warnings
+  flags:
+    fix_sigma0: true
+    fix_F: true
+
+  # your existing background priors
   bkg_mode: linear
   b0_prior:
-  - 0.0
-  - 5.0
+    - 0.0
+    - 5.0
   b1_prior:
-  - -0.2
-  - 0.2
+    - -0.2
+    - 0.2
+
 time_fit:
   window_po214:
-  - 7.55
-  - 7.80
+    - 7.55
+    - 7.80
   window_po218:
-  - 5.90
-  - 6.10
+    - 5.90
+    - 6.10
   window_po210:
-  - 5.25
-  - 5.37
+    - 5.25
+    - 5.37
   eff_po214: 0.25
   bkg_po214:
-  - 0.0
-  - 0.2
+    - 0.0
+    - 0.2
   min_counts: 200

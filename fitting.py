@@ -321,17 +321,41 @@ def fit_spectrum(
         "Po214": "tau_Po214" in priors,
     }
 
-    param_order = ["sigma0", "F"]
+    # Track which resolution parameters are fixed
+    fix_sigma0 = flags.get("fix_sigma0", False)
+    fix_F = flags.get("fix_F", False)
+
+    # Build parameter ordering and index mapping dynamically so that fixed
+    # parameters are excluded from the free-parameter list.  When a parameter is
+    # fixed we keep its mean value for later use in the model function but do
+    # not let the optimiser vary it.
+    param_order: list[str] = []
+    param_index: dict[str, int] = {}
+    sigma0_val = p("sigma0", 1.0)[0]
+    F_val = p("F", 0.0)[0]
+    if not fix_sigma0:
+        param_index["sigma0"] = len(param_order)
+        param_order.append("sigma0")
+    if not fix_F:
+        param_index["F"] = len(param_order)
+        param_order.append("F")
     for iso in ("Po210", "Po218", "Po214"):
-        param_order.extend([f"mu_{iso}", f"S_{iso}"])
+        param_index[f"mu_{iso}"] = len(param_order)
+        param_order.append(f"mu_{iso}")
+        param_index[f"S_{iso}"] = len(param_order)
+        param_order.append(f"S_{iso}")
         if use_emg[iso]:
+            param_index[f"tau_{iso}"] = len(param_order)
             param_order.append(f"tau_{iso}")
-    param_order.extend(["b0", "b1"])
+    param_index["b0"] = len(param_order)
+    param_order.append("b0")
+    param_index["b1"] = len(param_order)
+    param_order.append("b1")
 
     p0 = []
     bounds_lo, bounds_hi = [], []
     eps = 1e-12
-    sigma0_mean = p("sigma0", 1.0)[0]
+    sigma0_mean = sigma0_val
     for name in param_order:
         mean, sig = p(name, 1.0)
         # Enforce a strictly positive initial tau to avoid singular EMG tails
@@ -369,30 +393,30 @@ def fit_spectrum(
     iso_list = ["Po210", "Po218", "Po214"]
 
     def _model_density(x, *params):
-        idx = 0
-        sigma0 = params[idx]
-        idx += 1
-        F_val = params[idx]
-        idx += 1
+        if fix_sigma0:
+            sigma0 = sigma0_val
+        else:
+            sigma0 = params[param_index["sigma0"]]
+        if fix_F:
+            F_current = F_val
+        else:
+            F_current = params[param_index["F"]]
         y = np.zeros_like(x)
         for iso in iso_list:
-            mu = params[idx]
-            idx += 1
-            S = params[idx]
-            idx += 1
+            mu = params[param_index[f"mu_{iso}"]]
+            S = params[param_index[f"S_{iso}"]]
             if use_emg[iso]:
-                tau = params[idx]
-                idx += 1
-                sigma = np.sqrt(sigma0 ** 2 + F_val * x)
+                tau = params[param_index[f"tau_{iso}"]]
+                sigma = np.sqrt(sigma0 ** 2 + F_current * x)
                 with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
                     y_emg = emg_left(x, mu, sigma, tau)
                 y_emg = np.nan_to_num(y_emg, nan=0.0, posinf=0.0, neginf=0.0)
                 y += S * y_emg
             else:
-                sigma = np.sqrt(sigma0 ** 2 + F_val * x)
+                sigma = np.sqrt(sigma0 ** 2 + F_current * x)
                 y += S * gaussian(x, mu, sigma)
-        b0 = params[idx]
-        b1 = params[idx + 1]
+        b0 = params[param_index["b0"]]
+        b1 = params[param_index["b1"]]
         return y + b0 + b1 * x
 
     def _model_binned(x, *params):
@@ -431,16 +455,12 @@ def fit_spectrum(
             rate = _model_density(e, *params)
             if np.any(rate <= 0) or not np.isfinite(rate).all():
                 return 1e50
-            idx = 2
+            # Sum of signal yields
             S_sum = 0.0
             for iso in iso_list:
-                idx += 1  # mu
-                S_sum += params[idx]
-                idx += 1
-                if use_emg[iso]:
-                    idx += 1
-            b0 = params[idx]
-            b1 = params[idx + 1]
+                S_sum += params[param_index[f"S_{iso}"]]
+            b0 = params[param_index["b0"]]
+            b1 = params[param_index["b1"]]
             E_lo = edges[0]
             E_hi = edges[-1]
             bkg_int = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
@@ -501,6 +521,12 @@ def fit_spectrum(
         for i, pname in enumerate(param_order):
             out[pname] = float(m.values[pname])
             out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
+        if fix_sigma0:
+            out["sigma0"] = sigma0_val
+            out["dsigma0"] = 0.0
+        if fix_F:
+            out["F"] = F_val
+            out["dF"] = 0.0
         k = len(param_order)
         out["aic"] = float(2 * m.fval + 2 * k)
         return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
@@ -533,6 +559,13 @@ def fit_spectrum(
     for i, name in enumerate(param_order):
         out[name] = float(popt[i])
         out["d" + name] = float(perr[i])
+
+    if fix_sigma0:
+        out["sigma0"] = sigma0_val
+        out["dsigma0"] = 0.0
+    if fix_F:
+        out["F"] = F_val
+        out["dF"] = 0.0
 
     out["fit_valid"] = fit_valid
 
