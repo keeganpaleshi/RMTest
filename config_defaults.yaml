@@ -17,11 +17,12 @@ spectral_fit:
   peak_search_cwt_widths: null
   refit_aic_threshold: 2.0
 
-  # Flags controlling resolution parameters; letting both float keeps the
-  # optimiser well-constrained
+  # Flags controlling resolution parameters.  The width and Fano factor are
+  # treated as nuisance parameters and fixed by default.  Allow them to float
+  # only when performing a dedicated spectral likelihood fit.
   flags:
-    fix_sigma0: false  # let the width refit
-    fix_F: false       # let the Fano factor float
+    fix_sigma0: true
+    fix_F: true
 
   # your existing background priors
   bkg_mode: linear
