@@ -728,7 +728,6 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
         weights_dict = {iso: np.asarray(weights.get(iso), dtype=float) if weights.get(iso) is not None else None for iso in iso_list}
 
     # Early exit when statistics are insufficient
-    min_counts = int(config.get("min_counts", 0))
     total_counts = 0.0
     for iso in iso_list:
         w_arr = weights_dict.get(iso)
@@ -736,6 +735,14 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
             total_counts += len(times_dict.get(iso, []))
         else:
             total_counts += float(np.sum(w_arr))
+
+    cfg_min_counts = config.get("min_counts")
+    if cfg_min_counts is not None and int(cfg_min_counts) > 0:
+        min_counts = int(cfg_min_counts)
+    else:
+        # Require at least one event by default; otherwise use the observed count
+        min_counts = max(1, int(total_counts))
+
     if total_counts < min_counts:
         logger.info(
             "fit_time_series: skipping fit, only %.0f events (< %d)",
