@@ -46,4 +46,4 @@ time_fit:
   bkg_po214:
     - 0.0
     - 0.2
-  min_counts: 200
+  min_counts: 20

@@ -139,7 +139,7 @@ time_fit:
   bkg_po218:
     - 0.0
     - 0.0
-  min_counts: 200
+  min_counts: 20
   sig_n0_po214: 1.0
   sig_n0_po218: 1.0
   background_guess: 0.0
