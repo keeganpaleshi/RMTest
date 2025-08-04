@@ -16,10 +16,11 @@ spectral_fit:
   peak_search_cwt_widths: null
   refit_aic_threshold: 2.0
 
-  # new flags to silence covariance warnings
+  # Flags controlling resolution parameters; letting both float keeps the
+  # optimiser well-constrained
   flags:
-    fix_sigma0: true
-    fix_F: true
+    fix_sigma0: false  # let the width refit
+    fix_F: false       # let the Fano factor float
 
   # your existing background priors
   bkg_mode: linear
