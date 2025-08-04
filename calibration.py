@@ -2,6 +2,7 @@ import numpy as np
 from dataclasses import dataclass
 from collections.abc import Sequence, Mapping
 from copy import deepcopy
+import warnings
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 from scipy.stats import exponnorm
@@ -169,53 +170,6 @@ def two_point_calibration(adc_centroids, energies):
     return float(a), float(c)
 
 
-def intercept_fit_two_point(adc_values, cfg):
-    """Fit intercept using fixed slope and Po-210/Po-214 centroids.
-
-    This helper first fits the three radon peaks using :func:`calibrate_run`
-    to obtain precise ADC centroids.  With a user-supplied fixed slope
-    ``a``, the intercept is solved from the Po-210 and Po-214 centroids via
-    ``c = mean(E_i - a * ADC_i)``.  The slope uncertainty is set to zero and
-    the intercept variance is propagated from the centroid errors.
-    """
-
-    cal_cfg = cfg.get("calibration", {})
-    a = cal_cfg["slope_MeV_per_ch"]
-
-    # Reuse calibrate_run to determine centroid locations and widths
-    result = calibrate_run(adc_values, cfg)
-    peaks = result.peaks or {}
-
-    energies = {**DEFAULT_KNOWN_ENERGIES, **cal_cfg.get("known_energies", {})}
-    adc210 = peaks["Po210"]["centroid_adc"]
-    adc214 = peaks["Po214"]["centroid_adc"]
-
-    c210 = energies["Po210"] - a * adc210
-    c214 = energies["Po214"] - a * adc214
-    c = 0.5 * (c210 + c214)
-
-    # Centroid uncertainties -> intercept variance
-    mu_err_210 = float(np.sqrt(peaks["Po210"]["covariance"][1][1]))
-    mu_err_214 = float(np.sqrt(peaks["Po214"]["covariance"][1][1]))
-    var_c = (a ** 2 / 4.0) * (mu_err_210**2 + mu_err_214**2)
-
-    # Propagate sigma_E from Po-214 peak width
-    sigma_adc = peaks["Po214"]["sigma_adc"]
-    var_sigma_adc = peaks["Po214"]["covariance"][2][2]
-    sigma_E = abs(a) * sigma_adc
-    dsigma_E = abs(a) * np.sqrt(var_sigma_adc)
-
-    cov = np.array([[var_c, 0.0], [0.0, 0.0]])
-
-    return CalibrationResult(
-        coeffs=[float(c), float(a)],
-        cov=cov,
-        sigma_E=float(sigma_E),
-        sigma_E_error=float(dsigma_E),
-        peaks=peaks,
-    )
-
-
 def fixed_slope_calibration(adc_values, cfg):
     """Return calibration constants when the slope is fixed.
 
@@ -359,38 +313,6 @@ def fixed_slope_calibration(adc_values, cfg):
         sigma_E_error=dsigma_E,
     )
     return result
-
-
-def intercept_fit_two_point(adc_values, cfg):
-    """Return calibration with fixed slope using Po-210 and Po-214 anchors."""
-    a = cfg["calibration"]["slope_MeV_per_ch"]
-    # Use full calibration routine to locate peaks for both isotopes
-    cal_res = calibrate_run(adc_values, cfg)
-
-    energies = {**DEFAULT_KNOWN_ENERGIES, **cfg.get("calibration", {}).get("known_energies", {})}
-    adc210 = cal_res.peaks["Po210"]["centroid_adc"]
-    adc214 = cal_res.peaks["Po214"]["centroid_adc"]
-    c210 = energies["Po210"] - a * adc210
-    c214 = energies["Po214"] - a * adc214
-    c = 0.5 * (c210 + c214)
-
-    mu_err_210 = float(np.sqrt(cal_res.peaks["Po210"]["covariance"][1][1]))
-    mu_err_214 = float(np.sqrt(cal_res.peaks["Po214"]["covariance"][1][1]))
-    var_c = (a ** 2 / 4.0) * (mu_err_210 ** 2 + mu_err_214 ** 2)
-    cov = np.array([[var_c, 0.0], [0.0, 0.0]])
-
-    sigma_adc = cal_res.peaks["Po214"]["sigma_adc"]
-    dsigma_adc = float(np.sqrt(cal_res.peaks["Po214"]["covariance"][2][2]))
-    sigma_E = abs(a) * sigma_adc
-    dsigma_E = abs(a) * dsigma_adc
-
-    return CalibrationResult(
-        coeffs=[c, a],
-        cov=cov,
-        peaks=cal_res.peaks,
-        sigma_E=float(sigma_E),
-        sigma_E_error=float(dsigma_E),
-    )
 
 
 def apply_calibration(adc_values, slope, intercept, quadratic_coeff=0.0):
@@ -733,7 +655,8 @@ def derive_calibration_constants(adc_values, config):
 
     if slope is not None and not float_slope:
         if cal_cfg.get("use_two_point", False):
-            return intercept_fit_two_point(adc_values, config)
+            from calibrate import intercept_fit_two_point as _if2p
+            return _if2p(adc_values, config)
         return fixed_slope_calibration(adc_values, config)
 
     cfg = config if slope is None or not float_slope else deepcopy(config)
@@ -803,12 +726,22 @@ def derive_calibration_constants_auto(
     return calibrate_run(adc_arr, config, hist_bins=hist_bins)
 
 
+# Deprecated alias for backward compatibility
+def intercept_fit_two_point(*args, **kwargs):
+    """Deprecated alias for :func:`calibrate.intercept_fit_two_point`."""
+    warnings.warn(
+        "rmtest.calibration.intercept_fit_two_point is deprecated; use rmtest.calibrate.intercept_fit_two_point instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    from calibrate import intercept_fit_two_point as _if2p
+    return _if2p(*args, **kwargs)
+
 __all__ = [
     "CalibrationResult",
     "two_point_calibration",
     "intercept_fit_two_point",
     "fixed_slope_calibration",
-    "intercept_fit_two_point",
     "apply_calibration",
     "calibrate_run",
     "derive_calibration_constants",

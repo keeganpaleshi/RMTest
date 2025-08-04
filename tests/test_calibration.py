@@ -342,3 +342,19 @@ def test_calibrationresult_uncertainty_negative_covariance():
 
     sigma = calib.uncertainty([1.0])
     assert np.isfinite(sigma).all()
+
+def test_intercept_fit_two_point_deprecation(monkeypatch):
+    import calibration
+    import calibrate
+
+    called = {}
+
+    def stub(*args, **kwargs):
+        called["called"] = True
+
+    monkeypatch.setattr(calibrate, "intercept_fit_two_point", stub)
+
+    with pytest.deprecated_call():
+        calibration.intercept_fit_two_point(1, 2)
+
+    assert called["called"]
