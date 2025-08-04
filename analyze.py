@@ -2121,7 +2121,8 @@ def main(argv=None):
             iso_events = df_analysis[iso_mask].copy()
             iso_events["weight"] = probs[iso_mask]
 
-            thr = int(cfg.get("time_fit", {}).get("min_counts", 20))
+            min_counts_cfg = cfg.get("time_fit", {}).get("min_counts")
+            thr = int(min_counts_cfg) if min_counts_cfg is not None else len(iso_events)
             if len(iso_events) < thr:
                 iso_events, (lo, hi) = auto_expand_window(df_analysis, (lo, hi), thr)
                 if len(iso_events) >= thr:
@@ -2298,8 +2299,9 @@ def main(argv=None):
             ),
             "background_guess": cfg["time_fit"].get("background_guess", 0.0),
             "n0_guess_fraction": cfg["time_fit"].get("n0_guess_fraction", 0.1),
-            "min_counts": thr,
         }
+        if min_counts_cfg is not None:
+            decay_cfg["min_counts"] = thr
 
         # Run time-series fit
         decay_out = None  # fresh variable each iteration
