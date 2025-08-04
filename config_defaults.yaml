@@ -12,6 +12,7 @@ calibration:
   peak_widths: null
 
 spectral_fit:
+  float_sigma_E: true
   peak_search_method: prominence
   peak_search_cwt_widths: null
   refit_aic_threshold: 2.0
@@ -40,7 +41,7 @@ time_fit:
   window_po210:
     - 5.25
     - 5.37
-  eff_po214: 0.25
+  eff_po214: 0.99
   bkg_po214:
     - 0.0
     - 0.2
