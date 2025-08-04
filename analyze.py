@@ -2121,7 +2121,8 @@ def main(argv=None):
             iso_events = df_analysis[iso_mask].copy()
             iso_events["weight"] = probs[iso_mask]
 
-            thr = int(cfg.get("time_fit", {}).get("min_counts", 20))
+            thr_cfg = cfg.get("time_fit", {}).get("min_counts")
+            thr = int(thr_cfg) if thr_cfg is not None else len(iso_events)
             if len(iso_events) < thr:
                 iso_events, (lo, hi) = auto_expand_window(df_analysis, (lo, hi), thr)
                 if len(iso_events) >= thr:
