@@ -1,10 +1,14 @@
 import numpy as np
-from calibration import calibrate_run, CalibrationResult
 from constants import DEFAULT_KNOWN_ENERGIES
 
 
 def intercept_fit_two_point(adc_values, cfg):
     """Return calibration with fixed slope using Po-210 and Po-214 anchors."""
+    try:
+        from .calibration import CalibrationResult, calibrate_run
+    except ImportError:  # pragma: no cover - fallback for root imports
+        from calibration import CalibrationResult, calibrate_run
+
     a = cfg["calibration"]["slope_MeV_per_ch"]
     # Use full calibration routine to locate peaks for both isotopes
     cal_res = calibrate_run(adc_values, cfg)
