@@ -15,7 +15,7 @@
   "spectral_fit": {"do_spectral_fit": false, "expected_peaks": {"Po210": 0}},
   "time_fit": {
     "do_time_fit": true,
-    "window_po214": [7.55, 7.80],
+    "window_po214": [7.65, 7.73],
     "hl_po214": null,
     "eff_po214": [1.0, 0.0],
     "flags": {}

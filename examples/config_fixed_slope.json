@@ -83,7 +83,7 @@
     },
     "time_fit": {
         "do_time_fit": true,
-        "window_po214": [7.55, 7.80],
+        "window_po214": [7.65, 7.73],
         "window_po218": [5.90, 6.10],
         "window_po210": [5.25, 5.37],
         "eff_po214": [0.40, 0.0],
