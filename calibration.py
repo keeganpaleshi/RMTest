@@ -655,7 +655,10 @@ def derive_calibration_constants(adc_values, config):
 
     if slope is not None and not float_slope:
         if cal_cfg.get("use_two_point", False):
-            from calibrate import intercept_fit_two_point as _if2p
+            try:
+                from .calibrate import intercept_fit_two_point as _if2p
+            except ImportError:  # pragma: no cover - fallback for root imports
+                from calibrate import intercept_fit_two_point as _if2p
             return _if2p(adc_values, config)
         return fixed_slope_calibration(adc_values, config)
 
@@ -734,7 +737,10 @@ def intercept_fit_two_point(*args, **kwargs):
         DeprecationWarning,
         stacklevel=2,
     )
-    from calibrate import intercept_fit_two_point as _if2p
+    try:
+        from .calibrate import intercept_fit_two_point as _if2p
+    except ImportError:  # pragma: no cover - fallback for root imports
+        from calibrate import intercept_fit_two_point as _if2p
     return _if2p(*args, **kwargs)
 
 __all__ = [
