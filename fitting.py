@@ -728,21 +728,23 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
         weights_dict = {iso: np.asarray(weights.get(iso), dtype=float) if weights.get(iso) is not None else None for iso in iso_list}
 
     # Early exit when statistics are insufficient
-    min_counts = int(config.get("min_counts", 0))
-    total_counts = 0.0
-    for iso in iso_list:
-        w_arr = weights_dict.get(iso)
-        if w_arr is None:
-            total_counts += len(times_dict.get(iso, []))
-        else:
-            total_counts += float(np.sum(w_arr))
-    if total_counts < min_counts:
-        logger.info(
-            "fit_time_series: skipping fit, only %.0f events (< %d)",
-            total_counts,
-            min_counts,
-        )
-        return FitResult({"fit_valid": False}, None, 0, counts=int(total_counts))
+    min_counts = config.get("min_counts")
+    if min_counts is not None and min_counts > 0:
+        min_counts = int(min_counts)
+        total_counts = 0.0
+        for iso in iso_list:
+            w_arr = weights_dict.get(iso)
+            if w_arr is None:
+                total_counts += len(times_dict.get(iso, []))
+            else:
+                total_counts += float(np.sum(w_arr))
+        if total_counts < min_counts:
+            logger.info(
+                "fit_time_series: skipping fit, only %.0f events (< %d)",
+                total_counts,
+                min_counts,
+            )
+            return FitResult({"fit_valid": False}, None, 0, counts=int(total_counts))
 
     # 1) Build maps: lam_map, eff_map, fix_b_map, fix_n0_map
     lam_map, eff_map = {}, {}
