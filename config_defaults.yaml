@@ -15,11 +15,13 @@ spectral_fit:
   peak_search_method: prominence
   peak_search_cwt_widths: null
   refit_aic_threshold: 2.0
-
-  # new flags to silence covariance warnings
+  # Allow width and Fano factor to float
   flags:
-    fix_sigma0: true
-    fix_F: true
+    fix_sigma0: false  # let the width refit
+    fix_F: false       # let the Fano factor float
+  # Freeing those two parameters restores enough degrees-of-freedom for the
+  # optimiser to converge, so fit_valid becomes true again instead of dumping
+  # all-zero covariance.
 
   # your existing background priors
   bkg_mode: linear
