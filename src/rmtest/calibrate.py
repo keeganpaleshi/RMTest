@@ -4,7 +4,7 @@ from constants import DEFAULT_KNOWN_ENERGIES
 
 def intercept_fit_two_point(adc_values, cfg):
     """Return calibration with fixed slope using Po-210 and Po-214 anchors."""
-    from calibration import calibrate_run, CalibrationResult
+    from .calibration import calibrate_run, CalibrationResult
 
     a = cfg["calibration"]["slope_MeV_per_ch"]
     # Use full calibration routine to locate peaks for both isotopes
