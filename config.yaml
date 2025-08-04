@@ -54,6 +54,7 @@ calibration:
     Po214: 5
   slope_MeV_per_ch: 0.00427
   float_slope: false
+  use_two_point: true
   nominal_adc:
     Po210: 1246
     Po218: 1399
@@ -75,15 +76,15 @@ spectral_fit:
   fd_hist_bins: 400
   mu_sigma: 0.02
   amp_prior_scale: 5.0
-  bkg_mode: constant
+  bkg_mode: linear
   b0_prior:
   - 0.0
   - 5.0
   b1_prior:
-  - 0.0
-  - 0.1
-  tau_Po210_prior_mean: 0.010
-  tau_Po210_prior_sigma: 0.005
+  - -0.2
+  - 0.2
+  tau_Po210_prior_mean: 0.025
+  tau_Po210_prior_sigma: 0.010
   tau_Po218_prior_mean: 0.015
   tau_Po218_prior_sigma: 0.007
   tau_Po214_prior_mean: 0.010
@@ -127,17 +128,18 @@ time_fit:
   window_po210:
   - 5.25
   - 5.37
-  eff_po214: null
+  eff_po214: 0.25
   eff_po218: null
   eff_po210: null
   hl_po214: null
   hl_po218: null
   bkg_po214:
   - 0.0
-  - 0.0
+  - 0.2
   bkg_po218:
   - 0.0
   - 0.0
+  min_counts: 200
   sig_n0_po214: 1.0
   sig_n0_po218: 1.0
   background_guess: 0.0

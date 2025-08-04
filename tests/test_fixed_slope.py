@@ -5,24 +5,66 @@ from calibration import derive_calibration_constants
 
 def test_fixed_slope_calibration():
     rng = np.random.default_rng(0)
-    adc = rng.normal(1800, 2, 1000)
+    adc = np.concatenate(
+        [
+            rng.normal(1246, 2, 500),
+            rng.normal(1399, 2, 500),
+            rng.normal(1800, 2, 500),
+        ]
+    )
 
     cfg = {
         "calibration": {
             "slope_MeV_per_ch": 0.00435,
-            "nominal_adc": {"Po214": 1800},
+            "float_slope": False,
+            "use_two_point": True,
+            "nominal_adc": {"Po210": 1246, "Po218": 1399, "Po214": 1800},
             "peak_search_radius": 5,
             "peak_prominence": 0.0,
             "peak_width": 1,
             "init_sigma_adc": 5.0,
-            "known_energies": {"Po214": 7.687},
+            "fit_window_adc": 20,
+            "use_emg": False,
+            "known_energies": {"Po210": 5.304, "Po214": 7.687},
         }
     }
 
     res = derive_calibration_constants(adc, cfg)
     assert res.coeffs[1] == 0.00435
-    assert res.coeffs[0] == pytest.approx(-0.14, abs=0.02)
+    expected_c = 0.5 * (
+        (5.304 - 0.00435 * 1246) + (7.687 - 0.00435 * 1800)
+    )
+    assert res.coeffs[0] == pytest.approx(expected_c, abs=0.02)
     assert res.sigma_E == pytest.approx(0.00435 * 2, rel=0.2)
+
+
+def test_fixed_slope_two_point():
+    rng = np.random.default_rng(2)
+    adc = np.concatenate([
+        rng.normal(1246, 2, 200),
+        rng.normal(1399, 2, 200),
+        rng.normal(1800, 2, 200),
+    ])
+
+    cfg = {
+        "calibration": {
+            "slope_MeV_per_ch": 0.00435,
+            "use_two_point": True,
+            "nominal_adc": {"Po210": 1246, "Po218": 1399, "Po214": 1800},
+            "peak_search_radius": 5,
+            "peak_prominence": 0.0,
+            "peak_width": 1,
+            "fit_window_adc": 20,
+            "use_emg": False,
+            "init_sigma_adc": 5.0,
+            "known_energies": {"Po210": 5.304, "Po214": 7.687},
+        }
+    }
+
+    res = derive_calibration_constants(adc, cfg)
+    assert res.coeffs[1] == 0.00435
+    assert res.peaks is not None and "Po210" in res.peaks
+    assert res.coeffs[0] == pytest.approx(-0.13, abs=0.02)
 
 
 def test_float_slope_calibration():
