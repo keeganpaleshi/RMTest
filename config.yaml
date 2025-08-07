@@ -81,7 +81,7 @@ spectral_fit:
     - 0.0
     - 5.0
   b1_prior:
-    - -0.2
+    - 0.0
     - 0.2
   tau_Po210_prior_mean: 0.025
   tau_Po210_prior_sigma: 0.010
@@ -106,11 +106,17 @@ spectral_fit:
   unbinned_likelihood: true
   flags:
     fix_sigma0: true  # fix the width
+    sigma0_prior:
+      - 0.13
+      - 0.02
     fix_F: true       # fix the Fano factor
+    F_prior:
+      - 0.0
+      - 0.01
   mu_bounds:
     Po210:
-    - 5.28
-    - 5.33
+      - 5.28
+      - 5.33
     Po218:
     - 5.95
     - 6.05
