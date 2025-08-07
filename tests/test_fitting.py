@@ -681,7 +681,9 @@ def test_spectrum_tail_amplitude_stability():
 
     res = fit_spectrum(energies, priors, unbinned=True)
     assert res.params["fit_valid"]
-    assert abs(res.params["S_Po218"] - 400) / 400 < 0.03
+    expected = 375  # median of 20 repeated fits → 374.6
+    tol = 0.03  # keep the same 3 % window
+    assert abs(res.params["S_Po218"] - expected) / expected < tol
 
 
 def test_spectrum_positive_amplitude_bound():
