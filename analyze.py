@@ -352,6 +352,11 @@ def _spectral_fit_with_check(
         priors_mapped.setdefault("sigma0", (mean, sig))
         priors_mapped.setdefault("F", (0.0, sig))
 
+    # If F is fixed but no explicit prior is supplied, keep it near zero to
+    # avoid unphysical broadening from a large default.
+    if flags.get("fix_F", False) and "F" not in priors:
+        priors_mapped["F"] = (0.0, 0.01)
+
     fit_kwargs = {
         "energies": energies,
         "priors": priors_mapped,
