@@ -381,6 +381,8 @@ def fit_spectrum(
                 hi = min(hi, max_tau_ratio * sigma0_mean)
         if name in ("sigma0", "F"):
             lo = max(lo, 0.0)
+        if name == "b0":
+            lo = max(lo, 0.0)
         if name.startswith("S_"):
             lo = max(lo, 0.0)
         if hi <= lo:
@@ -452,19 +454,33 @@ def fit_spectrum(
             )
     else:
         def _nll(*params):
+            # Per-event rate must be positive and finite
             rate = _model_density(e, *params)
             if np.any(rate <= 0) or not np.isfinite(rate).all():
                 return 1e50
-            # Sum of signal yields
+
+            # Sum of signal yields (non-negative by construction)
             S_sum = 0.0
             for iso in iso_list:
                 S_sum += params[param_index[f"S_{iso}"]]
+
+            # Linear background parameters
             b0 = params[param_index["b0"]]
             b1 = params[param_index["b1"]]
-            E_lo = edges[0]
-            E_hi = edges[-1]
+
+            # Enforce a non-negative linear background over the fit interval
+            E_lo = float(edges[0])
+            E_hi = float(edges[-1])
+            if (b0 + b1 * E_lo) <= 0 or (b0 + b1 * E_hi) <= 0:
+                return 1e50
+
+            # Analytic integral of background across [E_lo, E_hi]
             bkg_int = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
             expected = S_sum + bkg_int
+
+            # Guard against pathological negative expectations
+            if expected <= 0 or not np.isfinite(expected):
+                return 1e50
             return expected - np.sum(np.log(rate))
 
         m = Minuit(_nll, *p0, name=param_order)
