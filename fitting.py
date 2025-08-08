@@ -16,7 +16,44 @@ from calibration import emg_left, gaussian
 from constants import _TAU_MIN, CURVE_FIT_MAX_EVALS, safe_exp as _safe_exp
 
 # Use shared overflow guard for exponentiation
-__all__ = ["fit_time_series", "fit_decay", "fit_spectrum"]
+__all__ = [
+    "fit_time_series",
+    "fit_decay",
+    "fit_spectrum",
+    "softplus",
+    "make_linear_bkg",
+]
+
+
+def softplus(x):
+    """Numerically stable softplus ensuring a positive output."""
+    x = np.asarray(x)
+    return np.log1p(np.exp(-np.abs(x))) + np.maximum(x, 0.0)
+
+
+def make_linear_bkg(Emin, Emax, Eref=None):
+    """Return a positive, unit-normalised linear background shape.
+
+    Parameters
+    ----------
+    Emin, Emax : float
+        Energy window over which the shape is normalised.
+    Eref : float, optional
+        Reference energy about which the linear component pivots.
+    """
+
+    if Eref is None:
+        Eref = 0.5 * (Emin + Emax)
+
+    def shape(E, beta0, beta1):
+        lin = (E - Eref)
+        log_b = beta0 + beta1 * lin
+        b = np.exp(log_b)
+        grid = np.linspace(Emin, Emax, 512)
+        area = np.trapz(np.exp(beta0 + beta1 * (grid - Eref)), grid)
+        return b / max(area, 1e-300)
+
+    return shape
 
 
 class FitParams(TypedDict, total=False):
@@ -66,10 +103,12 @@ class FitParams(TypedDict, total=False):
     dtau_Po214: NotRequired[float]
     tau_Po210: NotRequired[float]
     dtau_Po210: NotRequired[float]
-    b0: NotRequired[float]
-    db0: NotRequired[float]
-    b1: NotRequired[float]
-    db1: NotRequired[float]
+    S_bkg: NotRequired[float]
+    dS_bkg: NotRequired[float]
+    beta0: NotRequired[float]
+    dbeta0: NotRequired[float]
+    beta1: NotRequired[float]
+    dbeta1: NotRequired[float]
 
 @dataclass
 class FitResult:
@@ -347,10 +386,12 @@ def fit_spectrum(
         if use_emg[iso]:
             param_index[f"tau_{iso}"] = len(param_order)
             param_order.append(f"tau_{iso}")
-    param_index["b0"] = len(param_order)
-    param_order.append("b0")
-    param_index["b1"] = len(param_order)
-    param_order.append("b1")
+    param_index["S_bkg"] = len(param_order)
+    param_order.append("S_bkg")
+    param_index["beta0"] = len(param_order)
+    param_order.append("beta0")
+    param_index["beta1"] = len(param_order)
+    param_order.append("beta1")
 
     p0 = []
     bounds_lo, bounds_hi = [], []
@@ -381,10 +422,6 @@ def fit_spectrum(
                 hi = min(hi, max_tau_ratio * sigma0_mean)
         if name in ("sigma0", "F"):
             lo = max(lo, 0.0)
-        if name == "b0":
-            lo = max(lo, 0.0)
-        if name.startswith("S_"):
-            lo = max(lo, 0.0)
         if hi <= lo:
             hi = lo + eps
         mean = np.clip(mean, lo, hi)
@@ -393,6 +430,9 @@ def fit_spectrum(
         bounds_hi.append(hi)
 
     iso_list = ["Po210", "Po218", "Po214"]
+    Emin = float(edges[0])
+    Emax = float(edges[-1])
+    bkg_shape_func = make_linear_bkg(Emin, Emax)
 
     def _model_density(x, *params):
         if fix_sigma0:
@@ -406,7 +446,8 @@ def fit_spectrum(
         y = np.zeros_like(x)
         for iso in iso_list:
             mu = params[param_index[f"mu_{iso}"]]
-            S = params[param_index[f"S_{iso}"]]
+            S_raw = params[param_index[f"S_{iso}"]]
+            S = softplus(S_raw)
             if use_emg[iso]:
                 tau = params[param_index[f"tau_{iso}"]]
                 sigma = np.sqrt(sigma0 ** 2 + F_current * x)
@@ -417,9 +458,11 @@ def fit_spectrum(
             else:
                 sigma = np.sqrt(sigma0 ** 2 + F_current * x)
                 y += S * gaussian(x, mu, sigma)
-        b0 = params[param_index["b0"]]
-        b1 = params[param_index["b1"]]
-        return y + b0 + b1 * x
+        beta0 = params[param_index["beta0"]]
+        beta1 = params[param_index["beta1"]]
+        B = softplus(params[param_index["S_bkg"]])
+        bkg = bkg_shape_func(x, beta0, beta1)
+        return y + B * bkg
 
     def _model_binned(x, *params):
         y = _model_density(x, *params)
@@ -454,35 +497,18 @@ def fit_spectrum(
             )
     else:
         def _nll(*params):
-            # Per-event rate must be positive and finite
             rate = _model_density(e, *params)
             if np.any(rate <= 0) or not np.isfinite(rate).all():
                 return 1e50
 
-            # Sum of signal yields (non-negative by construction)
-            S_sum = 0.0
+            Nexp = softplus(params[param_index["S_bkg"]])
             for iso in iso_list:
-                S_sum += params[param_index[f"S_{iso}"]]
+                Nexp += softplus(params[param_index[f"S_{iso}"]])
 
-            # Linear background parameters
-            b0 = params[param_index["b0"]]
-            b1 = params[param_index["b1"]]
-
-            # Enforce a non-negative linear background over the fit interval
-            E_lo = float(edges[0])
-            E_hi = float(edges[-1])
-            if (b0 + b1 * E_lo) <= 0 or (b0 + b1 * E_hi) <= 0:
+            if not np.isfinite(Nexp) or Nexp <= 0:
                 return 1e50
 
-            # Analytic integral of background across [E_lo, E_hi]
-            bkg_int = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
-            expected = S_sum + bkg_int
-
-            # Guard against pathological negative expectations
-            if expected <= 0 or not np.isfinite(expected):
-                return 1e50
-
-            return expected - np.sum(np.log(rate))
+            return Nexp - np.sum(np.log(np.clip(rate, 1e-300, np.inf)))
 
         m = Minuit(_nll, *p0, name=param_order)
         m.errordef = Minuit.LIKELIHOOD

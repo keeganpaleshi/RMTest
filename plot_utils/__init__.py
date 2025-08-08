@@ -15,6 +15,7 @@ from pathlib import Path
 from color_schemes import COLOR_SCHEMES
 from constants import PO214, PO218, PO210
 from .paths import get_targets
+from fitting import softplus, make_linear_bkg
 
 # Half-life constants used for the time-series overlay [seconds]
 PO214_HALF_LIFE_S = PO214.half_life_s
@@ -467,13 +468,17 @@ def plot_spectrum(
     if fit_vals:
         x = np.linspace(edges[0], edges[-1], 1000)
         sigma_E = fit_vals.get("sigma_E", 1.0)
-        y = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * x
+        beta0 = fit_vals.get("beta0", 0.0)
+        beta1 = fit_vals.get("beta1", 0.0)
+        B = softplus(fit_vals.get("S_bkg", 0.0))
+        bkg_shape = make_linear_bkg(edges[0], edges[-1])(x, beta0, beta1)
+        y = B * bkg_shape
         for pk in ("Po210", "Po218", "Po214"):
             mu_key = f"mu_{pk}"
             amp_key = f"S_{pk}"
             if mu_key in fit_vals and amp_key in fit_vals:
                 mu = fit_vals[mu_key]
-                amp = fit_vals[amp_key]
+                amp = softplus(fit_vals[amp_key])
                 y += (
                     amp
                     / (sigma_E * np.sqrt(2 * np.pi))
@@ -486,13 +491,14 @@ def plot_spectrum(
         ax_main.plot(x, y * avg_width, color=fit_color, lw=2, label="Fit")
 
         if show_res:
-            y_cent = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * centers
+            beta_shape_cent = make_linear_bkg(edges[0], edges[-1])(centers, beta0, beta1)
+            y_cent = B * beta_shape_cent
             for pk in ("Po210", "Po218", "Po214"):
                 mu_key = f"mu_{pk}"
                 amp_key = f"S_{pk}"
                 if mu_key in fit_vals and amp_key in fit_vals:
                     mu = fit_vals[mu_key]
-                    amp = fit_vals[amp_key]
+                    amp = softplus(fit_vals[amp_key])
                     y_cent += (
                         amp
                         / (sigma_E * np.sqrt(2 * np.pi))

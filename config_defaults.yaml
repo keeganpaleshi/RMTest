@@ -29,12 +29,15 @@ spectral_fit:
       - 0.0
       - 0.01
 
-  # your existing background priors
+  # background priors for positive linear shape
   bkg_mode: linear
-  b0_prior:
+  S_bkg_prior:
     - 0.0
     - 5.0
-  b1_prior:
+  beta0_prior:
+    - 0.0
+    - 1.0
+  beta1_prior:
     - 0.0
     - 0.2
 
