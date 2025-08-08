@@ -138,6 +138,40 @@ def test_plot_spectrum_irregular_edges_residuals(tmp_path, monkeypatch):
     np.testing.assert_allclose(captured[1], expected)
 
 
+def test_plot_spectrum_model_scaled(tmp_path, monkeypatch):
+    edges = np.array([0.0, 1.0, 2.0])
+    energies = np.concatenate([
+        np.linspace(0.1, 0.9, 9),
+        np.linspace(1.1, 1.9, 9),
+    ])
+
+    captured = {}
+
+    def fake_plot(self, x, y, *args, **kwargs):
+        captured["y"] = np.array(y)
+        return type("obj", (), {})()
+
+    import matplotlib.axes
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "plot", fake_plot)
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    fit_vals = {"b0": 5.0, "b1": 0.0}
+    plot_spectrum(
+        energies,
+        fit_vals=fit_vals,
+        bin_edges=edges,
+        out_png=str(tmp_path / "spec_model.png"),
+    )
+
+    width = np.diff(edges)
+    centers = edges[:-1] + width / 2.0
+    expected = (fit_vals["b0"] + fit_vals["b1"] * centers) * width
+
+    assert "y" in captured
+    np.testing.assert_allclose(captured["y"], expected, rtol=1e-4)
+
+
 def test_plot_time_series_custom_half_life(tmp_path, monkeypatch):
     times = np.array([1000.1, 1000.2, 1001.1, 1001.8])
     energies = np.array([7.6, 7.7, 7.8, 7.7])
