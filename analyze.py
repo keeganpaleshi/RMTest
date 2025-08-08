@@ -1949,8 +1949,14 @@ def main(argv=None):
                 mu_map,
                 peak_width=peak_tol,
             )
-            priors_spec["b0"] = (b0_est, abs(b0_est) * 0.1 + 1e-3)
-            priors_spec["b1"] = (b1_est, abs(b1_est) * 0.1 + 1e-3)
+            e_lo = float(df_analysis["energy_MeV"].min())
+            e_hi = float(df_analysis["energy_MeV"].max())
+            B_est = b0_est * (e_hi - e_lo) + 0.5 * b1_est * (e_hi**2 - e_lo**2)
+            beta0_est = float(np.log(max(b0_est, 1e-12)))
+            beta1_est = float(b1_est / max(b0_est, 1e-12))
+            priors_spec["S_bkg"] = (B_est, abs(B_est) * 0.1 + 1e-3)
+            priors_spec["beta0"] = (beta0_est, abs(beta0_est) * 0.1 + 1e-3)
+            priors_spec["beta1"] = (beta1_est, abs(beta1_est) * 0.1 + 1e-3)
         elif bkg_mode.startswith("auto_poly"):
             from background import estimate_polynomial_background_auto
 
@@ -1966,12 +1972,23 @@ def main(argv=None):
                 max_order=max_n,
                 peak_width=peak_tol,
             )
-            for i, c in enumerate(coeffs):
-                priors_spec[f"b{i}"] = (float(c), abs(float(c)) * 0.1 + 1e-3)
+            e_lo = float(df_analysis["energy_MeV"].min())
+            e_hi = float(df_analysis["energy_MeV"].max())
+            poly = np.poly1d(coeffs[::-1])
+            integ = poly.integ()
+            B_est = float(integ(e_hi) - integ(e_lo))
+            b0_est = float(coeffs[0])
+            b1_est = float(coeffs[1]) if len(coeffs) > 1 else 0.0
+            beta0_est = float(np.log(max(b0_est, 1e-12)))
+            beta1_est = float(b1_est / max(b0_est, 1e-12))
+            priors_spec["S_bkg"] = (B_est, abs(B_est) * 0.1 + 1e-3)
+            priors_spec["beta0"] = (beta0_est, abs(beta0_est) * 0.1 + 1e-3)
+            priors_spec["beta1"] = (beta1_est, abs(beta1_est) * 0.1 + 1e-3)
             priors_spec["poly_order"] = order
         else:
-            priors_spec["b0"] = tuple(cfg["spectral_fit"].get("b0_prior"))
-            priors_spec["b1"] = tuple(cfg["spectral_fit"].get("b1_prior"))
+            priors_spec["S_bkg"] = tuple(cfg["spectral_fit"].get("S_bkg_prior"))
+            priors_spec["beta0"] = tuple(cfg["spectral_fit"].get("beta0_prior"))
+            priors_spec["beta1"] = tuple(cfg["spectral_fit"].get("beta1_prior"))
 
         # Flags controlling the spectral fit
         spec_flags = cfg["spectral_fit"].get("flags", {}).copy()

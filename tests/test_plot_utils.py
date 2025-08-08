@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from constants import PO210
-from plot_utils import plot_time_series, plot_spectrum, extract_time_series
+from plot_utils import plot_time_series, plot_spectrum, extract_time_series, make_linear_bkg
 
 
 def basic_config():
@@ -120,7 +120,7 @@ def test_plot_spectrum_irregular_edges_residuals(tmp_path, monkeypatch):
     monkeypatch.setattr(matplotlib.axes.Axes, "bar", fake_bar)
     monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
 
-    fit_vals = {"b0": 10.0, "b1": 0.0}
+    fit_vals = {"S_bkg": 40.0, "beta0": 0.0, "beta1": 0.0}
     plot_spectrum(
         energies,
         fit_vals=fit_vals,
@@ -131,7 +131,8 @@ def test_plot_spectrum_irregular_edges_residuals(tmp_path, monkeypatch):
     hist, _ = np.histogram(energies, bins=edges)
     width = np.diff(edges)
     centers = edges[:-1] + width / 2.0
-    model_counts = (fit_vals["b0"] + fit_vals["b1"] * centers) * width
+    shape_fn = make_linear_bkg(edges[0], edges[-1])
+    model_counts = fit_vals["S_bkg"] * shape_fn(centers, fit_vals["beta0"], fit_vals["beta1"]) * width
     expected = hist - model_counts
 
     assert len(captured) >= 2
