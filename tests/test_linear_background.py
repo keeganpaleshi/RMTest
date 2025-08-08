@@ -143,8 +143,17 @@ def test_auto_background_priors(monkeypatch, tmp_path):
     analyze.main()
 
     b0_man, b1_man = estimate_linear_background(energies, peaks, peak_width=0.3)
-    assert captured["b0"][0] == pytest.approx(b0_man, rel=0.05)
-    assert captured["b1"][0] == pytest.approx(b1_man, rel=0.1)
+    E_lo = float(energies.min())
+    E_hi = float(energies.max())
+    E_ref = 0.5 * (E_lo + E_hi)
+    grid = np.linspace(E_lo, E_hi, 512)
+    lin = b0_man + b1_man * grid
+    B_man = float(np.trapz(lin, grid))
+    beta1_man = 0.0
+    if (b0_man + b1_man * E_ref) > 0:
+        beta1_man = b1_man / (b0_man + b1_man * E_ref)
+    assert captured["S_bkg"][0] == pytest.approx(B_man, rel=0.05)
+    assert captured["beta1"][0] == pytest.approx(beta1_man, rel=0.1)
 
 
 def test_zero_count_bins():

@@ -1949,8 +1949,19 @@ def main(argv=None):
                 mu_map,
                 peak_width=peak_tol,
             )
-            priors_spec["b0"] = (b0_est, abs(b0_est) * 0.1 + 1e-3)
-            priors_spec["b1"] = (b1_est, abs(b1_est) * 0.1 + 1e-3)
+            E_lo = float(df_analysis["energy_MeV"].min())
+            E_hi = float(df_analysis["energy_MeV"].max())
+            E_ref = 0.5 * (E_lo + E_hi)
+            grid = np.linspace(E_lo, E_hi, 512)
+            lin = b0_est + b1_est * grid
+            B_est = float(np.trapz(lin, grid))
+            b_at_ref = b0_est + b1_est * E_ref
+            beta1_est = 0.0
+            if b_at_ref > 0:
+                beta1_est = b1_est / b_at_ref
+            priors_spec["S_bkg"] = (B_est, abs(B_est) * 0.1 + 1e-3)
+            priors_spec["beta0"] = (0.0, 1.0)
+            priors_spec["beta1"] = (beta1_est, abs(beta1_est) * 0.1 + 1e-3)
         elif bkg_mode.startswith("auto_poly"):
             from background import estimate_polynomial_background_auto
 
@@ -1970,8 +1981,18 @@ def main(argv=None):
                 priors_spec[f"b{i}"] = (float(c), abs(float(c)) * 0.1 + 1e-3)
             priors_spec["poly_order"] = order
         else:
-            priors_spec["b0"] = tuple(cfg["spectral_fit"].get("b0_prior"))
-            priors_spec["b1"] = tuple(cfg["spectral_fit"].get("b1_prior"))
+            priors_spec["S_bkg"] = tuple(
+                cfg["spectral_fit"].get("S_bkg_prior", [0.0, 1.0])
+            )
+            # Support legacy keys
+            beta0_prior = cfg["spectral_fit"].get("beta0_prior")
+            beta1_prior = cfg["spectral_fit"].get("beta1_prior")
+            if beta0_prior is None and "b0_prior" in cfg["spectral_fit"]:
+                beta0_prior = cfg["spectral_fit"].get("b0_prior")
+            if beta1_prior is None and "b1_prior" in cfg["spectral_fit"]:
+                beta1_prior = cfg["spectral_fit"].get("b1_prior")
+            priors_spec["beta0"] = tuple(beta0_prior or (0.0, 1.0))
+            priors_spec["beta1"] = tuple(beta1_prior or (0.0, 1.0))
 
         # Flags controlling the spectral fit
         spec_flags = cfg["spectral_fit"].get("flags", {}).copy()
