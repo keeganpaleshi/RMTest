@@ -77,10 +77,13 @@ spectral_fit:
   mu_sigma: 0.02
   amp_prior_scale: 5.0
   bkg_mode: linear
-  b0_prior:
+  S_bkg_prior:
     - 0.0
     - 5.0
-  b1_prior:
+  beta0_prior:
+    - 0.0
+    - 1.0
+  beta1_prior:
     - 0.0
     - 0.2
   tau_Po210_prior_mean: 0.025

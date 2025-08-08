@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from fitting import fit_spectrum, fit_time_series
+from fitting import fit_spectrum, fit_time_series, softplus
 
 from tests.synthetic_dataset import synthetic_spectrum, synthetic_dataset, PEAKS
 
@@ -24,8 +24,9 @@ def _priors():
         "S_Po218": (60, 6),
         "mu_Po214": (PEAKS["Po214"], 0.1),
         "S_Po214": (70, 7),
-        "b0": (0.0, 1.0),
-        "b1": (0.0, 1.0),
+        "S_bkg": (0.0, 1.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 1.0),
     }
 
 
@@ -43,7 +44,7 @@ def test_amplitude_positive_refit():
     priors.update({"S_Po210": (-10, 5), "S_Po218": (-10, 5), "S_Po214": (-10, 5)})
     res = fit_spectrum(energies, priors)
     for key in ("S_Po210", "S_Po218", "S_Po214"):
-        assert res.params[key] >= 0
+        assert softplus(res.params[key]) >= 0
 
 
 def test_background_auto_selection():

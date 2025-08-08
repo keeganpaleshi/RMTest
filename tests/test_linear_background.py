@@ -14,7 +14,7 @@ from background import (
 )
 import analyze
 from calibration import CalibrationResult
-from fitting import FitResult, FitParams
+from fitting import FitResult, FitParams, make_linear_bkg
 
 
 def generate_spectrum():
@@ -143,8 +143,17 @@ def test_auto_background_priors(monkeypatch, tmp_path):
     analyze.main()
 
     b0_man, b1_man = estimate_linear_background(energies, peaks, peak_width=0.3)
-    assert captured["b0"][0] == pytest.approx(b0_man, rel=0.05)
-    assert captured["b1"][0] == pytest.approx(b1_man, rel=0.1)
+    Emin, Emax = float(energies.min()), float(energies.max())
+    B_est = captured["S_bkg"][0]
+    beta0 = captured["beta0"][0]
+    beta1 = captured["beta1"][0]
+    shape = make_linear_bkg(Emin, Emax)
+    val_lo = B_est * shape(Emin, beta0, beta1)
+    val_hi = B_est * shape(Emax, beta0, beta1)
+    b1 = (val_hi - val_lo) / (Emax - Emin)
+    b0 = val_lo - b1 * Emin
+    assert b0 == pytest.approx(b0_man, rel=0.05)
+    assert b1 == pytest.approx(b1_man, rel=0.1)
 
 
 def test_zero_count_bins():

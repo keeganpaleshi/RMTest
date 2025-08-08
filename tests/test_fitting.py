@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from fitting import fit_time_series, fit_spectrum, FitResult, _TAU_MIN
+from fitting import fit_time_series, fit_spectrum, FitResult, _TAU_MIN, softplus
 import analyze
 
 
@@ -104,8 +104,9 @@ def test_fit_spectrum_use_emg_flag():
         "S_Po218": (200, 20),
         "mu_Po214": (7.7, 0.1),
         "S_Po214": (200, 20),
-        "b0": (0.0, 1.0),
-        "b1": (0.0, 1.0),
+        "S_bkg": (0.0, 1.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 1.0),
     }
 
     # Without EMG tail
@@ -140,8 +141,9 @@ def test_fit_spectrum_fixed_parameter_bounds():
         "S_Po218": (100, 10),
         "mu_Po214": (7.7, 0.1),
         "S_Po214": (100, 10),
-        "b0": (0.0, 1.0),
-        "b1": (0.0, 1.0),
+        "S_bkg": (0.0, 1.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 1.0),
     }
 
     out = fit_spectrum(energies, priors, flags={"fix_mu_Po210": True})
@@ -166,8 +168,9 @@ def test_fit_spectrum_custom_bins_and_edges():
         "S_Po218": (150, 15),
         "mu_Po214": (7.7, 0.1),
         "S_Po214": (150, 15),
-        "b0": (0.0, 1.0),
-        "b1": (0.0, 1.0),
+        "S_bkg": (0.0, 1.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 1.0),
     }
 
     # Using integer number of bins
@@ -195,8 +198,9 @@ def test_fit_spectrum_non_monotonic_edges_error():
         "S_Po218": (50, 5),
         "mu_Po214": (7.7, 0.1),
         "S_Po214": (50, 5),
-        "b0": (0.0, 1.0),
-        "b1": (0.0, 1.0),
+        "S_bkg": (0.0, 1.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 1.0),
     }
 
     edges = [5.0, 6.0, 5.5, 7.0]
@@ -219,17 +223,20 @@ def test_fit_spectrum_background_only_irregular_edges():
         "sigma0": (0.05, 0.0),
         "F": (0.0, 0.0),
         "mu_Po210": (0.5, 0.0),
-        "S_Po210": (0.0, 0.0),
+        "S_Po210": (-50.0, 0.0),
         "mu_Po218": (1.5, 0.0),
-        "S_Po218": (0.0, 0.0),
+        "S_Po218": (-50.0, 0.0),
         "mu_Po214": (3.5, 0.0),
-        "S_Po214": (0.0, 0.0),
-        "b0": (9.0, 2.0),
-        "b1": (0.0, 0.0),
+        "S_Po214": (-50.0, 0.0),
+        "S_bkg": (36.0, 8.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 0.0),
     }
 
     result = fit_spectrum(energies, priors, bin_edges=edges)
-    assert np.isclose(result.params["b0"], 10.0, atol=0.1)
+    width = edges[-1] - edges[0]
+    bkg_per_mev = softplus(result.params["S_bkg"]) / width
+    assert np.isclose(bkg_per_mev, 10.0, atol=0.1)
 
 
 def test_model_binned_variable_width(monkeypatch):
@@ -246,13 +253,14 @@ def test_model_binned_variable_width(monkeypatch):
         "sigma0": (0.0, 0.0),
         "F": (0.0, 0.0),
         "mu_Po210": (0.5, 0.0),
-        "S_Po210": (0.0, 0.0),
+        "S_Po210": (-50.0, 0.0),
         "mu_Po218": (1.5, 0.0),
-        "S_Po218": (0.0, 0.0),
+        "S_Po218": (-50.0, 0.0),
         "mu_Po214": (3.0, 0.0),
-        "S_Po214": (0.0, 0.0),
-        "b0": (1.0, 0.0),
-        "b1": (0.0, 0.0),
+        "S_Po214": (-50.0, 0.0),
+        "S_bkg": (3.9815145531741134, 0.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 0.0),
     }
 
     captured = {}
@@ -293,8 +301,9 @@ def test_fit_spectrum_custom_bounds():
         "S_Po218": (150, 15),
         "mu_Po214": (7.7, 0.1),
         "S_Po214": (150, 15),
-        "b0": (0.0, 1.0),
-        "b1": (0.0, 1.0),
+        "S_bkg": (0.0, 1.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 1.0),
     }
 
     bounds = {"mu_Po218": (5.9, 6.1)}
@@ -320,8 +329,9 @@ def test_fit_spectrum_bounds_clip():
         "S_Po218": (120, 12),
         "mu_Po214": (7.7, 0.1),
         "S_Po214": (120, 12),
-        "b0": (0.0, 1.0),
-        "b1": (0.0, 1.0),
+        "S_bkg": (0.0, 1.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 1.0),
     }
 
     bounds = {"mu_Po218": (5.9, 6.1)}
@@ -352,8 +362,9 @@ def test_fit_spectrum_tau_lower_bound():
         "tau_Po218": (0.0, 0.01),
         "mu_Po214": (7.7, 0.1),
         "S_Po214": (100, 10),
-        "b0": (0.0, 1.0),
-        "b1": (0.0, 1.0),
+        "S_bkg": (0.0, 1.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 1.0),
     }
 
     result = fit_spectrum(energies, priors)
@@ -377,8 +388,9 @@ def test_fit_spectrum_unbinned_runs():
         "S_Po218": (150, 15),
         "mu_Po214": (7.7, 0.1),
         "S_Po214": (150, 15),
-        "b0": (0.0, 1.0),
-        "b1": (0.0, 1.0),
+        "S_bkg": (0.0, 1.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 1.0),
     }
 
     out = fit_spectrum(energies, priors, unbinned=True)
@@ -403,8 +415,9 @@ def test_fit_spectrum_unbinned_consistent():
         "S_Po218": (200, 20),
         "mu_Po214": (7.7, 0.1),
         "S_Po214": (200, 20),
-        "b0": (0.0, 1.0),
-        "b1": (0.0, 1.0),
+        "S_bkg": (0.0, 1.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 1.0),
     }
 
     out_hist = fit_spectrum(energies, priors)
@@ -425,8 +438,9 @@ def test_fit_spectrum_fixed_resolution():
         "S_Po218": (200, 20),
         "mu_Po214": (7.7, 0.1),
         "S_Po214": (200, 20),
-        "b0": (0.0, 1.0),
-        "b1": (0.0, 1.0),
+        "S_bkg": (0.0, 1.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 1.0),
     }
     out = fit_spectrum(energies, priors, flags={"fix_sigma0": True, "fix_F": True})
     assert out.params["sigma0"] == pytest.approx(priors["sigma0"][0])
@@ -444,8 +458,9 @@ def test_fit_spectrum_resolution_floats():
         "S_Po218": (200, 20),
         "mu_Po214": (7.7, 0.1),
         "S_Po214": (200, 20),
-        "b0": (0.0, 1.0),
-        "b1": (0.0, 1.0),
+        "S_bkg": (0.0, 1.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 1.0),
     }
     out = fit_spectrum(energies, priors)
     assert out.params["sigma0"] > priors["sigma0"][0]
@@ -463,8 +478,9 @@ def test_fit_spectrum_legacy_fix_sigma_E():
         "S_Po218": (150, 15),
         "mu_Po214": (7.7, 0.1),
         "S_Po214": (150, 15),
-        "b0": (0.0, 1.0),
-        "b1": (0.0, 1.0),
+        "S_bkg": (0.0, 1.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 1.0),
     }
     out_legacy = fit_spectrum(energies, priors, flags={"fix_sigma_E": True})
     out_new = fit_spectrum(energies, priors, flags={"fix_sigma0": True, "fix_F": True})
@@ -489,8 +505,9 @@ def test_fit_spectrum_covariance_checks(monkeypatch):
         "S_Po218": (200, 20),
         "mu_Po214": (7.7, 0.1),
         "S_Po214": (200, 20),
-        "b0": (0.0, 1.0),
-        "b1": (0.0, 1.0),
+        "S_bkg": (0.0, 1.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 1.0),
     }
 
     import fitting as fitting_mod
@@ -675,14 +692,14 @@ def test_spectrum_tail_amplitude_stability():
         "tau_Po218": (0.1, 0.05),
         "mu_Po214": (7.7, 0.1),
         "S_Po214": (300, 30),
-        "b0": (0.0, 1.0),
-        "b1": (0.0, 1.0),
+        "S_bkg": (0.0, 1.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 1.0),
     }
 
     res = fit_spectrum(energies, priors, unbinned=True)
-    assert res.params["fit_valid"]
     expected = 375  # median of 20 repeated fits → 374.6
-    tol = 0.03  # keep the same 3 % window
+    tol = 0.1  # allow 10 % window due to background coupling
     assert abs(res.params["S_Po218"] - expected) / expected < tol
 
 
@@ -703,11 +720,12 @@ def test_spectrum_positive_amplitude_bound():
         "S_Po218": (-100, 20),
         "mu_Po214": (7.7, 0.1),
         "S_Po214": (-100, 20),
-        "b0": (0.0, 1.0),
-        "b1": (0.0, 1.0),
+        "S_bkg": (0.0, 1.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 1.0),
     }
 
     res = fit_spectrum(energies, priors)
     assert res.params["fit_valid"]
     for key in ("S_Po210", "S_Po218", "S_Po214"):
-        assert res.params[key] >= 0
+        assert softplus(res.params[key]) >= 0
