@@ -405,7 +405,7 @@ fit.  Important keys include:
 - `fd_hist_bins` – number of histogram bins to use when the automatic [Freedman–Diaconis rule](https://en.wikipedia.org/wiki/Freedman%E2%80%93Diaconis_rule) fails.
 - `mu_sigma` – uncertainty applied to peak centroids.
 - `amp_prior_scale` – scales the width of the peak amplitude priors.
-- `bkg_mode` – `"auto"` estimates the linear continuum from the spectrum
+- `bkg_mode` – `"auto"` estimates the continuum from the spectrum
   while `"manual"` uses the `b0_prior` / `b1_prior` values.
 - `b0_prior` / `b1_prior` – `[mean, sigma]` priors for the linear
   continuum terms.

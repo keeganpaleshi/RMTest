@@ -30,7 +30,7 @@ spectral_fit:
       - 0.01
 
   # your existing background priors
-  bkg_mode: linear
+  bkg_mode: auto
   b0_prior:
     - 0.0
     - 5.0

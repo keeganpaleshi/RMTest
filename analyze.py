@@ -1937,6 +1937,12 @@ def main(argv=None):
                     cfg["spectral_fit"].get(f"tau_{peak}_prior_sigma"),
                 )
 
+        total_counts = float(len(df_analysis))
+        peak_sum = sum(priors_spec[f"S_{p}"][0] for p in adc_peaks)
+        bkg_mean = max(total_counts - peak_sum, 1.0)
+        bkg_sigma = max(np.sqrt(bkg_mean), cfg["spectral_fit"].get("amp_prior_scale") * bkg_mean)
+        priors_spec["S_bkg"] = (bkg_mean, bkg_sigma)
+
         # Continuum priors
         bkg_mode = str(cfg["spectral_fit"].get("bkg_mode", "manual")).lower()
         if bkg_mode == "auto":
