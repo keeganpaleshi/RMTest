@@ -70,6 +70,8 @@ class FitParams(TypedDict, total=False):
     db0: NotRequired[float]
     b1: NotRequired[float]
     db1: NotRequired[float]
+    S_bkg: NotRequired[float]
+    dS_bkg: NotRequired[float]
 
 @dataclass
 class FitResult:
@@ -298,6 +300,19 @@ def fit_spectrum(
     if not unbinned:
         hist, _ = np.histogram(e, bins=edges)
 
+    E_lo = float(edges[0])
+    E_hi = float(edges[-1])
+
+    # Augment priors with a background amplitude if not provided
+    priors = dict(priors)
+    if "S_bkg" not in priors:
+        b0_mu = priors.get("b0", (0.0, 1.0))[0]
+        b1_mu = priors.get("b1", (0.0, 1.0))[0]
+        mu = b0_mu * (E_hi - E_lo) + 0.5 * b1_mu * (E_hi**2 - E_lo**2)
+        mu = max(mu, 0.0)
+        sig = max(abs(mu) * 0.1, 1.0)
+        priors["S_bkg"] = (mu, sig)
+
     # Guard against NaNs/Infs arising from unstable histogramming or EMG evals
     if not unbinned and not np.isfinite(hist).all():
         raise RuntimeError(
@@ -351,6 +366,8 @@ def fit_spectrum(
     param_order.append("b0")
     param_index["b1"] = len(param_order)
     param_order.append("b1")
+    param_index["S_bkg"] = len(param_order)
+    param_order.append("S_bkg")
 
     p0 = []
     bounds_lo, bounds_hi = [], []
@@ -419,7 +436,12 @@ def fit_spectrum(
                 y += S * gaussian(x, mu, sigma)
         b0 = params[param_index["b0"]]
         b1 = params[param_index["b1"]]
-        return y + b0 + b1 * x
+        S_bkg = params[param_index["S_bkg"]]
+        bkg = b0 + b1 * x
+        bkg_norm = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
+        if bkg_norm > 0:
+            y += S_bkg * bkg / bkg_norm
+        return y
 
     def _model_binned(x, *params):
         y = _model_density(x, *params)
@@ -464,19 +486,21 @@ def fit_spectrum(
             for iso in iso_list:
                 S_sum += params[param_index[f"S_{iso}"]]
 
-            # Linear background parameters
+            # Background parameters
             b0 = params[param_index["b0"]]
             b1 = params[param_index["b1"]]
+            S_bkg = params[param_index["S_bkg"]]
 
-            # Enforce a non-negative linear background over the fit interval
-            E_lo = float(edges[0])
-            E_hi = float(edges[-1])
+            # Enforce a non-negative background shape over the fit interval
             if (b0 + b1 * E_lo) <= 0 or (b0 + b1 * E_hi) <= 0:
                 return 1e50
 
-            # Analytic integral of background across [E_lo, E_hi]
-            bkg_int = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
-            expected = S_sum + bkg_int
+            # Analytic integral of background shape for normalisation
+            bkg_norm = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
+            if bkg_norm <= 0:
+                return 1e50
+
+            expected = S_sum + S_bkg
 
             # Guard against pathological negative expectations
             if expected <= 0 or not np.isfinite(expected):

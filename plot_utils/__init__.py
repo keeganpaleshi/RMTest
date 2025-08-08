@@ -467,7 +467,14 @@ def plot_spectrum(
     if fit_vals:
         x = np.linspace(edges[0], edges[-1], 1000)
         sigma_E = fit_vals.get("sigma_E", 1.0)
-        y = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * x
+        b0 = fit_vals.get("b0", 0.0)
+        b1 = fit_vals.get("b1", 0.0)
+        S_bkg = fit_vals.get("S_bkg", 0.0)
+        bkg = b0 + b1 * x
+        bkg_norm = b0 * (edges[-1] - edges[0]) + 0.5 * b1 * (edges[-1] ** 2 - edges[0] ** 2)
+        y = np.zeros_like(x)
+        if bkg_norm > 0:
+            y += S_bkg * bkg / bkg_norm
         for pk in ("Po210", "Po218", "Po214"):
             mu_key = f"mu_{pk}"
             amp_key = f"S_{pk}"
@@ -482,11 +489,16 @@ def plot_spectrum(
         palette_name = str(config.get("palette", "default")) if config else "default"
         palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
         fit_color = palette.get("fit", "#ff0000")
-        avg_width = float(np.mean(width))
-        ax_main.plot(x, y * avg_width, color=fit_color, lw=2, label="Fit")
+        idx = np.searchsorted(edges, x, side="right") - 1
+        idx = np.clip(idx, 0, width.size - 1)
+        width_x = width[idx]
+        ax_main.plot(x, y * width_x, color=fit_color, lw=2, label="Fit")
 
         if show_res:
-            y_cent = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * centers
+            bkg_cent = b0 + b1 * centers
+            y_cent = np.zeros_like(centers)
+            if bkg_norm > 0:
+                y_cent += S_bkg * bkg_cent / bkg_norm
             for pk in ("Po210", "Po218", "Po214"):
                 mu_key = f"mu_{pk}"
                 amp_key = f"S_{pk}"
