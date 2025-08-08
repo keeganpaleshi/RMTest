@@ -110,14 +110,22 @@ def test_plot_spectrum_irregular_edges_residuals(tmp_path, monkeypatch):
     ])
 
     captured = []
+    captured_line = {}
 
     def fake_bar(self, x, height, *args, **kwargs):
         captured.append(np.array(height))
         return type("obj", (), {})()
 
+    def fake_plot(self, x, y, *args, **kwargs):
+        if kwargs.get("label") == "Fit":
+            captured_line["x"] = np.array(x)
+            captured_line["y"] = np.array(y)
+        return type("obj", (), {})()
+
     import matplotlib.axes
 
     monkeypatch.setattr(matplotlib.axes.Axes, "bar", fake_bar)
+    monkeypatch.setattr(matplotlib.axes.Axes, "plot", fake_plot)
     monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
 
     fit_vals = {"b0": 10.0, "b1": 0.0}
@@ -136,6 +144,8 @@ def test_plot_spectrum_irregular_edges_residuals(tmp_path, monkeypatch):
 
     assert len(captured) >= 2
     np.testing.assert_allclose(captured[1], expected)
+    np.testing.assert_allclose(captured_line["x"], centers)
+    np.testing.assert_allclose(captured_line["y"], model_counts)
 
 
 def test_plot_time_series_custom_half_life(tmp_path, monkeypatch):
