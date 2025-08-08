@@ -39,8 +39,9 @@ def test_spectral_refit_narrows_bounds(monkeypatch):
         "S_Po218": (1.0, 0.1),
         "mu_Po214": (7.7, 0.1),
         "S_Po214": (1.0, 0.1),
-        "b0": (0.0, 1.0),
-        "b1": (0.0, 1.0),
+        "S_bkg": (0.0, 1.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 1.0),
     }
     flags = {}
     cfg = {
@@ -84,8 +85,9 @@ def test_sigma_E_prior_mapping(monkeypatch):
         "S_Po218": (1.0, 0.1),
         "mu_Po214": (7.7, 0.1),
         "S_Po214": (1.0, 0.1),
-        "b0": (0.0, 1.0),
-        "b1": (0.0, 1.0),
+        "S_bkg": (0.0, 1.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 1.0),
     }
     cfg = {"calibration": {"known_energies": {"Po214": 7.7}}, "spectral_fit": {}}
 

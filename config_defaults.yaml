@@ -31,10 +31,13 @@ spectral_fit:
 
   # your existing background priors
   bkg_mode: linear
-  b0_prior:
+  S_bkg_prior:
     - 0.0
     - 5.0
-  b1_prior:
+  beta0_prior:
+    - 0.0
+    - 1.0
+  beta1_prior:
     - 0.0
     - 0.2
 

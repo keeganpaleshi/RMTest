@@ -30,7 +30,23 @@ __all__ = [
     "plot_radon_trend",
     "plot_radon_activity_full",
     "plot_radon_trend_full",
+    "make_linear_bkg",
 ]
+
+
+def make_linear_bkg(Emin, Emax, Eref=None):
+    if Eref is None:
+        Eref = 0.5 * (Emin + Emax)
+
+    def shape(E, beta0, beta1):
+        lin = (E - Eref)
+        log_b = beta0 + beta1 * lin
+        b = np.exp(log_b)
+        grid = np.linspace(Emin, Emax, 512)
+        area = np.trapz(np.exp(beta0 + beta1 * (grid - Eref)), grid)
+        return b / max(area, 1e-300)
+
+    return shape
 
 
 def extract_time_series(timestamps, energies, window, t_start, t_end, bin_width_s=1.0):
@@ -467,7 +483,11 @@ def plot_spectrum(
     if fit_vals:
         x = np.linspace(edges[0], edges[-1], 1000)
         sigma_E = fit_vals.get("sigma_E", 1.0)
-        y = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * x
+        bkg_shape = make_linear_bkg(edges[0], edges[-1])
+        beta0 = fit_vals.get("beta0", 0.0)
+        beta1 = fit_vals.get("beta1", 0.0)
+        B = fit_vals.get("S_bkg", 0.0)
+        y = B * bkg_shape(x, beta0, beta1)
         for pk in ("Po210", "Po218", "Po214"):
             mu_key = f"mu_{pk}"
             amp_key = f"S_{pk}"
@@ -486,7 +506,7 @@ def plot_spectrum(
         ax_main.plot(x, y * avg_width, color=fit_color, lw=2, label="Fit")
 
         if show_res:
-            y_cent = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * centers
+            y_cent = B * bkg_shape(centers, beta0, beta1)
             for pk in ("Po210", "Po218", "Po214"):
                 mu_key = f"mu_{pk}"
                 amp_key = f"S_{pk}"
