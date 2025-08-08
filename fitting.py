@@ -295,6 +295,8 @@ def fit_spectrum(
     if widths.size != centers.size:
         raise RuntimeError("width and center size mismatch")
     width_map = dict(zip(centers, widths))
+    E_lo = float(edges[0])
+    E_hi = float(edges[-1])
     if not unbinned:
         hist, _ = np.histogram(e, bins=edges)
 
@@ -309,6 +311,16 @@ def fit_spectrum(
             "fit_spectrum: histogram centers contain non-finite values; "
             "check input energies and binning parameters"
         )
+
+    if "S_bkg" not in priors:
+        b0_mean = priors.get("b0", (0.0, 1.0))[0]
+        b1_mean = priors.get("b1", (0.0, 1.0))[0]
+        bkg_mean = b0_mean * (E_hi - E_lo) + 0.5 * b1_mean * (E_hi**2 - E_lo**2)
+        if bkg_mean <= 0:
+            priors["S_bkg"] = (0.0, 1.0)
+        else:
+            bkg_sigma = float(max(np.sqrt(bkg_mean), bkg_mean))
+            priors["S_bkg"] = (float(bkg_mean), bkg_sigma)
 
     # Helper to fetch prior values
     def p(name, default):
@@ -347,6 +359,8 @@ def fit_spectrum(
         if use_emg[iso]:
             param_index[f"tau_{iso}"] = len(param_order)
             param_order.append(f"tau_{iso}")
+    param_index["S_bkg"] = len(param_order)
+    param_order.append("S_bkg")
     param_index["b0"] = len(param_order)
     param_order.append("b0")
     param_index["b1"] = len(param_order)
@@ -380,8 +394,6 @@ def fit_spectrum(
             if max_tau_ratio is not None:
                 hi = min(hi, max_tau_ratio * sigma0_mean)
         if name in ("sigma0", "F"):
-            lo = max(lo, 0.0)
-        if name == "b0":
             lo = max(lo, 0.0)
         if name.startswith("S_"):
             lo = max(lo, 0.0)
@@ -419,7 +431,12 @@ def fit_spectrum(
                 y += S * gaussian(x, mu, sigma)
         b0 = params[param_index["b0"]]
         b1 = params[param_index["b1"]]
-        return y + b0 + b1 * x
+        S_bkg = params[param_index["S_bkg"]]
+        denom = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
+        if S_bkg <= 0 or denom <= 0:
+            return y
+        bkg = b0 + b1 * x
+        return y + S_bkg * bkg / denom
 
     def _model_binned(x, *params):
         y = _model_density(x, *params)
@@ -463,20 +480,18 @@ def fit_spectrum(
             S_sum = 0.0
             for iso in iso_list:
                 S_sum += params[param_index[f"S_{iso}"]]
+            S_bkg = params[param_index["S_bkg"]]
 
-            # Linear background parameters
             b0 = params[param_index["b0"]]
             b1 = params[param_index["b1"]]
 
-            # Enforce a non-negative linear background over the fit interval
-            E_lo = float(edges[0])
-            E_hi = float(edges[-1])
-            if (b0 + b1 * E_lo) <= 0 or (b0 + b1 * E_hi) <= 0:
-                return 1e50
-
-            # Analytic integral of background across [E_lo, E_hi]
-            bkg_int = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
-            expected = S_sum + bkg_int
+            if S_bkg > 0:
+                if (b0 + b1 * E_lo) <= 0 or (b0 + b1 * E_hi) <= 0:
+                    return 1e50
+                denom = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
+                if denom <= 0 or not np.isfinite(denom):
+                    return 1e50
+            expected = S_sum + max(S_bkg, 0.0)
 
             # Guard against pathological negative expectations
             if expected <= 0 or not np.isfinite(expected):
@@ -506,6 +521,12 @@ def fit_spectrum(
             cov = np.zeros((len(param_order), len(param_order)))
             k = len(param_order)
             out["aic"] = float(2 * m.fval + 2 * k)
+            if {"b0", "b1", "S_bkg"}.issubset(out):
+                b0_raw, b1_raw, Sb = out["b0"], out["b1"], out["S_bkg"]
+                denom = b0_raw * (E_hi - E_lo) + 0.5 * b1_raw * (E_hi**2 - E_lo**2)
+                if denom > 0:
+                    out["b0"] = Sb * b0_raw / denom
+                    out["b1"] = Sb * b1_raw / denom
             return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
 
         m.hesse()
@@ -538,6 +559,12 @@ def fit_spectrum(
         for i, pname in enumerate(param_order):
             out[pname] = float(m.values[pname])
             out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
+        if {"b0", "b1", "S_bkg"}.issubset(out):
+            b0_raw, b1_raw, Sb = out["b0"], out["b1"], out["S_bkg"]
+            denom = b0_raw * (E_hi - E_lo) + 0.5 * b1_raw * (E_hi**2 - E_lo**2)
+            if denom > 0:
+                out["b0"] = Sb * b0_raw / denom
+                out["b1"] = Sb * b1_raw / denom
         if fix_sigma0:
             out["sigma0"] = sigma0_val
             out["dsigma0"] = 0.0
