@@ -347,6 +347,8 @@ def fit_spectrum(
         if use_emg[iso]:
             param_index[f"tau_{iso}"] = len(param_order)
             param_order.append(f"tau_{iso}")
+    param_index["S_bkg"] = len(param_order)
+    param_order.append("S_bkg")
     param_index["b0"] = len(param_order)
     param_order.append("b0")
     param_index["b1"] = len(param_order)
@@ -417,9 +419,16 @@ def fit_spectrum(
             else:
                 sigma = np.sqrt(sigma0 ** 2 + F_current * x)
                 y += S * gaussian(x, mu, sigma)
+        S_bkg = params[param_index["S_bkg"]]
         b0 = params[param_index["b0"]]
         b1 = params[param_index["b1"]]
-        return y + b0 + b1 * x
+        E_lo = float(edges[0])
+        E_hi = float(edges[-1])
+        norm = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
+        if norm <= 0:
+            return np.full_like(x, np.nan)
+        bkg_shape = b0 + b1 * x
+        return y + S_bkg * bkg_shape / norm
 
     def _model_binned(x, *params):
         y = _model_density(x, *params)
@@ -459,12 +468,12 @@ def fit_spectrum(
             if np.any(rate <= 0) or not np.isfinite(rate).all():
                 return 1e50
 
-            # Sum of signal yields (non-negative by construction)
-            S_sum = 0.0
+            # Sum of signal yields including background amplitude
+            total = params[param_index["S_bkg"]]
             for iso in iso_list:
-                S_sum += params[param_index[f"S_{iso}"]]
+                total += params[param_index[f"S_{iso}"]]
 
-            # Linear background parameters
+            # Linear background parameters for shape
             b0 = params[param_index["b0"]]
             b1 = params[param_index["b1"]]
 
@@ -473,12 +482,12 @@ def fit_spectrum(
             E_hi = float(edges[-1])
             if (b0 + b1 * E_lo) <= 0 or (b0 + b1 * E_hi) <= 0:
                 return 1e50
+            norm = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
+            if norm <= 0 or not np.isfinite(norm):
+                return 1e50
 
-            # Analytic integral of background across [E_lo, E_hi]
-            bkg_int = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
-            expected = S_sum + bkg_int
+            expected = total
 
-            # Guard against pathological negative expectations
             if expected <= 0 or not np.isfinite(expected):
                 return 1e50
 

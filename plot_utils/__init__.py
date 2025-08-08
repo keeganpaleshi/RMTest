@@ -465,40 +465,34 @@ def plot_spectrum(
         ax_main.set_xlim(lo, hi)
 
     if fit_vals:
-        x = np.linspace(edges[0], edges[-1], 1000)
         sigma_E = fit_vals.get("sigma_E", 1.0)
-        y = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * x
+        b0 = fit_vals.get("b0", 0.0)
+        b1 = fit_vals.get("b1", 0.0)
+        S_bkg = fit_vals.get("S_bkg", 0.0)
+        E_lo, E_hi = edges[0], edges[-1]
+        norm = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
+        bkg_cent = b0 + b1 * centers
+        y_cent = np.zeros_like(centers, dtype=float)
         for pk in ("Po210", "Po218", "Po214"):
             mu_key = f"mu_{pk}"
             amp_key = f"S_{pk}"
             if mu_key in fit_vals and amp_key in fit_vals:
                 mu = fit_vals[mu_key]
                 amp = fit_vals[amp_key]
-                y += (
+                y_cent += (
                     amp
                     / (sigma_E * np.sqrt(2 * np.pi))
-                    * np.exp(-0.5 * ((x - mu) / sigma_E) ** 2)
+                    * np.exp(-0.5 * ((centers - mu) / sigma_E) ** 2)
                 )
+        if norm > 0:
+            y_cent += S_bkg * bkg_cent / norm
         palette_name = str(config.get("palette", "default")) if config else "default"
         palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
         fit_color = palette.get("fit", "#ff0000")
-        avg_width = float(np.mean(width))
-        ax_main.plot(x, y * avg_width, color=fit_color, lw=2, label="Fit")
+        model_counts = y_cent * width
+        ax_main.plot(centers, model_counts, color=fit_color, lw=2, label="Fit")
 
         if show_res:
-            y_cent = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * centers
-            for pk in ("Po210", "Po218", "Po214"):
-                mu_key = f"mu_{pk}"
-                amp_key = f"S_{pk}"
-                if mu_key in fit_vals and amp_key in fit_vals:
-                    mu = fit_vals[mu_key]
-                    amp = fit_vals[amp_key]
-                    y_cent += (
-                        amp
-                        / (sigma_E * np.sqrt(2 * np.pi))
-                        * np.exp(-0.5 * ((centers - mu) / sigma_E) ** 2)
-                    )
-            model_counts = y_cent * width
             residuals = hist - model_counts
             ax_res.bar(
                 centers,
@@ -509,7 +503,6 @@ def plot_spectrum(
             )
             ax_res.axhline(0.0, color="#000000", lw=1)
             ax_res.set_ylabel("Residuals")
-
     ax_main.set_ylabel("Counts per bin")
     ax_main.set_title("Energy Spectrum")
     if fit_vals:
