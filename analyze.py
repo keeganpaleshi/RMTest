@@ -1951,6 +1951,7 @@ def main(argv=None):
             )
             priors_spec["b0"] = (b0_est, abs(b0_est) * 0.1 + 1e-3)
             priors_spec["b1"] = (b1_est, abs(b1_est) * 0.1 + 1e-3)
+            b0_val, b1_val = b0_est, b1_est
         elif bkg_mode.startswith("auto_poly"):
             from background import estimate_polynomial_background_auto
 
@@ -1969,9 +1970,22 @@ def main(argv=None):
             for i, c in enumerate(coeffs):
                 priors_spec[f"b{i}"] = (float(c), abs(float(c)) * 0.1 + 1e-3)
             priors_spec["poly_order"] = order
+            b0_val = float(coeffs[0]) if coeffs.size > 0 else 0.0
+            b1_val = float(coeffs[1]) if coeffs.size > 1 else 0.0
         else:
             priors_spec["b0"] = tuple(cfg["spectral_fit"].get("b0_prior"))
             priors_spec["b1"] = tuple(cfg["spectral_fit"].get("b1_prior"))
+            b0_val = priors_spec["b0"][0]
+            b1_val = priors_spec["b1"][0]
+
+        e_lo = float(df_analysis["energy_MeV"].min())
+        e_hi = float(df_analysis["energy_MeV"].max())
+        bkg_est = b0_val * (e_hi - e_lo) + 0.5 * b1_val * (e_hi**2 - e_lo**2)
+        bkg_est = float(max(bkg_est, 1.0))
+        sigma_bkg = max(
+            np.sqrt(bkg_est), cfg["spectral_fit"].get("amp_prior_scale") * bkg_est
+        )
+        priors_spec["S_bkg"] = (bkg_est, sigma_bkg)
 
         # Flags controlling the spectral fit
         spec_flags = cfg["spectral_fit"].get("flags", {}).copy()
