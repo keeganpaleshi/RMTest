@@ -467,7 +467,17 @@ def plot_spectrum(
     if fit_vals:
         x = np.linspace(edges[0], edges[-1], 1000)
         sigma_E = fit_vals.get("sigma_E", 1.0)
-        y = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * x
+        if "S_bkg" in fit_vals:
+            beta0 = fit_vals.get("beta0", 0.0)
+            beta1 = fit_vals.get("beta1", 0.0)
+            E_lo, E_hi = edges[0], edges[-1]
+            E_ref = 0.5 * (E_lo + E_hi)
+            grid = np.linspace(E_lo, E_hi, 512)
+            area = np.trapz(np.exp(beta0 + beta1 * (grid - E_ref)), grid)
+            shape = np.exp(beta0 + beta1 * (x - E_ref)) / max(area, 1e-300)
+            y = fit_vals["S_bkg"] * shape
+        else:
+            y = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * x
         for pk in ("Po210", "Po218", "Po214"):
             mu_key = f"mu_{pk}"
             amp_key = f"S_{pk}"
@@ -486,7 +496,11 @@ def plot_spectrum(
         ax_main.plot(x, y * avg_width, color=fit_color, lw=2, label="Fit")
 
         if show_res:
-            y_cent = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * centers
+            if "S_bkg" in fit_vals:
+                bkg_cent = np.exp(beta0 + beta1 * (centers - E_ref)) / max(area, 1e-300)
+                y_cent = fit_vals["S_bkg"] * bkg_cent
+            else:
+                y_cent = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * centers
             for pk in ("Po210", "Po218", "Po214"):
                 mu_key = f"mu_{pk}"
                 amp_key = f"S_{pk}"

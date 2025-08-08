@@ -66,10 +66,12 @@ class FitParams(TypedDict, total=False):
     dtau_Po214: NotRequired[float]
     tau_Po210: NotRequired[float]
     dtau_Po210: NotRequired[float]
-    b0: NotRequired[float]
-    db0: NotRequired[float]
-    b1: NotRequired[float]
-    db1: NotRequired[float]
+    S_bkg: NotRequired[float]
+    dS_bkg: NotRequired[float]
+    beta0: NotRequired[float]
+    dbeta0: NotRequired[float]
+    beta1: NotRequired[float]
+    dbeta1: NotRequired[float]
 
 @dataclass
 class FitResult:
@@ -189,6 +191,13 @@ def fit_decay(times, priors, t0=0.0, t_end=None, flags=None):
         flags.setdefault("fix_sigma0", True)
         flags.setdefault("fix_F", True)
 
+    # Map legacy continuum priors to new parameter names
+    priors = dict(priors)
+    if "b0" in priors and "beta0" not in priors:
+        priors["beta0"] = priors.pop("b0")
+    if "b1" in priors and "beta1" not in priors:
+        priors["beta1"] = priors.pop("b1")
+
     if flags.get("fix_sigma_E"):
         flags.setdefault("fix_sigma0", True)
         flags.setdefault("fix_F", True)
@@ -298,6 +307,19 @@ def fit_spectrum(
     if not unbinned:
         hist, _ = np.histogram(e, bins=edges)
 
+    E_lo = float(edges[0])
+    E_hi = float(edges[-1])
+    E_ref = 0.5 * (E_lo + E_hi)
+    _bkg_grid = np.linspace(E_lo, E_hi, 512)
+
+    def _bkg_shape(E, beta0, beta1):
+        lin = E - E_ref
+        b = np.exp(beta0 + beta1 * lin)
+        area = np.trapz(
+            np.exp(beta0 + beta1 * (_bkg_grid - E_ref)), _bkg_grid
+        )
+        return b / max(area, 1e-300)
+
     # Guard against NaNs/Infs arising from unstable histogramming or EMG evals
     if not unbinned and not np.isfinite(hist).all():
         raise RuntimeError(
@@ -347,17 +369,20 @@ def fit_spectrum(
         if use_emg[iso]:
             param_index[f"tau_{iso}"] = len(param_order)
             param_order.append(f"tau_{iso}")
-    param_index["b0"] = len(param_order)
-    param_order.append("b0")
-    param_index["b1"] = len(param_order)
-    param_order.append("b1")
+    param_index["S_bkg"] = len(param_order)
+    param_order.append("S_bkg")
+    param_index["beta0"] = len(param_order)
+    param_order.append("beta0")
+    param_index["beta1"] = len(param_order)
+    param_order.append("beta1")
 
     p0 = []
     bounds_lo, bounds_hi = [], []
     eps = 1e-12
     sigma0_mean = sigma0_val
     for name in param_order:
-        mean, sig = p(name, 1.0)
+        default = 0.0 if name == "S_bkg" else 1.0
+        mean, sig = p(name, default)
         # Enforce a strictly positive initial tau to avoid singular EMG tails
         if name.startswith("tau_"):
             mean = max(mean, _TAU_MIN)
@@ -380,8 +405,6 @@ def fit_spectrum(
             if max_tau_ratio is not None:
                 hi = min(hi, max_tau_ratio * sigma0_mean)
         if name in ("sigma0", "F"):
-            lo = max(lo, 0.0)
-        if name == "b0":
             lo = max(lo, 0.0)
         if name.startswith("S_"):
             lo = max(lo, 0.0)
@@ -417,9 +440,11 @@ def fit_spectrum(
             else:
                 sigma = np.sqrt(sigma0 ** 2 + F_current * x)
                 y += S * gaussian(x, mu, sigma)
-        b0 = params[param_index["b0"]]
-        b1 = params[param_index["b1"]]
-        return y + b0 + b1 * x
+        B = params[param_index["S_bkg"]]
+        beta0 = params[param_index["beta0"]]
+        beta1 = params[param_index["beta1"]]
+        bkg = _bkg_shape(x, beta0, beta1)
+        return y + B * bkg
 
     def _model_binned(x, *params):
         y = _model_density(x, *params)
@@ -464,19 +489,8 @@ def fit_spectrum(
             for iso in iso_list:
                 S_sum += params[param_index[f"S_{iso}"]]
 
-            # Linear background parameters
-            b0 = params[param_index["b0"]]
-            b1 = params[param_index["b1"]]
-
-            # Enforce a non-negative linear background over the fit interval
-            E_lo = float(edges[0])
-            E_hi = float(edges[-1])
-            if (b0 + b1 * E_lo) <= 0 or (b0 + b1 * E_hi) <= 0:
-                return 1e50
-
-            # Analytic integral of background across [E_lo, E_hi]
-            bkg_int = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
-            expected = S_sum + bkg_int
+            B = params[param_index["S_bkg"]]
+            expected = S_sum + B
 
             # Guard against pathological negative expectations
             if expected <= 0 or not np.isfinite(expected):
@@ -509,13 +523,18 @@ def fit_spectrum(
             return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
 
         m.hesse()
-        cov = np.array(m.covariance)
-        perr = np.sqrt(np.clip(np.diag(cov), 0, None))
-        try:
-            eigvals = np.linalg.eigvals(cov)
-            fit_valid = bool(np.all(eigvals > 0))
-        except np.linalg.LinAlgError:
+        if m.covariance is None:
+            cov = np.zeros((len(param_order), len(param_order)))
+            perr = np.full(len(param_order), np.nan)
             fit_valid = False
+        else:
+            cov = np.array(m.covariance)
+            perr = np.sqrt(np.clip(np.diag(cov), 0, None))
+            try:
+                eigvals = np.linalg.eigvals(cov)
+                fit_valid = bool(np.all(eigvals > 0))
+            except np.linalg.LinAlgError:
+                fit_valid = False
         if not fit_valid:
             if strict:
                 raise RuntimeError(
