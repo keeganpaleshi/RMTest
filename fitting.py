@@ -222,7 +222,7 @@ def fit_spectrum(
     unbinned=False,
     strict=False,
     *,
-    max_tau_ratio=None,
+    max_tau_ratio=5.0,
 ):
     """Fit the radon spectrum using either χ² histogram or unbinned likelihood.
 
@@ -258,8 +258,8 @@ def fit_spectrum(
         matrix is not positive definite.  The default is ``False`` which
         attempts to stabilise the covariance by adding a tiny jitter.
     max_tau_ratio : float, optional
-        If given, enforce an upper bound ``tau <= max_tau_ratio * sigma0`` for
-        EMG tail parameters.
+        Upper bound factor for exponential tail parameters, enforcing
+        ``tau <= max_tau_ratio * sigma0``.  Default is ``5.0``.
 
     Returns
     -------

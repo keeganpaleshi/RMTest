@@ -466,24 +466,57 @@ def plot_spectrum(
 
     if fit_vals:
         sigma_E = fit_vals.get("sigma_E", 1.0)
-        y_cent = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * centers
+
+        # --- 1) Linear background normalization -----------------------------
+        b0    = fit_vals.get("b0",    0.0)
+        b1    = fit_vals.get("b1",    0.0)
+        S_bkg = fit_vals.get("S_bkg", 0.0)
+
+        # bin centers are already defined above as `centers`
+        # compute background value at each center:
+        bkg_cent = b0 + b1 * centers
+
+        # integrate (b0 + b1·x) dx from x = edges[0] to edges[-1]:
+        lo_edge = edges[0]
+        hi_edge = edges[-1]
+        bkg_norm = b0 * (hi_edge - lo_edge) + 0.5 * b1 * (hi_edge**2 - lo_edge**2)
+
+        # start model array (counts/s)
+        y = np.zeros_like(centers)
+        if bkg_norm > 0:
+            # scale to total background counts S_bkg
+            y += S_bkg * (bkg_cent / bkg_norm)
+
+        # --- 2) Add Gaussian peaks -------------------------------------------
         for pk in ("Po210", "Po218", "Po214"):
-            mu_key = f"mu_{pk}"
+            mu_key  = f"mu_{pk}"
             amp_key = f"S_{pk}"
             if mu_key in fit_vals and amp_key in fit_vals:
-                mu = fit_vals[mu_key]
+                mu  = fit_vals[mu_key]
                 amp = fit_vals[amp_key]
-                y_cent += (
+                y  += (
                     amp
                     / (sigma_E * np.sqrt(2 * np.pi))
                     * np.exp(-0.5 * ((centers - mu) / sigma_E) ** 2)
                 )
-        palette_name = str(config.get("palette", "default")) if config else "default"
-        palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
-        fit_color = palette.get("fit", "#ff0000")
-        model_counts = y_cent * width
-        ax_main.plot(centers, model_counts, color=fit_color, lw=2, label="Fit")
 
+        # --- 3) Convert rates (counts/s) to counts per bin -------------------
+        model_counts = y * width
+
+        # --- 4) Plot the combined model over the histogram -------------------
+        palette_name = str(config.get("palette", "default")) if config else "default"
+        palette      = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
+        fit_color    = palette.get("fit", "#ff0000")
+        ax_main.plot(
+            centers,
+            model_counts,
+            color=fit_color,
+            lw=2,
+            ls="--",
+            label="Fit",
+        )
+
+        # --- 5) Residuals panel (if enabled) ---------------------------------
         if show_res:
             residuals = hist - model_counts
             ax_res.bar(

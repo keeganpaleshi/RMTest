@@ -128,7 +128,7 @@ def test_plot_spectrum_irregular_edges_residuals(tmp_path, monkeypatch):
     monkeypatch.setattr(matplotlib.axes.Axes, "plot", fake_plot)
     monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
 
-    fit_vals = {"b0": 10.0, "b1": 0.0}
+    fit_vals = {"b0": 10.0, "b1": 0.0, "S_bkg": 40.0}
     plot_spectrum(
         energies,
         fit_vals=fit_vals,
@@ -139,7 +139,18 @@ def test_plot_spectrum_irregular_edges_residuals(tmp_path, monkeypatch):
     hist, _ = np.histogram(energies, bins=edges)
     width = np.diff(edges)
     centers = edges[:-1] + width / 2.0
-    model_counts = (fit_vals["b0"] + fit_vals["b1"] * centers) * width
+
+    bkg_cent = fit_vals["b0"] + fit_vals["b1"] * centers
+    lo_edge = edges[0]
+    hi_edge = edges[-1]
+    bkg_norm = (
+        fit_vals["b0"] * (hi_edge - lo_edge)
+        + 0.5 * fit_vals["b1"] * (hi_edge**2 - lo_edge**2)
+    )
+    y = np.zeros_like(centers)
+    if bkg_norm > 0:
+        y += fit_vals["S_bkg"] * (bkg_cent / bkg_norm)
+    model_counts = y * width
     expected = hist - model_counts
 
     assert len(captured) >= 2
