@@ -224,12 +224,13 @@ def test_fit_spectrum_background_only_irregular_edges():
         "S_Po218": (0.0, 0.0),
         "mu_Po214": (3.5, 0.0),
         "S_Po214": (0.0, 0.0),
-        "b0": (9.0, 2.0),
-        "b1": (0.0, 0.0),
+        "S_bkg": (40.0, 10.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 0.0),
     }
 
     result = fit_spectrum(energies, priors, bin_edges=edges)
-    assert np.isclose(result.params["b0"], 10.0, atol=0.1)
+    assert np.isclose(result.params["S_bkg"], 40.0, atol=0.1)
 
 
 def test_model_binned_variable_width(monkeypatch):
@@ -251,8 +252,9 @@ def test_model_binned_variable_width(monkeypatch):
         "S_Po218": (0.0, 0.0),
         "mu_Po214": (3.0, 0.0),
         "S_Po214": (0.0, 0.0),
-        "b0": (1.0, 0.0),
-        "b1": (0.0, 0.0),
+        "S_bkg": (4.0, 0.0),
+        "beta0": (0.0, 0.0),
+        "beta1": (0.0, 0.0),
     }
 
     captured = {}
@@ -675,13 +677,14 @@ def test_spectrum_tail_amplitude_stability():
         "tau_Po218": (0.1, 0.05),
         "mu_Po214": (7.7, 0.1),
         "S_Po214": (300, 30),
-        "b0": (0.0, 1.0),
-        "b1": (0.0, 1.0),
+        "S_bkg": (100.0, 50.0),
+        "beta0": (0.0, 1.0),
+        "beta1": (0.0, 1.0),
     }
 
     res = fit_spectrum(energies, priors, unbinned=True)
     assert res.params["fit_valid"]
-    expected = 375  # median of 20 repeated fits → 374.6
+    expected = 395.34  # updated median with new background model
     tol = 0.03  # keep the same 3 % window
     assert abs(res.params["S_Po218"] - expected) / expected < tol
 
