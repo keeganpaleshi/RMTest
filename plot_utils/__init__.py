@@ -20,6 +20,22 @@ from .paths import get_targets
 PO214_HALF_LIFE_S = PO214.half_life_s
 PO218_HALF_LIFE_S = PO218.half_life_s
 
+
+def _make_linear_bkg(Emin: float, Emax: float, Eref: float | None = None):
+    """Return unit-normalised positive linear background shape."""
+    if Eref is None:
+        Eref = 0.5 * (Emin + Emax)
+
+    def shape(E, beta0, beta1):
+        lin = (E - Eref)
+        log_b = beta0 + beta1 * lin
+        b = np.exp(log_b)
+        grid = np.linspace(Emin, Emax, 512)
+        area = np.trapz(np.exp(beta0 + beta1 * (grid - Eref)), grid)
+        return b / max(area, 1e-300)
+
+    return shape
+
 __all__ = [
     "extract_time_series",
     "plot_time_series",
@@ -467,14 +483,13 @@ def plot_spectrum(
     if fit_vals:
         x = np.linspace(edges[0], edges[-1], 1000)
         sigma_E = fit_vals.get("sigma_E", 1.0)
-        b0 = fit_vals.get("b0", 0.0)
-        b1 = fit_vals.get("b1", 0.0)
+        beta0 = fit_vals.get("b0", 0.0)
+        beta1 = fit_vals.get("b1", 0.0)
         S_bkg = fit_vals.get("S_bkg", 0.0)
-        bkg = b0 + b1 * x
-        bkg_norm = b0 * (edges[-1] - edges[0]) + 0.5 * b1 * (edges[-1] ** 2 - edges[0] ** 2)
+        bkg_shape = _make_linear_bkg(edges[0], edges[-1])
         y = np.zeros_like(x)
-        if bkg_norm > 0:
-            y += S_bkg * bkg / bkg_norm
+        if S_bkg > 0:
+            y += S_bkg * bkg_shape(x, beta0, beta1)
         for pk in ("Po210", "Po218", "Po214"):
             mu_key = f"mu_{pk}"
             amp_key = f"S_{pk}"
@@ -495,10 +510,9 @@ def plot_spectrum(
         ax_main.plot(x, y * width_x, color=fit_color, lw=2, label="Fit")
 
         if show_res:
-            bkg_cent = b0 + b1 * centers
             y_cent = np.zeros_like(centers)
-            if bkg_norm > 0:
-                y_cent += S_bkg * bkg_cent / bkg_norm
+            if S_bkg > 0:
+                y_cent += S_bkg * bkg_shape(centers, beta0, beta1)
             for pk in ("Po210", "Po218", "Po214"):
                 mu_key = f"mu_{pk}"
                 amp_key = f"S_{pk}"

@@ -1949,8 +1949,13 @@ def main(argv=None):
                 mu_map,
                 peak_width=peak_tol,
             )
-            priors_spec["b0"] = (b0_est, abs(b0_est) * 0.1 + 1e-3)
-            priors_spec["b1"] = (b1_est, abs(b1_est) * 0.1 + 1e-3)
+            b0_est = max(b0_est, 1e-300)
+            beta0 = float(np.log(b0_est))
+            beta1 = float(b1_est / b0_est) if b0_est != 0 else 0.0
+            sigma_b0 = abs(b0_est) * 0.1 + 1e-3
+            sigma_b1 = abs(b1_est) * 0.1 + 1e-3
+            priors_spec["b0"] = (beta0, sigma_b0 / b0_est)
+            priors_spec["b1"] = (beta1, sigma_b1 / b0_est)
         elif bkg_mode.startswith("auto_poly"):
             from background import estimate_polynomial_background_auto
 
