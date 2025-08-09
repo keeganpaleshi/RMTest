@@ -722,6 +722,16 @@ def parse_args(argv=None):
         help="Analysis isotope mode (overrides analysis_isotope in config.yaml)",
     )
     p.add_argument(
+        "--background-model",
+        choices=["linear", "loglin_unit"],
+        help="Experimental (opt-in). Background model. Defaults keep legacy behavior.",
+    )
+    p.add_argument(
+        "--likelihood",
+        choices=["current", "extended"],
+        help="Experimental (opt-in). Likelihood function. Defaults keep legacy behavior.",
+    )
+    p.add_argument(
         "--allow-negative-baseline",
         action="store_true",
         help="Allow negative baseline-corrected rates",
@@ -1097,6 +1107,14 @@ def main(argv=None):
     if args.seed is not None:
         _log_override("pipeline", "random_seed", int(args.seed))
         cfg.setdefault("pipeline", {})["random_seed"] = int(args.seed)
+    if args.background_model is not None:
+        _log_override("analysis", "background_model", args.background_model)
+        cfg.setdefault("analysis", {})["background_model"] = args.background_model
+
+    if args.likelihood is not None:
+        _log_override("analysis", "likelihood", args.likelihood)
+        cfg.setdefault("analysis", {})["likelihood"] = args.likelihood
+
 
     if args.ambient_concentration is not None:
         _log_override(
