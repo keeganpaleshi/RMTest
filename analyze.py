@@ -1944,13 +1944,21 @@ def main(argv=None):
 
             mu_map = {k: priors_spec[f"mu_{k}"][0] for k in adc_peaks.keys()}
             peak_tol = cfg["spectral_fit"].get("spectral_peak_tolerance_mev", 0.3)
+            energies_mev = df_analysis["energy_MeV"].values
             b0_est, b1_est = estimate_linear_background(
-                df_analysis["energy_MeV"].values,
+                energies_mev,
                 mu_map,
                 peak_width=peak_tol,
             )
-            priors_spec["b0"] = (b0_est, abs(b0_est) * 0.1 + 1e-3)
-            priors_spec["b1"] = (b1_est, abs(b1_est) * 0.1 + 1e-3)
+            Emin = float(np.min(energies_mev))
+            Emax = float(np.max(energies_mev))
+            Eref = 0.5 * (Emin + Emax)
+            A = b0_est + b1_est * Eref
+            A = max(A, 1e-300)
+            beta0_est = float(np.log(A))
+            beta1_est = float(b1_est / A)
+            priors_spec["beta0"] = (beta0_est, abs(beta0_est) * 0.1 + 1e-3)
+            priors_spec["beta1"] = (beta1_est, abs(beta1_est) * 0.1 + 1e-3)
         elif bkg_mode.startswith("auto_poly"):
             from background import estimate_polynomial_background_auto
 
@@ -1970,8 +1978,8 @@ def main(argv=None):
                 priors_spec[f"b{i}"] = (float(c), abs(float(c)) * 0.1 + 1e-3)
             priors_spec["poly_order"] = order
         else:
-            priors_spec["b0"] = tuple(cfg["spectral_fit"].get("b0_prior"))
-            priors_spec["b1"] = tuple(cfg["spectral_fit"].get("b1_prior"))
+            priors_spec["beta0"] = tuple(cfg["spectral_fit"].get("beta0_prior"))
+            priors_spec["beta1"] = tuple(cfg["spectral_fit"].get("beta1_prior"))
 
         # Flags controlling the spectral fit
         spec_flags = cfg["spectral_fit"].get("flags", {}).copy()

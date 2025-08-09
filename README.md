@@ -405,10 +405,10 @@ fit.  Important keys include:
 - `fd_hist_bins` – number of histogram bins to use when the automatic [Freedman–Diaconis rule](https://en.wikipedia.org/wiki/Freedman%E2%80%93Diaconis_rule) fails.
 - `mu_sigma` – uncertainty applied to peak centroids.
 - `amp_prior_scale` – scales the width of the peak amplitude priors.
-- `bkg_mode` – `"auto"` estimates the linear continuum from the spectrum
-  while `"manual"` uses the `b0_prior` / `b1_prior` values.
-- `b0_prior` / `b1_prior` – `[mean, sigma]` priors for the linear
-  continuum terms.
+- `bkg_mode` – `"auto"` estimates the continuum from the spectrum
+  while `"manual"` uses the `beta0_prior` / `beta1_prior` values.
+- `beta0_prior` / `beta1_prior` – `[mean, sigma]` priors for the
+  log-linear background shape parameters.
 - `tau_{iso}_prior_mean` and `tau_{iso}_prior_sigma` – mean and
   uncertainty for the exponential tail constant of each isotope when
   `use_emg` enables that tail.  Use a strictly positive prior mean (e.g.
@@ -445,8 +445,8 @@ Example snippet:
 ```yaml
 "spectral_fit": {
     "bkg_mode": "manual",
-    "b0_prior": [0.0, 1.0],
-    "b1_prior": [0.0, 1.0],
+    "beta0_prior": [0.0, 1.0],
+    "beta1_prior": [0.0, 1.0],
     "mu_sigma": 0.05,
     "amp_prior_scale": 1.0,
     "unbinned_likelihood": false
