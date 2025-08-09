@@ -314,9 +314,9 @@ def fit_spectrum(
 
     def _bkg_shape(E, beta0, beta1):
         lin = E - E_ref
-        b = np.exp(beta0 + beta1 * lin)
+        b = _safe_exp(beta0 + beta1 * lin)
         area = np.trapz(
-            np.exp(beta0 + beta1 * (_bkg_grid - E_ref)), _bkg_grid
+            _safe_exp(beta0 + beta1 * (_bkg_grid - E_ref)), _bkg_grid
         )
         return b / max(area, 1e-300)
 

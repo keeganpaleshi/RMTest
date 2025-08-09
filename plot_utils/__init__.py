@@ -13,7 +13,7 @@ import matplotlib.ticker as mticker
 from datetime import datetime
 from pathlib import Path
 from color_schemes import COLOR_SCHEMES
-from constants import PO214, PO218, PO210
+from constants import PO214, PO218, PO210, safe_exp as _safe_exp
 from .paths import get_targets
 
 # Half-life constants used for the time-series overlay [seconds]
@@ -473,8 +473,8 @@ def plot_spectrum(
             E_lo, E_hi = edges[0], edges[-1]
             E_ref = 0.5 * (E_lo + E_hi)
             grid = np.linspace(E_lo, E_hi, 512)
-            area = np.trapz(np.exp(beta0 + beta1 * (grid - E_ref)), grid)
-            shape = np.exp(beta0 + beta1 * (x - E_ref)) / max(area, 1e-300)
+            area = np.trapz(_safe_exp(beta0 + beta1 * (grid - E_ref)), grid)
+            shape = _safe_exp(beta0 + beta1 * (x - E_ref)) / max(area, 1e-300)
             y = fit_vals["S_bkg"] * shape
         else:
             y = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * x
@@ -497,7 +497,7 @@ def plot_spectrum(
 
         if show_res:
             if "S_bkg" in fit_vals:
-                bkg_cent = np.exp(beta0 + beta1 * (centers - E_ref)) / max(area, 1e-300)
+                bkg_cent = _safe_exp(beta0 + beta1 * (centers - E_ref)) / max(area, 1e-300)
                 y_cent = fit_vals["S_bkg"] * bkg_cent
             else:
                 y_cent = fit_vals.get("b0", 0.0) + fit_vals.get("b1", 0.0) * centers
