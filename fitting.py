@@ -19,6 +19,47 @@ from constants import _TAU_MIN, CURVE_FIT_MAX_EVALS, safe_exp as _safe_exp
 __all__ = ["fit_time_series", "fit_decay", "fit_spectrum"]
 
 
+def _softplus(x: np.ndarray | float) -> np.ndarray | float:
+    """Numerically stable softplus."""
+    return np.log1p(_safe_exp(x))
+
+
+def _inv_softplus(y: float) -> float:
+    """Inverse of softplus for positive ``y``.
+
+    For ``y`` near zero, returns a large negative value that maps back close to
+    zero under :func:`_softplus`.
+    """
+    if y <= 0:
+        return -20.0
+    if y > 20:
+        return y
+    return float(np.log(np.expm1(y)))
+
+
+def _sigmoid(x: np.ndarray | float) -> np.ndarray | float:
+    """Numerically stable logistic function."""
+    return 1.0 / (1.0 + _safe_exp(-x))
+
+
+def _make_linear_bkg(E_lo: float, E_hi: float, Eref: float | None = None):
+    """Return a unit-area log-linear background shape on [E_lo, E_hi]."""
+    if Eref is None:
+        Eref = 0.5 * (E_lo + E_hi)
+    grid = np.linspace(E_lo, E_hi, 1000)
+
+    def _shape(E, beta0, beta1):
+        E = np.asarray(E, dtype=float)
+        g = _safe_exp(beta0 + beta1 * (grid - Eref))
+        Z = np.trapz(g, grid)
+        if not np.isfinite(Z) or Z <= 0:
+            return np.zeros_like(E)
+        y = _safe_exp(beta0 + beta1 * (E - Eref)) / Z
+        return y
+
+    return _shape
+
+
 class FitParams(TypedDict, total=False):
     """Typed mapping of fit parameter names to values."""
 
@@ -303,6 +344,8 @@ def fit_spectrum(
     E_lo = float(edges[0])
     E_hi = float(edges[-1])
 
+    bkg_shape = _make_linear_bkg(E_lo, E_hi)
+
     # Augment priors with a background amplitude if not provided
     priors = dict(priors)
     if "S_bkg" not in priors:
@@ -375,36 +418,45 @@ def fit_spectrum(
     sigma0_mean = sigma0_val
     for name in param_order:
         mean, sig = p(name, 1.0)
+        if name.startswith("S_"):
+            mean = _inv_softplus(float(mean))
         # Enforce a strictly positive initial tau to avoid singular EMG tails
         if name.startswith("tau_"):
             mean = max(mean, _TAU_MIN)
         if flags.get(f"fix_{name}", False) or sig == 0:
-            # curve_fit requires lower < upper; use a tiny width around fixed values
             lo = mean - eps
             hi = mean + eps
         else:
             delta = 5 * sig if np.isfinite(sig) else np.inf
-            lo = mean - delta
-            hi = mean + delta
+            if name.startswith("S_"):
+                lo = mean - delta
+                hi = mean + delta
+            else:
+                lo = mean - delta
+                hi = mean + delta
         if bounds and name in bounds:
             user_lo, user_hi = bounds[name]
-            if user_lo is not None:
-                lo = max(lo, user_lo)
-            if user_hi is not None:
-                hi = min(hi, user_hi)
+            if name.startswith("S_"):
+                if user_lo is not None:
+                    lo = max(lo, _inv_softplus(user_lo))
+                if user_hi is not None:
+                    hi = min(hi, _inv_softplus(user_hi))
+            else:
+                if user_lo is not None:
+                    lo = max(lo, user_lo)
+                if user_hi is not None:
+                    hi = min(hi, user_hi)
         if name.startswith("tau_"):
             lo = max(lo, _TAU_MIN)
             if max_tau_ratio is not None:
                 hi = min(hi, max_tau_ratio * sigma0_mean)
         if name in ("sigma0", "F"):
             lo = max(lo, 0.0)
-        if name == "b0":
-            lo = max(lo, 0.0)
-        if name.startswith("S_"):
-            lo = max(lo, 0.0)
         if hi <= lo:
             hi = lo + eps
         mean = np.clip(mean, lo, hi)
+        if name == "sigma0":
+            sigma0_mean = mean
         p0.append(mean)
         bounds_lo.append(lo)
         bounds_hi.append(hi)
@@ -420,10 +472,11 @@ def fit_spectrum(
             F_current = F_val
         else:
             F_current = params[param_index["F"]]
-        y = np.zeros_like(x)
+        y = np.zeros_like(x, dtype=float)
         for iso in iso_list:
             mu = params[param_index[f"mu_{iso}"]]
-            S = params[param_index[f"S_{iso}"]]
+            S_raw = params[param_index[f"S_{iso}"]]
+            S = _softplus(S_raw)
             if use_emg[iso]:
                 tau = params[param_index[f"tau_{iso}"]]
                 sigma = np.sqrt(sigma0 ** 2 + F_current * x)
@@ -434,14 +487,11 @@ def fit_spectrum(
             else:
                 sigma = np.sqrt(sigma0 ** 2 + F_current * x)
                 y += S * gaussian(x, mu, sigma)
-        b0 = params[param_index["b0"]]
-        b1 = params[param_index["b1"]]
-        S_bkg = params[param_index["S_bkg"]]
-        bkg = b0 + b1 * x
-        bkg_norm = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
-        if bkg_norm > 0:
-            y += S_bkg * bkg / bkg_norm
-        return y
+        beta0 = params[param_index["b0"]]
+        beta1 = params[param_index["b1"]]
+        B = _softplus(params[param_index["S_bkg"]])
+        y += B * bkg_shape(x, beta0, beta1)
+        return np.clip(y, 1e-300, np.inf)
 
     def _model_binned(x, *params):
         y = _model_density(x, *params)
@@ -476,34 +526,16 @@ def fit_spectrum(
             )
     else:
         def _nll(*params):
-            # Per-event rate must be positive and finite
             rate = _model_density(e, *params)
-            if np.any(rate <= 0) or not np.isfinite(rate).all():
+            if not np.isfinite(rate).all():
                 return 1e50
 
-            # Sum of signal yields (non-negative by construction)
             S_sum = 0.0
             for iso in iso_list:
-                S_sum += params[param_index[f"S_{iso}"]]
-
-            # Background parameters
-            b0 = params[param_index["b0"]]
-            b1 = params[param_index["b1"]]
-            S_bkg = params[param_index["S_bkg"]]
-
-            # Enforce a non-negative background shape over the fit interval
-            if (b0 + b1 * E_lo) <= 0 or (b0 + b1 * E_hi) <= 0:
-                return 1e50
-
-            # Analytic integral of background shape for normalisation
-            bkg_norm = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
-            if bkg_norm <= 0:
-                return 1e50
-
-            expected = S_sum + S_bkg
-
-            # Guard against pathological negative expectations
-            if expected <= 0 or not np.isfinite(expected):
+                S_sum += _softplus(params[param_index[f"S_{iso}"]])
+            B = _softplus(params[param_index["S_bkg"]])
+            expected = S_sum + B
+            if not np.isfinite(expected):
                 return 1e50
 
             return expected - np.sum(np.log(rate))
@@ -524,16 +556,25 @@ def fit_spectrum(
         if not m.valid:
             out["fit_valid"] = False
             for pname in param_order:
-                out[pname] = float(m.values[pname])
+                raw_val = float(m.values[pname])
                 err = float(m.errors[pname]) if pname in m.errors else np.nan
-                out["d" + pname] = err
+                if pname.startswith("S_"):
+                    out[pname] = float(_softplus(raw_val))
+                    out["d" + pname] = float(err * _sigmoid(raw_val))
+                else:
+                    out[pname] = raw_val
+                    out["d" + pname] = err
             cov = np.zeros((len(param_order), len(param_order)))
             k = len(param_order)
             out["aic"] = float(2 * m.fval + 2 * k)
             return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
 
         m.hesse()
-        cov = np.array(m.covariance)
+        cov = (
+            np.array(m.covariance)
+            if m.covariance is not None
+            else np.zeros((len(param_order), len(param_order)))
+        )
         perr = np.sqrt(np.clip(np.diag(cov), 0, None))
         try:
             eigvals = np.linalg.eigvals(cov)
@@ -560,8 +601,14 @@ def fit_spectrum(
                 pass
         out["fit_valid"] = fit_valid
         for i, pname in enumerate(param_order):
-            out[pname] = float(m.values[pname])
-            out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
+            raw_val = float(m.values[pname])
+            err = float(perr[i] if i < len(perr) else np.nan)
+            if pname.startswith("S_"):
+                out[pname] = float(_softplus(raw_val))
+                out["d" + pname] = float(err * _sigmoid(raw_val))
+            else:
+                out[pname] = raw_val
+                out["d" + pname] = err
         if fix_sigma0:
             out["sigma0"] = sigma0_val
             out["dsigma0"] = 0.0
@@ -598,8 +645,14 @@ def fit_spectrum(
             pass
     out = {}
     for i, name in enumerate(param_order):
-        out[name] = float(popt[i])
-        out["d" + name] = float(perr[i])
+        raw_val = float(popt[i])
+        err = float(perr[i])
+        if name.startswith("S_"):
+            out[name] = float(_softplus(raw_val))
+            out["d" + name] = float(err * _sigmoid(raw_val))
+        else:
+            out[name] = raw_val
+            out["d" + name] = err
 
     if fix_sigma0:
         out["sigma0"] = sigma0_val
