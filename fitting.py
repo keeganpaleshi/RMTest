@@ -16,7 +16,8 @@ from calibration import emg_left, gaussian
 from constants import _TAU_MIN, CURVE_FIT_MAX_EVALS, safe_exp as _safe_exp
 
 
-def _softplus(x: np.ndarray | float) -> np.ndarray | float:
+def softplus(x: np.ndarray | float) -> np.ndarray | float:
+    """Stable softplus implementation for positive parameters."""
     x = np.asarray(x, dtype=float)
     return np.log1p(np.exp(-np.abs(x))) + np.maximum(x, 0.0)
 
@@ -35,10 +36,25 @@ def _sigmoid(x: np.ndarray | float) -> np.ndarray | float:
     return 1.0 / (1.0 + np.exp(-x))
 
 
-def _make_linear_bkg(E_lo: float, E_hi: float, Eref: float | None = None):
+def make_linear_bkg(
+    Emin: float, Emax: float, Eref: float | None = None, n_norm: int = 512
+):
+    """Return a unit-area log-linear background shape function.
+
+    Parameters
+    ----------
+    Emin, Emax : float
+        Energy bounds of the shape.
+    Eref : float, optional
+        Reference energy for the linear term. Defaults to the midpoint of
+        ``Emin`` and ``Emax``.
+    n_norm : int, optional
+        Number of points used to compute the normalization constant.
+    """
+
     if Eref is None:
-        Eref = 0.5 * (E_lo + E_hi)
-    grid = np.linspace(E_lo, E_hi, 1001)
+        Eref = 0.5 * (Emin + Emax)
+    grid = np.linspace(Emin, Emax, int(n_norm))
 
     def shape(E, beta0, beta1):
         exp_grid = _safe_exp(beta0 + beta1 * (grid - Eref))
@@ -50,8 +66,13 @@ def _make_linear_bkg(E_lo: float, E_hi: float, Eref: float | None = None):
     return shape
 
 
+# Backward-compatible aliases
+_softplus = softplus
+_make_linear_bkg = make_linear_bkg
+
+
 # Use shared overflow guard for exponentiation
-__all__ = ["fit_time_series", "fit_decay", "fit_spectrum"]
+__all__ = ["fit_time_series", "fit_decay", "fit_spectrum", "softplus", "make_linear_bkg"]
 
 
 class FitParams(TypedDict, total=False):
