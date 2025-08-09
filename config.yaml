@@ -23,6 +23,8 @@ analysis:
   - '2024-01-05T06:00:00Z'
   - '2024-01-06T18:00:00Z'
   ambient_concentration: null
+  background_model: linear
+  likelihood: current
 columns:
   timestamp: timestamps
   adc: adc_channels
