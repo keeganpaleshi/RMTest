@@ -352,6 +352,15 @@ def _spectral_fit_with_check(
         priors_mapped.setdefault("sigma0", (mean, sig))
         priors_mapped.setdefault("F", (0.0, sig))
 
+    if "beta0" not in priors_mapped and ("b0" in priors_mapped or "b1" in priors_mapped):
+        b0_mu, b0_sig = priors_mapped.pop("b0", (1.0, 1.0))
+        b1_mu, b1_sig = priors_mapped.pop("b1", (0.0, 1.0))
+        b0_pos = max(b0_mu, 1e-300)
+        beta0 = math.log(b0_pos)
+        beta1 = b1_mu / b0_pos
+        priors_mapped["beta0"] = (beta0, b0_sig / b0_pos)
+        priors_mapped["beta1"] = (beta1, b1_sig / b0_pos)
+
     # If F is fixed but no explicit prior is supplied, keep it near zero to
     # avoid unphysical broadening from a large default.
     if flags.get("fix_F", False) and "F" not in priors:
@@ -2078,9 +2087,14 @@ def main(argv=None):
         # Store plotting inputs (bin_edges now in energy units)
         fit_vals = None
         if isinstance(spec_fit_out, FitResult):
-            fit_vals = spec_fit_out.params
+            fit_vals = dict(spec_fit_out.params)
         elif isinstance(spec_fit_out, dict):
-            fit_vals = spec_fit_out
+            fit_vals = dict(spec_fit_out)
+        if fit_vals is not None and "beta0" in fit_vals:
+            b0_val = math.exp(fit_vals["beta0"])
+            b1_val = fit_vals.get("beta1", 0.0) * b0_val
+            fit_vals.setdefault("b0", b0_val)
+            fit_vals.setdefault("b1", b1_val)
         spec_plot_data = {
             "energies": df_analysis["energy_MeV"].values,
             "fit_vals": fit_vals,
