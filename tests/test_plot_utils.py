@@ -110,17 +110,29 @@ def test_plot_spectrum_irregular_edges_residuals(tmp_path, monkeypatch):
     ])
 
     captured = []
+    captured_line = {}
 
     def fake_bar(self, x, height, *args, **kwargs):
         captured.append(np.array(height))
         return type("obj", (), {})()
 
+    def fake_plot(self, x, y, *args, **kwargs):
+        if kwargs.get("label") == "Fit":
+            captured_line["x"] = np.array(x)
+            captured_line["y"] = np.array(y)
+        return type("obj", (), {})()
+
     import matplotlib.axes
 
     monkeypatch.setattr(matplotlib.axes.Axes, "bar", fake_bar)
+    monkeypatch.setattr(matplotlib.axes.Axes, "plot", fake_plot)
     monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
 
-    fit_vals = {"b0": 10.0, "b1": 0.0}
+    b0, b1 = 10.0, 0.0
+    lo_edge, hi_edge = edges[0], edges[-1]
+    S_bkg = b0 * (hi_edge - lo_edge) + 0.5 * b1 * (hi_edge**2 - lo_edge**2)
+
+    fit_vals = {"b0": b0, "b1": b1, "S_bkg": S_bkg}
     plot_spectrum(
         energies,
         fit_vals=fit_vals,
@@ -131,11 +143,13 @@ def test_plot_spectrum_irregular_edges_residuals(tmp_path, monkeypatch):
     hist, _ = np.histogram(energies, bins=edges)
     width = np.diff(edges)
     centers = edges[:-1] + width / 2.0
-    model_counts = (fit_vals["b0"] + fit_vals["b1"] * centers) * width
+    model_counts = (b0 + b1 * centers) * width
     expected = hist - model_counts
 
     assert len(captured) >= 2
     np.testing.assert_allclose(captured[1], expected)
+    np.testing.assert_allclose(captured_line["x"], centers)
+    np.testing.assert_allclose(captured_line["y"], model_counts)
 
 
 def test_plot_time_series_custom_half_life(tmp_path, monkeypatch):
