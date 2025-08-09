@@ -15,6 +15,12 @@ from scipy.stats import chi2
 from calibration import emg_left, gaussian
 from constants import _TAU_MIN, CURVE_FIT_MAX_EVALS, safe_exp as _safe_exp
 
+
+def _softplus(x: np.ndarray | float) -> np.ndarray | float:
+    """Numerically stable softplus implementation."""
+    x = np.asarray(x)
+    return np.log1p(np.exp(-np.abs(x))) + np.maximum(x, 0)
+
 # Use shared overflow guard for exponentiation
 __all__ = ["fit_time_series", "fit_decay", "fit_spectrum"]
 
@@ -306,8 +312,10 @@ def fit_spectrum(
     # Augment priors with a background amplitude if not provided
     priors = dict(priors)
     if "S_bkg" not in priors:
-        b0_mu = priors.get("b0", (0.0, 1.0))[0]
-        b1_mu = priors.get("b1", (0.0, 1.0))[0]
+        beta0_mu = priors.get("beta0", (0.0, 1.0))[0]
+        beta1_mu = priors.get("beta1", (0.0, 1.0))[0]
+        b0_mu = float(np.exp(beta0_mu))
+        b1_mu = float(beta1_mu * b0_mu)
         mu = b0_mu * (E_hi - E_lo) + 0.5 * b1_mu * (E_hi**2 - E_lo**2)
         mu = max(mu, 0.0)
         sig = max(abs(mu) * 0.1, 1.0)
@@ -362,10 +370,10 @@ def fit_spectrum(
         if use_emg[iso]:
             param_index[f"tau_{iso}"] = len(param_order)
             param_order.append(f"tau_{iso}")
-    param_index["b0"] = len(param_order)
-    param_order.append("b0")
-    param_index["b1"] = len(param_order)
-    param_order.append("b1")
+    param_index["beta0"] = len(param_order)
+    param_order.append("beta0")
+    param_index["beta1"] = len(param_order)
+    param_order.append("beta1")
     param_index["S_bkg"] = len(param_order)
     param_order.append("S_bkg")
 
@@ -398,10 +406,6 @@ def fit_spectrum(
                 hi = min(hi, max_tau_ratio * sigma0_mean)
         if name in ("sigma0", "F"):
             lo = max(lo, 0.0)
-        if name == "b0":
-            lo = max(lo, 0.0)
-        if name.startswith("S_"):
-            lo = max(lo, 0.0)
         if hi <= lo:
             hi = lo + eps
         mean = np.clip(mean, lo, hi)
@@ -423,7 +427,7 @@ def fit_spectrum(
         y = np.zeros_like(x)
         for iso in iso_list:
             mu = params[param_index[f"mu_{iso}"]]
-            S = params[param_index[f"S_{iso}"]]
+            S = _softplus(params[param_index[f"S_{iso}"]])
             if use_emg[iso]:
                 tau = params[param_index[f"tau_{iso}"]]
                 sigma = np.sqrt(sigma0 ** 2 + F_current * x)
@@ -434,9 +438,11 @@ def fit_spectrum(
             else:
                 sigma = np.sqrt(sigma0 ** 2 + F_current * x)
                 y += S * gaussian(x, mu, sigma)
-        b0 = params[param_index["b0"]]
-        b1 = params[param_index["b1"]]
-        S_bkg = params[param_index["S_bkg"]]
+        beta0 = params[param_index["beta0"]]
+        beta1 = params[param_index["beta1"]]
+        b0 = np.exp(beta0)
+        b1 = beta1 * b0
+        S_bkg = _softplus(params[param_index["S_bkg"]])
         bkg = b0 + b1 * x
         bkg_norm = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
         if bkg_norm > 0:
@@ -459,6 +465,38 @@ def fit_spectrum(
                 raise KeyError(f"{xi} not found in width_map") from exc
         return out
 
+    def _convert_beta_params(out: dict, cov: np.ndarray, order: list[str]):
+        order_out = list(order)
+        if "beta0" not in out or "beta1" not in out:
+            param_index = {name: i for i, name in enumerate(order_out)}
+            return out, cov, order_out, param_index
+        idx0 = order_out.index("beta0")
+        idx1 = order_out.index("beta1")
+        beta0 = out.pop("beta0")
+        beta1 = out.pop("beta1")
+        out.pop("dbeta0", None)
+        out.pop("dbeta1", None)
+        b0 = float(np.exp(beta0))
+        b1 = float(beta1 * b0)
+        order_out[idx0] = "b0"
+        order_out[idx1] = "b1"
+        if cov is not None and cov.size > 0:
+            J = np.eye(len(order_out))
+            J[idx0, idx0] = b0
+            J[idx1, idx0] = b1
+            J[idx1, idx1] = b0
+            cov = J @ cov @ J.T
+            perr = np.sqrt(np.clip(np.diag(cov), 0, None))
+            out["db0"] = float(perr[idx0])
+            out["db1"] = float(perr[idx1])
+        else:
+            out["db0"] = np.nan
+            out["db1"] = np.nan
+        out["b0"] = b0
+        out["b1"] = b1
+        param_index = {name: i for i, name in enumerate(order_out)}
+        return out, cov, order_out, param_index
+
     if not unbinned:
         with warnings.catch_warnings():
             warnings.filterwarnings(
@@ -476,37 +514,30 @@ def fit_spectrum(
             )
     else:
         def _nll(*params):
-            # Per-event rate must be positive and finite
             rate = _model_density(e, *params)
-            if np.any(rate <= 0) or not np.isfinite(rate).all():
+            if not np.isfinite(rate).all():
                 return 1e50
 
-            # Sum of signal yields (non-negative by construction)
             S_sum = 0.0
             for iso in iso_list:
-                S_sum += params[param_index[f"S_{iso}"]]
+                S_sum += _softplus(params[param_index[f"S_{iso}"]])
 
-            # Background parameters
-            b0 = params[param_index["b0"]]
-            b1 = params[param_index["b1"]]
-            S_bkg = params[param_index["S_bkg"]]
-
-            # Enforce a non-negative background shape over the fit interval
+            beta0 = params[param_index["beta0"]]
+            beta1 = params[param_index["beta1"]]
+            b0 = np.exp(beta0)
+            b1 = beta1 * b0
             if (b0 + b1 * E_lo) <= 0 or (b0 + b1 * E_hi) <= 0:
                 return 1e50
-
-            # Analytic integral of background shape for normalisation
             bkg_norm = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
             if bkg_norm <= 0:
                 return 1e50
-
+            S_bkg = _softplus(params[param_index["S_bkg"]])
             expected = S_sum + S_bkg
-
-            # Guard against pathological negative expectations
             if expected <= 0 or not np.isfinite(expected):
                 return 1e50
 
-            return expected - np.sum(np.log(rate))
+            rate_clip = np.clip(rate, 1e-300, np.inf)
+            return expected - np.sum(np.log(rate_clip))
 
         m = Minuit(_nll, *p0, name=param_order)
         m.errordef = Minuit.LIKELIHOOD
@@ -520,7 +551,6 @@ def fit_spectrum(
             m.migrad()
         ndf = e.size - len(param_order)
         out = {}
-        param_index = {name: i for i, name in enumerate(param_order)}
         if not m.valid:
             out["fit_valid"] = False
             for pname in param_order:
@@ -530,11 +560,11 @@ def fit_spectrum(
             cov = np.zeros((len(param_order), len(param_order)))
             k = len(param_order)
             out["aic"] = float(2 * m.fval + 2 * k)
-            return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
+            out, cov, order_out, param_index_out = _convert_beta_params(out, cov, param_order)
+            return FitResult(out, cov, int(ndf), param_index_out, counts=int(n_events))
 
         m.hesse()
         cov = np.array(m.covariance)
-        perr = np.sqrt(np.clip(np.diag(cov), 0, None))
         try:
             eigvals = np.linalg.eigvals(cov)
             fit_valid = bool(np.all(eigvals > 0))
@@ -555,10 +585,10 @@ def fit_spectrum(
             try:
                 np.linalg.cholesky(cov)
                 fit_valid = True
-                perr = np.sqrt(np.clip(np.diag(cov), 0, None))
             except np.linalg.LinAlgError:
                 pass
         out["fit_valid"] = fit_valid
+        perr = np.sqrt(np.clip(np.diag(cov), 0, None))
         for i, pname in enumerate(param_order):
             out[pname] = float(m.values[pname])
             out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
@@ -570,7 +600,8 @@ def fit_spectrum(
             out["dF"] = 0.0
         k = len(param_order)
         out["aic"] = float(2 * m.fval + 2 * k)
-        return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
+        out, cov, order_out, param_index_out = _convert_beta_params(out, cov, param_order)
+        return FitResult(out, cov, int(ndf), param_index_out, counts=int(n_events))
 
     perr = np.sqrt(np.clip(np.diag(pcov), 0, None))
     try:
@@ -617,8 +648,8 @@ def fit_spectrum(
     out["chi2_ndf"] = chi2 / ndf if ndf != 0 else np.nan
     k = len(popt)
     out["aic"] = float(chi2 + 2 * k)
-    param_index = {name: i for i, name in enumerate(param_order)}
-    return FitResult(out, pcov, int(ndf), param_index, counts=int(n_events))
+    out, pcov, order_out, param_index_out = _convert_beta_params(out, pcov, param_order)
+    return FitResult(out, pcov, int(ndf), param_index_out, counts=int(n_events))
 
 
 def _integral_model(E, N0, B, lam, eff, T):
