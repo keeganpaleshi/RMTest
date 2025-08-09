@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from color_schemes import COLOR_SCHEMES
 from constants import PO214, PO218, PO210
+from fitting import _make_linear_bkg
 from .paths import get_targets
 
 # Half-life constants used for the time-series overlay [seconds]
@@ -466,14 +467,13 @@ def plot_spectrum(
 
     if fit_vals:
         sigma_E = fit_vals.get("sigma_E", 1.0)
-        b0 = fit_vals.get("b0", 0.0)
-        b1 = fit_vals.get("b1", 0.0)
-        S_bkg = fit_vals.get("S_bkg", 0.0)
-        bkg_cent = b0 + b1 * centers
-        bkg_norm = b0 * (edges[-1] - edges[0]) + 0.5 * b1 * (edges[-1] ** 2 - edges[0] ** 2)
+        beta0 = fit_vals.get("b0", 0.0)
+        beta1 = fit_vals.get("b1", 0.0)
+        B = fit_vals.get("S_bkg", 0.0)
+        bkg_shape = _make_linear_bkg(edges[0], edges[-1])
+        bkg_cent = bkg_shape(centers, beta0, beta1)
         y_cent = np.zeros_like(centers)
-        if bkg_norm > 0:
-            y_cent += S_bkg * bkg_cent / bkg_norm
+        y_cent += B * bkg_cent
         for pk in ("Po210", "Po218", "Po214"):
             mu_key = f"mu_{pk}"
             amp_key = f"S_{pk}"
