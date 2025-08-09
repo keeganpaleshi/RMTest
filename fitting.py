@@ -19,6 +19,28 @@ from constants import _TAU_MIN, CURVE_FIT_MAX_EVALS, safe_exp as _safe_exp
 __all__ = ["fit_time_series", "fit_decay", "fit_spectrum"]
 
 
+def softplus(x: float | np.ndarray) -> float | np.ndarray:
+    """Numerically stable softplus for mapping reals to positive reals."""
+    x = np.asarray(x)
+    return np.log1p(np.exp(-np.abs(x))) + np.maximum(x, 0.0)
+
+
+def make_linear_bkg(Emin: float, Emax: float, Eref: float | None = None):
+    """Return a unit-normalised, positive linear background shape."""
+    if Eref is None:
+        Eref = 0.5 * (Emin + Emax)
+
+    def shape(E: np.ndarray | float, beta0: float, beta1: float):
+        lin = np.asarray(E) - Eref
+        log_b = beta0 + beta1 * lin
+        b = np.exp(log_b)
+        grid = np.linspace(Emin, Emax, 512)
+        area = np.trapz(np.exp(beta0 + beta1 * (grid - Eref)), grid)
+        return b / max(area, 1e-300)
+
+    return shape
+
+
 class FitParams(TypedDict, total=False):
     """Typed mapping of fit parameter names to values."""
 
@@ -66,10 +88,8 @@ class FitParams(TypedDict, total=False):
     dtau_Po214: NotRequired[float]
     tau_Po210: NotRequired[float]
     dtau_Po210: NotRequired[float]
-    b0: NotRequired[float]
-    db0: NotRequired[float]
-    b1: NotRequired[float]
-    db1: NotRequired[float]
+    beta1: NotRequired[float]
+    dbeta1: NotRequired[float]
     S_bkg: NotRequired[float]
     dS_bkg: NotRequired[float]
 
@@ -302,13 +322,15 @@ def fit_spectrum(
 
     E_lo = float(edges[0])
     E_hi = float(edges[-1])
+    E_ref = 0.5 * (E_lo + E_hi)
 
     # Augment priors with a background amplitude if not provided
     priors = dict(priors)
+    beta0_val = priors.get("beta0", (0.0, 1.0))[0]
+    beta1_mu = priors.get("beta1", (0.0, 1.0))[0]
     if "S_bkg" not in priors:
-        b0_mu = priors.get("b0", (0.0, 1.0))[0]
-        b1_mu = priors.get("b1", (0.0, 1.0))[0]
-        mu = b0_mu * (E_hi - E_lo) + 0.5 * b1_mu * (E_hi**2 - E_lo**2)
+        grid = np.linspace(E_lo, E_hi, 512)
+        mu = np.trapz(np.exp(beta0_val + beta1_mu * (grid - E_ref)), grid)
         mu = max(mu, 0.0)
         sig = max(abs(mu) * 0.1, 1.0)
         priors["S_bkg"] = (mu, sig)
@@ -362,10 +384,8 @@ def fit_spectrum(
         if use_emg[iso]:
             param_index[f"tau_{iso}"] = len(param_order)
             param_order.append(f"tau_{iso}")
-    param_index["b0"] = len(param_order)
-    param_order.append("b0")
-    param_index["b1"] = len(param_order)
-    param_order.append("b1")
+    param_index["beta1"] = len(param_order)
+    param_order.append("beta1")
     param_index["S_bkg"] = len(param_order)
     param_order.append("S_bkg")
 
@@ -398,10 +418,6 @@ def fit_spectrum(
                 hi = min(hi, max_tau_ratio * sigma0_mean)
         if name in ("sigma0", "F"):
             lo = max(lo, 0.0)
-        if name == "b0":
-            lo = max(lo, 0.0)
-        if name.startswith("S_"):
-            lo = max(lo, 0.0)
         if hi <= lo:
             hi = lo + eps
         mean = np.clip(mean, lo, hi)
@@ -410,6 +426,7 @@ def fit_spectrum(
         bounds_hi.append(hi)
 
     iso_list = ["Po210", "Po218", "Po214"]
+    bkg_shape_fun = make_linear_bkg(E_lo, E_hi, E_ref)
 
     def _model_density(x, *params):
         if fix_sigma0:
@@ -423,7 +440,8 @@ def fit_spectrum(
         y = np.zeros_like(x)
         for iso in iso_list:
             mu = params[param_index[f"mu_{iso}"]]
-            S = params[param_index[f"S_{iso}"]]
+            S_raw = params[param_index[f"S_{iso}"]]
+            S = softplus(S_raw)
             if use_emg[iso]:
                 tau = params[param_index[f"tau_{iso}"]]
                 sigma = np.sqrt(sigma0 ** 2 + F_current * x)
@@ -434,13 +452,10 @@ def fit_spectrum(
             else:
                 sigma = np.sqrt(sigma0 ** 2 + F_current * x)
                 y += S * gaussian(x, mu, sigma)
-        b0 = params[param_index["b0"]]
-        b1 = params[param_index["b1"]]
-        S_bkg = params[param_index["S_bkg"]]
-        bkg = b0 + b1 * x
-        bkg_norm = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
-        if bkg_norm > 0:
-            y += S_bkg * bkg / bkg_norm
+        beta1 = params[param_index["beta1"]]
+        S_bkg = softplus(params[param_index["S_bkg"]])
+        bkg_shape = bkg_shape_fun(x, beta0_val, beta1)
+        y += S_bkg * bkg_shape
         return y
 
     def _model_binned(x, *params):
@@ -481,28 +496,11 @@ def fit_spectrum(
             if np.any(rate <= 0) or not np.isfinite(rate).all():
                 return 1e50
 
-            # Sum of signal yields (non-negative by construction)
-            S_sum = 0.0
+            # Expected total counts is sum of component areas
+            expected = 0.0
             for iso in iso_list:
-                S_sum += params[param_index[f"S_{iso}"]]
-
-            # Background parameters
-            b0 = params[param_index["b0"]]
-            b1 = params[param_index["b1"]]
-            S_bkg = params[param_index["S_bkg"]]
-
-            # Enforce a non-negative background shape over the fit interval
-            if (b0 + b1 * E_lo) <= 0 or (b0 + b1 * E_hi) <= 0:
-                return 1e50
-
-            # Analytic integral of background shape for normalisation
-            bkg_norm = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
-            if bkg_norm <= 0:
-                return 1e50
-
-            expected = S_sum + S_bkg
-
-            # Guard against pathological negative expectations
+                expected += softplus(params[param_index[f"S_{iso}"]])
+            expected += softplus(params[param_index["S_bkg"]])
             if expected <= 0 or not np.isfinite(expected):
                 return 1e50
 
@@ -521,10 +519,12 @@ def fit_spectrum(
         ndf = e.size - len(param_order)
         out = {}
         param_index = {name: i for i, name in enumerate(param_order)}
+        S_names = [f"S_{iso}" for iso in iso_list] + ["S_bkg"]
         if not m.valid:
             out["fit_valid"] = False
             for pname in param_order:
-                out[pname] = float(m.values[pname])
+                val = float(m.values[pname])
+                out[pname] = float(softplus(val)) if pname in S_names else val
                 err = float(m.errors[pname]) if pname in m.errors else np.nan
                 out["d" + pname] = err
             cov = np.zeros((len(param_order), len(param_order)))
@@ -560,7 +560,8 @@ def fit_spectrum(
                 pass
         out["fit_valid"] = fit_valid
         for i, pname in enumerate(param_order):
-            out[pname] = float(m.values[pname])
+            val = float(m.values[pname])
+            out[pname] = float(softplus(val)) if pname in S_names else val
             out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
         if fix_sigma0:
             out["sigma0"] = sigma0_val
@@ -597,8 +598,10 @@ def fit_spectrum(
         except np.linalg.LinAlgError:
             pass
     out = {}
+    S_names = [f"S_{iso}" for iso in iso_list] + ["S_bkg"]
     for i, name in enumerate(param_order):
-        out[name] = float(popt[i])
+        val = float(popt[i])
+        out[name] = float(softplus(val)) if name in S_names else val
         out["d" + name] = float(perr[i])
 
     if fix_sigma0:
