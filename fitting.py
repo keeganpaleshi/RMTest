@@ -281,6 +281,7 @@ def fit_spectrum(
     strict=False,
     *,
     max_tau_ratio=None,
+    background_model=None,
 ):
     """Fit the radon spectrum using either χ² histogram or unbinned likelihood.
 
@@ -318,6 +319,8 @@ def fit_spectrum(
     max_tau_ratio : float, optional
         If given, enforce an upper bound ``tau <= max_tau_ratio * sigma0`` for
         EMG tail parameters.
+    background_model : str, optional
+        When ``"loglin_unit"`` perform a unit-area log-linear background fit.
 
     Returns
     -------
@@ -330,6 +333,15 @@ def fit_spectrum(
     if flags.get("fix_sigma_E"):
         flags.setdefault("fix_sigma0", True)
         flags.setdefault("fix_F", True)
+
+    if background_model == "loglin_unit":
+        required = {"S_bkg", "beta0", "beta1"}
+        missing = [k for k in required if k not in priors]
+        if missing:
+            raise ValueError(
+                "background_model=loglin_unit requires params {S_bkg, beta0, beta1}; "
+                f"got: {sorted(priors)}"
+            )
 
     e = np.asarray(energies, dtype=float)
     n_events = e.size
