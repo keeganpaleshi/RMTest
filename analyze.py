@@ -1949,8 +1949,15 @@ def main(argv=None):
                 mu_map,
                 peak_width=peak_tol,
             )
-            priors_spec["b0"] = (b0_est, abs(b0_est) * 0.1 + 1e-3)
-            priors_spec["b1"] = (b1_est, abs(b1_est) * 0.1 + 1e-3)
+            b0_safe = max(b0_est, 1e-300)
+            sig_b0 = abs(b0_est) * 0.1 + 1e-3
+            sig_b1 = abs(b1_est) * 0.1 + 1e-3
+            beta0_mu = math.log(b0_safe)
+            beta0_sig = sig_b0 / b0_safe
+            beta1_mu = b1_est / b0_safe
+            beta1_sig = math.sqrt((sig_b1 / b0_safe) ** 2 + (b1_est * sig_b0 / b0_safe**2) ** 2)
+            priors_spec["beta0"] = (beta0_mu, beta0_sig)
+            priors_spec["beta1"] = (beta1_mu, beta1_sig)
         elif bkg_mode.startswith("auto_poly"):
             from background import estimate_polynomial_background_auto
 
@@ -1970,8 +1977,15 @@ def main(argv=None):
                 priors_spec[f"b{i}"] = (float(c), abs(float(c)) * 0.1 + 1e-3)
             priors_spec["poly_order"] = order
         else:
-            priors_spec["b0"] = tuple(cfg["spectral_fit"].get("b0_prior"))
-            priors_spec["b1"] = tuple(cfg["spectral_fit"].get("b1_prior"))
+            b0_mu, b0_sig = tuple(cfg["spectral_fit"].get("b0_prior"))
+            b1_mu, b1_sig = tuple(cfg["spectral_fit"].get("b1_prior"))
+            b0_safe = max(float(b0_mu), 1e-300)
+            beta0_mu = math.log(b0_safe)
+            beta0_sig = float(b0_sig) / b0_safe
+            beta1_mu = float(b1_mu) / b0_safe
+            beta1_sig = math.sqrt((float(b1_sig) / b0_safe) ** 2 + (float(b1_mu) * float(b0_sig) / b0_safe**2) ** 2)
+            priors_spec["beta0"] = (beta0_mu, beta0_sig)
+            priors_spec["beta1"] = (beta1_mu, beta1_sig)
 
         # Flags controlling the spectral fit
         spec_flags = cfg["spectral_fit"].get("flags", {}).copy()
