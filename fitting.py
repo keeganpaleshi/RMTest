@@ -16,9 +16,26 @@ from calibration import emg_left, gaussian
 from constants import _TAU_MIN, CURVE_FIT_MAX_EVALS, safe_exp as _safe_exp
 
 
-def _softplus(x: np.ndarray | float) -> np.ndarray | float:
+def softplus(x: np.ndarray | float) -> np.ndarray | float:
+    """Numerically stable softplus transform.
+
+    Parameters
+    ----------
+    x:
+        Input array or scalar.
+
+    Returns
+    -------
+    np.ndarray | float
+        ``log(1 + exp(x))`` computed in a stable manner.
+    """
+
     x = np.asarray(x, dtype=float)
     return np.log1p(np.exp(-np.abs(x))) + np.maximum(x, 0.0)
+
+
+# Backwards compatibility for internal use
+_softplus = softplus
 
 
 def _softplus_inv(y: np.ndarray | float) -> np.ndarray | float:
@@ -35,10 +52,34 @@ def _sigmoid(x: np.ndarray | float) -> np.ndarray | float:
     return 1.0 / (1.0 + np.exp(-x))
 
 
-def _make_linear_bkg(E_lo: float, E_hi: float, Eref: float | None = None):
+def make_linear_bkg(
+    Emin: float,
+    Emax: float,
+    Eref: float | None = None,
+    n_norm: int = 512,
+):
+    """Build a positive, unit-area log-linear background shape.
+
+    Parameters
+    ----------
+    Emin, Emax:
+        Energy bounds of the interval.
+    Eref:
+        Reference energy for numerical stability. Defaults to the midpoint
+        of the interval.
+    n_norm:
+        Number of grid points used to normalise the shape.
+
+    Returns
+    -------
+    Callable
+        A function ``shape(E, beta0, beta1)`` giving the normalized
+        log-linear background evaluated at ``E``.
+    """
+
     if Eref is None:
-        Eref = 0.5 * (E_lo + E_hi)
-    grid = np.linspace(E_lo, E_hi, 1001)
+        Eref = 0.5 * (Emin + Emax)
+    grid = np.linspace(Emin, Emax, int(n_norm))
 
     def shape(E, beta0, beta1):
         exp_grid = _safe_exp(beta0 + beta1 * (grid - Eref))
@@ -50,8 +91,19 @@ def _make_linear_bkg(E_lo: float, E_hi: float, Eref: float | None = None):
     return shape
 
 
+def _make_linear_bkg(E_lo: float, E_hi: float, Eref: float | None = None):
+    """Internal helper with historical normalization grid."""
+    return make_linear_bkg(E_lo, E_hi, Eref, n_norm=1001)
+
+
 # Use shared overflow guard for exponentiation
-__all__ = ["fit_time_series", "fit_decay", "fit_spectrum"]
+__all__ = [
+    "fit_time_series",
+    "fit_decay",
+    "fit_spectrum",
+    "softplus",
+    "make_linear_bkg",
+]
 
 
 class FitParams(TypedDict, total=False):
