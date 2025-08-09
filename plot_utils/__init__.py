@@ -398,6 +398,33 @@ def plot_time_series(
             json.dump(ts_summary, jf, indent=2)
 
 
+def _model_counts_per_bin(edges: np.ndarray, fit_vals: dict[str, float]):
+    """Return model prediction in counts per bin."""
+
+    width = np.diff(edges)
+    centers = edges[:-1] + width / 2.0
+    sigma_E = fit_vals.get("sigma_E", 1.0)
+    b0 = fit_vals.get("b0", 0.0)
+    b1 = fit_vals.get("b1", 0.0)
+    S_bkg = fit_vals.get("S_bkg", 0.0)
+    bkg_cent = b0 + b1 * centers
+    bkg_norm = b0 * (edges[-1] - edges[0]) + 0.5 * b1 * (edges[-1] ** 2 - edges[0] ** 2)
+    lam = np.zeros_like(centers)
+    if bkg_norm > 0:
+        lam += S_bkg * bkg_cent / bkg_norm
+    for pk in ("Po210", "Po218", "Po214"):
+        mu_key = f"mu_{pk}"
+        amp_key = f"S_{pk}"
+        if mu_key in fit_vals and amp_key in fit_vals:
+            mu = fit_vals[mu_key]
+            amp = fit_vals[amp_key]
+            lam += (
+                amp
+                / (sigma_E * np.sqrt(2 * np.pi))
+                * np.exp(-0.5 * ((centers - mu) / sigma_E) ** 2)
+            )
+    return centers, lam * width
+
 def plot_spectrum(
     energies,
     fit_vals=None,
@@ -465,52 +492,13 @@ def plot_spectrum(
         ax_main.set_xlim(lo, hi)
 
     if fit_vals:
-        x = np.linspace(edges[0], edges[-1], 1000)
-        sigma_E = fit_vals.get("sigma_E", 1.0)
-        b0 = fit_vals.get("b0", 0.0)
-        b1 = fit_vals.get("b1", 0.0)
-        S_bkg = fit_vals.get("S_bkg", 0.0)
-        bkg = b0 + b1 * x
-        bkg_norm = b0 * (edges[-1] - edges[0]) + 0.5 * b1 * (edges[-1] ** 2 - edges[0] ** 2)
-        y = np.zeros_like(x)
-        if bkg_norm > 0:
-            y += S_bkg * bkg / bkg_norm
-        for pk in ("Po210", "Po218", "Po214"):
-            mu_key = f"mu_{pk}"
-            amp_key = f"S_{pk}"
-            if mu_key in fit_vals and amp_key in fit_vals:
-                mu = fit_vals[mu_key]
-                amp = fit_vals[amp_key]
-                y += (
-                    amp
-                    / (sigma_E * np.sqrt(2 * np.pi))
-                    * np.exp(-0.5 * ((x - mu) / sigma_E) ** 2)
-                )
+        centers, model_counts = _model_counts_per_bin(edges, fit_vals)
         palette_name = str(config.get("palette", "default")) if config else "default"
         palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
         fit_color = palette.get("fit", "#ff0000")
-        idx = np.searchsorted(edges, x, side="right") - 1
-        idx = np.clip(idx, 0, width.size - 1)
-        width_x = width[idx]
-        ax_main.plot(x, y * width_x, color=fit_color, lw=2, label="Fit")
+        ax_main.plot(centers, model_counts, color=fit_color, lw=2, label="Fit")
 
         if show_res:
-            bkg_cent = b0 + b1 * centers
-            y_cent = np.zeros_like(centers)
-            if bkg_norm > 0:
-                y_cent += S_bkg * bkg_cent / bkg_norm
-            for pk in ("Po210", "Po218", "Po214"):
-                mu_key = f"mu_{pk}"
-                amp_key = f"S_{pk}"
-                if mu_key in fit_vals and amp_key in fit_vals:
-                    mu = fit_vals[mu_key]
-                    amp = fit_vals[amp_key]
-                    y_cent += (
-                        amp
-                        / (sigma_E * np.sqrt(2 * np.pi))
-                        * np.exp(-0.5 * ((centers - mu) / sigma_E) ** 2)
-                    )
-            model_counts = y_cent * width
             residuals = hist - model_counts
             ax_res.bar(
                 centers,
