@@ -659,7 +659,18 @@ def derive_calibration_constants(adc_values, config):
                 from .calibrate import intercept_fit_two_point as _if2p
             except ImportError:  # pragma: no cover - fallback for root imports
                 from calibrate import intercept_fit_two_point as _if2p
-            return _if2p(adc_values, config)
+            try:
+                return _if2p(adc_values, config)
+            except RuntimeError as exc:
+                if "No candidate peak found" in str(exc):
+                    warnings.warn(
+                        "Two-point calibration failed to find both peaks; falling back to one-point intercept-only",
+                        RuntimeWarning,
+                    )
+                    cfg_fallback = deepcopy(config)
+                    cfg_fallback.setdefault("calibration", {})["use_two_point"] = False
+                    return fixed_slope_calibration(adc_values, cfg_fallback)
+                raise
         return fixed_slope_calibration(adc_values, config)
 
     cfg = config if slope is None or not float_slope else deepcopy(config)
@@ -668,7 +679,20 @@ def derive_calibration_constants(adc_values, config):
         cfg.setdefault("calibration", {})["nominal_adc"] = {
             iso: int(round(energies[iso] / slope)) for iso in ("Po210", "Po218", "Po214")
         }
-    return calibrate_run(adc_values, cfg)
+    try:
+        return calibrate_run(adc_values, cfg)
+    except RuntimeError as exc:
+        if "No candidate peak found" in str(exc) and slope is not None:
+            warnings.warn(
+                "Two-point calibration failed to find both peaks; falling back to one-point intercept-only",
+                RuntimeWarning,
+            )
+            cfg_fallback = deepcopy(config)
+            cfg_fallback.setdefault("calibration", {})
+            cfg_fallback["calibration"]["float_slope"] = False
+            cfg_fallback["calibration"]["use_two_point"] = False
+            return fixed_slope_calibration(adc_values, cfg_fallback)
+        raise
 
 
 def derive_calibration_constants_auto(
