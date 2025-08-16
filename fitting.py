@@ -361,6 +361,19 @@ def fit_spectrum(
 
     # Augment priors with a background amplitude if not provided
     priors = dict(priors)
+    background_model = flags.get("background_model") if flags else None
+    if background_model == "loglin_unit":
+        present = set(priors)
+        if "b0" in present:
+            present.add("beta0")
+        if "b1" in present:
+            present.add("beta1")
+        missing = [k for k in ("S_bkg", "beta0", "beta1") if k not in present]
+        if missing:
+            raise ValueError(
+                "background_model=loglin_unit requires params {S_bkg, beta0, beta1}; got: "
+                f"{sorted(priors)}"
+            )
     if "S_bkg" not in priors:
         b0_mu = priors.get("b0", (0.0, 1.0))[0]
         b1_mu = priors.get("b1", (0.0, 1.0))[0]

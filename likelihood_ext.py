@@ -43,6 +43,12 @@ def neg_loglike_extended(E, intensity_fn, params, *, area_keys, clip=1e-300):
     >>> neg_loglike_extended(E, reference_intensity, params, area_keys=("area",))
     1.5...
     """
+    missing = [k for k in area_keys if k not in params]
+    if missing:
+        raise ValueError(
+            "likelihood=extended requires params "
+            f"{list(area_keys)}; got: {sorted(params)}"
+        )
     E = np.asarray(E, dtype=float)
     lam = np.clip(intensity_fn(E, params), clip, np.inf)
     Nexp = float(sum(_softplus(params[k]) for k in area_keys))
