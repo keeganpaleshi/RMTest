@@ -702,6 +702,16 @@ def parse_args(argv=None):
         help="Timezone for naive input timestamps (default: UTC)",
     )
     p.add_argument(
+        "--background-model",
+        choices=["linear", "loglin_unit"],
+        help="Experimental (opt-in) background model (default: linear)",
+    )
+    p.add_argument(
+        "--likelihood",
+        choices=["current", "extended"],
+        help="Experimental (opt-in) likelihood (default: current)",
+    )
+    p.add_argument(
         "--baseline_range",
         nargs=2,
         metavar=("TSTART", "TEND"),
@@ -1146,6 +1156,12 @@ def main(argv=None):
     if args.settle_s is not None:
         _log_override("analysis", "settle_s", float(args.settle_s))
         cfg.setdefault("analysis", {})["settle_s"] = float(args.settle_s)
+    if args.background_model is not None:
+        _log_override("analysis", "background_model", args.background_model)
+        cfg.setdefault("analysis", {})["background_model"] = args.background_model
+    if args.likelihood is not None:
+        _log_override("analysis", "likelihood", args.likelihood)
+        cfg.setdefault("analysis", {})["likelihood"] = args.likelihood
 
     if args.hl_po214 is not None:
         tf = cfg.setdefault("time_fit", {})

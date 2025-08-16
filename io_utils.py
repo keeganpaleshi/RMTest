@@ -240,6 +240,14 @@ CONFIG_SCHEMA = {
                     "minItems": 2,
                     "maxItems": 2,
                 },
+                "background_model": {
+                    "type": "string",
+                    "enum": ["linear", "loglin_unit"],
+                },
+                "likelihood": {
+                    "type": "string",
+                    "enum": ["current", "extended"],
+                },
                 "ambient_concentration": {"type": ["number", "null"]},
                 "settle_s": {"type": ["number", "null"], "minimum": 0},
             },
