@@ -324,6 +324,34 @@ def test_plot_time_series_line_style(tmp_path, monkeypatch):
     assert called.get("plot") and "step" not in called
 
 
+def test_plot_time_series_skips_invalid_fit(tmp_path, monkeypatch):
+    times = np.array([1000.2, 1000.8])
+    energies = np.array([7.7, 7.8])
+    cfg = basic_config()
+
+    calls = []
+
+    def fake_plot(*args, **kwargs):
+        calls.append((args, kwargs))
+        return type("obj", (), {})()
+
+    monkeypatch.setattr("plot_utils.plt.plot", fake_plot)
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    fit_dict = {"E_Po214": 0.1, "B_Po214": 0.0, "N0_Po214": 0.0, "fit_valid": False}
+    plot_time_series(
+        times,
+        energies,
+        fit_dict,
+        1000.0,
+        1001.0,
+        cfg,
+        str(tmp_path / "ts_invalid.png"),
+    )
+
+    assert calls == []
+
+
 def test_plot_time_series_po210_no_model(tmp_path, monkeypatch):
     times = np.array([1000.1, 1000.2])
     energies = np.array([5.3, 5.25])
