@@ -520,11 +520,29 @@ def plot_spectrum(
     return ax_main
 
 
-def plot_radon_activity_full(times, activity, errors, out_png, config=None):
-    """Plot radon activity versus time with uncertainties."""
+def plot_radon_activity_full(
+    times,
+    activity,
+    errors,
+    out_png,
+    config=None,
+    *,
+    qc_activity=None,
+):
+    """Plot radon activity versus time with uncertainties.
+
+    Parameters
+    ----------
+    times, activity, errors : array-like
+        Main Rn-222 activity curve and uncertainties.
+    qc_activity : array-like, optional
+        Optional Po-214 activity to overlay on a secondary y axis for
+        quality-control purposes.
+    """
     times = np.asarray(times, dtype=float)
     activity = np.asarray(activity, dtype=float)
     errors = np.asarray(errors, dtype=float)
+    qc_activity = None if qc_activity is None else np.asarray(qc_activity, dtype=float)
 
     times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
 
@@ -532,12 +550,11 @@ def plot_radon_activity_full(times, activity, errors, out_png, config=None):
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("radon_activity", "#9467bd")
-    plt.errorbar(times_dt, activity, yerr=errors, fmt="o-", color=color)
-    plt.xlabel("Time (UTC)")
-    plt.ylabel("Radon Activity (Bq)")
-    plt.title("Extrapolated Radon Activity vs. Time")
-
+    plt.errorbar(times_dt, activity, yerr=errors, fmt="o-", color=color, label="Rn-222 activity")
     ax = plt.gca()
+    ax.set_xlabel("Time (UTC)")
+    ax.set_ylabel("Rn-222 Activity (Bq)")
+    ax.set_title("Extrapolated Radon Activity vs. Time")
     locator = mdates.AutoDateLocator()
     try:
         formatter = mdates.ConciseDateFormatter(locator)
@@ -566,6 +583,15 @@ def plot_radon_activity_full(times, activity, errors, out_png, config=None):
 
     secax.xaxis.set_major_formatter(mticker.FuncFormatter(_sec_formatter))
     secax.set_xlabel("Elapsed Time (s)")
+
+    if qc_activity is not None:
+        ax2 = ax.twinx()
+        ax2.plot(times_dt, qc_activity, color=palette.get("Po214", "#d62728"), label="Po-214 activity")
+        ax2.set_ylabel("Po-214 Activity (Bq)")
+        handles1, labels1 = ax.get_legend_handles_labels()
+        handles2, labels2 = ax2.get_legend_handles_labels()
+        ax.legend(handles1 + handles2, labels1 + labels2, fontsize="small")
+
     plt.gcf().autofmt_xdate()
     plt.tight_layout()
     targets = get_targets(config, out_png)

@@ -261,9 +261,19 @@ from baseline_utils import (
 import baseline
 
 
-def plot_radon_activity(times, activity, out_png, errors=None, *, config=None):
+def plot_radon_activity(
+    times,
+    activity,
+    out_png,
+    errors=None,
+    *,
+    config=None,
+    qc_activity=None,
+):
     """Wrapper used by tests expecting output path as third argument."""
-    return plot_radon_activity_full(times, activity, errors, out_png, config=config)
+    return plot_radon_activity_full(
+        times, activity, errors, out_png, config=config, qc_activity=qc_activity
+    )
 
 
 def plot_radon_trend(times, activity, out_png, *, config=None):
@@ -3177,15 +3187,22 @@ def main(argv=None):
             dE = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
             N0 = fit.get("N0_Po214", 0.0)
             dN0 = fit.get("dN0_Po214", 0.0)
-            hl = _hl_value(cfg, "Po214")
             cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
-            A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
+            eff = eff_po214 if eff_po214 else 1.0
+            E /= eff
+            dE /= eff
+            cov /= eff
+            hl_rn = _hl_value(cfg, "Rn222")
+            A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl_rn, cov)
+            hl_po214 = _hl_value(cfg, "Po214")
+            A214_qc, _ = radon_activity_curve(t_rel, E, dE, N0, dN0, hl_po214, cov)
             plot_radon_activity(
                 times,
                 A214,
                 Path(out_dir) / "radon_activity_po214.png",
                 dA214,
                 config=cfg.get("plotting", {}),
+                qc_activity=A214_qc,
             )
 
         A218 = dA218 = None
@@ -3196,9 +3213,13 @@ def main(argv=None):
             dE = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
             N0 = fit.get("N0_Po218", 0.0)
             dN0 = fit.get("dN0_Po218", 0.0)
-            hl = _hl_value(cfg, "Po218")
             cov = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
-            A218, dA218 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
+            eff = eff_po218 if eff_po218 else 1.0
+            E /= eff
+            dE /= eff
+            cov /= eff
+            hl_rn = _hl_value(cfg, "Rn222")
+            A218, dA218 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl_rn, cov)
 
         activity_arr = np.zeros_like(times, dtype=float)
         err_arr = np.zeros_like(times, dtype=float)
@@ -3250,10 +3271,14 @@ def main(argv=None):
                 dE214 = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
                 N0214 = fit.get("N0_Po214", 0.0)
                 dN0214 = fit.get("dN0_Po214", 0.0)
-                hl214 = _hl_value(cfg, "Po214")
                 cov214 = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
+                eff = eff_po214 if eff_po214 else 1.0
+                E214 /= eff
+                dE214 /= eff
+                cov214 /= eff
+                hl_rn = _hl_value(cfg, "Rn222")
                 A214_tr, _ = radon_activity_curve(
-                    rel_trend, E214, dE214, N0214, dN0214, hl214, cov214
+                    rel_trend, E214, dE214, N0214, dN0214, hl_rn, cov214
                 )
             A218_tr = None
             if "Po218" in time_fit_results:
@@ -3263,10 +3288,14 @@ def main(argv=None):
                 dE218 = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
                 N0218 = fit.get("N0_Po218", 0.0)
                 dN0218 = fit.get("dN0_Po218", 0.0)
-                hl218 = _hl_value(cfg, "Po218")
                 cov218 = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
+                eff = eff_po218 if eff_po218 else 1.0
+                E218 /= eff
+                dE218 /= eff
+                cov218 /= eff
+                hl_rn = _hl_value(cfg, "Rn222")
                 A218_tr, _ = radon_activity_curve(
-                    rel_trend, E218, dE218, N0218, dN0218, hl218, cov218
+                    rel_trend, E218, dE218, N0218, dN0218, hl_rn, cov218
                 )
             trend = np.zeros_like(times_trend)
             for i in range(times_trend.size):
