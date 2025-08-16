@@ -30,13 +30,13 @@ spectral_fit:
       - 0.01
 
   # your existing background priors
-  bkg_mode: auto
+  bkg_mode: linear
   b0_prior:
     - 0.0
     - 5.0
   b1_prior:
-    - 0.0
-    - 0.2
+    - -0.02
+    - 0.02
 
 time_fit:
   window_po214:
