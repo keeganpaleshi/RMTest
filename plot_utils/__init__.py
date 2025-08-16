@@ -526,6 +526,10 @@ def plot_radon_activity_full(times, activity, errors, out_png, config=None):
     activity = np.asarray(activity, dtype=float)
     errors = np.asarray(errors, dtype=float)
 
+    # Convert from Bq to mBq for readability
+    activity *= 1e3
+    errors *= 1e3
+
     times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
 
     plt.figure(figsize=(8, 4))
@@ -534,10 +538,11 @@ def plot_radon_activity_full(times, activity, errors, out_png, config=None):
     color = palette.get("radon_activity", "#9467bd")
     plt.errorbar(times_dt, activity, yerr=errors, fmt="o-", color=color)
     plt.xlabel("Time (UTC)")
-    plt.ylabel("Radon Activity (Bq)")
+    plt.ylabel("Radon Activity (mBq)")
     plt.title("Extrapolated Radon Activity vs. Time")
 
     ax = plt.gca()
+    ax.ticklabel_format(style="plain", axis="y", useOffset=False)
     locator = mdates.AutoDateLocator()
     try:
         formatter = mdates.ConciseDateFormatter(locator)
@@ -638,7 +643,7 @@ def plot_modeled_radon_activity(
 def plot_radon_trend_full(times, activity, out_png, config=None):
     """Plot modeled radon activity trend without uncertainties."""
     times = np.asarray(times, dtype=float)
-    activity = np.asarray(activity, dtype=float)
+    activity = np.asarray(activity, dtype=float) * 1e3
 
     times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
 
@@ -648,10 +653,11 @@ def plot_radon_trend_full(times, activity, out_png, config=None):
     color = palette.get("radon_activity", "#9467bd")
     plt.plot(times_dt, activity, "o-", color=color)
     plt.xlabel("Time")
-    plt.ylabel("Radon Activity (Bq)")
+    plt.ylabel("Radon Activity (mBq)")
     plt.title("Radon Activity Trend")
 
     ax = plt.gca()
+    ax.ticklabel_format(style="plain", axis="y", useOffset=False)
     locator = mdates.AutoDateLocator()
     try:
         formatter = mdates.ConciseDateFormatter(locator)
@@ -673,10 +679,12 @@ def plot_radon_activity(ts_dict, outdir):
     import matplotlib.pyplot as plt
     outdir = Path(outdir)
     t = ts_dict["time"]
-    y = ts_dict["activity"]
-    e = ts_dict["error"]
+    y = np.asarray(ts_dict["activity"]) * 1e3
+    e = np.asarray(ts_dict["error"]) * 1e3
     plt.errorbar(t, y, yerr=e, fmt="o")
-    plt.ylabel("Radon activity [Bq]")
+    ax = plt.gca()
+    ax.ticklabel_format(style="plain", axis="y", useOffset=False)
+    plt.ylabel("Radon activity [mBq]")
     plt.xlabel("Time (UTC)")
     plt.tight_layout()
     plt.savefig(outdir / "radon_activity.png", dpi=300)
@@ -689,11 +697,13 @@ def plot_radon_trend(ts_dict, outdir):
     import matplotlib.pyplot as plt
     outdir = Path(outdir)
     t = np.asarray(ts_dict["time"])
-    y = np.asarray(ts_dict["activity"])
+    y = np.asarray(ts_dict["activity"]) * 1e3
     coeff = np.polyfit(t, y, 1)
     plt.plot(t, y, "o")
     plt.plot(t, np.polyval(coeff, t))
-    plt.ylabel("Radon activity [Bq]")
+    ax = plt.gca()
+    ax.ticklabel_format(style="plain", axis="y", useOffset=False)
+    plt.ylabel("Radon activity [mBq]")
     plt.xlabel("Time (UTC)")
     plt.tight_layout()
     plt.savefig(outdir / "radon_trend.png", dpi=300)
@@ -767,6 +777,9 @@ def plot_activity_grid(result_map, out_png="burst_scan.png", config=None):
         for j, w in enumerate(wins):
             grid[i, j] = result_map.get((m, w), np.nan)
 
+    # Convert from Bq to mBq for readability
+    grid *= 1e3
+
     fig, ax = plt.subplots(figsize=(6, 5))
     im = ax.imshow(
         grid,
@@ -777,7 +790,7 @@ def plot_activity_grid(result_map, out_png="burst_scan.png", config=None):
     ax.set_xlabel("burst_window_size_s")
     ax.set_ylabel("burst_multiplier")
     cbar = plt.colorbar(im, ax=ax)
-    cbar.set_label("Radon Activity (Bq)")
+    cbar.set_label("Radon Activity (mBq)")
     plt.tight_layout()
     Path(out_png).parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_png, dpi=300)
