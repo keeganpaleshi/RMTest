@@ -523,8 +523,8 @@ def plot_spectrum(
 def plot_radon_activity_full(times, activity, errors, out_png, config=None):
     """Plot radon activity versus time with uncertainties."""
     times = np.asarray(times, dtype=float)
-    activity = np.asarray(activity, dtype=float)
-    errors = np.asarray(errors, dtype=float)
+    activity = np.asarray(activity, dtype=float) * 1e3
+    errors = np.asarray(errors, dtype=float) * 1e3
 
     times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
 
@@ -534,7 +534,7 @@ def plot_radon_activity_full(times, activity, errors, out_png, config=None):
     color = palette.get("radon_activity", "#9467bd")
     plt.errorbar(times_dt, activity, yerr=errors, fmt="o-", color=color)
     plt.xlabel("Time (UTC)")
-    plt.ylabel("Radon Activity (Bq)")
+    plt.ylabel("Radon Activity (mBq)")
     plt.title("Extrapolated Radon Activity vs. Time")
 
     ax = plt.gca()
@@ -545,6 +545,7 @@ def plot_radon_activity_full(times, activity, errors, out_png, config=None):
         formatter = mdates.AutoDateFormatter(locator)
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
+    ax.ticklabel_format(style="plain", axis="y", useOffset=False)
 
     base_dt = times_dt[0]
 
@@ -638,7 +639,7 @@ def plot_modeled_radon_activity(
 def plot_radon_trend_full(times, activity, out_png, config=None):
     """Plot modeled radon activity trend without uncertainties."""
     times = np.asarray(times, dtype=float)
-    activity = np.asarray(activity, dtype=float)
+    activity = np.asarray(activity, dtype=float) * 1e3
 
     times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
 
@@ -648,7 +649,7 @@ def plot_radon_trend_full(times, activity, out_png, config=None):
     color = palette.get("radon_activity", "#9467bd")
     plt.plot(times_dt, activity, "o-", color=color)
     plt.xlabel("Time")
-    plt.ylabel("Radon Activity (Bq)")
+    plt.ylabel("Radon Activity (mBq)")
     plt.title("Radon Activity Trend")
 
     ax = plt.gca()
@@ -659,6 +660,7 @@ def plot_radon_trend_full(times, activity, out_png, config=None):
         formatter = mdates.AutoDateFormatter(locator)
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
+    ax.ticklabel_format(style="plain", axis="y", useOffset=False)
     plt.gcf().autofmt_xdate()
     plt.tight_layout()
 
@@ -673,11 +675,13 @@ def plot_radon_activity(ts_dict, outdir):
     import matplotlib.pyplot as plt
     outdir = Path(outdir)
     t = ts_dict["time"]
-    y = ts_dict["activity"]
-    e = ts_dict["error"]
+    y = np.asarray(ts_dict["activity"], dtype=float) * 1e3
+    e = np.asarray(ts_dict["error"], dtype=float) * 1e3
     plt.errorbar(t, y, yerr=e, fmt="o")
-    plt.ylabel("Radon activity [Bq]")
+    plt.ylabel("Radon activity [mBq]")
     plt.xlabel("Time (UTC)")
+    ax = plt.gca()
+    ax.ticklabel_format(style="plain", axis="y", useOffset=False)
     plt.tight_layout()
     plt.savefig(outdir / "radon_activity.png", dpi=300)
     plt.close()
@@ -689,12 +693,14 @@ def plot_radon_trend(ts_dict, outdir):
     import matplotlib.pyplot as plt
     outdir = Path(outdir)
     t = np.asarray(ts_dict["time"])
-    y = np.asarray(ts_dict["activity"])
+    y = np.asarray(ts_dict["activity"], dtype=float) * 1e3
     coeff = np.polyfit(t, y, 1)
     plt.plot(t, y, "o")
     plt.plot(t, np.polyval(coeff, t))
-    plt.ylabel("Radon activity [Bq]")
+    plt.ylabel("Radon activity [mBq]")
     plt.xlabel("Time (UTC)")
+    ax = plt.gca()
+    ax.ticklabel_format(style="plain", axis="y", useOffset=False)
     plt.tight_layout()
     plt.savefig(outdir / "radon_trend.png", dpi=300)
     plt.close()
