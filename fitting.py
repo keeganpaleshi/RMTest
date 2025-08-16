@@ -14,6 +14,7 @@ from scipy.optimize import curve_fit, OptimizeWarning
 from scipy.stats import chi2
 from calibration import emg_left, gaussian
 from constants import _TAU_MIN, CURVE_FIT_MAX_EVALS, safe_exp as _safe_exp
+from likelihood_ext import neg_loglike_extended
 
 
 def softplus(x: np.ndarray | float) -> np.ndarray | float:
@@ -368,6 +369,15 @@ def fit_spectrum(
         mu = max(mu, 0.0)
         sig = max(abs(mu) * 0.1, 1.0)
         priors["S_bkg"] = (mu, sig)
+    if flags.get("background_model") == "loglin_unit":
+        required = {"b0", "b1"}
+        missing = required - priors.keys()
+        if missing:
+            got = sorted(priors.keys())
+            raise ValueError(
+                "background_model=loglin_unit requires params {S_bkg, beta0, beta1}; got: "
+                f"{got}"
+            )
 
     # Guard against NaNs/Infs arising from unstable histogramming or EMG evals
     if not unbinned and not np.isfinite(hist).all():
@@ -464,6 +474,7 @@ def fit_spectrum(
         bounds_hi.append(hi)
 
     iso_list = ["Po210", "Po218", "Po214"]
+    area_keys = [f"S_{iso}" for iso in iso_list] + ["S_bkg"]
     bkg_shape = _make_linear_bkg(E_lo, E_hi)
 
     def _model_density(x, *params):
@@ -529,23 +540,19 @@ def fit_spectrum(
                 maxfev=CURVE_FIT_MAX_EVALS,
             )
     else:
+        def _intensity_fn(E_vals, p_map):
+            arr = [p_map[name] for name in param_order]
+            return _model_density(E_vals, *arr)
+
         def _nll(*params):
-            # Per-event rate must be positive and finite
-            rate = _model_density(e, *params)
-            if np.any(rate <= 0) or not np.isfinite(rate).all():
-                return 1e50
-
-            S_sum = 0.0
-            for iso in iso_list:
-                S_sum += _softplus(params[param_index[f"S_{iso}"]])
-
-            B = _softplus(params[param_index["S_bkg"]])
-            expected = S_sum + B
-
-            if expected <= 0 or not np.isfinite(expected):
-                return 1e50
-
-            return expected - np.sum(np.log(rate))
+            p_map = dict(zip(param_order, params))
+            return neg_loglike_extended(
+                e,
+                _intensity_fn,
+                p_map,
+                area_keys=area_keys,
+                background_model=flags.get("background_model"),
+            )
 
         m = Minuit(_nll, *p0, name=param_order)
         m.errordef = Minuit.LIKELIHOOD
