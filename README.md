@@ -198,10 +198,10 @@ calibration:
 
 slope_MeV_per_ch — fixes the linear calibration slope.
 
-• If float_slope is false (default) the slope is locked; only the Po‑214
-peak is fitted and its centroid gives the intercept.
-• If float_slope is true the value acts as a starting guess; a two‑point
+• If float_slope is true (default) the value acts as a starting guess; a two‑point
 fit (Po‑210 & Po‑214) refines both slope and intercept.
+• If float_slope is false the slope is locked; only the Po‑214
+peak is fitted and its centroid gives the intercept.
 • You may also supply intercept_MeV together with the slope to bypass the
 Po‑214 search entirely.
 
@@ -229,10 +229,10 @@ Any isotope omitted from `peak_widths` falls back to the global setting.
 
 `slope_MeV_per_ch` fixes the linear calibration slope:
 
-- When provided, only the Po‑214 peak is used to determine the intercept, so the
-  two‑point fit is skipped.
-- Set `float_slope` to `true` to treat the slope as a prior instead of fixing
-  it; the two‑point fit will refine the slope using the data.
+- When `float_slope` is false, only the Po‑214 peak is used to determine the
+  intercept and the two‑point fit is skipped.
+- With `float_slope` true (the default), the slope acts as a prior and the
+  two‑point fit refines both slope and intercept.
 - Provide `intercept_MeV` along with the slope to bypass searching for the
   Po‑214 peak entirely.
 - The command-line option `--calibration-slope` overrides this value from the
