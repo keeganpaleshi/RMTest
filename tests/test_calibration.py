@@ -358,3 +358,30 @@ def test_intercept_fit_two_point_deprecation(monkeypatch):
         calibration.intercept_fit_two_point(1, 2)
 
     assert called["called"]
+
+
+def test_two_point_fallback_to_one_point_warns():
+    rng = np.random.default_rng(123)
+    adc = rng.normal(1800, 2, 500)
+    cfg = {
+        "calibration": {
+            "slope_MeV_per_ch": 0.00435,
+            "float_slope": False,
+            "use_two_point": True,
+            "nominal_adc": {"Po210": 1246, "Po218": 1399, "Po214": 1800},
+            "peak_search_radius": 5,
+            "peak_prominence": 0.0,
+            "peak_width": 1,
+            "fit_window_adc": 20,
+            "use_emg": False,
+            "init_sigma_adc": 5.0,
+            "known_energies": {"Po210": 5.304, "Po214": 7.687},
+        }
+    }
+
+    with pytest.warns(RuntimeWarning, match="Two-point calibration failed"):
+        res = derive_calibration_constants(adc, cfg)
+
+    assert res.coeffs[1] == 0.00435
+    expected_c = 7.687 - 0.00435 * 1800
+    assert res.coeffs[0] == pytest.approx(expected_c, abs=0.02)
