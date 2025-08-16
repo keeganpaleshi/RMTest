@@ -520,8 +520,23 @@ def plot_spectrum(
     return ax_main
 
 
-def plot_radon_activity_full(times, activity, errors, out_png, config=None):
-    """Plot radon activity versus time with uncertainties."""
+def plot_radon_activity_full(
+    times,
+    activity,
+    errors,
+    out_png,
+    config=None,
+    po214_activity=None,
+):
+    """Plot Rn-222 activity versus time with uncertainties.
+
+    Parameters
+    ----------
+    po214_activity : array-like, optional
+        When provided, overlays the Po-214 activity on a separate axis for
+        quality control.
+    """
+
     times = np.asarray(times, dtype=float)
     activity = np.asarray(activity, dtype=float)
     errors = np.asarray(errors, dtype=float)
@@ -534,7 +549,7 @@ def plot_radon_activity_full(times, activity, errors, out_png, config=None):
     color = palette.get("radon_activity", "#9467bd")
     plt.errorbar(times_dt, activity, yerr=errors, fmt="o-", color=color)
     plt.xlabel("Time (UTC)")
-    plt.ylabel("Radon Activity (Bq)")
+    plt.ylabel("Rn-222 Activity (Bq)")
     plt.title("Extrapolated Radon Activity vs. Time")
 
     ax = plt.gca()
@@ -545,6 +560,13 @@ def plot_radon_activity_full(times, activity, errors, out_png, config=None):
         formatter = mdates.AutoDateFormatter(locator)
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
+
+    if po214_activity is not None:
+        po214_activity = np.asarray(po214_activity, dtype=float)
+        color214 = palette.get("po214_activity", "#d62728")
+        ax214 = ax.twinx()
+        ax214.plot(times_dt, po214_activity, "o-", color=color214)
+        ax214.set_ylabel("Po-214 Activity (Bq)")
 
     base_dt = times_dt[0]
 
@@ -635,8 +657,15 @@ def plot_modeled_radon_activity(
     plot_radon_activity_full(times, activity, sigma, out_png, config=config)
 
 
-def plot_radon_trend_full(times, activity, out_png, config=None):
-    """Plot modeled radon activity trend without uncertainties."""
+def plot_radon_trend_full(times, activity, out_png, config=None, po214_activity=None):
+    """Plot modeled Rn-222 activity trend without uncertainties.
+
+    Parameters
+    ----------
+    po214_activity : array-like, optional
+        When given, overlays Po-214 activity on a secondary axis for QC.
+    """
+
     times = np.asarray(times, dtype=float)
     activity = np.asarray(activity, dtype=float)
 
@@ -648,7 +677,7 @@ def plot_radon_trend_full(times, activity, out_png, config=None):
     color = palette.get("radon_activity", "#9467bd")
     plt.plot(times_dt, activity, "o-", color=color)
     plt.xlabel("Time")
-    plt.ylabel("Radon Activity (Bq)")
+    plt.ylabel("Rn-222 Activity (Bq)")
     plt.title("Radon Activity Trend")
 
     ax = plt.gca()
@@ -659,6 +688,14 @@ def plot_radon_trend_full(times, activity, out_png, config=None):
         formatter = mdates.AutoDateFormatter(locator)
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
+
+    if po214_activity is not None:
+        po214_activity = np.asarray(po214_activity, dtype=float)
+        color214 = palette.get("po214_activity", "#d62728")
+        ax214 = ax.twinx()
+        ax214.plot(times_dt, po214_activity, "o-", color=color214)
+        ax214.set_ylabel("Po-214 Activity (Bq)")
+
     plt.gcf().autofmt_xdate()
     plt.tight_layout()
 

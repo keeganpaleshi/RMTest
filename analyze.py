@@ -91,6 +91,7 @@ from constants import (
     PO210,
     PO214,
     PO218,
+    RN222,
     DEFAULT_ADC_CENTROIDS,
     DEFAULT_KNOWN_ENERGIES,
 )
@@ -99,6 +100,7 @@ NUCLIDES = {
     "Po210": PO210,
     "Po214": PO214,
     "Po218": PO218,
+    "Rn222": RN222,
 }
 
 
@@ -261,14 +263,33 @@ from baseline_utils import (
 import baseline
 
 
-def plot_radon_activity(times, activity, out_png, errors=None, *, config=None):
+def plot_radon_activity(
+    times,
+    activity,
+    out_png,
+    errors=None,
+    *,
+    config=None,
+    po214_activity=None,
+):
     """Wrapper used by tests expecting output path as third argument."""
-    return plot_radon_activity_full(times, activity, errors, out_png, config=config)
+    return plot_radon_activity_full(
+        times, activity, errors, out_png, config=config, po214_activity=po214_activity
+    )
 
 
-def plot_radon_trend(times, activity, out_png, *, config=None):
+def plot_radon_trend(
+    times,
+    activity,
+    out_png,
+    *,
+    config=None,
+    po214_activity=None,
+):
     """Wrapper used by tests expecting output path as third argument."""
-    return plot_radon_trend_full(times, activity, out_png, config=config)
+    return plot_radon_trend_full(
+        times, activity, out_png, config=config, po214_activity=po214_activity
+    )
 
 
 def _fit_params(obj: FitResult | Mapping[str, float] | None) -> FitParams:
@@ -3169,7 +3190,12 @@ def main(argv=None):
             except Exception as e:
                 logger.warning("Could not create radon combined plot -> %s", e)
 
-        A214 = dA214 = None
+        eff_po214 = _eff_value_local("eff_po214")
+        eff_po218 = _eff_value_local("eff_po218")
+        hl_rn = _hl_value(cfg, "Rn222")
+        lam_rn = math.log(2.0) / hl_rn
+
+        A214 = dA214 = A214_qc = None
         if "Po214" in time_fit_results:
             fit_result = time_fit_results["Po214"]
             fit = _fit_params(fit_result)
@@ -3177,15 +3203,40 @@ def main(argv=None):
             dE = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
             N0 = fit.get("N0_Po214", 0.0)
             dN0 = fit.get("dN0_Po214", 0.0)
-            hl = _hl_value(cfg, "Po214")
+            hl214 = _hl_value(cfg, "Po214")
+            lam_214 = math.log(2.0) / hl214
+            scale_rn = lam_rn / lam_214 / eff_po214 if eff_po214 > 0 else 0.0
+            scale_po214 = 1.0 / eff_po214 if eff_po214 > 0 else 0.0
             cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
-            A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
+            A214, dA214 = radon_activity_curve(
+                t_rel,
+                E * scale_rn,
+                dE * scale_rn,
+                N0 * scale_rn,
+                dN0 * scale_rn,
+                hl_rn,
+                cov * scale_rn**2,
+            )
+            # Po-214 overlay for QC
+            if scale_po214:
+                A214_qc, _ = radon_activity_curve(
+                    t_rel,
+                    E * scale_po214,
+                    dE * scale_po214,
+                    N0 * scale_po214,
+                    dN0 * scale_po214,
+                    hl214,
+                    cov * scale_po214**2,
+                )
+            else:
+                A214_qc = None
             plot_radon_activity(
                 times,
                 A214,
                 Path(out_dir) / "radon_activity_po214.png",
                 dA214,
                 config=cfg.get("plotting", {}),
+                po214_activity=A214_qc,
             )
 
         A218 = dA218 = None
@@ -3196,9 +3247,19 @@ def main(argv=None):
             dE = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
             N0 = fit.get("N0_Po218", 0.0)
             dN0 = fit.get("dN0_Po218", 0.0)
-            hl = _hl_value(cfg, "Po218")
+            hl218 = _hl_value(cfg, "Po218")
+            lam_218 = math.log(2.0) / hl218
+            scale_218 = lam_rn / lam_218 / eff_po218 if eff_po218 > 0 else 0.0
             cov = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
-            A218, dA218 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
+            A218, dA218 = radon_activity_curve(
+                t_rel,
+                E * scale_218,
+                dE * scale_218,
+                N0 * scale_218,
+                dN0 * scale_218,
+                hl_rn,
+                cov * scale_218**2,
+            )
 
         activity_arr = np.zeros_like(times, dtype=float)
         err_arr = np.zeros_like(times, dtype=float)
@@ -3232,6 +3293,7 @@ def main(argv=None):
             Path(out_dir) / "radon_activity.png",
             err_arr,
             config=cfg.get("plotting", {}),
+            po214_activity=A214_qc,
         )
 
         if radon_interval is not None:
@@ -3242,7 +3304,9 @@ def main(argv=None):
             )
             times_trend_dt = to_datetime_utc(times_trend, unit="s")
             rel_trend = (times_trend_dt - analysis_start).total_seconds()
-            A214_tr = None
+            lam_214 = math.log(2.0) / _hl_value(cfg, "Po214")
+            lam_218 = math.log(2.0) / _hl_value(cfg, "Po218")
+            A214_tr = A214_tr_qc = None
             if "Po214" in time_fit_results:
                 fit_result = time_fit_results["Po214"]
                 fit = _fit_params(fit_result)
@@ -3252,9 +3316,27 @@ def main(argv=None):
                 dN0214 = fit.get("dN0_Po214", 0.0)
                 hl214 = _hl_value(cfg, "Po214")
                 cov214 = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
+                scale_rn = lam_rn / lam_214 / eff_po214 if eff_po214 > 0 else 0.0
+                scale_po214 = 1.0 / eff_po214 if eff_po214 > 0 else 0.0
                 A214_tr, _ = radon_activity_curve(
-                    rel_trend, E214, dE214, N0214, dN0214, hl214, cov214
+                    rel_trend,
+                    E214 * scale_rn,
+                    dE214 * scale_rn,
+                    N0214 * scale_rn,
+                    dN0214 * scale_rn,
+                    hl_rn,
+                    cov214 * scale_rn**2,
                 )
+                if scale_po214:
+                    A214_tr_qc, _ = radon_activity_curve(
+                        rel_trend,
+                        E214 * scale_po214,
+                        dE214 * scale_po214,
+                        N0214 * scale_po214,
+                        dN0214 * scale_po214,
+                        hl214,
+                        cov214 * scale_po214**2,
+                    )
             A218_tr = None
             if "Po218" in time_fit_results:
                 fit_result = time_fit_results["Po218"]
@@ -3265,8 +3347,15 @@ def main(argv=None):
                 dN0218 = fit.get("dN0_Po218", 0.0)
                 hl218 = _hl_value(cfg, "Po218")
                 cov218 = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
+                scale_218 = lam_rn / lam_218 / eff_po218 if eff_po218 > 0 else 0.0
                 A218_tr, _ = radon_activity_curve(
-                    rel_trend, E218, dE218, N0218, dN0218, hl218, cov218
+                    rel_trend,
+                    E218 * scale_218,
+                    dE218 * scale_218,
+                    N0218 * scale_218,
+                    dN0218 * scale_218,
+                    hl_rn,
+                    cov218 * scale_218**2,
                 )
             trend = np.zeros_like(times_trend)
             for i in range(times_trend.size):
@@ -3279,6 +3368,7 @@ def main(argv=None):
                 trend,
                 Path(out_dir) / "radon_trend.png",
                 config=cfg.get("plotting", {}),
+                po214_activity=A214_tr_qc,
             )
 
         ambient = cfg.get("analysis", {}).get("ambient_concentration")

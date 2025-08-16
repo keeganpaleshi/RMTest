@@ -525,6 +525,20 @@ def test_plot_radon_activity_small_array(tmp_path):
     assert out_png.exists()
 
 
+def test_plot_radon_activity_overlay(tmp_path):
+    times = [0.0, 1.0, 2.0]
+    activity = [1.0, 1.5, 2.0]
+    errors = [0.1, 0.1, 0.1]
+    po214 = [0.5, 0.7, 0.9]
+    out_png = tmp_path / "radon_overlay.png"
+
+    from plot_utils import plot_radon_activity_full
+
+    plot_radon_activity_full(times, activity, errors, str(out_png), po214_activity=po214)
+
+    assert out_png.exists()
+
+
 def test_plot_equivalent_air_small_array(tmp_path):
     times = np.array([0.0, 0.5, 1.0])
     volumes = np.array([0.1, 0.15, 0.2])
@@ -704,6 +718,19 @@ def test_plot_radon_trend_output(tmp_path):
     out_png = tmp_path / "trend.png"
 
     plot_radon_trend_full(times, activity, str(out_png))
+
+    assert out_png.exists()
+
+
+def test_plot_radon_trend_overlay(tmp_path):
+    times = [0.0, 1.0, 2.0]
+    activity = [1.0, 1.1, 1.2]
+    po214 = [0.4, 0.5, 0.6]
+    out_png = tmp_path / "trend_overlay.png"
+
+    from plot_utils import plot_radon_trend_full
+
+    plot_radon_trend_full(times, activity, str(out_png), po214_activity=po214)
 
     assert out_png.exists()
 
