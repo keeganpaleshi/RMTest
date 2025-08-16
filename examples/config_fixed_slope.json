@@ -34,7 +34,7 @@
         "noise_cutoff": 400,
         "hist_bins": 2000,
         "peak_search_radius": 100,
-        "peak_prominence": 10,
+        "peak_prominence": 5,
         "peak_width": 3,
         "nominal_adc": {"Po210": 1250, "Po218": 1405, "Po214": 1800},
         "fit_window_adc": 40,

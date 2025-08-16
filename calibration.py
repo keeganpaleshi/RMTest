@@ -709,7 +709,7 @@ def derive_calibration_constants_auto(
 
     config = {
         "calibration": {
-            "peak_prominence": 10,
+            "peak_prominence": 5,
             "peak_width": 3,
             "nominal_adc": nominal_adc,
             # parameter renamed to ``peak_search_radius`` to match config.json
