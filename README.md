@@ -57,6 +57,13 @@ python analyze.py [--config config.yaml] --input merged_data.csv \
     [--hierarchical-summary OUT.json]
 ```
 
+## Experimental knobs
+
+- `--background-model linear` — safe default linear continuum (`analysis.background_model: linear`).
+- `--background-model loglin_unit` — unit-area log-linear background.
+- `--likelihood current` — default unextended likelihood (`analysis.likelihood: current`).
+- `--likelihood extended` — enable extended unbinned likelihood.
+
 ### Radon vs. progeny mode
 `--iso radon` (default) combines Po-218 & Po-214 counts via BLUE to yield the parent Rn-222 activity.
 `--iso po218` or `--iso po214` fits an individual progeny chain only (useful for diagnostics).
