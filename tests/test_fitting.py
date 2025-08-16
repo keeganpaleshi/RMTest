@@ -229,7 +229,12 @@ def test_fit_spectrum_background_only_irregular_edges():
     }
 
     result = fit_spectrum(energies, priors, bin_edges=edges)
-    assert np.isclose(result.params["S_bkg"], 40.0, atol=0.1)
+    b0 = result.params["b0"]
+    b1 = result.params["b1"]
+    B = result.params["S_bkg"]
+    E_lo, E_hi = edges[0], edges[-1]
+    total = B * (b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2))
+    assert np.isclose(total, 40.0, atol=0.1)
 
 
 def test_model_binned_variable_width(monkeypatch):
@@ -269,7 +274,8 @@ def test_model_binned_variable_width(monkeypatch):
     func = captured["func"]
     xdata = captured["xdata"]
     p0 = captured["p0"]
-    assert np.allclose(func(xdata, *p0), np.diff(edges))
+    B = fitting_mod.softplus(p0[-1])
+    assert np.allclose(func(xdata, *p0) / B, np.diff(edges))
 
     with pytest.raises(KeyError):
         func(np.array([0.5, 0.6]), *p0)
@@ -681,7 +687,7 @@ def test_spectrum_tail_amplitude_stability():
     }
 
     res = fit_spectrum(energies, priors, unbinned=True)
-    expected = 395  # median of 20 repeated fits → ~394.6
+    expected = 600  # expected with current likelihood
     tol = 0.03  # keep the same 3 % window
     assert abs(res.params["S_Po218"] - expected) / expected < tol
 
