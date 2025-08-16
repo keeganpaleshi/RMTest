@@ -526,7 +526,13 @@ def plot_radon_activity_full(times, activity, errors, out_png, config=None):
     activity = np.asarray(activity, dtype=float)
     errors = np.asarray(errors, dtype=float)
 
-    times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
+    # Convert Unix epoch seconds to Matplotlib's day-based representation.
+    # ``date2num`` for ``datetime.utcfromtimestamp`` is equivalent to dividing
+    # by ``86400`` (the number of seconds per day), which keeps the axis in the
+    # correct units and avoids Matplotlib's automatic offset text such as
+    # ``+1.089237e7`` when plotting large raw numbers.
+    epoch = datetime.fromisoformat(mdates.get_epoch())
+    times_dt = times / 86400.0 + mdates.date2num(epoch)
 
     plt.figure(figsize=(8, 4))
     palette_name = str(config.get("palette", "default")) if config else "default"
@@ -566,6 +572,10 @@ def plot_radon_activity_full(times, activity, errors, out_png, config=None):
 
     secax.xaxis.set_major_formatter(mticker.FuncFormatter(_sec_formatter))
     secax.set_xlabel("Elapsed Time (s)")
+    # ``FuncFormatter`` does not use Matplotlib's automatic offset text, but
+    # some backends may still populate it with the underlying epoch value.
+    # Make sure the secondary axis never shows an offset string.
+    secax.xaxis.get_offset_text().set_visible(False)
     plt.gcf().autofmt_xdate()
     plt.tight_layout()
     targets = get_targets(config, out_png)
