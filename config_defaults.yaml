@@ -12,18 +12,18 @@ calibration:
   peak_widths: null
 
 spectral_fit:
-  float_sigma_E: true
+  float_sigma_E: false
   peak_search_method: prominence
   peak_search_cwt_widths: null
   refit_aic_threshold: 2.0
 
-  # Flags controlling resolution parameters; letting both float keeps the
-  # optimiser well-constrained
+  # Flags controlling resolution parameters. With the energy slope fixed,
+  # allow the width to float with a looser prior.
   flags:
-    fix_sigma0: true  # fix the width
+    fix_sigma0: false  # allow the width to float
     sigma0_prior:
       - 0.13
-      - 0.02
+      - 0.05
     fix_F: true       # fix the Fano factor
     F_prior:
       - 0.0
