@@ -2841,7 +2841,9 @@ def main(argv=None):
             dE = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
             N0 = fit.get("N0_Po214", 0.0)
             dN0 = fit.get("dN0_Po214", 0.0)
-            hl = _hl_value(cfg, "Po214")
+            # Propagate activity using the radon half-life rather than
+            # the short-lived Po-214 half-life
+            hl = _hl_value(cfg, "Rn222")
             cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
             delta214, err_delta214 = radon_delta(
                 t_start_rel,
@@ -2862,7 +2864,8 @@ def main(argv=None):
             dE = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
             N0 = fit.get("N0_Po218", 0.0)
             dN0 = fit.get("dN0_Po218", 0.0)
-            hl = _hl_value(cfg, "Po218")
+            # Use the radon half-life for propagation
+            hl = _hl_value(cfg, "Rn222")
             cov = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
             delta218, err_delta218 = radon_delta(
                 t_start_rel,
@@ -3177,7 +3180,8 @@ def main(argv=None):
             dE = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
             N0 = fit.get("N0_Po214", 0.0)
             dN0 = fit.get("dN0_Po214", 0.0)
-            hl = _hl_value(cfg, "Po214")
+            # Use the Rn-222 half-life when propagating radon activity
+            hl = _hl_value(cfg, "Rn222")
             cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
             A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
             plot_radon_activity(
@@ -3196,7 +3200,8 @@ def main(argv=None):
             dE = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
             N0 = fit.get("N0_Po218", 0.0)
             dN0 = fit.get("dN0_Po218", 0.0)
-            hl = _hl_value(cfg, "Po218")
+            # Use the Rn-222 half-life for consistency
+            hl = _hl_value(cfg, "Rn222")
             cov = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
             A218, dA218 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
 
@@ -3250,7 +3255,8 @@ def main(argv=None):
                 dE214 = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
                 N0214 = fit.get("N0_Po214", 0.0)
                 dN0214 = fit.get("dN0_Po214", 0.0)
-                hl214 = _hl_value(cfg, "Po214")
+                # Trend propagation should also use the radon half-life
+                hl214 = _hl_value(cfg, "Rn222")
                 cov214 = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
                 A214_tr, _ = radon_activity_curve(
                     rel_trend, E214, dE214, N0214, dN0214, hl214, cov214
@@ -3263,7 +3269,8 @@ def main(argv=None):
                 dE218 = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
                 N0218 = fit.get("N0_Po218", 0.0)
                 dN0218 = fit.get("dN0_Po218", 0.0)
-                hl218 = _hl_value(cfg, "Po218")
+                # Use the radon half-life for Po-218 trends as well
+                hl218 = _hl_value(cfg, "Rn222")
                 cov218 = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
                 A218_tr, _ = radon_activity_curve(
                     rel_trend, E218, dE218, N0218, dN0218, hl218, cov218
