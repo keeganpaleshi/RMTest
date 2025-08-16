@@ -5,7 +5,7 @@
 import logging
 import warnings
 from dataclasses import dataclass, field
-from typing import TypedDict, NotRequired
+from typing import TypedDict, NotRequired, Any
 
 import numpy as np
 import pandas as pd
@@ -279,6 +279,7 @@ def fit_spectrum(
     bounds=None,
     unbinned=False,
     strict=False,
+    opts: Any | None = None,
     *,
     max_tau_ratio=None,
 ):
@@ -325,6 +326,8 @@ def fit_spectrum(
         Best fit values and uncertainties.
     """
 
+    from feature_selectors import select_background_factory, select_neg_loglike
+
     if flags is None:
         flags = {}
     if flags.get("fix_sigma_E"):
@@ -359,11 +362,14 @@ def fit_spectrum(
     E_lo = float(edges[0])
     E_hi = float(edges[-1])
 
-    # Augment priors with a background amplitude if not provided
+    background_model = getattr(opts, "background_model", "")
+    bkg_fn = select_background_factory(opts, E_lo, E_hi)
+    nll_fn = select_neg_loglike(opts)
+
     priors = dict(priors)
-    if "S_bkg" not in priors:
-        b0_mu = priors.get("b0", (0.0, 1.0))[0]
-        b1_mu = priors.get("b1", (0.0, 1.0))[0]
+    if background_model == "loglin_unit" and "S_bkg" not in priors:
+        b0_mu = priors.get("beta0", (0.0, 1.0))[0]
+        b1_mu = priors.get("beta1", (0.0, 1.0))[0]
         mu = b0_mu * (E_hi - E_lo) + 0.5 * b1_mu * (E_hi**2 - E_lo**2)
         mu = max(mu, 0.0)
         sig = max(abs(mu) * 0.1, 1.0)
@@ -418,12 +424,18 @@ def fit_spectrum(
         if use_emg[iso]:
             param_index[f"tau_{iso}"] = len(param_order)
             param_order.append(f"tau_{iso}")
-    param_index["b0"] = len(param_order)
-    param_order.append("b0")
-    param_index["b1"] = len(param_order)
-    param_order.append("b1")
-    param_index["S_bkg"] = len(param_order)
-    param_order.append("S_bkg")
+    if background_model == "loglin_unit":
+        param_index["beta0"] = len(param_order)
+        param_order.append("beta0")
+        param_index["beta1"] = len(param_order)
+        param_order.append("beta1")
+        param_index["S_bkg"] = len(param_order)
+        param_order.append("S_bkg")
+    else:
+        param_index["b0"] = len(param_order)
+        param_order.append("b0")
+        param_index["b1"] = len(param_order)
+        param_order.append("b1")
 
     p0 = []
     bounds_lo, bounds_hi = [], []
@@ -464,38 +476,38 @@ def fit_spectrum(
         bounds_hi.append(hi)
 
     iso_list = ["Po210", "Po218", "Po214"]
-    bkg_shape = _make_linear_bkg(E_lo, E_hi)
 
-    def _model_density(x, *params):
+    def _intensity(E, p):
         if fix_sigma0:
             sigma0 = sigma0_val
         else:
-            sigma0 = params[param_index["sigma0"]]
+            sigma0 = p.get("sigma0", sigma0_val)
         if fix_F:
             F_current = F_val
         else:
-            F_current = params[param_index["F"]]
-        y = np.zeros_like(x)
+            F_current = p.get("F", F_val)
+        E = np.asarray(E, dtype=float)
+        y = np.zeros_like(E)
         for iso in iso_list:
-            mu = params[param_index[f"mu_{iso}"]]
-            S_raw = params[param_index[f"S_{iso}"]]
+            mu = p[f"mu_{iso}"]
+            S_raw = p[f"S_{iso}"]
             S = _softplus(S_raw)
             if use_emg[iso]:
-                tau = params[param_index[f"tau_{iso}"]]
-                sigma = np.sqrt(sigma0 ** 2 + F_current * x)
+                tau = p[f"tau_{iso}"]
+                sigma = np.sqrt(sigma0 ** 2 + F_current * E)
                 with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
-                    y_emg = emg_left(x, mu, sigma, tau)
+                    y_emg = emg_left(E, mu, sigma, tau)
                 y_emg = np.nan_to_num(y_emg, nan=0.0, posinf=0.0, neginf=0.0)
                 y += S * y_emg
             else:
-                sigma = np.sqrt(sigma0 ** 2 + F_current * x)
-                y += S * gaussian(x, mu, sigma)
-        beta0 = params[param_index["b0"]]
-        beta1 = params[param_index["b1"]]
-        B_raw = params[param_index["S_bkg"]]
-        B = _softplus(B_raw)
-        y += B * bkg_shape(x, beta0, beta1)
+                sigma = np.sqrt(sigma0 ** 2 + F_current * E)
+                y += S * gaussian(E, mu, sigma)
+        y += bkg_fn(E, p)
         return np.clip(y, 1e-300, np.inf)
+
+    def _model_density(x, *params):
+        p = {name: params[param_index[name]] for name in param_order}
+        return _intensity(x, p)
 
     def _model_binned(x, *params):
         y = _model_density(x, *params)
@@ -529,23 +541,13 @@ def fit_spectrum(
                 maxfev=CURVE_FIT_MAX_EVALS,
             )
     else:
+        area_keys = [f"S_{iso}" for iso in iso_list]
+        if background_model == "loglin_unit" and "S_bkg" in param_index:
+            area_keys.append("S_bkg")
+
         def _nll(*params):
-            # Per-event rate must be positive and finite
-            rate = _model_density(e, *params)
-            if np.any(rate <= 0) or not np.isfinite(rate).all():
-                return 1e50
-
-            S_sum = 0.0
-            for iso in iso_list:
-                S_sum += _softplus(params[param_index[f"S_{iso}"]])
-
-            B = _softplus(params[param_index["S_bkg"]])
-            expected = S_sum + B
-
-            if expected <= 0 or not np.isfinite(expected):
-                return 1e50
-
-            return expected - np.sum(np.log(rate))
+            p = {name: params[param_index[name]] for name in param_order}
+            return nll_fn(e, _intensity, p, area_keys=area_keys)
 
         m = Minuit(_nll, *p0, name=param_order)
         m.errordef = Minuit.LIKELIHOOD

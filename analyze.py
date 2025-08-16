@@ -59,6 +59,7 @@ import json
 from pathlib import Path
 import shutil
 from typing import Any, Mapping, cast
+from types import SimpleNamespace
 
 import math
 import numpy as np
@@ -370,6 +371,8 @@ def _spectral_fit_with_check(
         fit_kwargs["unbinned"] = True
     if strict:
         fit_kwargs["strict"] = True
+    analysis_opts = cfg.get("analysis", {})
+    fit_kwargs["opts"] = SimpleNamespace(**analysis_opts)
 
     result = fit_spectrum(**fit_kwargs)
     params = result.params if isinstance(result, FitResult) else result
