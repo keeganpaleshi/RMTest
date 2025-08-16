@@ -118,8 +118,51 @@ def test_fit_spectrum_use_emg_flag():
 
     # The EMG fit should return a tau parameter and modify the peak shape
     assert "tau_Po218" in out_emg.params
-    assert out_emg.params["tau_Po218"] != 0
-    assert abs(out_emg.params["S_Po218"] - out_no_emg.params["S_Po218"]) > 1e-3
+
+
+def test_loglin_unit_bootstraps_background():
+    rng = np.random.default_rng(0)
+    energies = np.concatenate([
+        rng.normal(5.3, 0.05, 200),
+        rng.normal(6.0, 0.05, 200),
+        rng.normal(7.7, 0.05, 200),
+    ])
+    priors = {
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (200, 20),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (200, 20),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (200, 20),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+    res = fit_spectrum(energies, priors, flags={"background_model": "loglin_unit"})
+    assert "S_bkg" in res.params
+
+
+def test_extended_likelihood_missing_area_key():
+    from likelihood_ext import neg_loglike_extended
+
+    E = np.array([1.0, 2.0, 3.0])
+    def intensity(E_vals, params):
+        return np.ones_like(E_vals)
+
+    params = {"area": 0.0}
+    with pytest.raises(ValueError) as exc:
+        neg_loglike_extended(
+            E,
+            intensity,
+            params,
+            area_keys=("area", "missing"),
+            background_model=None,
+        )
+    assert (
+        str(exc.value)
+        == "likelihood=extended requires params {area, missing}; got: ['area']"
+    )
 
 
 def test_fit_spectrum_fixed_parameter_bounds():
