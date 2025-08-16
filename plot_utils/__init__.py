@@ -578,7 +578,10 @@ def plot_radon_activity_full(
             return f"{int(x)} s ({h:g} h)"
         return f"{int(x)} s"
 
+    # Use integer tick positions and suppress Matplotlib's auto offset text
+    secax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
     secax.xaxis.set_major_formatter(mticker.FuncFormatter(_sec_formatter))
+    secax.xaxis.get_offset_text().set_visible(False)
     secax.set_xlabel("Elapsed Time (s)")
 
     if po214_activity is not None:
