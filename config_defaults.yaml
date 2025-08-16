@@ -40,8 +40,8 @@ spectral_fit:
 
 time_fit:
   window_po214:
-    - 7.65
-    - 7.73
+    - 7.55
+    - 7.80
   window_po218:
     - 5.90
     - 6.10
