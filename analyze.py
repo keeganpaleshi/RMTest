@@ -91,6 +91,7 @@ from constants import (
     PO210,
     PO214,
     PO218,
+    RN222,
     DEFAULT_ADC_CENTROIDS,
     DEFAULT_KNOWN_ENERGIES,
 )
@@ -99,6 +100,7 @@ NUCLIDES = {
     "Po210": PO210,
     "Po214": PO214,
     "Po218": PO218,
+    "Rn222": RN222,
 }
 
 
@@ -644,7 +646,11 @@ def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
     if fit_obj is None:
         return None
     params = _fit_params(fit_obj)
-    hl = _hl_value(cfg, iso)
+    # Po-214 and Po-218 activities follow the radon (Rn-222) decay constant
+    if iso in ("Po214", "Po218"):
+        hl = _hl_value(cfg, "Rn222")
+    else:
+        hl = _hl_value(cfg, iso)
     eff_cfg = cfg.get("time_fit", {}).get(f"eff_{iso.lower()}")
     if isinstance(eff_cfg, list):
         eff = eff_cfg[0]
@@ -2841,7 +2847,7 @@ def main(argv=None):
             dE = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
             N0 = fit.get("N0_Po214", 0.0)
             dN0 = fit.get("dN0_Po214", 0.0)
-            hl = _hl_value(cfg, "Po214")
+            hl = _hl_value(cfg, "Rn222")
             cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
             delta214, err_delta214 = radon_delta(
                 t_start_rel,
@@ -2862,7 +2868,7 @@ def main(argv=None):
             dE = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
             N0 = fit.get("N0_Po218", 0.0)
             dN0 = fit.get("dN0_Po218", 0.0)
-            hl = _hl_value(cfg, "Po218")
+            hl = _hl_value(cfg, "Rn222")
             cov = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
             delta218, err_delta218 = radon_delta(
                 t_start_rel,
@@ -3177,7 +3183,7 @@ def main(argv=None):
             dE = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
             N0 = fit.get("N0_Po214", 0.0)
             dN0 = fit.get("dN0_Po214", 0.0)
-            hl = _hl_value(cfg, "Po214")
+            hl = _hl_value(cfg, "Rn222")
             cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
             A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
             plot_radon_activity(
@@ -3196,7 +3202,7 @@ def main(argv=None):
             dE = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
             N0 = fit.get("N0_Po218", 0.0)
             dN0 = fit.get("dN0_Po218", 0.0)
-            hl = _hl_value(cfg, "Po218")
+            hl = _hl_value(cfg, "Rn222")
             cov = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
             A218, dA218 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
 
@@ -3250,7 +3256,7 @@ def main(argv=None):
                 dE214 = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
                 N0214 = fit.get("N0_Po214", 0.0)
                 dN0214 = fit.get("dN0_Po214", 0.0)
-                hl214 = _hl_value(cfg, "Po214")
+                hl214 = _hl_value(cfg, "Rn222")
                 cov214 = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
                 A214_tr, _ = radon_activity_curve(
                     rel_trend, E214, dE214, N0214, dN0214, hl214, cov214
@@ -3263,7 +3269,7 @@ def main(argv=None):
                 dE218 = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
                 N0218 = fit.get("N0_Po218", 0.0)
                 dN0218 = fit.get("dN0_Po218", 0.0)
-                hl218 = _hl_value(cfg, "Po218")
+                hl218 = _hl_value(cfg, "Rn222")
                 cov218 = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
                 A218_tr, _ = radon_activity_curve(
                     rel_trend, E218, dE218, N0218, dN0218, hl218, cov218
