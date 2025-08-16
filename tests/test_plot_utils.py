@@ -5,7 +5,13 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from constants import PO210
-from plot_utils import plot_time_series, plot_spectrum, extract_time_series
+from plot_utils import (
+    plot_time_series,
+    plot_spectrum,
+    extract_time_series,
+    plot_radon_activity,
+    plot_radon_activity_full,
+)
 
 
 def basic_config():
@@ -779,6 +785,50 @@ def test_plot_radon_activity_axis_labels(tmp_path, monkeypatch):
     assert ax.get_xlabel() == "Time (UTC)"
     assert "axis" in captured
     assert captured["axis"].get_xlabel() == "Elapsed Time (s)"
+
+
+def test_plot_radon_activity_no_offset(tmp_path, monkeypatch):
+    times = [10892370.0, 10892380.0, 10892390.0]
+    activity = [1.0, 2.0, 3.0]
+    errors = [0.1, 0.2, 0.3]
+
+    import matplotlib.pyplot as plt
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+    monkeypatch.setattr("plot_utils.plt.close", lambda *a, **k: None)
+
+    plot_radon_activity({"time": times, "activity": activity, "error": errors}, str(tmp_path))
+
+    ax = plt.gca()
+    assert not ax.xaxis.get_offset_text().get_visible()
+
+
+def test_plot_radon_activity_full_no_offset(tmp_path, monkeypatch):
+    times = [10892370.0, 10892380.0, 10892390.0]
+    activity = [1.0, 2.0, 3.0]
+    errors = [0.1, 0.2, 0.3]
+    out_png = tmp_path / "radon_full_offset.png"
+
+    import matplotlib.pyplot as plt
+    import matplotlib.axes
+
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+    monkeypatch.setattr("plot_utils.plt.close", lambda *a, **k: None)
+
+    captured = {}
+    orig_sec = matplotlib.axes.Axes.secondary_xaxis
+
+    def wrapper(self, *args, **kwargs):
+        sec = orig_sec(self, *args, **kwargs)
+        captured["axis"] = sec
+        return sec
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "secondary_xaxis", wrapper)
+
+    plot_radon_activity_full(times, activity, errors, str(out_png))
+
+    ax = plt.gca()
+    assert not ax.xaxis.get_offset_text().get_visible()
+    assert not captured["axis"].xaxis.get_offset_text().get_visible()
 
 
 def test_plot_time_series_uncertainty_band(tmp_path, monkeypatch):

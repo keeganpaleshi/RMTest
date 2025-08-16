@@ -368,6 +368,7 @@ def plot_time_series(
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
     plt.gcf().autofmt_xdate()
+    ax.xaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     targets = get_targets(config, out_png)
     for p in targets.values():
@@ -567,6 +568,8 @@ def plot_radon_activity_full(times, activity, errors, out_png, config=None):
     secax.xaxis.set_major_formatter(mticker.FuncFormatter(_sec_formatter))
     secax.set_xlabel("Elapsed Time (s)")
     plt.gcf().autofmt_xdate()
+    ax.xaxis.get_offset_text().set_visible(False)
+    secax.xaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     targets = get_targets(config, out_png)
     for p in targets.values():
@@ -611,6 +614,7 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
     plt.gcf().autofmt_xdate()
+    ax.xaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     targets = get_targets(config, out_png)
     for p in targets.values():
@@ -660,6 +664,7 @@ def plot_radon_trend_full(times, activity, out_png, config=None):
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
     plt.gcf().autofmt_xdate()
+    ax.xaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
 
     targets = get_targets(config, out_png)
@@ -671,13 +676,27 @@ def plot_radon_trend_full(times, activity, out_png, config=None):
 def plot_radon_activity(ts_dict, outdir):
     """Simple wrapper to plot radon activity time series."""
     import matplotlib.pyplot as plt
+
     outdir = Path(outdir)
-    t = ts_dict["time"]
-    y = ts_dict["activity"]
-    e = ts_dict["error"]
-    plt.errorbar(t, y, yerr=e, fmt="o")
+    times = np.asarray(ts_dict["time"], dtype=float)
+    y = np.asarray(ts_dict["activity"], dtype=float)
+    e = np.asarray(ts_dict["error"], dtype=float)
+
+    times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
+    plt.errorbar(times_dt, y, yerr=e, fmt="o")
     plt.ylabel("Radon activity [Bq]")
     plt.xlabel("Time (UTC)")
+
+    ax = plt.gca()
+    locator = mdates.AutoDateLocator()
+    try:
+        formatter = mdates.ConciseDateFormatter(locator)
+    except AttributeError:
+        formatter = mdates.AutoDateFormatter(locator)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(formatter)
+    plt.gcf().autofmt_xdate()
+    ax.xaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     plt.savefig(outdir / "radon_activity.png", dpi=300)
     plt.close()
@@ -687,14 +706,27 @@ def plot_radon_trend(ts_dict, outdir):
     """Simple wrapper to plot a radon activity trend."""
     import numpy as np
     import matplotlib.pyplot as plt
+
     outdir = Path(outdir)
-    t = np.asarray(ts_dict["time"])
-    y = np.asarray(ts_dict["activity"])
-    coeff = np.polyfit(t, y, 1)
-    plt.plot(t, y, "o")
-    plt.plot(t, np.polyval(coeff, t))
+    times = np.asarray(ts_dict["time"], dtype=float)
+    y = np.asarray(ts_dict["activity"], dtype=float)
+    times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
+    coeff = np.polyfit(times_dt, y, 1)
+    plt.plot(times_dt, y, "o")
+    plt.plot(times_dt, np.polyval(coeff, times_dt))
     plt.ylabel("Radon activity [Bq]")
     plt.xlabel("Time (UTC)")
+
+    ax = plt.gca()
+    locator = mdates.AutoDateLocator()
+    try:
+        formatter = mdates.ConciseDateFormatter(locator)
+    except AttributeError:
+        formatter = mdates.AutoDateFormatter(locator)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(formatter)
+    plt.gcf().autofmt_xdate()
+    ax.xaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     plt.savefig(outdir / "radon_trend.png", dpi=300)
     plt.close()
