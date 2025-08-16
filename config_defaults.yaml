@@ -4,10 +4,11 @@ allow_negative_baseline: false
 allow_negative_activity: false
 
 calibration:
+  method: two-point
   slope_MeV_per_ch: null
   intercept_MeV: null
-  float_slope: false
-  use_two_point: false
+  float_slope: true
+  use_two_point: true
   sigma_E_init: null
   peak_widths: null
 
