@@ -3118,7 +3118,10 @@ def main(argv=None):
                 for k in ("Po214", "Po218", "Po210"):
                     obj = time_fit_results.get(k)
                     if obj:
-                        fit_dict.update(_fit_params(obj))
+                        params = dict(_fit_params(obj))
+                        if "fit_valid" in params:
+                            params[f"fit_valid_{k}"] = params.pop("fit_valid")
+                        fit_dict.update(params)
 
             centers, widths = _ts_bin_centers_widths(
                 ts_times, plot_cfg, t0_global.timestamp(), t_end_global_ts
