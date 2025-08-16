@@ -255,6 +255,43 @@ def test_use_quadratic_auto():
     assert len(out.coeffs) == 3
 
 
+def test_missing_second_peak_falls_back():
+    """Missing Po210 peak should trigger intercept-only fallback with warning."""
+    rng = np.random.default_rng(5)
+    # Only generate Po214 peak around expected ADC from slope
+    slope = 0.006
+    adc_po214 = rng.normal(1280, 2, 300)
+    adc = adc_po214
+
+    cfg = {
+        "calibration": {
+            "peak_prominence": 5,
+            "peak_width": 1,
+            "nominal_adc": {
+                "Po210": int(DEFAULT_KNOWN_ENERGIES["Po210"] / slope),
+                "Po218": int(DEFAULT_KNOWN_ENERGIES["Po218"] / slope),
+                "Po214": int(DEFAULT_KNOWN_ENERGIES["Po214"] / slope),
+            },
+            "fit_window_adc": 20,
+            "use_emg": False,
+            "init_sigma_adc": 2.0,
+            "init_tau_adc": 0.0,
+            "peak_search_radius": 5,
+            "slope_MeV_per_ch": slope,
+            "float_slope": True,
+            "use_two_point": True,
+        }
+    }
+
+    with pytest.warns(RuntimeWarning, match="Po210 peak not found"):
+        res = derive_calibration_constants(adc, cfg)
+
+    assert pytest.approx(res.coeffs[1], rel=1e-6) == slope
+    adc214 = np.mean(adc_po214)
+    expected_intercept = DEFAULT_KNOWN_ENERGIES["Po214"] - slope * adc214
+    assert pytest.approx(res.coeffs[0], abs=1e-3) == expected_intercept
+
+
 def test_energy_uncertainty_clipping():
     """Negative covariance should not produce NaNs in uncertainty."""
     import pandas as pd

@@ -401,6 +401,14 @@ def calibrate_run(adc_values, config, hist_bins=None):
     chosen_idx = {}
     for iso in candidates:
         if not candidates[iso]:
+            if iso == "Po210":
+                slope = config["calibration"].get("slope_MeV_per_ch")
+                if slope is not None:
+                    warnings.warn(
+                        "Po210 peak not found; falling back to intercept-only calibration",
+                        RuntimeWarning,
+                    )
+                    return fixed_slope_calibration(adc_values, config)
             raise RuntimeError(
                 f"No candidate peak found for {iso} around ADC={nominal_adc[iso]}."
             )
