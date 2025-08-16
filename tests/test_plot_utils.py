@@ -57,6 +57,30 @@ def test_plot_time_series_none_fit_results(tmp_path):
     assert out_png.exists()
 
 
+def test_plot_time_series_skips_invalid_fit(tmp_path, monkeypatch):
+    times = np.array([1001.0, 1002.0])
+    energies = np.array([7.6, 7.8])
+    out_png = tmp_path / "ts_invalid.png"
+    calls = {"plot": 0}
+
+    def fake_plot(*args, **kwargs):
+        calls["plot"] += 1
+        return type("obj", (), {})()
+
+    monkeypatch.setattr("plot_utils.plt.plot", fake_plot)
+    plot_time_series(
+        times,
+        energies,
+        {"E_Po214": 0.1, "B_Po214": 0.0, "N0_Po214": 0.0, "fit_valid": False},
+        1000.0,
+        1005.0,
+        basic_config(),
+        str(out_png),
+    )
+    assert out_png.exists()
+    assert calls["plot"] == 0
+
+
 def test_plot_time_series_auto_fd(tmp_path):
     # 100 uniform events over 5 seconds
     times = 1000.0 + np.linspace(0, 5, 100)
