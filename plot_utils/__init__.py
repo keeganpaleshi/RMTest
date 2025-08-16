@@ -308,7 +308,8 @@ def plot_time_series(
         # Overlay the continuous model curve (scaled to counts/bin)
         # only when fit results are provided for this isotope.
         has_fit = any(k in fit_results for k in (f"E_{iso}", "E"))
-        if has_fit:
+        fit_is_valid = bool(fit_results.get("fit_valid", True))
+        if has_fit and fit_is_valid:
             lam = np.log(2.0) / iso_params[iso]["half_life"]
             eff = iso_params[iso]["eff"]
 
@@ -350,6 +351,13 @@ def plot_time_series(
                     )
                 else:
                     raise ValueError("model_errors array length mismatch")
+        elif has_fit and not fit_is_valid:
+            plt.axvspan(
+                centers_dt[0],
+                centers_dt[-1],
+                color="0.9",
+                label=f"Invalid fit {iso}",
+            )
 
     plt.xlabel("Time")
     plt.ylabel("Counts / s" if normalise_rate else "Counts per bin")

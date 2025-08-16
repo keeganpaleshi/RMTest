@@ -2758,15 +2758,19 @@ def main(argv=None):
     rate214 = None
     err214 = None
     if "Po214" in time_fit_results:
-        fit_dict = _fit_params(time_fit_results["Po214"])
-        rate214 = fit_dict.get("E_corrected", fit_dict.get("E_Po214"))
-        err214 = fit_dict.get("dE_corrected", fit_dict.get("dE_Po214"))
-        if err214 is None or not math.isfinite(float(err214)):
-            err214 = _fallback_uncertainty(
-                rate214,
-                time_fit_results.get("Po214"),
-                "E_Po214",
-            )
+        fit_obj = time_fit_results["Po214"]
+        if fit_obj.params.get("fit_valid", True):
+            fit_dict = _fit_params(fit_obj)
+            rate214 = fit_dict.get("E_corrected", fit_dict.get("E_Po214"))
+            err214 = fit_dict.get("dE_corrected", fit_dict.get("dE_Po214"))
+            if err214 is None or not math.isfinite(float(err214)):
+                err214 = _fallback_uncertainty(
+                    rate214,
+                    fit_obj,
+                    "E_Po214",
+                )
+        else:
+            logger.warning("Po214 fit invalid; skipping radon activity contribution")
 
     rate218 = None
     err218 = None
@@ -3172,33 +3176,39 @@ def main(argv=None):
         A214 = dA214 = None
         if "Po214" in time_fit_results:
             fit_result = time_fit_results["Po214"]
-            fit = _fit_params(fit_result)
-            E = fit.get("E_corrected", fit.get("E_Po214"))
-            dE = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
-            N0 = fit.get("N0_Po214", 0.0)
-            dN0 = fit.get("dN0_Po214", 0.0)
-            hl = _hl_value(cfg, "Po214")
-            cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
-            A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
-            plot_radon_activity(
-                times,
-                A214,
-                Path(out_dir) / "radon_activity_po214.png",
-                dA214,
-                config=cfg.get("plotting", {}),
-            )
+            if fit_result.params.get("fit_valid", True):
+                fit = _fit_params(fit_result)
+                E = fit.get("E_corrected", fit.get("E_Po214"))
+                dE = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
+                N0 = fit.get("N0_Po214", 0.0)
+                dN0 = fit.get("dN0_Po214", 0.0)
+                hl = _hl_value(cfg, "Po214")
+                cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
+                A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
+                plot_radon_activity(
+                    times,
+                    A214,
+                    Path(out_dir) / "radon_activity_po214.png",
+                    dA214,
+                    config=cfg.get("plotting", {}),
+                )
+            else:
+                logger.warning("Po214 time fit invalid; skipping Po214 radon plot")
 
         A218 = dA218 = None
         if "Po218" in time_fit_results:
             fit_result = time_fit_results["Po218"]
-            fit = _fit_params(fit_result)
-            E = fit.get("E_corrected", fit.get("E_Po218"))
-            dE = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
-            N0 = fit.get("N0_Po218", 0.0)
-            dN0 = fit.get("dN0_Po218", 0.0)
-            hl = _hl_value(cfg, "Po218")
-            cov = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
-            A218, dA218 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
+            if fit_result.params.get("fit_valid", True):
+                fit = _fit_params(fit_result)
+                E = fit.get("E_corrected", fit.get("E_Po218"))
+                dE = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
+                N0 = fit.get("N0_Po218", 0.0)
+                dN0 = fit.get("dN0_Po218", 0.0)
+                hl = _hl_value(cfg, "Po218")
+                cov = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
+                A218, dA218 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
+            else:
+                logger.warning("Po218 time fit invalid; skipping Po218 radon plot")
 
         activity_arr = np.zeros_like(times, dtype=float)
         err_arr = np.zeros_like(times, dtype=float)
