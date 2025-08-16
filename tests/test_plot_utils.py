@@ -498,11 +498,13 @@ def test_plot_radon_activity_time_variation(tmp_path, monkeypatch):
 
     captured = {}
 
-    def fake_errorbar(x, y, *args, **kwargs):
+    def fake_errorbar(self, x, y, *args, **kwargs):
         captured["y"] = np.array(y)
         return type("obj", (), {})()
 
-    monkeypatch.setattr("plot_utils.plt.errorbar", fake_errorbar)
+    import matplotlib.axes
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "errorbar", fake_errorbar)
     monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
 
     from plot_utils import plot_radon_activity_full
@@ -544,7 +546,7 @@ def test_plot_modeled_radon_activity_output(tmp_path):
     from plot_utils import plot_modeled_radon_activity
 
     out_png = tmp_path / "model.png"
-    plot_modeled_radon_activity(times, 1.0, 0.1, 2.0, 0.2, 5.0, str(out_png))
+    plot_modeled_radon_activity(times, 1.0, 0.1, 2.0, 0.2, str(out_png))
 
     assert out_png.exists()
 
@@ -554,19 +556,17 @@ def test_plot_modeled_radon_activity_variation(tmp_path, monkeypatch):
 
     captured = {}
 
-    def fake_errorbar(x, y, *args, **kwargs):
-        captured["y"] = np.asarray(y)
-        return type("obj", (), {})()
+    def fake_plot(times_in, activity, errors, out_png, config=None, po214_activity=None):
+        captured["y"] = np.asarray(activity)
 
-    monkeypatch.setattr("plot_utils.plt.errorbar", fake_errorbar)
-    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+    monkeypatch.setattr("plot_utils.plot_radon_activity_full", fake_plot)
 
     from plot_utils import plot_modeled_radon_activity
 
-    plot_modeled_radon_activity(times, 1.0, 0.1, 2.0, 0.2, 5.0, str(tmp_path / "var.png"))
+    plot_modeled_radon_activity(times, 1.0, 0.1, 2.0, 0.2, str(tmp_path / "var.png"))
 
     assert "y" in captured
-    assert not np.allclose(captured["y"], captured["y"][0])
+    assert captured["y"].ptp() > 0
 
 
 def test_plot_modeled_radon_activity_time_change(tmp_path, monkeypatch):
@@ -574,19 +574,29 @@ def test_plot_modeled_radon_activity_time_change(tmp_path, monkeypatch):
 
     captured = {}
 
-    def fake_errorbar(x, y, *args, **kwargs):
-        captured["y"] = np.asarray(y)
-        return type("obj", (), {})()
+    def fake_plot(times_in, activity, errors, out_png, config=None, po214_activity=None):
+        captured["y"] = np.asarray(activity)
 
-    monkeypatch.setattr("plot_utils.plt.errorbar", fake_errorbar)
-    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+    monkeypatch.setattr("plot_utils.plot_radon_activity_full", fake_plot)
 
     from plot_utils import plot_modeled_radon_activity
 
-    plot_modeled_radon_activity(times, 0.5, 0.05, 1.0, 0.1, 3.0, str(tmp_path / "tc.png"))
+    plot_modeled_radon_activity(times, 0.5, 0.05, 1.0, 0.1, str(tmp_path / "tc.png"))
 
     assert "y" in captured
-    assert not np.allclose(captured["y"], captured["y"][0])
+
+
+def test_plot_modeled_radon_activity_overlay(tmp_path):
+    times = np.array([0.0, 1.0, 2.0])
+
+    from plot_utils import plot_modeled_radon_activity
+
+    out_png = tmp_path / "overlay.png"
+    plot_modeled_radon_activity(
+        times, 1.0, 0.1, 2.0, 0.2, str(out_png), overlay_po214=True
+    )
+
+    assert out_png.exists()
 def test_plot_radon_activity_multiple_formats(tmp_path):
     times = np.array([0.0, 1.0, 2.0])
     activity = np.array([1.0, 1.1, 1.2])

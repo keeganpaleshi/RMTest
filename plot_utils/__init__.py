@@ -10,10 +10,11 @@ _mpl.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.ticker as mticker
+import math
 from datetime import datetime
 from pathlib import Path
 from color_schemes import COLOR_SCHEMES
-from constants import PO214, PO218, PO210
+from constants import PO214, PO218, PO210, RN222
 from .paths import get_targets
 
 # Half-life constants used for the time-series overlay [seconds]
@@ -520,24 +521,36 @@ def plot_spectrum(
     return ax_main
 
 
-def plot_radon_activity_full(times, activity, errors, out_png, config=None):
-    """Plot radon activity versus time with uncertainties."""
+def plot_radon_activity_full(
+    times,
+    activity,
+    errors,
+    out_png,
+    config=None,
+    *,
+    po214_activity=None,
+):
+    """Plot radon activity versus time with uncertainties.
+
+    When ``po214_activity`` is given it is overlaid for quality control
+    on a secondary axis explicitly labelled as Po-214 activity.
+    """
     times = np.asarray(times, dtype=float)
     activity = np.asarray(activity, dtype=float)
     errors = np.asarray(errors, dtype=float)
 
     times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
 
-    plt.figure(figsize=(8, 4))
+    fig, ax = plt.subplots(figsize=(8, 4))
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("radon_activity", "#9467bd")
-    plt.errorbar(times_dt, activity, yerr=errors, fmt="o-", color=color)
-    plt.xlabel("Time (UTC)")
-    plt.ylabel("Radon Activity (Bq)")
-    plt.title("Extrapolated Radon Activity vs. Time")
+    label = None if po214_activity is None else "Rn-222 Activity"
+    ax.errorbar(times_dt, activity, yerr=errors, fmt="o-", color=color, label=label)
+    ax.set_xlabel("Time (UTC)")
+    ax.set_ylabel("Rn-222 Activity (Bq)")
+    ax.set_title("Extrapolated Radon Activity vs. Time")
 
-    ax = plt.gca()
     locator = mdates.AutoDateLocator()
     try:
         formatter = mdates.ConciseDateFormatter(locator)
@@ -566,12 +579,29 @@ def plot_radon_activity_full(times, activity, errors, out_png, config=None):
 
     secax.xaxis.set_major_formatter(mticker.FuncFormatter(_sec_formatter))
     secax.set_xlabel("Elapsed Time (s)")
+
+    if po214_activity is not None:
+        po214_activity = np.asarray(po214_activity, dtype=float)
+        color214 = palette.get("Po214", "#d62728")
+        ax2 = ax.twinx()
+        ax2.plot(
+            times_dt,
+            po214_activity,
+            "--",
+            color=color214,
+            label="Po-214 Activity (QC)",
+        )
+        ax2.set_ylabel("Po-214 Activity (Bq)")
+        lines1, labels1 = ax.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax.legend(lines1 + lines2, labels1 + labels2, loc="best")
+
     plt.gcf().autofmt_xdate()
     plt.tight_layout()
     targets = get_targets(config, out_png)
     for p in targets.values():
-        plt.savefig(p, dpi=300)
-    plt.close()
+        fig.savefig(p, dpi=300)
+    plt.close(fig)
 
 
 def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
@@ -624,15 +654,51 @@ def plot_modeled_radon_activity(
     dE,
     N0,
     dN0,
-    half_life_s,
     out_png,
     config=None,
+    *,
+    overlay_po214=False,
 ):
-    """Compute and plot modeled radon activity over time."""
+    """Compute and plot modeled Rn-222 activity over time.
+
+    Parameters
+    ----------
+    times : array-like
+        Relative times in seconds.
+    E, dE, N0, dN0 : float
+        Fitted Po-214 parameters which are converted to Rn-222 activity.
+    overlay_po214 : bool, optional
+        When ``True`` overlay the Po-214 activity for QC on a secondary axis.
+    """
     from radon_activity import radon_activity_curve
 
-    activity, sigma = radon_activity_curve(times, E, dE, N0, dN0, half_life_s)
-    plot_radon_activity_full(times, activity, sigma, out_png, config=config)
+    lam_rn = math.log(2.0) / RN222.half_life_s
+    lam_po214 = math.log(2.0) / PO214_HALF_LIFE_S
+    scale = lam_rn / lam_po214
+
+    E_bq = E * scale
+    dE_bq = dE * scale
+    N0_bq = N0 * scale
+    dN0_bq = dN0 * scale
+
+    activity, sigma = radon_activity_curve(
+        times, E_bq, dE_bq, N0_bq, dN0_bq, RN222.half_life_s
+    )
+
+    po214_activity = None
+    if overlay_po214:
+        po214_activity, _ = radon_activity_curve(
+            times, E, dE, N0, dN0, PO214_HALF_LIFE_S
+        )
+
+    plot_radon_activity_full(
+        times,
+        activity,
+        sigma,
+        out_png,
+        config=config,
+        po214_activity=po214_activity,
+    )
 
 
 def plot_radon_trend_full(times, activity, out_png, config=None):
