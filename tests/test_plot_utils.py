@@ -812,6 +812,32 @@ def test_plot_time_series_uncertainty_band(tmp_path, monkeypatch):
     assert band_called.get("ok")
 
 
+def test_plot_time_series_skips_invalid_fit(tmp_path):
+    times = np.array([1001.0, 1002.0, 1003.0])
+    energies = np.array([7.7, 7.8, 7.6])
+    cfg = basic_config()
+    out_png = tmp_path / "ts_invalid.png"
+    fit_results = {
+        "E_Po214": 0.1,
+        "B_Po214": 0.0,
+        "N0_Po214": 0.0,
+        "fit_valid": False,
+    }
+    # Mismatched model_errors array should be ignored when fit is invalid
+    model_errs = {"Po214": np.full(5, 0.1)}
+    plot_time_series(
+        times,
+        energies,
+        fit_results,
+        1000.0,
+        1005.0,
+        cfg,
+        str(out_png),
+        model_errors=model_errs,
+    )
+    assert out_png.exists()
+
+
 def test_plot_time_series_datetime64(tmp_path):
     times = np.array(
         [
