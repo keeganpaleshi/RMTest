@@ -291,6 +291,35 @@ def test_plot_time_series_invalid_half_life_po218(tmp_path):
         )
 
 
+def test_plot_time_series_skips_invalid_fit(tmp_path, monkeypatch):
+    times = np.array([1000.1, 1000.6, 1001.2])
+    energies = np.full_like(times, 7.7)
+    cfg = basic_config()
+    cfg.update({"plot_time_bin_width_s": 1.0})
+
+    calls = {}
+
+    def fake_plot(*args, **kwargs):
+        calls["plot"] = True
+
+    monkeypatch.setattr("plot_utils.plt.plot", fake_plot)
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    fit_results = {"E_Po214": 0.1, "B_Po214": 0.0, "N0_Po214": 0.0, "fit_valid": False}
+
+    plot_time_series(
+        times,
+        energies,
+        fit_results,
+        1000.0,
+        1003.0,
+        cfg,
+        str(tmp_path / "ts_invalid.png"),
+    )
+
+    assert "plot" not in calls
+
+
 def test_plot_time_series_line_style(tmp_path, monkeypatch):
     times = np.array([1000.2, 1000.8])
     energies = np.array([7.7, 7.8])

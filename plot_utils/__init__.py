@@ -306,8 +306,9 @@ def plot_time_series(
             )
 
         # Overlay the continuous model curve (scaled to counts/bin)
-        # only when fit results are provided for this isotope.
-        has_fit = any(k in fit_results for k in (f"E_{iso}", "E"))
+        # only when fit results are provided for this isotope and the
+        # fit was deemed valid.
+        has_fit = any(k in fit_results for k in (f"E_{iso}", "E")) and fit_results.get("fit_valid", True)
         if has_fit:
             lam = np.log(2.0) / iso_params[iso]["half_life"]
             eff = iso_params[iso]["eff"]
