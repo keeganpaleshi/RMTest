@@ -799,6 +799,16 @@ def parse_args(argv=None):
         help="Reference start time of the analysis (ISO string or epoch). Overrides `analysis.analysis_start_time` in config.yaml",
     )
     p.add_argument(
+        "--background-model",
+        choices=["linear", "loglin_unit"],
+        help="Experimental (opt-in) background model. Defaults keep legacy behavior.",
+    )
+    p.add_argument(
+        "--likelihood",
+        choices=["current", "extended"],
+        help="Experimental (opt-in) likelihood. Defaults keep legacy behavior.",
+    )
+    p.add_argument(
         "--spike-start-time",
         help="Discard events after this ISO timestamp. Providing this option overrides `analysis.spike_start_time` in config.yaml",
     )
@@ -1142,6 +1152,14 @@ def main(argv=None):
             args.radon_interval[0],
             args.radon_interval[1],
         ]
+
+    if args.background_model is not None:
+        _log_override("analysis", "background_model", args.background_model)
+        cfg.setdefault("analysis", {})["background_model"] = args.background_model
+
+    if args.likelihood is not None:
+        _log_override("analysis", "likelihood", args.likelihood)
+        cfg.setdefault("analysis", {})["likelihood"] = args.likelihood
 
     if args.settle_s is not None:
         _log_override("analysis", "settle_s", float(args.settle_s))
@@ -2962,6 +2980,8 @@ def main(argv=None):
             "spike_periods": spike_periods_cfg,
             "run_periods": run_periods_cfg,
             "radon_interval": radon_interval_cfg,
+            "background_model": cfg.get("analysis", {}).get("background_model"),
+            "likelihood": cfg.get("analysis", {}).get("likelihood"),
             "ambient_concentration": cfg.get("analysis", {}).get(
                 "ambient_concentration"
             ),

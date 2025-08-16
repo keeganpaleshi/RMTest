@@ -3,6 +3,10 @@ analysis_isotope: radon
 allow_negative_baseline: false
 allow_negative_activity: false
 
+analysis:
+  background_model: linear
+  likelihood: current
+
 calibration:
   slope_MeV_per_ch: null
   intercept_MeV: null
