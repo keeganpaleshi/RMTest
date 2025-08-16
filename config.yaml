@@ -169,6 +169,6 @@ plotting:
   plot_save_formats:
   - png
   - pdf
-  dump_time_series_json: false
+  dump_time_series_json: true
   plot_time_style: lines
   overlay_isotopes: true
