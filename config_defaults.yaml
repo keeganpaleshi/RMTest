@@ -56,3 +56,7 @@ time_fit:
   bkg_po214:
     - 0.0
     - 0.2
+
+analysis:
+  background_model: linear
+  likelihood: current
