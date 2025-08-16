@@ -1976,7 +1976,6 @@ def main(argv=None):
         # Flags controlling the spectral fit
         spec_flags = cfg["spectral_fit"].get("flags", {}).copy()
         if not cfg["spectral_fit"].get("float_sigma_E", True):
-            spec_flags["fix_sigma0"] = True
             spec_flags.setdefault("fix_F", True)
 
         if "fix_sigma_E" in spec_flags:

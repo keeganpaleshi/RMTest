@@ -96,7 +96,7 @@ spectral_fit:
     Po210: true
     Po218: true
     Po214: true
-  float_sigma_E: true
+  float_sigma_E: false
   peak_search_prominence: 30
   peak_search_width_adc: 3
   peak_search_method: prominence
@@ -105,10 +105,6 @@ spectral_fit:
   use_plot_bins_for_fit: false
   unbinned_likelihood: true
   flags:
-    fix_sigma0: true  # fix the width
-    sigma0_prior:
-      - 0.13
-      - 0.02
     fix_F: true       # fix the Fano factor
     F_prior:
       - 0.0
