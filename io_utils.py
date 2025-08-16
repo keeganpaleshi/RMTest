@@ -242,6 +242,14 @@ CONFIG_SCHEMA = {
                 },
                 "ambient_concentration": {"type": ["number", "null"]},
                 "settle_s": {"type": ["number", "null"], "minimum": 0},
+                "background_model": {
+                    "type": "string",
+                    "enum": ["linear", "loglin_unit"],
+                },
+                "likelihood": {
+                    "type": "string",
+                    "enum": ["current", "extended"],
+                },
             },
         },
         "columns": {
