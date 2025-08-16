@@ -6,6 +6,7 @@ import logging
 import warnings
 from dataclasses import dataclass, field
 from typing import TypedDict, NotRequired
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -281,6 +282,7 @@ def fit_spectrum(
     strict=False,
     *,
     max_tau_ratio=None,
+    opts=None,
 ):
     """Fit the radon spectrum using either χ² histogram or unbinned likelihood.
 
@@ -356,14 +358,23 @@ def fit_spectrum(
     if not unbinned:
         hist, _ = np.histogram(e, bins=edges)
 
+    from feature_selectors import select_background_factory, select_neg_loglike
+
     E_lo = float(edges[0])
     E_hi = float(edges[-1])
+
+    if opts is None:
+        opts = SimpleNamespace()
+    bkg_fn = select_background_factory(opts, E_lo, E_hi)
+    nll_fn = select_neg_loglike(opts)
+    bkg0_name = "beta0" if getattr(opts, "background_model", "") == "loglin_unit" else "b0"
+    bkg1_name = "beta1" if getattr(opts, "background_model", "") == "loglin_unit" else "b1"
 
     # Augment priors with a background amplitude if not provided
     priors = dict(priors)
     if "S_bkg" not in priors:
-        b0_mu = priors.get("b0", (0.0, 1.0))[0]
-        b1_mu = priors.get("b1", (0.0, 1.0))[0]
+        b0_mu = priors.get(bkg0_name, (0.0, 1.0))[0]
+        b1_mu = priors.get(bkg1_name, (0.0, 1.0))[0]
         mu = b0_mu * (E_hi - E_lo) + 0.5 * b1_mu * (E_hi**2 - E_lo**2)
         mu = max(mu, 0.0)
         sig = max(abs(mu) * 0.1, 1.0)
@@ -418,10 +429,10 @@ def fit_spectrum(
         if use_emg[iso]:
             param_index[f"tau_{iso}"] = len(param_order)
             param_order.append(f"tau_{iso}")
-    param_index["b0"] = len(param_order)
-    param_order.append("b0")
-    param_index["b1"] = len(param_order)
-    param_order.append("b1")
+    param_index[bkg0_name] = len(param_order)
+    param_order.append(bkg0_name)
+    param_index[bkg1_name] = len(param_order)
+    param_order.append(bkg1_name)
     param_index["S_bkg"] = len(param_order)
     param_order.append("S_bkg")
 
@@ -464,7 +475,6 @@ def fit_spectrum(
         bounds_hi.append(hi)
 
     iso_list = ["Po210", "Po218", "Po214"]
-    bkg_shape = _make_linear_bkg(E_lo, E_hi)
 
     def _model_density(x, *params):
         if fix_sigma0:
@@ -490,11 +500,16 @@ def fit_spectrum(
             else:
                 sigma = np.sqrt(sigma0 ** 2 + F_current * x)
                 y += S * gaussian(x, mu, sigma)
-        beta0 = params[param_index["b0"]]
-        beta1 = params[param_index["b1"]]
-        B_raw = params[param_index["S_bkg"]]
-        B = _softplus(B_raw)
-        y += B * bkg_shape(x, beta0, beta1)
+        bkg_params = {
+            bkg0_name: params[param_index[bkg0_name]],
+            bkg1_name: params[param_index[bkg1_name]],
+            "S_bkg": params[param_index["S_bkg"]],
+        }
+        if getattr(opts, "background_model", "") == "loglin_unit":
+            y += bkg_fn(x, bkg_params)
+        else:
+            B = _softplus(bkg_params["S_bkg"])
+            y += B * bkg_fn(x, {bkg0_name: bkg_params[bkg0_name], bkg1_name: bkg_params[bkg1_name]})
         return np.clip(y, 1e-300, np.inf)
 
     def _model_binned(x, *params):
@@ -529,23 +544,18 @@ def fit_spectrum(
                 maxfev=CURVE_FIT_MAX_EVALS,
             )
     else:
-        def _nll(*params):
-            # Per-event rate must be positive and finite
-            rate = _model_density(e, *params)
+        area_keys = tuple(f"S_{iso}" for iso in iso_list) + ("S_bkg",)
+
+        def intensity(E, p_map):
+            plist = [p_map[n] for n in param_order]
+            return _model_density(E, *plist)
+
+        def _nll(*params_vals):
+            p_map = {name: val for name, val in zip(param_order, params_vals)}
+            rate = intensity(e, p_map)
             if np.any(rate <= 0) or not np.isfinite(rate).all():
                 return 1e50
-
-            S_sum = 0.0
-            for iso in iso_list:
-                S_sum += _softplus(params[param_index[f"S_{iso}"]])
-
-            B = _softplus(params[param_index["S_bkg"]])
-            expected = S_sum + B
-
-            if expected <= 0 or not np.isfinite(expected):
-                return 1e50
-
-            return expected - np.sum(np.log(rate))
+            return nll_fn(e, intensity, p_map, area_keys=area_keys)
 
         m = Minuit(_nll, *p0, name=param_order)
         m.errordef = Minuit.LIKELIHOOD

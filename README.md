@@ -159,6 +159,13 @@ to ``False``.  Passing ``strict=True`` (or ``--strict-covariance`` on the
 command line) instead raises a ``RuntimeError`` as soon as the matrix is
 found to be non-positive definite.
 
+## Experimental knobs
+
+- `analysis.background_model` / `--background-model` – choose the spectral background model. Safe default: `linear`.
+- `linear` – legacy linear continuum recommended for most spectra.
+- `analysis.likelihood` / `--likelihood` – select the unbinned likelihood variant. Safe default: `current`.
+- `current` – existing negative log-likelihood; use `extended` to enable an extended formulation.
+
 ## Configuration
 
 The parser is case sensitive, so all keys in `config.yaml` should be lowercase. Mixed-case names from older files remain supported for backward compatibility but are deprecated.
