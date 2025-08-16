@@ -12,6 +12,7 @@ from plot_utils import (
     plot_radon_activity,
     plot_radon_activity_full,
 )
+import plot_utils
 
 
 def basic_config():
@@ -55,6 +56,34 @@ def test_plot_time_series_none_fit_results(tmp_path):
         str(out_png),
     )
     assert out_png.exists()
+
+
+def test_plot_time_series_invalid_fit_skips_model(tmp_path, monkeypatch):
+    times = np.array([1001.0, 1002.0, 1003.0])
+    energies = np.array([7.7, 7.8, 7.6])
+    out_png = tmp_path / "ts_invalid.png"
+
+    calls: list[object] = []
+
+    def fake_plot(*args, **kwargs):
+        calls.append(object())
+        return [None]
+
+    monkeypatch.setattr(plot_utils.plt, "plot", fake_plot)
+
+    fit_vals = {"E_Po214": 0.1, "B_Po214": 0.0, "N0_Po214": 0.0, "fit_valid": False}
+    plot_time_series(
+        times,
+        energies,
+        fit_vals,
+        1000.0,
+        1005.0,
+        basic_config(),
+        str(out_png),
+    )
+
+    assert out_png.exists()
+    assert not calls
 
 
 def test_plot_time_series_auto_fd(tmp_path):
