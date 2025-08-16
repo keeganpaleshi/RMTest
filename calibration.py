@@ -709,7 +709,12 @@ def derive_calibration_constants_auto(
 
     config = {
         "calibration": {
-            "peak_prominence": 10,
+            # A low prominence threshold helps reliably auto-find the
+            # secondary anchor peak. Higher values (e.g. 20) proved too
+            # strict and caused peak detection failures in some spectra.
+            # Restore a more permissive default (matching the original
+            # behaviour) by dropping the prominence to 5.
+            "peak_prominence": 5,
             "peak_width": 3,
             "nominal_adc": nominal_adc,
             # parameter renamed to ``peak_search_radius`` to match config.json
