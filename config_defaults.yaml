@@ -40,7 +40,7 @@ spectral_fit:
     - 5.0
   b1_prior:
     - 0.0
-    - 0.2
+    - 0.02
 
 time_fit:
   window_po214:
