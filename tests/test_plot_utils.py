@@ -750,7 +750,8 @@ def test_extract_time_series_none_window():
 
 
 def test_plot_radon_activity_axis_labels(tmp_path, monkeypatch):
-    times = [0.0, 1.0, 2.0]
+    # Use large epoch-second values to exercise secondary-axis formatting
+    times = [10892370.0, 10896370.0, 10898370.0]
     activity = [1.0, 2.0, 3.0]
     errors = [0.1, 0.2, 0.3]
     out_png = tmp_path / "radon_lbl.png"
@@ -778,7 +779,10 @@ def test_plot_radon_activity_axis_labels(tmp_path, monkeypatch):
     ax = plt.gca()
     assert ax.get_xlabel() == "Time (UTC)"
     assert "axis" in captured
-    assert captured["axis"].get_xlabel() == "Elapsed Time (s)"
+    secax = captured["axis"]
+    assert secax.get_xlabel() == "Elapsed Time (s)"
+    # Matplotlib's offset text on the secondary axis should be suppressed
+    assert secax.xaxis.get_offset_text().get_text() == ""
 
 
 def test_plot_time_series_uncertainty_band(tmp_path, monkeypatch):
