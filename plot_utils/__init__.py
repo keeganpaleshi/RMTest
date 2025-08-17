@@ -474,12 +474,13 @@ def plot_spectrum(
         sigma_E = fit_vals.get("sigma_E", 1.0)
         b0 = fit_vals.get("b0", 0.0)
         b1 = fit_vals.get("b1", 0.0)
-        S_bkg = fit_vals.get("S_bkg", 0.0)
         bkg_cent = b0 + b1 * centers
         bkg_norm = b0 * (edges[-1] - edges[0]) + 0.5 * b1 * (edges[-1] ** 2 - edges[0] ** 2)
         y_cent = np.zeros_like(centers)
-        if bkg_norm > 0:
-            y_cent += S_bkg * bkg_cent / bkg_norm
+        if "S_bkg" in fit_vals and bkg_norm > 0:
+            y_cent += fit_vals["S_bkg"] * bkg_cent / bkg_norm
+        else:
+            y_cent += bkg_cent
         for pk in ("Po210", "Po218", "Po214"):
             mu_key = f"mu_{pk}"
             amp_key = f"S_{pk}"

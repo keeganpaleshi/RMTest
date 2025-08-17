@@ -272,7 +272,10 @@ def test_fit_spectrum_background_only_irregular_edges():
     }
 
     result = fit_spectrum(energies, priors, bin_edges=edges)
-    assert np.isclose(result.params["S_bkg"], 40.0, atol=0.1)
+    b0 = result.params["b0"]
+    b1 = result.params["b1"]
+    total = b0 * (edges[-1] - edges[0]) + 0.5 * b1 * (edges[-1] ** 2 - edges[0] ** 2)
+    assert np.isclose(total, 40.0, atol=0.1)
 
 
 def test_model_binned_variable_width(monkeypatch):
