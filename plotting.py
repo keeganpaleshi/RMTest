@@ -2,10 +2,27 @@ import matplotlib as _mpl
 _mpl.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.ticker as mticker
 from datetime import datetime
 from pathlib import Path
 
 __all__ = ["plot_radon_activity", "plot_radon_trend"]
+
+
+def _add_elapsed_hours_axis(ax, times_dt):
+    start = times_dt[0]
+
+    def _to_hours(x):
+        return (x - start) * 24.0
+
+    def _to_dates(h):
+        return h / 24.0 + start
+
+    sec = ax.secondary_xaxis("top", functions=(_to_hours, _to_dates))
+    sec.set_xlabel("Elapsed time [h]")
+    sec.xaxis.set_major_formatter(mticker.ScalarFormatter(useOffset=False))
+    sec.xaxis.get_offset_text().set_visible(False)
+    return sec
 
 
 def plot_radon_activity(ts, outdir):
@@ -33,7 +50,10 @@ def plot_radon_activity(ts, outdir):
         formatter = mdates.AutoDateFormatter(locator)
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
+    _add_elapsed_hours_axis(ax, times_dt)
     ax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.set_major_formatter(mticker.ScalarFormatter(useOffset=False))
+    ax.yaxis.get_offset_text().set_visible(False)
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(outdir / "radon_activity.png", dpi=300)
@@ -57,7 +77,10 @@ def plot_radon_trend(ts, outdir):
         formatter = mdates.AutoDateFormatter(locator)
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
+    _add_elapsed_hours_axis(ax, times_dt)
     ax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.set_major_formatter(mticker.ScalarFormatter(useOffset=False))
+    ax.yaxis.get_offset_text().set_visible(False)
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(outdir / "radon_trend.png", dpi=300)

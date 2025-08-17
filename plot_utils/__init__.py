@@ -34,6 +34,22 @@ __all__ = [
 ]
 
 
+def _elapsed_hours_axis(ax, times_dt):
+    base = times_dt[0]
+
+    def _to_hours(x):
+        return (x - base) * 24.0
+
+    def _to_dates(h):
+        return base + h / 24.0
+
+    sec = ax.secondary_xaxis("top", functions=(_to_hours, _to_dates))
+    sec.set_xlabel("Elapsed time [h]")
+    sec.xaxis.set_major_formatter(mticker.ScalarFormatter(useOffset=False))
+    sec.xaxis.get_offset_text().set_visible(False)
+    return sec
+
+
 def extract_time_series(timestamps, energies, window, t_start, t_end, bin_width_s=1.0):
     """Return histogram counts for events within an energy window.
 
@@ -562,27 +578,7 @@ def plot_radon_activity_full(
         formatter = mdates.AutoDateFormatter(locator)
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
-
-    base_dt = times_dt[0]
-
-    def _to_seconds(x):
-        return (x - base_dt) * 86400.0
-
-    def _to_dates(x):
-        return base_dt + x / 86400.0
-
-    secax = ax.secondary_xaxis("top", functions=(_to_seconds, _to_dates))
-
-    def _sec_formatter(x, pos=None):
-        h = x / 3600.0
-        if h >= 1:
-            if abs(h - round(h)) < 1e-6:
-                return f"{int(x)} s ({int(h)} h)"
-            return f"{int(x)} s ({h:g} h)"
-        return f"{int(x)} s"
-
-    secax.xaxis.set_major_formatter(mticker.FuncFormatter(_sec_formatter))
-    secax.set_xlabel("Elapsed Time (s)")
+    _elapsed_hours_axis(ax, times_dt)
 
     if po214_activity is not None:
         po214_activity = np.asarray(po214_activity, dtype=float)
@@ -602,7 +598,8 @@ def plot_radon_activity_full(
 
     plt.gcf().autofmt_xdate()
     ax.xaxis.get_offset_text().set_visible(False)
-    secax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.set_major_formatter(mticker.ScalarFormatter(useOffset=False))
+    ax.yaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     targets = get_targets(config, out_png)
     for p in targets.values():
@@ -646,8 +643,11 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
         formatter = mdates.AutoDateFormatter(locator)
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
+    _elapsed_hours_axis(ax, times_dt)
     plt.gcf().autofmt_xdate()
     ax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.set_major_formatter(mticker.ScalarFormatter(useOffset=False))
+    ax.yaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     targets = get_targets(config, out_png)
     for p in targets.values():
@@ -732,8 +732,11 @@ def plot_radon_trend_full(times, activity, out_png, config=None):
         formatter = mdates.AutoDateFormatter(locator)
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
+    _elapsed_hours_axis(ax, times_dt)
     plt.gcf().autofmt_xdate()
     ax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.set_major_formatter(mticker.ScalarFormatter(useOffset=False))
+    ax.yaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
 
     targets = get_targets(config, out_png)
@@ -764,8 +767,11 @@ def plot_radon_activity(ts_dict, outdir):
         formatter = mdates.AutoDateFormatter(locator)
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
+    _elapsed_hours_axis(ax, times_dt)
     plt.gcf().autofmt_xdate()
     ax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.set_major_formatter(mticker.ScalarFormatter(useOffset=False))
+    ax.yaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     plt.savefig(outdir / "radon_activity.png", dpi=300)
     plt.close()
@@ -794,8 +800,11 @@ def plot_radon_trend(ts_dict, outdir):
         formatter = mdates.AutoDateFormatter(locator)
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
+    _elapsed_hours_axis(ax, times_dt)
     plt.gcf().autofmt_xdate()
     ax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.set_major_formatter(mticker.ScalarFormatter(useOffset=False))
+    ax.yaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     plt.savefig(outdir / "radon_trend.png", dpi=300)
     plt.close()
