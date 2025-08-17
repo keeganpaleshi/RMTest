@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from collections.abc import Sequence, Mapping
 from copy import deepcopy
 import warnings
+import logging
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
 from scipy.stats import exponnorm
@@ -14,6 +15,8 @@ from constants import (
     DEFAULT_KNOWN_ENERGIES,
     safe_exp as _safe_exp,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(init=False)
@@ -663,10 +666,11 @@ def derive_calibration_constants(adc_values, config):
                 return _if2p(adc_values, config)
             except RuntimeError as exc:
                 if "No candidate peak found" in str(exc):
-                    warnings.warn(
-                        "Two-point calibration failed to find both peaks; falling back to one-point intercept-only",
-                        RuntimeWarning,
+                    msg = (
+                        "Two-point calibration failed to find both peaks; falling back to one-point intercept-only"
                     )
+                    logger.warning(msg)
+                    warnings.warn(msg, RuntimeWarning)
                     cfg_fallback = deepcopy(config)
                     cfg_fallback.setdefault("calibration", {})["use_two_point"] = False
                     return fixed_slope_calibration(adc_values, cfg_fallback)
@@ -683,10 +687,11 @@ def derive_calibration_constants(adc_values, config):
         return calibrate_run(adc_values, cfg)
     except RuntimeError as exc:
         if "No candidate peak found" in str(exc) and slope is not None:
-            warnings.warn(
-                "Two-point calibration failed to find both peaks; falling back to one-point intercept-only",
-                RuntimeWarning,
+            msg = (
+                "Two-point calibration failed to find both peaks; falling back to one-point intercept-only"
             )
+            logger.warning(msg)
+            warnings.warn(msg, RuntimeWarning)
             cfg_fallback = deepcopy(config)
             cfg_fallback.setdefault("calibration", {})
             cfg_fallback["calibration"]["float_slope"] = False
