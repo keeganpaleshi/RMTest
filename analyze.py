@@ -62,6 +62,9 @@ from typing import Any, Mapping, cast
 
 import math
 import numpy as np
+from types import SimpleNamespace
+
+from feature_selectors import select_background_factory, select_neg_loglike
 import pandas as pd
 from scipy.stats import norm
 from dateutil.tz import UTC, gettz
@@ -372,6 +375,11 @@ def _spectral_fit_with_check(
         fit_kwargs["unbinned"] = True
     if strict:
         fit_kwargs["strict"] = True
+    e_min = float(np.min(energies)) if energies.size else 0.0
+    e_max = float(np.max(energies)) if energies.size else 0.0
+    opts = SimpleNamespace(**flags)
+    fit_kwargs["background_factory"] = select_background_factory(opts, e_min, e_max)
+    fit_kwargs["neg_loglike"] = select_neg_loglike(opts)
 
     result = fit_spectrum(**fit_kwargs)
     params = result.params if isinstance(result, FitResult) else result

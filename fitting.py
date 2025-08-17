@@ -278,6 +278,8 @@ def fit_spectrum(
     strict=False,
     *,
     max_tau_ratio=None,
+    background_factory=None,
+    neg_loglike=None,
 ):
     """Fit the radon spectrum using either χ² histogram or unbinned likelihood.
 
@@ -315,6 +317,12 @@ def fit_spectrum(
     max_tau_ratio : float, optional
         If given, enforce an upper bound ``tau <= max_tau_ratio * sigma0`` for
         EMG tail parameters.
+    background_factory : callable, optional
+        Function mapping ``(E, params)`` to the background contribution in
+        counts/MeV. When ``None`` use the legacy linear model.
+    neg_loglike : callable, optional
+        Negative log-likelihood function used in unbinned mode. Defaults keep
+        the existing behaviour.
 
     Returns
     -------
@@ -482,10 +490,31 @@ def fit_spectrum(
     area_keys = [f"S_{iso}" for iso in iso_list]
     if background_model == "loglin_unit" or "S_bkg" in priors:
         area_keys = area_keys + ["S_bkg"]
-    if background_model == "loglin_unit":
-        bkg_shape = _make_linear_bkg(E_lo, E_hi)
-    else:
-        bkg_shape = None
+    if background_factory is None:
+        if background_model == "loglin_unit":
+            shape = _make_linear_bkg(E_lo, E_hi)
+
+            def background_factory(E_vals, p_map):
+                val = shape(E_vals, p_map["b0"], p_map["b1"])
+                return _softplus(p_map["S_bkg"]) * val
+
+        elif "S_bkg" in priors:
+
+            def background_factory(E_vals, p_map):
+                beta0 = p_map["b0"]
+                beta1 = p_map["b1"]
+                B = _softplus(p_map["S_bkg"])
+                norm = beta0 * (E_hi - E_lo) + 0.5 * beta1 * (E_hi**2 - E_lo**2)
+                if norm > 0:
+                    return B * (beta0 + beta1 * np.asarray(E_vals)) / norm
+                return np.zeros_like(E_vals, dtype=float)
+
+        else:
+
+            def background_factory(E_vals, p_map):
+                beta0 = p_map["b0"]
+                beta1 = p_map["b1"]
+                return beta0 + beta1 * np.asarray(E_vals)
 
     def _model_density(x, *params):
         if fix_sigma0:
@@ -511,20 +540,8 @@ def fit_spectrum(
             else:
                 sigma = np.sqrt(sigma0 ** 2 + F_current * x)
                 y += S * gaussian(x, mu, sigma)
-        beta0 = params[param_index["b0"]]
-        beta1 = params[param_index["b1"]]
-        if background_model == "loglin_unit":
-            B_raw = params[param_index["S_bkg"]]
-            B = _softplus(B_raw)
-            y += B * bkg_shape(x, beta0, beta1)
-        elif "S_bkg" in priors:
-            B_raw = params[param_index["S_bkg"]]
-            B = _softplus(B_raw)
-            norm = beta0 * (E_hi - E_lo) + 0.5 * beta1 * (E_hi**2 - E_lo**2)
-            if norm > 0:
-                y += B * (beta0 + beta1 * x) / norm
-        else:
-            y += beta0 + beta1 * x
+        p_map = {name: params[param_index[name]] for name in param_order}
+        y += background_factory(x, p_map)
         return np.clip(y, 1e-300, np.inf)
 
     def _model_binned(x, *params):
@@ -563,21 +580,31 @@ def fit_spectrum(
             arr = [p_map[name] for name in param_order]
             return _model_density(E_vals, *arr)
 
-        if background_model == "loglin_unit" or "S_bkg" in priors:
-            def _nll(*params):
-                p_map = dict(zip(param_order, params))
-                return neg_loglike_extended(
-                    e,
-                    _intensity_fn,
-                    p_map,
-                    area_keys=area_keys,
-                    background_model="loglin_unit" if background_model == "loglin_unit" else None,
-                )
+        if neg_loglike is None:
+            if background_model == "loglin_unit" or "S_bkg" in priors:
+                from likelihood_ext import neg_loglike_extended
+
+                neg_loglike_fn = neg_loglike_extended
+            else:
+
+                def neg_loglike_fn(
+                    E, intensity_fn, params, *, area_keys=None, clip=1e-300, background_model=None
+                ):
+                    lam = np.clip(intensity_fn(E, params), clip, np.inf)
+                    return float(-np.sum(np.log(lam)))
+
         else:
-            def _nll(*params):
-                p_map = dict(zip(param_order, params))
-                lam = np.clip(_intensity_fn(e, p_map), 1e-300, np.inf)
-                return float(-np.sum(np.log(lam)))
+            neg_loglike_fn = neg_loglike
+
+        def _nll(*params):
+            p_map = dict(zip(param_order, params))
+            return neg_loglike_fn(
+                e,
+                _intensity_fn,
+                p_map,
+                area_keys=area_keys,
+                background_model="loglin_unit" if background_model == "loglin_unit" else None,
+            )
 
         m = Minuit(_nll, *p0, name=param_order)
         m.errordef = Minuit.LIKELIHOOD
