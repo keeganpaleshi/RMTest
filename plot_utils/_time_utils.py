@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterable
 
 import matplotlib.dates as mdates
@@ -47,14 +47,16 @@ def to_mpl_times(times: Iterable) -> np.ndarray:
 
 
 def setup_time_axis(ax, times_mpl: np.ndarray):
-    """Apply UTC date labels and elapsed-hour secondary axis."""
-    locator = mdates.AutoDateLocator()
+    """Apply UTC date labels, elapsed-hour secondary axis, and plain y-scale."""
+    locator = mdates.AutoDateLocator(tz=timezone.utc)
     try:  # Concise formatter is available on newer Matplotlib
-        formatter = mdates.ConciseDateFormatter(locator)
+        formatter = mdates.ConciseDateFormatter(locator, tz=timezone.utc)
     except AttributeError:  # pragma: no cover - fallback for old MPL
-        formatter = mdates.AutoDateFormatter(locator)
+        formatter = mdates.AutoDateFormatter(locator, tz=timezone.utc)
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
+    ax.ticklabel_format(axis="y", style="plain")
+    ax.yaxis.get_offset_text().set_visible(False)
 
     base = times_mpl[0]
 
