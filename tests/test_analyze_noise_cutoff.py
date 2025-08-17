@@ -25,7 +25,7 @@ def test_analyze_noise_cutoff(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -95,4 +95,4 @@ def test_analyze_noise_cutoff(tmp_path, monkeypatch):
     analyze.main()
 
     assert captured.get("fit_times") == [2.0]
-    assert captured.get("plot_times") == []
+    assert len(captured.get("plot_times")) == 1

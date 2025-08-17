@@ -26,7 +26,7 @@ def test_blue_weights_summary(tmp_path, monkeypatch):
         },
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 

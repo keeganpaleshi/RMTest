@@ -39,7 +39,7 @@ def test_analysis_end_time_override_logs(tmp_path, monkeypatch, caplog):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -77,7 +77,7 @@ def test_analysis_start_time_override_logs(tmp_path, monkeypatch, caplog):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 

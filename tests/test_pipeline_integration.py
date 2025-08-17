@@ -10,7 +10,7 @@ import analyze
 def test_pipeline_mini_run(tmp_path, monkeypatch):
     data_dir = Path(__file__).resolve().parents[0] / "data" / "mini_run"
     csv = data_dir / "run.csv"
-    cfg = data_dir / "config.json"
+    cfg = data_dir / "config.yaml"
 
     monkeypatch.setattr(plt, "savefig", lambda *a, **k: None)
 

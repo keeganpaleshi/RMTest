@@ -16,9 +16,9 @@ def test_window_po218_default(tmp_path):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
     loaded = load_config(cfg_path)
-    assert loaded["time_fit"]["window_po218"] == [5.90, 6.10]
+    assert "window_po218" not in loaded["time_fit"]

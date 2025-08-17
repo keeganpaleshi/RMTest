@@ -36,7 +36,7 @@ def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
             "overlay_isotopes": True,
         },
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -126,7 +126,7 @@ def test_analysis_start_time_applied(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -193,7 +193,7 @@ def test_job_id_overrides_results_folder(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -258,7 +258,7 @@ def test_efficiency_json_cli(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "c.json"
+    cfg_path = tmp_path / "c.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -314,7 +314,7 @@ def test_systematics_json_cli(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "c2.json"
+    cfg_path = tmp_path / "c2.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -379,7 +379,7 @@ def test_time_bin_cli(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -434,7 +434,7 @@ def test_time_bin_override_logs(tmp_path, monkeypatch, caplog):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"], "plot_time_binning_mode": "auto"},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -485,7 +485,7 @@ def test_po210_time_series_plot_generated(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -534,7 +534,7 @@ def test_spike_count_cli(tmp_path, monkeypatch):
         "efficiency": {"spike": {"activity_bq": 5, "live_time_s": 100}},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -609,7 +609,7 @@ def test_spike_count_single_call(tmp_path, monkeypatch):
         "efficiency": {"spike": {"activity_bq": 5, "live_time_s": 100}},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -663,7 +663,7 @@ def test_no_spike_cli(tmp_path, monkeypatch):
         "efficiency": {"spike": {"counts": 10, "activity_bq": 5, "live_time_s": 100}},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -730,7 +730,7 @@ def test_assay_efficiency_list(tmp_path, monkeypatch):
         },
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -811,7 +811,7 @@ def test_spike_efficiency_list(tmp_path, monkeypatch):
         },
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -888,7 +888,7 @@ def test_debug_flag_sets_log_level(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -940,7 +940,7 @@ def test_settle_s_cli(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -993,7 +993,7 @@ def test_settle_s_summary(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -1052,7 +1052,7 @@ def test_analysis_end_time_cli(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -1111,7 +1111,7 @@ def test_analysis_start_time_cli(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -1170,7 +1170,7 @@ def test_spike_end_time_cli(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -1229,7 +1229,7 @@ def test_spike_start_time_cli(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -1288,7 +1288,7 @@ def test_spike_start_and_end_cli(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -1353,7 +1353,7 @@ def test_spike_period_cli(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -1428,7 +1428,7 @@ def test_seed_cli_sets_random_seed(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -1481,7 +1481,7 @@ def test_ambient_concentration_recorded(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -1541,7 +1541,7 @@ def test_ambient_concentration_from_config(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -1598,7 +1598,7 @@ def test_ambient_file_interpolation(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -1681,7 +1681,7 @@ def test_burst_mode_from_config(tmp_path, monkeypatch):
         "plotting": {"plot_save_formats": ["png"]},
         "burst_filter": {"burst_mode": "none"},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -1729,7 +1729,7 @@ def test_burst_mode_micro_config(tmp_path, monkeypatch):
         "plotting": {"plot_save_formats": ["png"]},
         "burst_filter": {"burst_mode": "micro"},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -1777,7 +1777,7 @@ def test_burst_mode_cli_overrides(tmp_path, monkeypatch):
         "plotting": {"plot_save_formats": ["png"]},
         "burst_filter": {"burst_mode": "none"},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -1826,7 +1826,7 @@ def test_burst_mode_summary_config(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -1881,7 +1881,7 @@ def test_burst_filter_auto_disabled(tmp_path, monkeypatch):
         "plotting": {"plot_save_formats": ["png"]},
         "burst_filter": {"burst_mode": "rate"},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -1946,7 +1946,7 @@ def test_ambient_concentration_default_none(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -1998,7 +1998,7 @@ def test_ambient_concentration_written_to_summary_file(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -2063,7 +2063,7 @@ def test_spike_periods_null_config(tmp_path, monkeypatch):
         "plotting": {"plot_save_formats": ["png"]},
     }
 
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -2123,7 +2123,7 @@ def test_hl_po214_cli_overrides(tmp_path, monkeypatch):
         "plotting": {"plot_save_formats": ["png"]},
     }
 
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -2179,7 +2179,7 @@ def test_hl_po210_default_used(tmp_path, monkeypatch):
         "plotting": {"plot_save_formats": ["png"]},
     }
 
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
@@ -2237,7 +2237,7 @@ def test_time_fields_written_back(tmp_path, monkeypatch):
         "plotting": {"plot_save_formats": ["png"]},
     }
 
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
