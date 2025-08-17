@@ -362,13 +362,23 @@ def fit_spectrum(
     E_lo = float(edges[0])
     E_hi = float(edges[-1])
 
-    opts = SimpleNamespace(
-        background_model=flags.get("background_model", "linear"),
-        likelihood=flags.get("likelihood", "current"),
-    )
+    background_model = flags.get("background_model")
+    likelihood_opt = flags.get("likelihood")
 
-    background_fn = select_background_factory(opts, E_lo, E_hi)
-    neg_loglike = select_neg_loglike(opts)
+    if background_model and background_model != "linear":
+        opts = SimpleNamespace(background_model=background_model)
+        background_fn = select_background_factory(opts, E_lo, E_hi)
+    else:
+        bkg_shape = _make_linear_bkg(E_lo, E_hi)
+
+        def background_fn(E, p_map):
+            val = bkg_shape(E, p_map["b0"], p_map["b1"])
+            return _softplus(p_map["S_bkg"]) * val
+
+    neg_loglike = neg_loglike_extended
+    if likelihood_opt:
+        opts = SimpleNamespace(likelihood=likelihood_opt)
+        neg_loglike = select_neg_loglike(opts)
 
     # Augment priors with a background amplitude if not provided
     priors = dict(priors)
@@ -429,7 +439,7 @@ def fit_spectrum(
         if use_emg[iso]:
             param_index[f"tau_{iso}"] = len(param_order)
             param_order.append(f"tau_{iso}")
-    if opts.background_model == "loglin_unit":
+    if background_model == "loglin_unit":
         param_index["beta0"] = len(param_order)
         param_order.append("beta0")
         param_index["beta1"] = len(param_order)
@@ -550,7 +560,7 @@ def fit_spectrum(
         def _nll(*params):
             p_map = dict(zip(param_order, params))
             kwargs = {"area_keys": area_keys}
-            if opts.likelihood == "extended":
+            if likelihood_opt == "extended":
                 kwargs["background_model"] = flags.get("background_model")
             return neg_loglike(e, _intensity_fn, p_map, **kwargs)
 
