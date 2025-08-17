@@ -256,7 +256,7 @@ def plot_time_series(
         edges = np.linspace(0, (t_end - t_start), n_bins + 1)
     centers = 0.5 * (edges[:-1] + edges[1:])
     centers_abs = t_start + centers
-    centers_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in centers_abs])
+    times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in centers_abs])
     bin_widths = np.diff(edges)
 
     # Optional normalisation to counts / s (set in config)
@@ -290,7 +290,7 @@ def plot_time_series(
         style = str(config.get("plot_time_style", "steps")).lower()
         if style == "lines":
             plt.plot(
-                centers_dt,
+                times_dt,
                 counts_iso,
                 marker="o",
                 linestyle="-",
@@ -299,7 +299,7 @@ def plot_time_series(
             )
         else:
             plt.step(
-                centers_dt,
+                times_dt,
                 counts_iso,
                 where="mid",
                 color=colors[iso],
@@ -333,7 +333,7 @@ def plot_time_series(
             # Convert rate (counts/s) to expected counts per bin if not normalising
             model_counts = r_rel if normalise_rate else r_rel * bin_widths
             plt.plot(
-                centers_dt,
+                times_dt,
                 model_counts,
                 color=colors[iso],
                 lw=2,
@@ -345,7 +345,7 @@ def plot_time_series(
                 if err.size == model_counts.size:
                     kw = {"step": "mid"} if style != "lines" else {}
                     plt.fill_between(
-                        centers_dt,
+                        times_dt,
                         model_counts - err,
                         model_counts + err,
                         color=colors[iso],
@@ -387,6 +387,7 @@ def plot_time_series(
     plt.gcf().autofmt_xdate()
     ax.xaxis.get_offset_text().set_visible(False)
     secax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     targets = get_targets(config, out_png)
     for p in targets.values():
@@ -553,7 +554,17 @@ def plot_radon_activity_full(
     When ``po214_activity`` is given it is overlaid for quality control
     on a secondary axis explicitly labelled as Po-214 activity.
     """
-    times = np.asarray(times, dtype=float)
+    ts_array = np.asarray(times)
+    if np.issubdtype(ts_array.dtype, "datetime64"):
+        times = ts_array.astype("int64") / 1e9
+    elif np.issubdtype(ts_array.dtype, np.object_):
+        if ts_array.size > 0 and isinstance(ts_array.flat[0], datetime):
+            times = np.array([dt.timestamp() for dt in ts_array], dtype=float)
+        else:
+            times = ts_array.astype(float)
+    else:
+        times = ts_array.astype(float)
+
     activity = np.asarray(activity, dtype=float)
     errors = np.asarray(errors, dtype=float)
 
@@ -604,10 +615,12 @@ def plot_radon_activity_full(
         lines1, labels1 = ax.get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
         ax.legend(lines1 + lines2, labels1 + labels2, loc="best")
+        ax2.yaxis.get_offset_text().set_visible(False)
 
     plt.gcf().autofmt_xdate()
     ax.xaxis.get_offset_text().set_visible(False)
     secax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     targets = get_targets(config, out_png)
     for p in targets.values():
@@ -624,7 +637,17 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
         Ambient concentration label to include in the plot title. When ``None``
         the concentration is omitted from the title.
     """
-    times = np.asarray(times, dtype=float)
+    ts_array = np.asarray(times)
+    if np.issubdtype(ts_array.dtype, "datetime64"):
+        times = ts_array.astype("int64") / 1e9
+    elif np.issubdtype(ts_array.dtype, np.object_):
+        if ts_array.size > 0 and isinstance(ts_array.flat[0], datetime):
+            times = np.array([dt.timestamp() for dt in ts_array], dtype=float)
+        else:
+            times = ts_array.astype(float)
+    else:
+        times = ts_array.astype(float)
+
     volumes = np.asarray(volumes, dtype=float)
     errors = np.asarray(errors, dtype=float)
 
@@ -667,6 +690,7 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
     plt.gcf().autofmt_xdate()
     ax.xaxis.get_offset_text().set_visible(False)
     secax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     targets = get_targets(config, out_png)
     for p in targets.values():
@@ -729,7 +753,17 @@ def plot_modeled_radon_activity(
 
 def plot_radon_trend_full(times, activity, out_png, config=None):
     """Plot modeled radon activity trend without uncertainties."""
-    times = np.asarray(times, dtype=float)
+    ts_array = np.asarray(times)
+    if np.issubdtype(ts_array.dtype, "datetime64"):
+        times = ts_array.astype("int64") / 1e9
+    elif np.issubdtype(ts_array.dtype, np.object_):
+        if ts_array.size > 0 and isinstance(ts_array.flat[0], datetime):
+            times = np.array([dt.timestamp() for dt in ts_array], dtype=float)
+        else:
+            times = ts_array.astype(float)
+    else:
+        times = ts_array.astype(float)
+
     activity = np.asarray(activity, dtype=float)
 
     times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
@@ -751,8 +785,23 @@ def plot_radon_trend_full(times, activity, out_png, config=None):
         formatter = mdates.AutoDateFormatter(locator)
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
+
+    base_dt = times_dt[0]
+
+    def _to_hours(x):
+        return (x - base_dt) * 24.0
+
+    def _to_dates(x):
+        return base_dt + x / 24.0
+
+    secax = ax.secondary_xaxis("top", functions=(_to_hours, _to_dates))
+    secax.set_xlabel("Elapsed Time (h)")
+    secax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, pos: f"{x:g}"))
+
     plt.gcf().autofmt_xdate()
     ax.xaxis.get_offset_text().set_visible(False)
+    secax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
 
     targets = get_targets(config, out_png)
@@ -766,7 +815,16 @@ def plot_radon_activity(ts_dict, outdir):
     import matplotlib.pyplot as plt
 
     outdir = Path(outdir)
-    times = np.asarray(ts_dict["time"], dtype=float)
+    ts_array = np.asarray(ts_dict["time"])
+    if np.issubdtype(ts_array.dtype, "datetime64"):
+        times = ts_array.astype("int64") / 1e9
+    elif np.issubdtype(ts_array.dtype, np.object_):
+        if ts_array.size > 0 and isinstance(ts_array.flat[0], datetime):
+            times = np.array([dt.timestamp() for dt in ts_array], dtype=float)
+        else:
+            times = ts_array.astype(float)
+    else:
+        times = ts_array.astype(float)
     y = np.asarray(ts_dict["activity"], dtype=float)
     e = np.asarray(ts_dict["error"], dtype=float)
 
@@ -799,6 +857,7 @@ def plot_radon_activity(ts_dict, outdir):
     plt.gcf().autofmt_xdate()
     ax.xaxis.get_offset_text().set_visible(False)
     secax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     plt.savefig(outdir / "radon_activity.png", dpi=300)
     plt.close()
@@ -810,10 +869,19 @@ def plot_radon_trend(ts_dict, outdir):
     import matplotlib.pyplot as plt
 
     outdir = Path(outdir)
-    times = np.asarray(ts_dict["time"], dtype=float)
+    ts_array = np.asarray(ts_dict["time"])
+    if np.issubdtype(ts_array.dtype, "datetime64"):
+        times = ts_array.astype("int64") / 1e9
+    elif np.issubdtype(ts_array.dtype, np.object_):
+        if ts_array.size > 0 and isinstance(ts_array.flat[0], datetime):
+            times = np.array([dt.timestamp() for dt in ts_array], dtype=float)
+        else:
+            times = ts_array.astype(float)
+    else:
+        times = ts_array.astype(float)
     y = np.asarray(ts_dict["activity"], dtype=float)
     times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
-    coeff = np.polyfit(times_dt, y, 1)
+    coeff = np.polyfit(times_dt, y, 1) if times_dt.size >= 2 else np.array([0.0, y[0] if y.size else 0.0])
     plt.plot(times_dt, y, "o")
     plt.plot(times_dt, np.polyval(coeff, times_dt))
     plt.ylabel("Radon activity [Bq]")
@@ -843,6 +911,7 @@ def plot_radon_trend(ts_dict, outdir):
     plt.gcf().autofmt_xdate()
     ax.xaxis.get_offset_text().set_visible(False)
     secax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     plt.savefig(outdir / "radon_trend.png", dpi=300)
     plt.close()

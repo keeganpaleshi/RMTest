@@ -3,6 +3,7 @@ _mpl.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.ticker as mticker
+import numpy as np
 from datetime import datetime
 from pathlib import Path
 
@@ -21,8 +22,17 @@ def plot_radon_activity(ts, outdir):
     """
     outdir = Path(outdir)
     fig, ax = plt.subplots()
-    times = [datetime.utcfromtimestamp(t) for t in ts.time]
-    times_dt = mdates.date2num(times)
+    ts_array = np.asarray(ts.time)
+    if np.issubdtype(ts_array.dtype, "datetime64"):
+        times_s = ts_array.astype("int64") / 1e9
+    elif np.issubdtype(ts_array.dtype, np.object_):
+        if ts_array.size > 0 and isinstance(ts_array.flat[0], datetime):
+            times_s = np.array([dt.timestamp() for dt in ts_array], dtype=float)
+        else:
+            times_s = ts_array.astype(float)
+    else:
+        times_s = ts_array.astype(float)
+    times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times_s])
     ax.errorbar(times_dt, ts.activity, yerr=getattr(ts, "error", None), fmt="o")
     ax.set_ylabel("Radon activity [Bq]")
     ax.set_xlabel("Time (UTC)")
@@ -49,6 +59,7 @@ def plot_radon_activity(ts, outdir):
 
     ax.xaxis.get_offset_text().set_visible(False)
     secax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.get_offset_text().set_visible(False)
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(outdir / "radon_activity.png", dpi=300)
@@ -59,8 +70,17 @@ def plot_radon_trend(ts, outdir):
     """Plot radon activity trend without uncertainties."""
     outdir = Path(outdir)
     fig, ax = plt.subplots()
-    times = [datetime.utcfromtimestamp(t) for t in ts.time]
-    times_dt = mdates.date2num(times)
+    ts_array = np.asarray(ts.time)
+    if np.issubdtype(ts_array.dtype, "datetime64"):
+        times_s = ts_array.astype("int64") / 1e9
+    elif np.issubdtype(ts_array.dtype, np.object_):
+        if ts_array.size > 0 and isinstance(ts_array.flat[0], datetime):
+            times_s = np.array([dt.timestamp() for dt in ts_array], dtype=float)
+        else:
+            times_s = ts_array.astype(float)
+    else:
+        times_s = ts_array.astype(float)
+    times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times_s])
     ax.plot(times_dt, ts.activity, "o-")
     ax.set_ylabel("Radon activity [Bq]")
     ax.set_xlabel("Time (UTC)")
@@ -87,6 +107,7 @@ def plot_radon_trend(ts, outdir):
 
     ax.xaxis.get_offset_text().set_visible(False)
     secax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.get_offset_text().set_visible(False)
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(outdir / "radon_trend.png", dpi=300)

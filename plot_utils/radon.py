@@ -13,7 +13,16 @@ def _save(fig, outdir: Path, name: str) -> None:
 
 
 def plot_radon_activity(ts_dict, outdir: Path, out_png: str | Path | None = None) -> None:
-    t = np.asarray(ts_dict["time"], dtype=float)
+    ts_array = np.asarray(ts_dict["time"])
+    if np.issubdtype(ts_array.dtype, "datetime64"):
+        t = ts_array.astype("int64") / 1e9
+    elif np.issubdtype(ts_array.dtype, np.object_):
+        if ts_array.size > 0 and isinstance(ts_array.flat[0], datetime):
+            t = np.array([dt.timestamp() for dt in ts_array], dtype=float)
+        else:
+            t = ts_array.astype(float)
+    else:
+        t = ts_array.astype(float)
     a = np.asarray(ts_dict["activity"], dtype=float)
     e = np.asarray(ts_dict["error"], dtype=float)
     times_dt = mdates.date2num([datetime.utcfromtimestamp(tt) for tt in t])
@@ -45,6 +54,7 @@ def plot_radon_activity(ts_dict, outdir: Path, out_png: str | Path | None = None
 
     ax.xaxis.get_offset_text().set_visible(False)
     secax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.get_offset_text().set_visible(False)
     fig.autofmt_xdate()
     fig.tight_layout()
     if out_png is not None:
@@ -55,7 +65,16 @@ def plot_radon_activity(ts_dict, outdir: Path, out_png: str | Path | None = None
 
 
 def plot_radon_trend(ts_dict, outdir: Path, out_png: str | Path | None = None) -> None:
-    t = np.asarray(ts_dict["time"], dtype=float)
+    ts_array = np.asarray(ts_dict["time"])
+    if np.issubdtype(ts_array.dtype, "datetime64"):
+        t = ts_array.astype("int64") / 1e9
+    elif np.issubdtype(ts_array.dtype, np.object_):
+        if ts_array.size > 0 and isinstance(ts_array.flat[0], datetime):
+            t = np.array([dt.timestamp() for dt in ts_array], dtype=float)
+        else:
+            t = ts_array.astype(float)
+    else:
+        t = ts_array.astype(float)
     a = np.asarray(ts_dict["activity"], dtype=float)
     times_dt = mdates.date2num([datetime.utcfromtimestamp(tt) for tt in t])
     if times_dt.size < 2:
@@ -91,6 +110,7 @@ def plot_radon_trend(ts_dict, outdir: Path, out_png: str | Path | None = None) -
 
     ax.xaxis.get_offset_text().set_visible(False)
     secax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.get_offset_text().set_visible(False)
     fig.autofmt_xdate()
     fig.tight_layout()
     if out_png is not None:

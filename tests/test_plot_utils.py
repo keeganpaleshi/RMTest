@@ -851,6 +851,7 @@ def test_plot_radon_activity_no_offset(tmp_path, monkeypatch):
     ax = plt.gca()
     assert not ax.xaxis.get_offset_text().get_visible()
     assert not captured["axis"].xaxis.get_offset_text().get_visible()
+    assert not ax.yaxis.get_offset_text().get_visible()
 
 
 def test_plot_radon_activity_full_no_offset(tmp_path, monkeypatch):
@@ -880,6 +881,7 @@ def test_plot_radon_activity_full_no_offset(tmp_path, monkeypatch):
     ax = plt.gca()
     assert not ax.xaxis.get_offset_text().get_visible()
     assert not captured["axis"].xaxis.get_offset_text().get_visible()
+    assert not ax.yaxis.get_offset_text().get_visible()
 
 
 def test_plot_time_series_uncertainty_band(tmp_path, monkeypatch):
