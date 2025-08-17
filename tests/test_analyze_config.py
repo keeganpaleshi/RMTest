@@ -13,7 +13,7 @@ from fitting import FitResult, FitParams
 from dataclasses import asdict
 
 
-def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
+def test_plot_time_series_receives_config(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},
         "calibration": {},
