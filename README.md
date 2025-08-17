@@ -159,11 +159,12 @@ to ``False``.  Passing ``strict=True`` (or ``--strict-covariance`` on the
 command line) instead raises a ``RuntimeError`` as soon as the matrix is
 found to be non-positive definite.
 
+When ``fit_valid`` is ``False`` the analysis skips drawing model overlays
+and no extrapolated activities or counts are produced.
+
 ## Configuration
 
-The parser is case sensitive, so all keys in `config.yaml` should be lowercase. Mixed-case names from older files remain supported for backward compatibility but are deprecated.
-If `--config` is not supplied, `analyze.py` automatically looks for a `config.yaml` file in the same directory as the script.
-Default values may also be provided in `config_defaults.yaml` at the repository root. When present this file is merged with your configuration so missing keys fall back to its values.
+The parser is case sensitive, so all keys in `config.yaml` should be lowercase. Mixed-case names from older files remain supported for backward compatibility but are deprecated. If `--config` is not supplied, `analyze.py` automatically looks for a single `config.yaml` file in the same directory as the script; missing keys rely on built-in defaults.
 
 `nominal_adc` under the `calibration` section sets the expected raw ADC
 centroids for Po‑210, Po‑218 and Po‑214 when using automatic calibration.
@@ -493,8 +494,8 @@ The command line option `--palette NAME` overrides the configuration.
 
 
 `plot_time_normalise_rate` controls how the y-axis is scaled in the
-time-series plot.  With the default `true` the histogram is normalised to
-counts per second.  Set it to `false` to show the raw counts per bin.
+time-series plot.  With the default `false` the histogram shows raw counts
+per bin.  Set it to `true` to normalise to counts per second.
 
 Example snippet:
 
@@ -513,7 +514,7 @@ regions appear alongside the dashed model lines.
 `plot_time_series` takes its half-life values from the `time_fit` section.
 Specify custom values using the keys `hl_po214`, `hl_po218` and `hl_po210`.
 When these keys are omitted or set to ``null`` the values fall back to the
-physical half-lives of 1.64×10⁻⁴ s, 186 s and 1.1956×10⁷ s respectively.
+physical half-lives of 1.64×10⁻⁴ s, 183 s and 1.1956×10⁷ s respectively.
 These custom half-lives control the
 decay model drawn over the time-series histogram.
 The same values are used in the `time_fit` routine itself, so changing
