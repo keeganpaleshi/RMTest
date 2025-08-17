@@ -68,6 +68,24 @@ def test_load_config_missing_section(tmp_path):
         load_config(p)
 
 
+def test_load_config_resolution_conflict(tmp_path):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "spectral_fit": {
+            "float_sigma_E": True,
+            "flags": {"fix_sigma0": True},
+        },
+        "time_fit": {"do_time_fit": True},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    p = tmp_path / "cfg.yaml"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+    with pytest.raises(ValueError):
+        load_config(p)
+
+
 def test_load_events(tmp_path, caplog):
     df = pd.DataFrame(
         {
