@@ -45,7 +45,15 @@ def select_background_factory(opts: Any, Emin: float, Emax: float) -> Callable:
 
         return bkg
 
-    return lambda E, params: _existing_linear_bkg(E, params)
+    from fitting import make_linear_bkg
+
+    shape = make_linear_bkg(Emin, Emax)
+
+    def bkg(E, params):
+        val = shape(E, params["b0"], params["b1"])
+        return softplus(params["S_bkg"]) * val
+
+    return bkg
 
 
 def select_neg_loglike(opts: Any) -> Callable:

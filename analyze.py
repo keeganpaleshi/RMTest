@@ -58,7 +58,8 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
-from typing import Any, Mapping, cast
+from typing import Any, Mapping, cast, Callable
+from types import SimpleNamespace
 
 import math
 import numpy as np
@@ -85,6 +86,7 @@ from calibration import (
 )
 
 from fitting import fit_spectrum, fit_time_series, FitResult, FitParams
+from feature_selectors import select_background_factory, select_neg_loglike
 
 from constants import (
     DEFAULT_NOISE_CUTOFF,
@@ -345,6 +347,8 @@ def _spectral_fit_with_check(
     bounds: Mapping[str, tuple[float | None, float | None]] | None = None,
     unbinned: bool = False,
     strict: bool = False,
+    background_factory: Callable | None = None,
+    neg_loglike: Callable | None = None,
 ) -> tuple[FitResult | dict[str, float], dict[str, float]]:
     """Run :func:`fit_spectrum` and apply centroid consistency checks."""
 
@@ -364,6 +368,10 @@ def _spectral_fit_with_check(
         "priors": priors_mapped,
         "flags": flags,
     }
+    if background_factory is not None:
+        fit_kwargs["background_factory"] = background_factory
+    if neg_loglike is not None:
+        fit_kwargs["neg_loglike"] = neg_loglike
     if bins is not None or bin_edges is not None:
         fit_kwargs.update({"bins": bins, "bin_edges": bin_edges})
     if bounds:
@@ -2038,6 +2046,22 @@ def main(argv=None):
                 if bounds_map:
                     fit_kwargs["bounds"] = bounds_map
 
+            energies_mev = df_analysis["energy_MeV"].values
+            if fit_kwargs.get("bin_edges") is not None:
+                Emin = float(fit_kwargs["bin_edges"][0])
+                Emax = float(fit_kwargs["bin_edges"][-1])
+            else:
+                Emin = float(np.min(energies_mev))
+                Emax = float(np.max(energies_mev))
+            opts = SimpleNamespace(
+                background_model=cfg.get("analysis", {}).get("background_model"),
+                likelihood=cfg.get("analysis", {}).get("likelihood"),
+            )
+            fit_kwargs["background_factory"] = select_background_factory(
+                opts, Emin, Emax
+            )
+            fit_kwargs["neg_loglike"] = select_neg_loglike(opts)
+
             spec_fit_out, peak_deviation = _spectral_fit_with_check(
                 df_analysis["energy_MeV"].values,
                 priors_spec,
@@ -2048,6 +2072,8 @@ def main(argv=None):
                 bounds=fit_kwargs.get("bounds"),
                 unbinned=fit_kwargs.get("unbinned", False),
                 strict=fit_kwargs.get("strict", False),
+                background_factory=fit_kwargs.get("background_factory"),
+                neg_loglike=fit_kwargs.get("neg_loglike"),
             )
             if isinstance(spec_fit_out, FitResult) and not spec_fit_out.params.get(
                 "fit_valid", True
@@ -2070,6 +2096,8 @@ def main(argv=None):
                         bounds=fit_kwargs.get("bounds"),
                         unbinned=fit_kwargs.get("unbinned", False),
                         strict=fit_kwargs.get("strict", False),
+                        background_factory=fit_kwargs.get("background_factory"),
+                        neg_loglike=fit_kwargs.get("neg_loglike"),
                     )
                     if isinstance(refit, FitResult) and refit.params.get(
                         "fit_valid", False
@@ -2090,6 +2118,8 @@ def main(argv=None):
                                 bounds=fit_kwargs.get("bounds"),
                                 unbinned=fit_kwargs.get("unbinned", False),
                                 strict=fit_kwargs.get("strict", False),
+                                background_factory=fit_kwargs.get("background_factory"),
+                                neg_loglike=fit_kwargs.get("neg_loglike"),
                             )
                             if (
                                 isinstance(free_fit, FitResult)
@@ -2385,7 +2415,6 @@ def main(argv=None):
 
     # --- Radon combination ---
     from radon_joint_estimator import estimate_radon_activity
-    from types import SimpleNamespace
 
     fit214_obj = time_fit_results.get("Po214")
     fit218_obj = time_fit_results.get("Po218")

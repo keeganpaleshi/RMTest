@@ -282,6 +282,8 @@ def fit_spectrum(
     strict=False,
     *,
     max_tau_ratio=None,
+    background_factory=None,
+    neg_loglike=None,
 ):
     """Fit the radon spectrum using either χ² histogram or unbinned likelihood.
 
@@ -319,6 +321,14 @@ def fit_spectrum(
     max_tau_ratio : float, optional
         If given, enforce an upper bound ``tau <= max_tau_ratio * sigma0`` for
         EMG tail parameters.
+    background_factory : callable, optional
+        Function of the form ``f(E, params)`` returning the background
+        intensity in counts/MeV. When ``None`` the legacy linear background
+        implementation is used.
+    neg_loglike : callable, optional
+        Negative log-likelihood function with signature compatible with
+        :func:`likelihood_ext.neg_loglike_extended`. Defaults to the legacy
+        extended unbinned likelihood.
 
     Returns
     -------
@@ -475,24 +485,36 @@ def fit_spectrum(
 
     iso_list = ["Po210", "Po218", "Po214"]
     area_keys = [f"S_{iso}" for iso in iso_list] + ["S_bkg"]
-    bkg_shape = _make_linear_bkg(E_lo, E_hi)
+
+    if background_factory is None:
+        bkg_shape_default = _make_linear_bkg(E_lo, E_hi)
+
+        def _bkg_fn(E, params):
+            return _softplus(params["S_bkg"]) * bkg_shape_default(
+                E, params["b0"], params["b1"]
+            )
+
+        bkg_fn = _bkg_fn
+    else:
+        bkg_fn = background_factory
 
     def _model_density(x, *params):
+        p_map = {name: params[param_index[name]] for name in param_order}
         if fix_sigma0:
             sigma0 = sigma0_val
         else:
-            sigma0 = params[param_index["sigma0"]]
+            sigma0 = p_map["sigma0"]
         if fix_F:
             F_current = F_val
         else:
-            F_current = params[param_index["F"]]
+            F_current = p_map["F"]
         y = np.zeros_like(x)
         for iso in iso_list:
-            mu = params[param_index[f"mu_{iso}"]]
-            S_raw = params[param_index[f"S_{iso}"]]
+            mu = p_map[f"mu_{iso}"]
+            S_raw = p_map[f"S_{iso}"]
             S = _softplus(S_raw)
             if use_emg[iso]:
-                tau = params[param_index[f"tau_{iso}"]]
+                tau = p_map[f"tau_{iso}"]
                 sigma = np.sqrt(sigma0 ** 2 + F_current * x)
                 with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
                     y_emg = emg_left(x, mu, sigma, tau)
@@ -501,11 +523,7 @@ def fit_spectrum(
             else:
                 sigma = np.sqrt(sigma0 ** 2 + F_current * x)
                 y += S * gaussian(x, mu, sigma)
-        beta0 = params[param_index["b0"]]
-        beta1 = params[param_index["b1"]]
-        B_raw = params[param_index["S_bkg"]]
-        B = _softplus(B_raw)
-        y += B * bkg_shape(x, beta0, beta1)
+        y += bkg_fn(x, p_map)
         return np.clip(y, 1e-300, np.inf)
 
     def _model_binned(x, *params):
@@ -544,15 +562,25 @@ def fit_spectrum(
             arr = [p_map[name] for name in param_order]
             return _model_density(E_vals, *arr)
 
+        nll_fn = neg_loglike or neg_loglike_extended
+
         def _nll(*params):
             p_map = dict(zip(param_order, params))
-            return neg_loglike_extended(
-                e,
-                _intensity_fn,
-                p_map,
-                area_keys=area_keys,
-                background_model=flags.get("background_model"),
-            )
+            try:
+                return nll_fn(
+                    e,
+                    _intensity_fn,
+                    p_map,
+                    area_keys=area_keys,
+                    background_model=flags.get("background_model"),
+                )
+            except TypeError:
+                return nll_fn(
+                    e,
+                    _intensity_fn,
+                    p_map,
+                    area_keys=area_keys,
+                )
 
         m = Minuit(_nll, *p0, name=param_order)
         m.errordef = Minuit.LIKELIHOOD
