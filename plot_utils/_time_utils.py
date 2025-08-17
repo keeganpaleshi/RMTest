@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterable
 
 import matplotlib.dates as mdates
@@ -17,7 +17,8 @@ def to_mpl_times(times: Iterable) -> np.ndarray:
     ----------
     times : Iterable
         Sequence of epoch seconds, :class:`numpy.datetime64`, or
-        :class:`datetime.datetime` objects.
+        :class:`datetime.datetime` objects. Naive datetimes are interpreted
+        as UTC.
 
     Returns
     -------
@@ -32,6 +33,10 @@ def to_mpl_times(times: Iterable) -> np.ndarray:
         secs_list: list[float] = []
         for t in arr:
             if isinstance(t, datetime):
+                if t.tzinfo is None:
+                    t = t.replace(tzinfo=timezone.utc)
+                else:
+                    t = t.astimezone(timezone.utc)
                 secs_list.append(t.timestamp())
             elif isinstance(t, np.datetime64):
                 secs_list.append(float(t.astype("datetime64[s]").astype(np.int64)))
