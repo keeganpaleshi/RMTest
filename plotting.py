@@ -5,6 +5,8 @@ import matplotlib.dates as mdates
 from datetime import datetime
 from pathlib import Path
 
+from plot_utils.time_axes import configure_time_axes
+
 __all__ = ["plot_radon_activity", "plot_radon_trend"]
 
 
@@ -26,14 +28,7 @@ def plot_radon_activity(ts, outdir):
     ax.set_ylabel("Radon activity [Bq]")
     ax.set_xlabel("Time (UTC)")
 
-    locator = mdates.AutoDateLocator()
-    try:
-        formatter = mdates.ConciseDateFormatter(locator)
-    except AttributeError:
-        formatter = mdates.AutoDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
-    ax.xaxis.get_offset_text().set_visible(False)
+    configure_time_axes(ax, times_dt)
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(outdir / "radon_activity.png", dpi=300)
@@ -50,14 +45,7 @@ def plot_radon_trend(ts, outdir):
     ax.set_ylabel("Radon activity [Bq]")
     ax.set_xlabel("Time (UTC)")
 
-    locator = mdates.AutoDateLocator()
-    try:
-        formatter = mdates.ConciseDateFormatter(locator)
-    except AttributeError:
-        formatter = mdates.AutoDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
-    ax.xaxis.get_offset_text().set_visible(False)
+    configure_time_axes(ax, times_dt)
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(outdir / "radon_trend.png", dpi=300)
