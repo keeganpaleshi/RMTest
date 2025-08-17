@@ -74,3 +74,31 @@ def test_intercept_fit_two_point_missing_slope():
     cfg = {"calibration": {}}
     with pytest.raises(KeyError):
         intercept_fit_two_point(adc, cfg)
+
+
+def test_intercept_fit_two_point_falls_back(monkeypatch):
+    """If a peak is missing, intercept_fit_two_point should warn and fallback."""
+
+    def fail_calibrate_run(adc_values, cfg):
+        raise RuntimeError("No candidate peak found for Po210")
+
+    slope = 0.00435
+
+    fake_res = CalibrationResult(
+        coeffs=[0.0, slope],
+        cov=np.zeros((2, 2)),
+        peaks={"Po214": {"centroid_adc": 1800.0}},
+        sigma_E=1.0,
+        sigma_E_error=0.0,
+    )
+
+    monkeypatch.setattr("calibration.calibrate_run", fail_calibrate_run)
+    monkeypatch.setattr("calibration.fixed_slope_calibration", lambda a, c: fake_res)
+
+    adc = np.array([0.0])
+    cfg = {"calibration": {"slope_MeV_per_ch": slope}}
+
+    with pytest.warns(RuntimeWarning):
+        res = intercept_fit_two_point(adc, cfg)
+
+    assert res is fake_res

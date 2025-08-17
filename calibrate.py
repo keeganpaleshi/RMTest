@@ -1,17 +1,36 @@
 import numpy as np
+import warnings
 from constants import DEFAULT_KNOWN_ENERGIES
 
 
 def intercept_fit_two_point(adc_values, cfg):
     """Return calibration with fixed slope using Po-210 and Po-214 anchors."""
     try:
-        from .calibration import CalibrationResult, calibrate_run
+        from .calibration import (
+            CalibrationResult,
+            calibrate_run,
+            fixed_slope_calibration,
+        )
     except ImportError:  # pragma: no cover - fallback for root imports
-        from calibration import CalibrationResult, calibrate_run
+        from calibration import (
+            CalibrationResult,
+            calibrate_run,
+            fixed_slope_calibration,
+        )
 
     a = cfg["calibration"]["slope_MeV_per_ch"]
+
     # Use full calibration routine to locate peaks for both isotopes
-    cal_res = calibrate_run(adc_values, cfg)
+    try:
+        cal_res = calibrate_run(adc_values, cfg)
+    except RuntimeError as exc:
+        if "No candidate peak found" in str(exc):
+            warnings.warn(
+                "Two-point calibration failed to find both peaks; falling back to one-point intercept-only",
+                RuntimeWarning,
+            )
+            return fixed_slope_calibration(adc_values, cfg)
+        raise
 
     energies = {**DEFAULT_KNOWN_ENERGIES, **cfg.get("calibration", {}).get("known_energies", {})}
     adc210 = cal_res.peaks["Po210"]["centroid_adc"]
