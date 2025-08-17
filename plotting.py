@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from plot_utils._time_utils import setup_time_axis, to_mpl_times
 
+from plot_utils._time_utils import setup_time_axis, to_mpl_times
+
 __all__ = ["plot_radon_activity", "plot_radon_trend"]
 
 
