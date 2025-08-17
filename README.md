@@ -159,18 +159,22 @@ to ``False``.  Passing ``strict=True`` (or ``--strict-covariance`` on the
 command line) instead raises a ``RuntimeError`` as soon as the matrix is
 found to be non-positive definite.
 
+### Invalid fits
+
+When ``fit_valid`` is ``false`` the plotting routines omit fit overlays
+and results are reported without extrapolating beyond the data.
+
 ## Configuration
 
-The parser is case sensitive, so all keys in `config.yaml` should be lowercase. Mixed-case names from older files remain supported for backward compatibility but are deprecated.
-If `--config` is not supplied, `analyze.py` automatically looks for a `config.yaml` file in the same directory as the script.
+The parser is case sensitive, so all keys in ``config.yaml`` should be lowercase. Mixed-case names from older files remain supported for backward compatibility but are deprecated. If ``--config`` is not supplied, ``analyze.py`` automatically looks for a single ``config.yaml`` in the same directory as the script; additional configuration files are not supported.
 
-Important toggles include:
+Key toggles in ``config.yaml`` include:
 
-- `spectral_fit.do_spectral_fit` – enable or disable spectral fitting
-- `time_fit.do_time_fit` – run time-series fits
-- `systematics.enable` – evaluate systematic uncertainties
-- `plotting.plot_save_formats` – image formats to write
-- `burst_filter.burst_mode` – method for burst rejection
+- ``spectral_fit.do_spectral_fit`` – enable or disable spectral fitting
+- ``time_fit.do_time_fit`` – run time-series fits
+- ``systematics.enable`` – evaluate systematic uncertainties
+- ``plotting.plot_save_formats`` – image formats to write
+- ``burst_filter.burst_mode`` – method for burst rejection
 
 `nominal_adc` under the `calibration` section sets the expected raw ADC
 centroids for Po‑210, Po‑218 and Po‑214 when using automatic calibration.
