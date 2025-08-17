@@ -34,6 +34,33 @@ __all__ = [
 ]
 
 
+def _format_time_axis(ax, times_dt):
+    """Apply a concise date formatter and add elapsed hours on top."""
+
+    locator = mdates.AutoDateLocator()
+    try:
+        formatter = mdates.ConciseDateFormatter(locator)
+    except AttributeError:  # pragma: no cover - old Matplotlib
+        formatter = mdates.AutoDateFormatter(locator)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(formatter)
+
+    base_dt = times_dt[0]
+
+    def _to_hours(x: float) -> float:
+        return (x - base_dt) * 24.0
+
+    def _to_dates(h: float) -> float:
+        return base_dt + h / 24.0
+
+    secax = ax.secondary_xaxis("top", functions=(_to_hours, _to_dates))
+    secax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _p=None: f"{x:g}"))
+    secax.set_xlabel("Elapsed Time (h)")
+    ax.xaxis.get_offset_text().set_visible(False)
+    secax.xaxis.get_offset_text().set_visible(False)
+    return secax
+
+
 def extract_time_series(timestamps, energies, window, t_start, t_end, bin_width_s=1.0):
     """Return histogram counts for events within an energy window.
 
@@ -555,34 +582,9 @@ def plot_radon_activity_full(
     ax.set_ylabel("Rn-222 Activity (Bq)")
     ax.set_title("Extrapolated Radon Activity vs. Time")
 
-    locator = mdates.AutoDateLocator()
-    try:
-        formatter = mdates.ConciseDateFormatter(locator)
-    except AttributeError:
-        formatter = mdates.AutoDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
-
-    base_dt = times_dt[0]
-
-    def _to_seconds(x):
-        return (x - base_dt) * 86400.0
-
-    def _to_dates(x):
-        return base_dt + x / 86400.0
-
-    secax = ax.secondary_xaxis("top", functions=(_to_seconds, _to_dates))
-
-    def _sec_formatter(x, pos=None):
-        h = x / 3600.0
-        if h >= 1:
-            if abs(h - round(h)) < 1e-6:
-                return f"{int(x)} s ({int(h)} h)"
-            return f"{int(x)} s ({h:g} h)"
-        return f"{int(x)} s"
-
-    secax.xaxis.set_major_formatter(mticker.FuncFormatter(_sec_formatter))
-    secax.set_xlabel("Elapsed Time (s)")
+    secax = _format_time_axis(ax, times_dt)
+    ax.yaxis.set_major_formatter(mticker.ScalarFormatter(useOffset=False))
+    ax.yaxis.get_offset_text().set_visible(False)
 
     if po214_activity is not None:
         po214_activity = np.asarray(po214_activity, dtype=float)
@@ -596,13 +598,13 @@ def plot_radon_activity_full(
             label="Po-214 Activity (QC)",
         )
         ax2.set_ylabel("Po-214 Activity (Bq)")
+        ax2.yaxis.set_major_formatter(mticker.ScalarFormatter(useOffset=False))
+        ax2.yaxis.get_offset_text().set_visible(False)
         lines1, labels1 = ax.get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
         ax.legend(lines1 + lines2, labels1 + labels2, loc="best")
 
     plt.gcf().autofmt_xdate()
-    ax.xaxis.get_offset_text().set_visible(False)
-    secax.xaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     targets = get_targets(config, out_png)
     for p in targets.values():
@@ -625,34 +627,29 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
 
     times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
 
-    plt.figure(figsize=(8, 4))
+    fig, ax = plt.subplots(figsize=(8, 4))
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("equivalent_air", "#2ca02c")
-    plt.errorbar(times_dt, volumes, yerr=errors, fmt="o-", color=color)
-    plt.xlabel("Time")
-    plt.ylabel("Equivalent Air Volume")
+    ax.errorbar(times_dt, volumes, yerr=errors, fmt="o-", color=color)
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Equivalent Air Volume")
     if conc is None:
         title = "Equivalent Air Volume vs. Time"
     else:
         title = f"Equivalent Air Volume vs. Time (ambient {conc} Bq/L)"
-    plt.title(title)
+    ax.set_title(title)
 
-    ax = plt.gca()
-    locator = mdates.AutoDateLocator()
-    try:
-        formatter = mdates.ConciseDateFormatter(locator)
-    except AttributeError:
-        formatter = mdates.AutoDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
+    _format_time_axis(ax, times_dt)
+    ax.yaxis.set_major_formatter(mticker.ScalarFormatter(useOffset=False))
+    ax.yaxis.get_offset_text().set_visible(False)
+
     plt.gcf().autofmt_xdate()
-    ax.xaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     targets = get_targets(config, out_png)
     for p in targets.values():
-        plt.savefig(p, dpi=300)
-    plt.close()
+        fig.savefig(p, dpi=300)
+    plt.close(fig)
 
 
 def plot_modeled_radon_activity(
@@ -715,31 +712,26 @@ def plot_radon_trend_full(times, activity, out_png, config=None):
 
     times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
 
-    plt.figure(figsize=(8, 4))
+    fig, ax = plt.subplots(figsize=(8, 4))
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("radon_activity", "#9467bd")
-    plt.plot(times_dt, activity, "o-", color=color)
-    plt.xlabel("Time")
-    plt.ylabel("Radon Activity (Bq)")
-    plt.title("Radon Activity Trend")
+    ax.plot(times_dt, activity, "o-", color=color)
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Radon Activity (Bq)")
+    ax.set_title("Radon Activity Trend")
 
-    ax = plt.gca()
-    locator = mdates.AutoDateLocator()
-    try:
-        formatter = mdates.ConciseDateFormatter(locator)
-    except AttributeError:
-        formatter = mdates.AutoDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
+    _format_time_axis(ax, times_dt)
+    ax.yaxis.set_major_formatter(mticker.ScalarFormatter(useOffset=False))
+    ax.yaxis.get_offset_text().set_visible(False)
+
     plt.gcf().autofmt_xdate()
-    ax.xaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
 
     targets = get_targets(config, out_png)
     for p in targets.values():
-        plt.savefig(p, dpi=300)
-    plt.close()
+        fig.savefig(p, dpi=300)
+    plt.close(fig)
 
 
 def plot_radon_activity(ts_dict, outdir):
@@ -752,23 +744,19 @@ def plot_radon_activity(ts_dict, outdir):
     e = np.asarray(ts_dict["error"], dtype=float)
 
     times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
-    plt.errorbar(times_dt, y, yerr=e, fmt="o")
-    plt.ylabel("Radon activity [Bq]")
-    plt.xlabel("Time (UTC)")
+    fig, ax = plt.subplots()
+    ax.errorbar(times_dt, y, yerr=e, fmt="o")
+    ax.set_ylabel("Radon activity [Bq]")
+    ax.set_xlabel("Time (UTC)")
 
-    ax = plt.gca()
-    locator = mdates.AutoDateLocator()
-    try:
-        formatter = mdates.ConciseDateFormatter(locator)
-    except AttributeError:
-        formatter = mdates.AutoDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
+    _format_time_axis(ax, times_dt)
+    ax.yaxis.set_major_formatter(mticker.ScalarFormatter(useOffset=False))
+    ax.yaxis.get_offset_text().set_visible(False)
+
     plt.gcf().autofmt_xdate()
-    ax.xaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
-    plt.savefig(outdir / "radon_activity.png", dpi=300)
-    plt.close()
+    fig.savefig(outdir / "radon_activity.png", dpi=300)
+    plt.close(fig)
 
 
 def plot_radon_trend(ts_dict, outdir):
@@ -781,24 +769,20 @@ def plot_radon_trend(ts_dict, outdir):
     y = np.asarray(ts_dict["activity"], dtype=float)
     times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
     coeff = np.polyfit(times_dt, y, 1)
-    plt.plot(times_dt, y, "o")
-    plt.plot(times_dt, np.polyval(coeff, times_dt))
-    plt.ylabel("Radon activity [Bq]")
-    plt.xlabel("Time (UTC)")
+    fig, ax = plt.subplots()
+    ax.plot(times_dt, y, "o")
+    ax.plot(times_dt, np.polyval(coeff, times_dt))
+    ax.set_ylabel("Radon activity [Bq]")
+    ax.set_xlabel("Time (UTC)")
 
-    ax = plt.gca()
-    locator = mdates.AutoDateLocator()
-    try:
-        formatter = mdates.ConciseDateFormatter(locator)
-    except AttributeError:
-        formatter = mdates.AutoDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
+    _format_time_axis(ax, times_dt)
+    ax.yaxis.set_major_formatter(mticker.ScalarFormatter(useOffset=False))
+    ax.yaxis.get_offset_text().set_visible(False)
+
     plt.gcf().autofmt_xdate()
-    ax.xaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
-    plt.savefig(outdir / "radon_trend.png", dpi=300)
-    plt.close()
+    fig.savefig(outdir / "radon_trend.png", dpi=300)
+    plt.close(fig)
 
 
 def plot_spectrum_comparison(

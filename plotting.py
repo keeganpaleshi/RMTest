@@ -2,10 +2,36 @@ import matplotlib as _mpl
 _mpl.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.ticker as mticker
 from datetime import datetime
 from pathlib import Path
 
 __all__ = ["plot_radon_activity", "plot_radon_trend"]
+
+
+def _format_time_axis(ax, times_dt):
+    locator = mdates.AutoDateLocator()
+    try:
+        formatter = mdates.ConciseDateFormatter(locator)
+    except AttributeError:  # pragma: no cover - old Matplotlib
+        formatter = mdates.AutoDateFormatter(locator)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(formatter)
+
+    base_dt = times_dt[0]
+
+    def _to_hours(x: float) -> float:
+        return (x - base_dt) * 24.0
+
+    def _to_dates(h: float) -> float:
+        return base_dt + h / 24.0
+
+    secax = ax.secondary_xaxis("top", functions=(_to_hours, _to_dates))
+    secax.set_xlabel("Elapsed Time (h)")
+    secax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _p=None: f"{x:g}"))
+    ax.xaxis.get_offset_text().set_visible(False)
+    secax.xaxis.get_offset_text().set_visible(False)
+    return secax
 
 
 def plot_radon_activity(ts, outdir):
@@ -26,14 +52,10 @@ def plot_radon_activity(ts, outdir):
     ax.set_ylabel("Radon activity [Bq]")
     ax.set_xlabel("Time (UTC)")
 
-    locator = mdates.AutoDateLocator()
-    try:
-        formatter = mdates.ConciseDateFormatter(locator)
-    except AttributeError:
-        formatter = mdates.AutoDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
-    ax.xaxis.get_offset_text().set_visible(False)
+    _format_time_axis(ax, times_dt)
+    ax.yaxis.set_major_formatter(mticker.ScalarFormatter(useOffset=False))
+    ax.yaxis.get_offset_text().set_visible(False)
+
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(outdir / "radon_activity.png", dpi=300)
@@ -50,14 +72,10 @@ def plot_radon_trend(ts, outdir):
     ax.set_ylabel("Radon activity [Bq]")
     ax.set_xlabel("Time (UTC)")
 
-    locator = mdates.AutoDateLocator()
-    try:
-        formatter = mdates.ConciseDateFormatter(locator)
-    except AttributeError:
-        formatter = mdates.AutoDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
-    ax.xaxis.get_offset_text().set_visible(False)
+    _format_time_axis(ax, times_dt)
+    ax.yaxis.set_major_formatter(mticker.ScalarFormatter(useOffset=False))
+    ax.yaxis.get_offset_text().set_visible(False)
+
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(outdir / "radon_trend.png", dpi=300)
