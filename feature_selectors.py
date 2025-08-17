@@ -15,14 +15,6 @@ import numpy as np
 from fitting import softplus
 
 
-def _existing_linear_bkg(E, params):
-    """Legacy linear background model returning counts/MeV."""
-
-    b0 = params.get("b0", 0.0)
-    b1 = params.get("b1", 0.0)
-    return b0 + b1 * np.asarray(E)
-
-
 def select_background_factory(opts: Any, Emin: float, Emax: float) -> Callable:
     """Select a background factory based on ``opts.background_model``.
 
@@ -40,12 +32,20 @@ def select_background_factory(opts: Any, Emin: float, Emax: float) -> Callable:
         shape = make_linear_bkg(Emin, Emax)
 
         def bkg(E, params):
-            val = shape(E, params["beta0"], params["beta1"])
-            return softplus(params["S_bkg"]) * val
+            val = shape(E, params.get("beta0", params.get("b0", 0.0)), params.get("beta1", params.get("b1", 0.0)))
+            return softplus(params.get("S_bkg", 0.0)) * val
 
         return bkg
 
-    return lambda E, params: _existing_linear_bkg(E, params)
+    def legacy_bkg(E, params):
+        b0 = params.get("b0", 0.0)
+        b1 = params.get("b1", 0.0)
+        B = softplus(params.get("S_bkg", 0.0))
+        norm = b0 * (Emax - Emin) + 0.5 * b1 * (Emax**2 - Emin**2)
+        norm = norm if norm > 0 else 1.0
+        return B * (b0 + b1 * np.asarray(E)) / norm
+
+    return legacy_bkg
 
 
 def select_neg_loglike(opts: Any) -> Callable:

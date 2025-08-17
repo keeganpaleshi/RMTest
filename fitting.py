@@ -281,6 +281,8 @@ def fit_spectrum(
     unbinned=False,
     strict=False,
     *,
+    background=None,
+    neg_loglike=None,
     max_tau_ratio=None,
 ):
     """Fit the radon spectrum using either χ² histogram or unbinned likelihood.
@@ -310,12 +312,18 @@ def fit_spectrum(
         default +/-5 sigma range derived from the priors.  ``None`` values disable a
         limit on that side.
     unbinned : bool, optional
-        When ``True`` use an extended unbinned likelihood fit instead of the
-        default χ² fit to a histogrammed spectrum.
+        When ``True`` use an unbinned likelihood fit instead of the default
+        χ² fit to a histogrammed spectrum.
     strict : bool, optional
         When ``True`` raise a :class:`RuntimeError` if the fit covariance
         matrix is not positive definite.  The default is ``False`` which
         attempts to stabilise the covariance by adding a tiny jitter.
+    background : callable, optional
+        Function ``background(E, params)`` returning the expected background
+        counts/MeV.  If ``None`` a legacy linear background is used.
+    neg_loglike : callable, optional
+        Negative log-likelihood function for unbinned fits.  Defaults to the
+        current (unextended) implementation.
     max_tau_ratio : float, optional
         If given, enforce an upper bound ``tau <= max_tau_ratio * sigma0`` for
         EMG tail parameters.
@@ -359,6 +367,28 @@ def fit_spectrum(
 
     E_lo = float(edges[0])
     E_hi = float(edges[-1])
+
+    if background is None:
+        if flags.get("background_model") == "loglin_unit":
+            shape = make_linear_bkg(E_lo, E_hi)
+
+            def background(E, params):
+                b0 = params.get("beta0", params.get("b0", 0.0))
+                b1 = params.get("beta1", params.get("b1", 0.0))
+                B = softplus(params.get("S_bkg", 0.0))
+                return B * shape(E, b0, b1)
+
+        else:
+            def background(E, params):
+                b0 = params.get("b0", 0.0)
+                b1 = params.get("b1", 0.0)
+                B = softplus(params.get("S_bkg", 0.0))
+                norm = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
+                norm = norm if norm > 0 else 1.0
+                return B * (b0 + b1 * np.asarray(E)) / norm
+
+    if neg_loglike is None:
+        neg_loglike = neg_loglike_extended
 
     # Augment priors with a background amplitude if not provided
     priors = dict(priors)
@@ -475,7 +505,6 @@ def fit_spectrum(
 
     iso_list = ["Po210", "Po218", "Po214"]
     area_keys = [f"S_{iso}" for iso in iso_list] + ["S_bkg"]
-    bkg_shape = _make_linear_bkg(E_lo, E_hi)
 
     def _model_density(x, *params):
         if fix_sigma0:
@@ -501,11 +530,10 @@ def fit_spectrum(
             else:
                 sigma = np.sqrt(sigma0 ** 2 + F_current * x)
                 y += S * gaussian(x, mu, sigma)
-        beta0 = params[param_index["b0"]]
-        beta1 = params[param_index["b1"]]
-        B_raw = params[param_index["S_bkg"]]
-        B = _softplus(B_raw)
-        y += B * bkg_shape(x, beta0, beta1)
+        p_map = {name: params[param_index[name]] for name in param_order}
+        p_map.setdefault("beta0", p_map.get("b0"))
+        p_map.setdefault("beta1", p_map.get("b1"))
+        y += background(x, p_map)
         return np.clip(y, 1e-300, np.inf)
 
     def _model_binned(x, *params):
@@ -546,13 +574,16 @@ def fit_spectrum(
 
         def _nll(*params):
             p_map = dict(zip(param_order, params))
-            return neg_loglike_extended(
-                e,
-                _intensity_fn,
-                p_map,
-                area_keys=area_keys,
-                background_model=flags.get("background_model"),
-            )
+            p_map.setdefault("beta0", p_map.get("b0"))
+            p_map.setdefault("beta1", p_map.get("b1"))
+            kwargs = {"area_keys": area_keys}
+            if flags.get("background_model") is not None:
+                kwargs["background_model"] = flags.get("background_model")
+            try:
+                return neg_loglike(e, _intensity_fn, p_map, **kwargs)
+            except TypeError:
+                kwargs.pop("background_model", None)
+                return neg_loglike(e, _intensity_fn, p_map, **kwargs)
 
         m = Minuit(_nll, *p0, name=param_order)
         m.errordef = Minuit.LIKELIHOOD
