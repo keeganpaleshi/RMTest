@@ -84,7 +84,13 @@ from calibration import (
     apply_calibration,
 )
 
-from fitting import fit_spectrum, fit_time_series, FitResult, FitParams
+from fitting import (
+    fit_spectrum,
+    fit_time_series,
+    FitResult,
+    FitParams,
+    validate_resolution_flags,
+)
 
 from constants import (
     DEFAULT_NOISE_CUTOFF,
@@ -2005,7 +2011,14 @@ def main(argv=None):
 
         # Flags controlling the spectral fit
         spec_flags = cfg["spectral_fit"].get("flags", {}).copy()
-        if not cfg["spectral_fit"].get("float_sigma_E", True):
+        float_sigma_E = cfg["spectral_fit"].get("float_sigma_E", True)
+        if float_sigma_E and (
+            spec_flags.get("fix_sigma0") or spec_flags.get("fix_sigma_E")
+        ):
+            raise ValueError(
+                "cannot float energy resolution while fixing sigma0"
+            )
+        if not float_sigma_E:
             spec_flags["fix_sigma0"] = True
             spec_flags.setdefault("fix_F", True)
 
@@ -2013,6 +2026,8 @@ def main(argv=None):
             if spec_flags.pop("fix_sigma_E"):
                 spec_flags.setdefault("fix_sigma0", True)
                 spec_flags.setdefault("fix_F", True)
+
+        validate_resolution_flags(spec_flags)
 
         # Launch the spectral fit
         spec_fit_out = None

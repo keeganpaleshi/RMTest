@@ -76,6 +76,21 @@ _make_linear_bkg = make_linear_bkg
 __all__ = ["fit_time_series", "fit_decay", "fit_spectrum", "softplus", "make_linear_bkg"]
 
 
+def validate_resolution_flags(flags: dict) -> None:
+    """Raise ``ValueError`` if energy-resolution flags conflict.
+
+    ``fix_sigma0`` may only be used when the Fano factor ``F`` is also
+    fixed.  Otherwise the resolution would be partially floating while the
+    baseline width is held constant, leading to a contradictory
+    configuration.
+    """
+
+    if flags.get("fix_sigma0") and not flags.get("fix_F", True):
+        raise ValueError(
+            "resolution flags conflict: cannot fix sigma0 while allowing F to float"
+        )
+
+
 class FitParams(TypedDict, total=False):
     """Typed mapping of fit parameter names to values."""
 
@@ -252,6 +267,8 @@ def fit_decay(times, priors, t0=0.0, t_end=None, flags=None):
         flags.setdefault("fix_sigma0", True)
         flags.setdefault("fix_F", True)
 
+    validate_resolution_flags(flags)
+
     t = np.asarray(times, dtype=float)
     if t_end is None:
         T = float(t.max() if t.size > 0 else 0.0) - float(t0)
@@ -331,6 +348,8 @@ def fit_spectrum(
     if flags.get("fix_sigma_E"):
         flags.setdefault("fix_sigma0", True)
         flags.setdefault("fix_F", True)
+
+    validate_resolution_flags(flags)
 
     e = np.asarray(energies, dtype=float)
     n_events = e.size
