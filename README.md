@@ -162,12 +162,17 @@ found to be non-positive definite.
 ## Configuration
 
 The parser is case sensitive, so all keys in `config.yaml` should be lowercase. Mixed-case names from older files remain supported for backward compatibility but are deprecated.
-If `--config` is not supplied, `analyze.py` automatically looks for a `config.yaml` file in the same directory as the script.
-Default values may also be provided in `config_defaults.yaml` at the repository root. When present this file is merged with your configuration so missing keys fall back to its values.
+`analyze.py` reads exactly one configuration file. If `--config` is not supplied it automatically looks for a `config.yaml` file in the same directory as the script. No additional default file is merged. JSON files are still accepted but YAML is recommended.
+
+Key toggles available at the top level:
+
+- `allow_fallback` – permit runs to proceed when certain inputs are missing.
+- `allow_negative_baseline` – allow baseline subtraction to produce negative values.
+- `allow_negative_activity` – allow negative activity estimates.
 
 `nominal_adc` under the `calibration` section sets the expected raw ADC
 centroids for Po‑210, Po‑218 and Po‑214 when using automatic calibration.
-If omitted, defaults of `{"Po210": 1250, "Po218": 1400, "Po214": 1800}`
+If omitted, defaults of `{ "Po210": 1250, "Po218": 1400, "Po214": 1800 }`
 are used.
 
 `sanity_tolerance_mev` in the same section specifies how close the fitted

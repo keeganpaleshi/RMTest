@@ -94,5 +94,9 @@ def test_analyze_noise_cutoff(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", args)
     analyze.main()
 
-    assert captured.get("fit_times") == [2.0]
-    assert captured.get("plot_times") == []
+    fit_times = captured.get("fit_times")
+    fit_ns = [pd.Timestamp(t, tz="UTC").value if isinstance(t, (np.datetime64, pd.Timestamp)) else pd.Timestamp(t, unit="s", tz="UTC").value for t in fit_times]
+    expected_ns = pd.Timestamp(2.0, unit="s", tz="UTC").value
+    assert fit_ns == [expected_ns]
+    plot_ns = [pd.Timestamp(t, tz="UTC").value if isinstance(t, (np.datetime64, pd.Timestamp)) else pd.Timestamp(t, unit="s", tz="UTC").value for t in captured.get("plot_times")]
+    assert plot_ns == [expected_ns]
