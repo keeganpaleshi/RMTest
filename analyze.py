@@ -1920,7 +1920,8 @@ def main(argv=None):
         priors_spec = {}
         # Resolution prior: map calibrated sigma_E -> sigma0 parameter
         sigma_E_prior = cfg["spectral_fit"].get("sigma_E_prior_source", sigE_sigma)
-        if cfg["spectral_fit"].get("float_sigma_E", True):
+        float_sigma_E = cfg["spectral_fit"].get("float_sigma_E", True)
+        if float_sigma_E:
             priors_spec["sigma0"] = (sigE_mean, sigma_E_prior)
             priors_spec["F"] = (
                 0.0,
@@ -2005,7 +2006,11 @@ def main(argv=None):
 
         # Flags controlling the spectral fit
         spec_flags = cfg["spectral_fit"].get("flags", {}).copy()
-        if not cfg["spectral_fit"].get("float_sigma_E", True):
+        if float_sigma_E and spec_flags.get("fix_sigma0"):
+            raise ValueError(
+                "Configuration error: cannot float energy resolution while fixing sigma0"
+            )
+        if not float_sigma_E:
             spec_flags["fix_sigma0"] = True
             spec_flags.setdefault("fix_F", True)
 
@@ -2013,6 +2018,11 @@ def main(argv=None):
             if spec_flags.pop("fix_sigma_E"):
                 spec_flags.setdefault("fix_sigma0", True)
                 spec_flags.setdefault("fix_F", True)
+
+        if spec_flags.get("fix_sigma0") and not spec_flags.get("fix_F", True):
+            raise ValueError(
+                "Configuration error: fix_sigma0 requires fix_F when energy resolution is fixed"
+            )
 
         # Launch the spectral fit
         spec_fit_out = None
