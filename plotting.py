@@ -2,6 +2,7 @@ import matplotlib as _mpl
 _mpl.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.ticker as mticker
 from datetime import datetime
 from pathlib import Path
 
@@ -34,6 +35,16 @@ def plot_radon_activity(ts, outdir):
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
     ax.xaxis.get_offset_text().set_visible(False)
+    ax.ticklabel_format(style="plain", axis="y", useOffset=False)
+    ax.yaxis.get_offset_text().set_visible(False)
+    t0 = times_dt[0] if len(times_dt) else 0.0
+    secax = ax.secondary_xaxis(
+        "top",
+        functions=(lambda x: (x - t0) * 24.0, lambda h: h / 24.0 + t0),
+    )
+    secax.set_xlabel("Elapsed time (h)")
+    secax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+    secax.xaxis.get_offset_text().set_visible(False)
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(outdir / "radon_activity.png", dpi=300)
@@ -58,6 +69,16 @@ def plot_radon_trend(ts, outdir):
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
     ax.xaxis.get_offset_text().set_visible(False)
+    ax.ticklabel_format(style="plain", axis="y", useOffset=False)
+    ax.yaxis.get_offset_text().set_visible(False)
+    t0 = times_dt[0] if len(times_dt) else 0.0
+    secax = ax.secondary_xaxis(
+        "top",
+        functions=(lambda x: (x - t0) * 24.0, lambda h: h / 24.0 + t0),
+    )
+    secax.set_xlabel("Elapsed time (h)")
+    secax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+    secax.xaxis.get_offset_text().set_visible(False)
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(outdir / "radon_trend.png", dpi=300)

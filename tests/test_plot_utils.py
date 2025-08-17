@@ -823,7 +823,7 @@ def test_plot_radon_activity_axis_labels(tmp_path, monkeypatch):
     ax = plt.gca()
     assert ax.get_xlabel() == "Time (UTC)"
     assert "axis" in captured
-    assert captured["axis"].get_xlabel() == "Elapsed Time (s)"
+    assert captured["axis"].get_xlabel() == "Elapsed time (h)"
 
 
 def test_plot_radon_activity_no_offset(tmp_path, monkeypatch):
