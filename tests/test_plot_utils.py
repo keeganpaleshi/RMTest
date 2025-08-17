@@ -86,6 +86,48 @@ def test_plot_time_series_invalid_fit_skips_model(tmp_path, monkeypatch):
     assert not calls
 
 
+def test_plot_time_series_overlay_invalid_fit_skips_model(tmp_path, monkeypatch):
+    times = np.array([1001.0, 1001.5, 1002.0, 1002.5])
+    energies = np.array([7.7, 6.0, 7.8, 6.1])
+    out_png = tmp_path / "ts_overlay_invalid.png"
+
+    labels: list[str | None] = []
+
+    def fake_plot(*args, **kwargs):
+        labels.append(kwargs.get("label"))
+        return [None]
+
+    monkeypatch.setattr(plot_utils.plt, "plot", fake_plot)
+
+    cfg = basic_config()
+    cfg.update({"window_po218": [5.8, 6.3], "eff_po218": [1.0]})
+
+    fit_vals = {
+        "E_Po214": 0.1,
+        "B_Po214": 0.0,
+        "N0_Po214": 0.0,
+        "fit_valid_Po214": False,
+        "E_Po218": 0.2,
+        "B_Po218": 0.0,
+        "N0_Po218": 0.0,
+        "fit_valid_Po218": True,
+    }
+
+    plot_time_series(
+        times,
+        energies,
+        fit_vals,
+        1000.0,
+        1005.0,
+        cfg,
+        str(out_png),
+    )
+
+    assert out_png.exists()
+    assert "Model Po214" not in labels
+    assert "Model Po218" in labels
+
+
 def test_plot_time_series_auto_fd(tmp_path):
     # 100 uniform events over 5 seconds
     times = 1000.0 + np.linspace(0, 5, 100)
@@ -632,6 +674,25 @@ def test_plot_modeled_radon_activity_overlay(tmp_path):
     )
 
     assert out_png.exists()
+
+
+def test_plot_modeled_radon_activity_invalid_fit_skips_plot(tmp_path, monkeypatch):
+    times = np.array([0.0, 1.0, 2.0])
+
+    called = {}
+
+    def fake_plot(*args, **kwargs):
+        called["plot"] = True
+
+    monkeypatch.setattr("plot_utils.plot_radon_activity_full", fake_plot)
+
+    from plot_utils import plot_modeled_radon_activity
+
+    plot_modeled_radon_activity(
+        times, 1.0, 0.1, 2.0, 0.2, str(tmp_path / "skip.png"), fit_valid=False
+    )
+
+    assert "plot" not in called
 def test_plot_radon_activity_multiple_formats(tmp_path):
     times = np.array([0.0, 1.0, 2.0])
     activity = np.array([1.0, 1.1, 1.2])

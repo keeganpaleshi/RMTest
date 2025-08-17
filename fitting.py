@@ -99,6 +99,8 @@ class FitParams(TypedDict, total=False):
 
     cov_E_Po214_N0_Po214: NotRequired[float]
     fit_valid: NotRequired[bool]
+    fit_valid_Po214: NotRequired[bool]
+    fit_valid_Po218: NotRequired[bool]
 
     # Spectrum parameters
     sigma0: NotRequired[float]
