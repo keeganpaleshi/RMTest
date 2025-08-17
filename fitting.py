@@ -6,6 +6,7 @@ import logging
 import warnings
 from dataclasses import dataclass, field
 from typing import TypedDict, NotRequired
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -14,7 +15,6 @@ from scipy.optimize import curve_fit, OptimizeWarning
 from scipy.stats import chi2
 from calibration import emg_left, gaussian
 from constants import _TAU_MIN, CURVE_FIT_MAX_EVALS, safe_exp as _safe_exp
-from likelihood_ext import neg_loglike_extended
 
 
 def softplus(x: np.ndarray | float) -> np.ndarray | float:
@@ -244,6 +244,8 @@ def fit_decay(times, priors, t0=0.0, t_end=None, flags=None):
 
     if flags is None:
         flags = {}
+    else:
+        flags = dict(flags)
     if flags.get("fix_sigma_E"):
         flags.setdefault("fix_sigma0", True)
         flags.setdefault("fix_F", True)
@@ -383,6 +385,15 @@ def fit_spectrum(
                 f"{got}"
             )
 
+    if "S_bkg" in priors or background_model == "loglin_unit":
+        flags.setdefault("likelihood", "extended")
+
+    from feature_selectors import select_background_factory, select_neg_loglike
+
+    opts = SimpleNamespace(**flags)
+    bkg_factory = select_background_factory(opts, E_lo, E_hi)
+    neg_loglike = select_neg_loglike(opts)
+
     # Guard against NaNs/Infs arising from unstable histogramming or EMG evals
     if not unbinned and not np.isfinite(hist).all():
         raise RuntimeError(
@@ -482,10 +493,6 @@ def fit_spectrum(
     area_keys = [f"S_{iso}" for iso in iso_list]
     if background_model == "loglin_unit" or "S_bkg" in priors:
         area_keys = area_keys + ["S_bkg"]
-    if background_model == "loglin_unit":
-        bkg_shape = _make_linear_bkg(E_lo, E_hi)
-    else:
-        bkg_shape = None
 
     def _model_density(x, *params):
         if fix_sigma0:
@@ -513,18 +520,19 @@ def fit_spectrum(
                 y += S * gaussian(x, mu, sigma)
         beta0 = params[param_index["b0"]]
         beta1 = params[param_index["b1"]]
+        bkg_params = {"b0": beta0, "b1": beta1}
+        if "S_bkg" in priors:
+            bkg_params["S_bkg"] = params[param_index["S_bkg"]]
         if background_model == "loglin_unit":
-            B_raw = params[param_index["S_bkg"]]
-            B = _softplus(B_raw)
-            y += B * bkg_shape(x, beta0, beta1)
+            y += bkg_factory(x, bkg_params)
         elif "S_bkg" in priors:
-            B_raw = params[param_index["S_bkg"]]
-            B = _softplus(B_raw)
+            B = _softplus(bkg_params["S_bkg"])
             norm = beta0 * (E_hi - E_lo) + 0.5 * beta1 * (E_hi**2 - E_lo**2)
             if norm > 0:
-                y += B * (beta0 + beta1 * x) / norm
+                base = bkg_factory(x, {"b0": beta0, "b1": beta1})
+                y += B * base / norm
         else:
-            y += beta0 + beta1 * x
+            y += bkg_factory(x, bkg_params)
         return np.clip(y, 1e-300, np.inf)
 
     def _model_binned(x, *params):
@@ -563,10 +571,10 @@ def fit_spectrum(
             arr = [p_map[name] for name in param_order]
             return _model_density(E_vals, *arr)
 
-        if background_model == "loglin_unit" or "S_bkg" in priors:
+        if flags.get("likelihood") == "extended":
             def _nll(*params):
                 p_map = dict(zip(param_order, params))
-                return neg_loglike_extended(
+                return neg_loglike(
                     e,
                     _intensity_fn,
                     p_map,
@@ -576,8 +584,7 @@ def fit_spectrum(
         else:
             def _nll(*params):
                 p_map = dict(zip(param_order, params))
-                lam = np.clip(_intensity_fn(e, p_map), 1e-300, np.inf)
-                return float(-np.sum(np.log(lam)))
+                return neg_loglike(e, _intensity_fn, p_map)
 
         m = Minuit(_nll, *p0, name=param_order)
         m.errordef = Minuit.LIKELIHOOD
