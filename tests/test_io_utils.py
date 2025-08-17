@@ -514,3 +514,24 @@ def test_load_config_unknown_key(tmp_path):
     with pytest.raises(jsonschema.exceptions.ValidationError):
         load_config(p)
 
+
+def test_load_config_resolution_conflict(tmp_path):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "spectral_fit": {
+            "expected_peaks": {"Po210": 1},
+            "float_sigma_E": True,
+            "fix_sigma0": True,
+        },
+        "time_fit": {"do_time_fit": True},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    p = tmp_path / "cfg.yaml"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+    with pytest.raises(
+        ValueError, match="cannot float energy resolution while fixing sigma0"
+    ):
+        load_config(p)
+
