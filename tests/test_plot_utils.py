@@ -86,6 +86,42 @@ def test_plot_time_series_invalid_fit_skips_model(tmp_path, monkeypatch):
     assert not calls
 
 
+def test_plot_time_series_invalid_fit_po218_skips_model(tmp_path, monkeypatch):
+    times = np.array([1001.0, 1002.0, 1003.0])
+    energies = np.array([5.8, 5.9, 6.0])
+    out_png = tmp_path / "ts_invalid_po218.png"
+
+    calls: list[object] = []
+
+    def fake_plot(*args, **kwargs):
+        calls.append(object())
+        return [None]
+
+    monkeypatch.setattr(plot_utils.plt, "plot", fake_plot)
+
+    cfg = basic_config()
+    cfg.update({"window_po214": None, "window_po218": [5.5, 6.5]})
+    fit_vals = {
+        "E_Po218": 0.1,
+        "B_Po218": 0.0,
+        "N0_Po218": 0.0,
+        "fit_valid": True,
+        "fit_valid_Po218": False,
+    }
+    plot_time_series(
+        times,
+        energies,
+        fit_vals,
+        1000.0,
+        1005.0,
+        cfg,
+        str(out_png),
+    )
+
+    assert out_png.exists()
+    assert not calls
+
+
 def test_plot_time_series_auto_fd(tmp_path):
     # 100 uniform events over 5 seconds
     times = 1000.0 + np.linspace(0, 5, 100)
@@ -663,6 +699,47 @@ def test_plot_modeled_radon_activity_overlay(tmp_path):
     )
 
     assert out_png.exists()
+
+
+def test_plot_modeled_radon_activity_invalid_fit_skips_plot(tmp_path, monkeypatch):
+    times = np.array([0.0, 1.0, 2.0])
+    calls: list[object] = []
+
+    def fake_plot(*args, **kwargs):
+        calls.append(object())
+
+    monkeypatch.setattr("plot_utils.plot_radon_activity_full", fake_plot)
+
+    from plot_utils import plot_modeled_radon_activity
+
+    plot_modeled_radon_activity(
+        times,
+        1.0,
+        0.1,
+        2.0,
+        0.2,
+        str(tmp_path / "model_invalid.png"),
+        fit_valid=False,
+    )
+
+    assert not calls
+
+
+def test_plot_radon_trend_invalid_fit_skips_plot(tmp_path, monkeypatch):
+    times = np.array([0.0, 1.0, 2.0])
+    activity = np.array([1.0, 1.1, 1.2])
+    calls: list[object] = []
+
+    def fake_plot(*args, **kwargs):
+        calls.append(object())
+
+    monkeypatch.setattr(plot_utils.plt, "plot", fake_plot)
+
+    from plot_utils import plot_radon_trend_full
+
+    plot_radon_trend_full(times, activity, str(tmp_path / "trend.png"), fit_valid=False)
+
+    assert not calls
 def test_plot_radon_activity_multiple_formats(tmp_path):
     times = np.array([0.0, 1.0, 2.0])
     activity = np.array([1.0, 1.1, 1.2])

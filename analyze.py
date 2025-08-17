@@ -268,9 +268,9 @@ def plot_radon_activity(times, activity, out_png, errors=None, *, config=None):
     return plot_radon_activity_full(times, activity, errors, out_png, config=config)
 
 
-def plot_radon_trend(times, activity, out_png, *, config=None):
+def plot_radon_trend(times, activity, out_png, *, config=None, fit_valid=True):
     """Wrapper used by tests expecting output path as third argument."""
-    return plot_radon_trend_full(times, activity, out_png, config=config)
+    return plot_radon_trend_full(times, activity, out_png, config=config, fit_valid=fit_valid)
 
 
 def _fit_params(obj: FitResult | Mapping[str, float] | None) -> FitParams:
@@ -3215,7 +3215,7 @@ def main(argv=None):
         if "Po214" in time_fit_results:
             fit_result = time_fit_results["Po214"]
             fit = _fit_params(fit_result)
-            if fit.get("fit_valid", True):
+            if fit.get("fit_valid", True) and fit.get("fit_valid_Po214", True):
                 E = fit.get("E_corrected", fit.get("E_Po214"))
                 dE = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
                 N0 = fit.get("N0_Po214", 0.0)
@@ -3237,7 +3237,7 @@ def main(argv=None):
         if "Po218" in time_fit_results:
             fit_result = time_fit_results["Po218"]
             fit = _fit_params(fit_result)
-            if fit.get("fit_valid", True):
+            if fit.get("fit_valid", True) and fit.get("fit_valid_Po218", True):
                 E = fit.get("E_corrected", fit.get("E_Po218"))
                 dE = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
                 N0 = fit.get("N0_Po218", 0.0)
@@ -3248,39 +3248,48 @@ def main(argv=None):
                     t_rel, E, dE, N0, dN0, hl, cov
                 )
 
-        activity_arr = np.zeros_like(times, dtype=float)
-        err_arr = np.zeros_like(times, dtype=float)
-        for i in range(times.size):
-            r214 = err214_i = None
-            if A214 is not None:
-                r214 = A214[i]
-                err214_i = dA214[i]
-            r218 = err218_i = None
-            if A218 is not None:
-                r218 = A218[i]
-                err218_i = dA218[i]
-            A, s = compute_radon_activity(
-                r218,
-                err218_i,
-                1.0,
-                r214,
-                err214_i,
-                1.0,
+        activity_arr = err_arr = None
+        if A214 is None and A218 is None:
+            if radon_results:
+                val = radon_results["radon_activity_Bq"]["value"]
+                unc = radon_results["radon_activity_Bq"]["uncertainty"]
+                activity_arr = np.full_like(times, val, dtype=float)
+                err_arr = np.full_like(times, unc, dtype=float)
+        else:
+            activity_arr = np.zeros_like(times, dtype=float)
+            err_arr = np.zeros_like(times, dtype=float)
+            for i in range(times.size):
+                r214 = err214_i = None
+                if A214 is not None:
+                    r214 = A214[i]
+                    err214_i = dA214[i]
+                r218 = err218_i = None
+                if A218 is not None:
+                    r218 = A218[i]
+                    err218_i = dA218[i]
+                A, s = compute_radon_activity(
+                    r218,
+                    err218_i,
+                    1.0,
+                    r214,
+                    err214_i,
+                    1.0,
+                )
+                activity_arr[i] = A
+                err_arr[i] = s
+
+            if np.all(activity_arr == 0) and radon_results:
+                activity_arr.fill(radon_results["radon_activity_Bq"]["value"])
+                err_arr.fill(radon_results["radon_activity_Bq"]["uncertainty"])
+
+        if activity_arr is not None and err_arr is not None:
+            plot_radon_activity(
+                times,
+                activity_arr,
+                Path(out_dir) / "radon_activity.png",
+                err_arr,
+                config=cfg.get("plotting", {}),
             )
-            activity_arr[i] = A
-            err_arr[i] = s
-
-        if np.all(activity_arr == 0):
-            activity_arr.fill(radon_results["radon_activity_Bq"]["value"])
-            err_arr.fill(radon_results["radon_activity_Bq"]["uncertainty"])
-
-        plot_radon_activity(
-            times,
-            activity_arr,
-            Path(out_dir) / "radon_activity.png",
-            err_arr,
-            config=cfg.get("plotting", {}),
-        )
 
         if radon_interval is not None:
             times_trend = np.linspace(
@@ -3294,7 +3303,7 @@ def main(argv=None):
             if "Po214" in time_fit_results:
                 fit_result = time_fit_results["Po214"]
                 fit = _fit_params(fit_result)
-                if fit.get("fit_valid", True):
+                if fit.get("fit_valid", True) and fit.get("fit_valid_Po214", True):
                     E214 = fit.get("E_corrected", fit.get("E_Po214"))
                     dE214 = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
                     N0214 = fit.get("N0_Po214", 0.0)
@@ -3308,7 +3317,7 @@ def main(argv=None):
             if "Po218" in time_fit_results:
                 fit_result = time_fit_results["Po218"]
                 fit = _fit_params(fit_result)
-                if fit.get("fit_valid", True):
+                if fit.get("fit_valid", True) and fit.get("fit_valid_Po218", True):
                     E218 = fit.get("E_corrected", fit.get("E_Po218"))
                     dE218 = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
                     N0218 = fit.get("N0_Po218", 0.0)
@@ -3318,18 +3327,19 @@ def main(argv=None):
                     A218_tr, _ = radon_activity_curve(
                         rel_trend, E218, dE218, N0218, dN0218, hl218, cov218
                     )
-            trend = np.zeros_like(times_trend)
-            for i in range(times_trend.size):
-                r214 = A214_tr[i] if A214_tr is not None else None
-                r218 = A218_tr[i] if A218_tr is not None else None
-                A, _ = compute_radon_activity(r218, None, 1.0, r214, None, 1.0)
-                trend[i] = A
-            plot_radon_trend(
-                times_trend,
-                trend,
-                Path(out_dir) / "radon_trend.png",
-                config=cfg.get("plotting", {}),
-            )
+            if A214_tr is not None or A218_tr is not None:
+                trend = np.zeros_like(times_trend)
+                for i in range(times_trend.size):
+                    r214 = A214_tr[i] if A214_tr is not None else None
+                    r218 = A218_tr[i] if A218_tr is not None else None
+                    A, _ = compute_radon_activity(r218, None, 1.0, r214, None, 1.0)
+                    trend[i] = A
+                plot_radon_trend(
+                    times_trend,
+                    trend,
+                    Path(out_dir) / "radon_trend.png",
+                    config=cfg.get("plotting", {}),
+                )
 
         ambient = cfg.get("analysis", {}).get("ambient_concentration")
         ambient_interp = None
