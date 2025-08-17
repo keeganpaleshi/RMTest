@@ -1,3 +1,4 @@
+import warnings
 import numpy as np
 from constants import DEFAULT_KNOWN_ENERGIES
 
@@ -5,17 +6,35 @@ from constants import DEFAULT_KNOWN_ENERGIES
 def intercept_fit_two_point(adc_values, cfg):
     """Return calibration with fixed slope using Po-210 and Po-214 anchors."""
     try:
-        from .calibration import CalibrationResult, calibrate_run
+        from .calibration import CalibrationResult, calibrate_run, fixed_slope_calibration
     except ImportError:  # pragma: no cover - fallback for root imports
-        from calibration import CalibrationResult, calibrate_run
+        from calibration import CalibrationResult, calibrate_run, fixed_slope_calibration
 
     a = cfg["calibration"]["slope_MeV_per_ch"]
-    # Use full calibration routine to locate peaks for both isotopes
-    cal_res = calibrate_run(adc_values, cfg)
-
     energies = {**DEFAULT_KNOWN_ENERGIES, **cfg.get("calibration", {}).get("known_energies", {})}
-    adc210 = cal_res.peaks["Po210"]["centroid_adc"]
-    adc214 = cal_res.peaks["Po214"]["centroid_adc"]
+
+    try:
+        # Use full calibration routine to locate peaks for both isotopes
+        cal_res = calibrate_run(adc_values, cfg)
+        adc210 = cal_res.peaks["Po210"]["centroid_adc"]
+        adc214 = cal_res.peaks["Po214"]["centroid_adc"]
+    except RuntimeError as exc:
+        if "No candidate peak found" in str(exc):
+            warnings.warn(
+                "Two-point calibration failed to find both peaks; falling back to one-point intercept-only",
+                RuntimeWarning,
+            )
+            return fixed_slope_calibration(adc_values, cfg)
+        raise
+    except KeyError as exc:
+        if exc.args and exc.args[0] in {"Po210", "Po214"}:
+            warnings.warn(
+                "Two-point calibration failed to find both peaks; falling back to one-point intercept-only",
+                RuntimeWarning,
+            )
+            return fixed_slope_calibration(adc_values, cfg)
+        raise
+
     c210 = energies["Po210"] - a * adc210
     c214 = energies["Po214"] - a * adc214
     c = 0.5 * (c210 + c214)
