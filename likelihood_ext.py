@@ -29,8 +29,9 @@ def neg_loglike_extended(
     clip : float, optional
         Lower bound for the intensity to avoid ``log(0)``. Default is ``1e-300``.
     background_model : str, optional
-        Name of the background model. When set to ``"loglin_unit"`` required
-        background parameters are validated before evaluation.
+        Name of the background model. When set to ``"loglin_unit"`` an
+        additional background area parameter ``S_bkg`` must be supplied in
+        ``params``.
 
     Returns
     -------
@@ -50,15 +51,11 @@ def neg_loglike_extended(
     """
     E = np.asarray(E, dtype=float)
 
-    if background_model == "loglin_unit":
-        required = {"S_bkg", "beta0", "beta1"}
-        missing = required - params.keys()
-        if missing:
-            got = sorted(params.keys())
-            raise ValueError(
-                "background_model=loglin_unit requires params {S_bkg, beta0, beta1}; got: "
-                f"{got}"
-            )
+    if background_model == "loglin_unit" and "S_bkg" not in params:
+        got = sorted(params.keys())
+        raise ValueError(
+            "background_model=loglin_unit requires param S_bkg; got: " f"{got}"
+        )
 
     missing_areas = [k for k in area_keys if k not in params]
     if missing_areas:
