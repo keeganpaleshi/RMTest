@@ -27,7 +27,7 @@ def _write_basic(tmp_path, drift_rate, mode="linear", params=None, *, allow_fall
         },
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 

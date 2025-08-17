@@ -19,7 +19,7 @@ def test_time_bin_mode_conflict(tmp_path, monkeypatch):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 

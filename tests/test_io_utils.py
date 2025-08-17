@@ -31,7 +31,7 @@ def test_load_config(tmp_path):
         "plotting": {"plot_save_formats": ["png"]},
         "burst_filter": {"burst_mode": "rate"},
     }
-    p = tmp_path / "cfg.json"
+    p = tmp_path / "cfg.yaml"
     with open(p, "w") as f:
         json.dump(cfg, f)
     loaded = load_config(p)
@@ -47,7 +47,7 @@ def test_load_config_missing_key(tmp_path):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    p = tmp_path / "cfg.json"
+    p = tmp_path / "cfg.yaml"
     with open(p, "w") as f:
         json.dump(cfg, f)
     cfg_loaded = load_config(p)
@@ -61,7 +61,7 @@ def test_load_config_missing_section(tmp_path):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    p = tmp_path / "cfg.json"
+    p = tmp_path / "cfg.yaml"
     with open(p, "w") as f:
         json.dump(cfg, f)
     with pytest.raises(ValueError):
@@ -219,7 +219,7 @@ def test_write_summary_and_copy_config(tmp_path):
     outdir = tmp_path / "out"
     ts = "19700101T000000Z"
     cfg = {"test": 1}
-    cp = tmp_path / "cfg.json"
+    cp = tmp_path / "cfg.yaml"
     with open(cp, "w") as f:
         json.dump(cfg, f)
     results_dir = outdir / ts
@@ -414,7 +414,7 @@ def test_load_config_duplicate_keys(tmp_path):
         "\n  \"plotting\": {\"plot_save_formats\": [\"png\"]}"
         "\n}"
     )
-    p = tmp_path / "dup.json"
+    p = tmp_path / "dup.yaml"
     with open(p, "w") as f:
         f.write(txt)
     with pytest.raises(ValueError, match="Duplicate key"):
@@ -429,7 +429,7 @@ def test_load_config_invalid_half_life(tmp_path):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    p = tmp_path / "cfg.json"
+    p = tmp_path / "cfg.yaml"
     with open(p, "w") as f:
         json.dump(cfg, f)
     with pytest.raises(jsonschema.exceptions.ValidationError):
@@ -445,7 +445,7 @@ def test_load_config_invalid_analysis_isotope(tmp_path):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    p = tmp_path / "cfg.json"
+    p = tmp_path / "cfg.yaml"
     with open(p, "w") as f:
         json.dump(cfg, f)
     with pytest.raises(jsonschema.exceptions.ValidationError):
@@ -460,7 +460,7 @@ def test_load_config_default_analysis_isotope(tmp_path):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    p = tmp_path / "cfg.json"
+    p = tmp_path / "cfg.yaml"
     with open(p, "w") as f:
         json.dump(cfg, f)
     loaded = load_config(p)
@@ -476,7 +476,7 @@ def test_load_config_invalid_baseline(tmp_path):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    p = tmp_path / "cfg.json"
+    p = tmp_path / "cfg.yaml"
     with open(p, "w") as f:
         json.dump(cfg, f)
     with pytest.raises(jsonschema.exceptions.ValidationError):
@@ -492,7 +492,7 @@ def test_load_config_invalid_burst_filter(tmp_path):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    p = tmp_path / "cfg.json"
+    p = tmp_path / "cfg.yaml"
     with open(p, "w") as f:
         json.dump(cfg, f)
     with pytest.raises(jsonschema.exceptions.ValidationError):
@@ -508,7 +508,7 @@ def test_load_config_unknown_key(tmp_path):
         "plotting": {"plot_save_formats": ["png"]},
         "burts_filter": {},
     }
-    p = tmp_path / "cfg.json"
+    p = tmp_path / "cfg.yaml"
     with open(p, "w") as f:
         json.dump(cfg, f)
     with pytest.raises(jsonschema.exceptions.ValidationError):

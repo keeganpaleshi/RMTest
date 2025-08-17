@@ -101,7 +101,7 @@ def test_auto_background_priors(monkeypatch, tmp_path):
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "c.json"
+    cfg_path = tmp_path / "c.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 

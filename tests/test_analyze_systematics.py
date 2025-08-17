@@ -24,7 +24,7 @@ def test_analyze_systematics_runs(tmp_path, monkeypatch):
         "systematics": {"enable": True, "sigma_E_frac": 0.1},
         "plotting": {"plot_save_formats": ["png"]},
     }
-    cfg_path = tmp_path / "cfg.json"
+    cfg_path = tmp_path / "cfg.yaml"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 

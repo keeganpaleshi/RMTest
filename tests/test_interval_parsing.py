@@ -13,7 +13,7 @@ import pandas as pd
 
 def test_cli_interval_parsing_to_datetime():
     args = analyze.parse_args([
-        "--config", "cfg.json",
+        "--config", "cfg.yaml",
         "--input", "data.csv",
         "--output_dir", "out",
         "--baseline_range", "1970-01-01T00:00:01Z", "1970-01-01T00:00:02Z",
@@ -42,7 +42,7 @@ def test_config_interval_parsing_to_datetime():
 
 def test_parse_allow_negative_activity():
     args = analyze.parse_args([
-        "--config", "cfg.json",
+        "--config", "cfg.yaml",
         "--input", "data.csv",
         "--output_dir", "out",
         "--allow-negative-activity",

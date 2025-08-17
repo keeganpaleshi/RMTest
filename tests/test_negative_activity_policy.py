@@ -12,7 +12,7 @@ from dataclasses import asdict
 def _setup(monkeypatch):
     data_dir = Path(__file__).resolve().parent / "data" / "mini_run"
     csv = data_dir / "run.csv"
-    cfg = data_dir / "config.json"
+    cfg = data_dir / "config.yaml"
     monkeypatch.setattr(plt, "savefig", lambda *a, **k: None)
     monkeypatch.setattr(radon_activity, "compute_radon_activity", lambda *a, **k: (-1.0, 0.5))
     return csv, cfg

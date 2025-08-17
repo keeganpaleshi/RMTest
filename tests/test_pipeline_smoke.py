@@ -11,7 +11,7 @@ def test_pipeline_smoke(tmp_path, monkeypatch):
     """Run the full pipeline on a tiny dataset."""
     data_dir = Path(__file__).resolve().parent / "data" / "mini_run"
     csv = data_dir / "run.csv"
-    cfg = data_dir / "config.json"
+    cfg = data_dir / "config.yaml"
 
     # avoid writing plot files
     monkeypatch.setattr(plt, "savefig", lambda *a, **k: None)
