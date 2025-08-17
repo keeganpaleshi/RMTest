@@ -143,6 +143,29 @@ def test_loglin_unit_bootstraps_background():
     assert "S_bkg" in res.params
 
 
+def test_linear_background_does_not_add_S_bkg():
+    rng = np.random.default_rng(0)
+    energies = np.concatenate([
+        rng.normal(5.3, 0.05, 200),
+        rng.normal(6.0, 0.05, 200),
+        rng.normal(7.7, 0.05, 200),
+    ])
+    priors = {
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (200, 20),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (200, 20),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (200, 20),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+    res = fit_spectrum(energies, priors)
+    assert "S_bkg" not in res.params
+
+
 def test_extended_likelihood_missing_area_key():
     from likelihood_ext import neg_loglike_extended
 
@@ -162,6 +185,28 @@ def test_extended_likelihood_missing_area_key():
     assert (
         str(exc.value)
         == "likelihood=extended requires params {area, missing}; got: ['area']"
+    )
+
+
+def test_extended_likelihood_requires_S_bkg_when_loglin():
+    from likelihood_ext import neg_loglike_extended
+
+    E = np.array([1.0])
+
+    def intensity(E_vals, params):
+        return np.ones_like(E_vals)
+
+    params = {"beta0": 0.0, "beta1": 0.0}
+    with pytest.raises(ValueError) as exc:
+        neg_loglike_extended(
+            E,
+            intensity,
+            params,
+            area_keys=(),
+            background_model="loglin_unit",
+        )
+    assert str(exc.value) == (
+        "background_model=loglin_unit requires param S_bkg; got: ['beta0', 'beta1']"
     )
 
 
@@ -267,11 +312,14 @@ def test_fit_spectrum_background_only_irregular_edges():
         "S_Po218": (0.0, 0.0),
         "mu_Po214": (3.5, 0.0),
         "S_Po214": (0.0, 0.0),
-        "b0": (9.0, 2.0),
-        "b1": (0.0, 0.0),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+        "S_bkg": (40.0, 1.0),
     }
 
-    result = fit_spectrum(energies, priors, bin_edges=edges)
+    result = fit_spectrum(
+        energies, priors, bin_edges=edges, flags={"background_model": "loglin_unit"}
+    )
     assert np.isclose(result.params["S_bkg"], 40.0, atol=0.1)
 
 
