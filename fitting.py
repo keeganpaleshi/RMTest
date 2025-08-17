@@ -248,10 +248,6 @@ def fit_decay(times, priors, t0=0.0, t_end=None, flags=None):
         flags.setdefault("fix_sigma0", True)
         flags.setdefault("fix_F", True)
 
-    if flags.get("fix_sigma_E"):
-        flags.setdefault("fix_sigma0", True)
-        flags.setdefault("fix_F", True)
-
     t = np.asarray(times, dtype=float)
     if t_end is None:
         T = float(t.max() if t.size > 0 else 0.0) - float(t0)
@@ -331,6 +327,13 @@ def fit_spectrum(
     if flags.get("fix_sigma_E"):
         flags.setdefault("fix_sigma0", True)
         flags.setdefault("fix_F", True)
+
+    fix_sigma0 = flags.get("fix_sigma0", False)
+    fix_F = flags.get("fix_F", False)
+    if fix_sigma0 and not fix_F:
+        raise ValueError(
+            "Resolution flags conflict: cannot fix sigma0 while allowing F to float"
+        )
 
     e = np.asarray(energies, dtype=float)
     n_events = e.size
