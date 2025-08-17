@@ -40,7 +40,11 @@ def select_background_factory(opts: Any, Emin: float, Emax: float) -> Callable:
         shape = make_linear_bkg(Emin, Emax)
 
         def bkg(E, params):
-            val = shape(E, params["beta0"], params["beta1"])
+            if "S_bkg" not in params:
+                raise ValueError(
+                    "background_model=loglin_unit requires params {S_bkg}"
+                )
+            val = shape(E, params["b0"], params["b1"])
             return softplus(params["S_bkg"]) * val
 
         return bkg
