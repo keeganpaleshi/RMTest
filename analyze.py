@@ -3117,6 +3117,10 @@ def main(argv=None):
                 ts_energy = pdata["events_energy"]
                 fit_obj = time_fit_results.get(iso)
                 fit_dict = _fit_params(fit_obj)
+                if fit_dict:
+                    fit_dict[f"fit_valid_{iso}"] = bool(
+                        fit_dict.get("fit_valid", True)
+                    )
             else:
                 ts_times = df_analysis["timestamp"].values
                 ts_energy = df_analysis["energy_MeV"].values
@@ -3124,7 +3128,12 @@ def main(argv=None):
                 for k in ("Po214", "Po218", "Po210"):
                     obj = time_fit_results.get(k)
                     if obj:
-                        fit_dict.update(_fit_params(obj))
+                        params = _fit_params(obj)
+                        fit_dict.update(params)
+                        if params:
+                            fit_dict[f"fit_valid_{k}"] = bool(
+                                params.get("fit_valid", True)
+                            )
 
             centers, widths = _ts_bin_centers_widths(
                 ts_times, plot_cfg, t0_global.timestamp(), t_end_global_ts
@@ -3238,88 +3247,94 @@ def main(argv=None):
                     t_rel, E, dE, N0, dN0, hl, cov
                 )
 
-        activity_arr = np.zeros_like(times, dtype=float)
-        err_arr = np.zeros_like(times, dtype=float)
-        for i in range(times.size):
-            r214 = err214_i = None
-            if A214 is not None:
-                r214 = A214[i]
-                err214_i = dA214[i]
-            r218 = err218_i = None
-            if A218 is not None:
-                r218 = A218[i]
-                err218_i = dA218[i]
-            A, s = compute_radon_activity(
-                r218,
-                err218_i,
-                1.0,
-                r214,
-                err214_i,
-                1.0,
-            )
-            activity_arr[i] = A
-            err_arr[i] = s
+        if A214 is None and A218 is None:
+            activity_arr = err_arr = None
+        else:
+            activity_arr = np.zeros_like(times, dtype=float)
+            err_arr = np.zeros_like(times, dtype=float)
+            for i in range(times.size):
+                r214 = err214_i = None
+                if A214 is not None:
+                    r214 = A214[i]
+                    err214_i = dA214[i]
+                r218 = err218_i = None
+                if A218 is not None:
+                    r218 = A218[i]
+                    err218_i = dA218[i]
+                A, s = compute_radon_activity(
+                    r218,
+                    err218_i,
+                    1.0,
+                    r214,
+                    err214_i,
+                    1.0,
+                )
+                activity_arr[i] = A
+                err_arr[i] = s
 
-        if np.all(activity_arr == 0):
-            activity_arr.fill(radon_results["radon_activity_Bq"]["value"])
-            err_arr.fill(radon_results["radon_activity_Bq"]["uncertainty"])
+            if np.all(activity_arr == 0):
+                activity_arr.fill(radon_results["radon_activity_Bq"]["value"])
+                err_arr.fill(radon_results["radon_activity_Bq"]["uncertainty"])
 
-        plot_radon_activity(
-            times,
-            activity_arr,
-            Path(out_dir) / "radon_activity.png",
-            err_arr,
-            config=cfg.get("plotting", {}),
-        )
-
-        if radon_interval is not None:
-            times_trend = np.linspace(
-                radon_interval[0].timestamp(),
-                radon_interval[1].timestamp(),
-                50,
-            )
-            times_trend_dt = to_datetime_utc(times_trend, unit="s")
-            rel_trend = (times_trend_dt - analysis_start).total_seconds()
-            A214_tr = None
-            if "Po214" in time_fit_results:
-                fit_result = time_fit_results["Po214"]
-                fit = _fit_params(fit_result)
-                if fit.get("fit_valid", True):
-                    E214 = fit.get("E_corrected", fit.get("E_Po214"))
-                    dE214 = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
-                    N0214 = fit.get("N0_Po214", 0.0)
-                    dN0214 = fit.get("dN0_Po214", 0.0)
-                    hl214 = _hl_value(cfg, "Rn222")
-                    cov214 = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
-                    A214_tr, _ = radon_activity_curve(
-                        rel_trend, E214, dE214, N0214, dN0214, hl214, cov214
-                    )
-            A218_tr = None
-            if "Po218" in time_fit_results:
-                fit_result = time_fit_results["Po218"]
-                fit = _fit_params(fit_result)
-                if fit.get("fit_valid", True):
-                    E218 = fit.get("E_corrected", fit.get("E_Po218"))
-                    dE218 = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
-                    N0218 = fit.get("N0_Po218", 0.0)
-                    dN0218 = fit.get("dN0_Po218", 0.0)
-                    hl218 = _hl_value(cfg, "Rn222")
-                    cov218 = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
-                    A218_tr, _ = radon_activity_curve(
-                        rel_trend, E218, dE218, N0218, dN0218, hl218, cov218
-                    )
-            trend = np.zeros_like(times_trend)
-            for i in range(times_trend.size):
-                r214 = A214_tr[i] if A214_tr is not None else None
-                r218 = A218_tr[i] if A218_tr is not None else None
-                A, _ = compute_radon_activity(r218, None, 1.0, r214, None, 1.0)
-                trend[i] = A
-            plot_radon_trend(
-                times_trend,
-                trend,
-                Path(out_dir) / "radon_trend.png",
+            plot_radon_activity(
+                times,
+                activity_arr,
+                Path(out_dir) / "radon_activity.png",
+                err_arr,
                 config=cfg.get("plotting", {}),
             )
+
+            if radon_interval is not None:
+                times_trend = np.linspace(
+                    radon_interval[0].timestamp(),
+                    radon_interval[1].timestamp(),
+                    50,
+                )
+                times_trend_dt = to_datetime_utc(times_trend, unit="s")
+                rel_trend = (times_trend_dt - analysis_start).total_seconds()
+                A214_tr = None
+                if "Po214" in time_fit_results:
+                    fit_result = time_fit_results["Po214"]
+                    fit = _fit_params(fit_result)
+                    if fit.get("fit_valid", True):
+                        E214 = fit.get("E_corrected", fit.get("E_Po214"))
+                        dE214 = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
+                        N0214 = fit.get("N0_Po214", 0.0)
+                        dN0214 = fit.get("dN0_Po214", 0.0)
+                        hl214 = _hl_value(cfg, "Rn222")
+                        cov214 = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
+                        A214_tr, _ = radon_activity_curve(
+                            rel_trend, E214, dE214, N0214, dN0214, hl214, cov214
+                        )
+                A218_tr = None
+                if "Po218" in time_fit_results:
+                    fit_result = time_fit_results["Po218"]
+                    fit = _fit_params(fit_result)
+                    if fit.get("fit_valid", True):
+                        E218 = fit.get("E_corrected", fit.get("E_Po218"))
+                        dE218 = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
+                        N0218 = fit.get("N0_Po218", 0.0)
+                        dN0218 = fit.get("dN0_Po218", 0.0)
+                        hl218 = _hl_value(cfg, "Rn222")
+                        cov218 = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
+                        A218_tr, _ = radon_activity_curve(
+                            rel_trend, E218, dE218, N0218, dN0218, hl218, cov218
+                        )
+                if A214_tr is not None or A218_tr is not None:
+                    trend = np.zeros_like(times_trend)
+                    for i in range(times_trend.size):
+                        r214 = A214_tr[i] if A214_tr is not None else None
+                        r218 = A218_tr[i] if A218_tr is not None else None
+                        A, _ = compute_radon_activity(
+                            r218, None, 1.0, r214, None, 1.0
+                        )
+                        trend[i] = A
+                    plot_radon_trend(
+                        times_trend,
+                        trend,
+                        Path(out_dir) / "radon_trend.png",
+                        config=cfg.get("plotting", {}),
+                    )
 
         ambient = cfg.get("analysis", {}).get("ambient_concentration")
         ambient_interp = None
@@ -3332,46 +3347,47 @@ def main(argv=None):
                     "Could not read ambient file '%s': %s", args.ambient_file, e
                 )
 
-        if ambient_interp is not None:
-            vol_arr = activity_arr / ambient_interp
-            vol_err = err_arr / ambient_interp
-            plot_equivalent_air(
-                times,
-                vol_arr,
-                vol_err,
-                None,
-                Path(out_dir) / "equivalent_air.png",
-                config=cfg.get("plotting", {}),
-            )
-            if A214 is not None:
+        if activity_arr is not None:
+            if ambient_interp is not None:
+                vol_arr = activity_arr / ambient_interp
+                vol_err = err_arr / ambient_interp
                 plot_equivalent_air(
                     times,
-                    A214 / ambient_interp,
-                    dA214 / ambient_interp,
+                    vol_arr,
+                    vol_err,
                     None,
-                    Path(out_dir) / "equivalent_air_po214.png",
+                    Path(out_dir) / "equivalent_air.png",
                     config=cfg.get("plotting", {}),
                 )
-        elif ambient:
-            vol_arr = activity_arr / float(ambient)
-            vol_err = err_arr / float(ambient)
-            plot_equivalent_air(
-                times,
-                vol_arr,
-                vol_err,
-                float(ambient),
-                Path(out_dir) / "equivalent_air.png",
-                config=cfg.get("plotting", {}),
-            )
-            if A214 is not None:
+                if A214 is not None:
+                    plot_equivalent_air(
+                        times,
+                        A214 / ambient_interp,
+                        dA214 / ambient_interp,
+                        None,
+                        Path(out_dir) / "equivalent_air_po214.png",
+                        config=cfg.get("plotting", {}),
+                    )
+            elif ambient:
+                vol_arr = activity_arr / float(ambient)
+                vol_err = err_arr / float(ambient)
                 plot_equivalent_air(
                     times,
-                    A214 / float(ambient),
-                    dA214 / float(ambient),
+                    vol_arr,
+                    vol_err,
                     float(ambient),
-                    Path(out_dir) / "equivalent_air_po214.png",
+                    Path(out_dir) / "equivalent_air.png",
                     config=cfg.get("plotting", {}),
                 )
+                if A214 is not None:
+                    plot_equivalent_air(
+                        times,
+                        A214 / float(ambient),
+                        dA214 / float(ambient),
+                        float(ambient),
+                        Path(out_dir) / "equivalent_air_po214.png",
+                        config=cfg.get("plotting", {}),
+                    )
     except Exception as e:
         logger.warning("Could not create radon activity plots -> %s", e)
 

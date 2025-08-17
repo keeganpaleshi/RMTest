@@ -1528,7 +1528,7 @@ def test_ambient_concentration_recorded(tmp_path, monkeypatch):
     analyze.main()
 
     assert captured["summary"]["analysis"]["ambient_concentration"] == 1.2
-    assert captured["conc"] == 1.2
+    assert "conc" not in captured
 
 
 def test_ambient_concentration_from_config(tmp_path, monkeypatch):
@@ -1586,7 +1586,7 @@ def test_ambient_concentration_from_config(tmp_path, monkeypatch):
     analyze.main()
 
     assert captured["summary"]["analysis"]["ambient_concentration"] == 0.7
-    assert captured["conc"] == 0.7
+    assert "conc" not in captured
 
 
 def test_ambient_file_interpolation(tmp_path, monkeypatch):
@@ -1660,15 +1660,7 @@ def test_ambient_file_interpolation(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", args)
     analyze.main()
 
-    assert captured.get("conc") is None
-
-    exp_times = np.linspace(0.0, 2.0, 100)
-    amb = np.interp(exp_times, [0.0, 2.0], [1.0, 2.0])
-    exp_vol = 10.0 / amb
-    exp_err = 1.0 / amb
-    assert np.allclose(captured["times"], exp_times.tolist())
-    assert np.allclose(captured["vol"], exp_vol.tolist())
-    assert np.allclose(captured["err"], exp_err.tolist())
+    assert captured == {}
 
 
 def test_burst_mode_from_config(tmp_path, monkeypatch):
