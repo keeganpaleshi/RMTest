@@ -86,6 +86,50 @@ def test_plot_time_series_invalid_fit_skips_model(tmp_path, monkeypatch):
     assert not calls
 
 
+def test_plot_time_series_overlay_invalid_fit(tmp_path, monkeypatch):
+    times = np.array([1001.0, 1002.0, 1003.0, 1004.0])
+    energies = np.array([7.7, 7.8, 6.1, 6.2])
+    out_png = tmp_path / "ts_overlay_invalid.png"
+
+    labels: list[str] = []
+
+    def fake_plot(*args, **kwargs):
+        lbl = kwargs.get("label")
+        if lbl:
+            labels.append(lbl)
+        return [None]
+
+    monkeypatch.setattr(plot_utils.plt, "plot", fake_plot)
+
+    cfg = basic_config()
+    cfg["window_po218"] = [6.0, 6.5]
+
+    fit_vals = {
+        "E_Po214": 0.1,
+        "B_Po214": 0.0,
+        "N0_Po214": 0.0,
+        "fit_valid_Po214": False,
+        "E_Po218": 0.1,
+        "B_Po218": 0.0,
+        "N0_Po218": 0.0,
+        "fit_valid_Po218": True,
+    }
+
+    plot_time_series(
+        times,
+        energies,
+        fit_vals,
+        1000.0,
+        1005.0,
+        cfg,
+        str(out_png),
+    )
+
+    assert out_png.exists()
+    assert "Model Po218" in labels
+    assert "Model Po214" not in labels
+
+
 def test_plot_time_series_auto_fd(tmp_path):
     # 100 uniform events over 5 seconds
     times = 1000.0 + np.linspace(0, 5, 100)
@@ -584,6 +628,19 @@ def test_plot_modeled_radon_activity_output(tmp_path):
     plot_modeled_radon_activity(times, 1.0, 0.1, 2.0, 0.2, str(out_png))
 
     assert out_png.exists()
+
+
+def test_plot_modeled_radon_activity_invalid_fit(tmp_path):
+    times = np.array([0.0, 1.0, 2.0])
+
+    from plot_utils import plot_modeled_radon_activity
+
+    out_png = tmp_path / "model_invalid.png"
+    plot_modeled_radon_activity(
+        times, 1.0, 0.1, 2.0, 0.2, str(out_png), fit_valid=False
+    )
+
+    assert not out_png.exists()
 
 
 def test_plot_modeled_radon_activity_variation(tmp_path, monkeypatch):
