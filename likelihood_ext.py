@@ -50,15 +50,11 @@ def neg_loglike_extended(
     """
     E = np.asarray(E, dtype=float)
 
-    if background_model == "loglin_unit":
-        required = {"S_bkg", "beta0", "beta1"}
-        missing = required - params.keys()
-        if missing:
-            got = sorted(params.keys())
-            raise ValueError(
-                "background_model=loglin_unit requires params {S_bkg, beta0, beta1}; got: "
-                f"{got}"
-            )
+    if background_model == "loglin_unit" and "S_bkg" not in params:
+        got = sorted(params.keys())
+        raise ValueError(
+            "background_model=loglin_unit requires param S_bkg; got: " f"{got}"
+        )
 
     missing_areas = [k for k in area_keys if k not in params]
     if missing_areas:
