@@ -34,6 +34,32 @@ __all__ = [
 ]
 
 
+def _format_time_axes(ax, times_dt):
+    locator = mdates.AutoDateLocator()
+    try:
+        formatter = mdates.ConciseDateFormatter(locator)
+    except AttributeError:
+        formatter = mdates.AutoDateFormatter(locator)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(formatter)
+    ax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.get_offset_text().set_visible(False)
+
+    t0 = times_dt[0]
+
+    def to_hours(x):
+        return (x - t0) * 24.0
+
+    def to_dates(h):
+        return t0 + h / 24.0
+
+    secax = ax.secondary_xaxis("top", functions=(to_hours, to_dates))
+    secax.set_xlabel("Elapsed Time (h)")
+    secax.xaxis.set_major_formatter(mticker.ScalarFormatter(useOffset=False))
+    secax.xaxis.get_offset_text().set_visible(False)
+    return secax
+
+
 def extract_time_series(timestamps, energies, window, t_start, t_end, bin_width_s=1.0):
     """Return histogram counts for events within an energy window.
 
@@ -555,34 +581,7 @@ def plot_radon_activity_full(
     ax.set_ylabel("Rn-222 Activity (Bq)")
     ax.set_title("Extrapolated Radon Activity vs. Time")
 
-    locator = mdates.AutoDateLocator()
-    try:
-        formatter = mdates.ConciseDateFormatter(locator)
-    except AttributeError:
-        formatter = mdates.AutoDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
-
-    base_dt = times_dt[0]
-
-    def _to_seconds(x):
-        return (x - base_dt) * 86400.0
-
-    def _to_dates(x):
-        return base_dt + x / 86400.0
-
-    secax = ax.secondary_xaxis("top", functions=(_to_seconds, _to_dates))
-
-    def _sec_formatter(x, pos=None):
-        h = x / 3600.0
-        if h >= 1:
-            if abs(h - round(h)) < 1e-6:
-                return f"{int(x)} s ({int(h)} h)"
-            return f"{int(x)} s ({h:g} h)"
-        return f"{int(x)} s"
-
-    secax.xaxis.set_major_formatter(mticker.FuncFormatter(_sec_formatter))
-    secax.set_xlabel("Elapsed Time (s)")
+    _format_time_axes(ax, times_dt)
 
     if po214_activity is not None:
         po214_activity = np.asarray(po214_activity, dtype=float)
@@ -601,8 +600,9 @@ def plot_radon_activity_full(
         ax.legend(lines1 + lines2, labels1 + labels2, loc="best")
 
     plt.gcf().autofmt_xdate()
-    ax.xaxis.get_offset_text().set_visible(False)
-    secax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.get_offset_text().set_visible(False)
+    if po214_activity is not None:
+        ax2.yaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     targets = get_targets(config, out_png)
     for p in targets.values():
@@ -639,15 +639,8 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
     plt.title(title)
 
     ax = plt.gca()
-    locator = mdates.AutoDateLocator()
-    try:
-        formatter = mdates.ConciseDateFormatter(locator)
-    except AttributeError:
-        formatter = mdates.AutoDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
+    _format_time_axes(ax, times_dt)
     plt.gcf().autofmt_xdate()
-    ax.xaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     targets = get_targets(config, out_png)
     for p in targets.values():
@@ -725,15 +718,8 @@ def plot_radon_trend_full(times, activity, out_png, config=None):
     plt.title("Radon Activity Trend")
 
     ax = plt.gca()
-    locator = mdates.AutoDateLocator()
-    try:
-        formatter = mdates.ConciseDateFormatter(locator)
-    except AttributeError:
-        formatter = mdates.AutoDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
+    _format_time_axes(ax, times_dt)
     plt.gcf().autofmt_xdate()
-    ax.xaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
 
     targets = get_targets(config, out_png)
@@ -757,15 +743,8 @@ def plot_radon_activity(ts_dict, outdir):
     plt.xlabel("Time (UTC)")
 
     ax = plt.gca()
-    locator = mdates.AutoDateLocator()
-    try:
-        formatter = mdates.ConciseDateFormatter(locator)
-    except AttributeError:
-        formatter = mdates.AutoDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
+    _format_time_axes(ax, times_dt)
     plt.gcf().autofmt_xdate()
-    ax.xaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     plt.savefig(outdir / "radon_activity.png", dpi=300)
     plt.close()
@@ -787,15 +766,8 @@ def plot_radon_trend(ts_dict, outdir):
     plt.xlabel("Time (UTC)")
 
     ax = plt.gca()
-    locator = mdates.AutoDateLocator()
-    try:
-        formatter = mdates.ConciseDateFormatter(locator)
-    except AttributeError:
-        formatter = mdates.AutoDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
+    _format_time_axes(ax, times_dt)
     plt.gcf().autofmt_xdate()
-    ax.xaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     plt.savefig(outdir / "radon_trend.png", dpi=300)
     plt.close()
