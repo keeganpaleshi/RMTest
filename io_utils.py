@@ -333,24 +333,12 @@ def merge_cfg(
 
 def load_config(config_path):
     """
-    Load ``config_path`` (path or mapping) and merge it with ``config_defaults.yaml``
-    (or ``config_defaults.json``) if present. The resulting dictionary is validated
-    against ``CONFIG_SCHEMA``.
+    Load ``config_path`` (path or mapping) and validate it against ``CONFIG_SCHEMA``.
 
-    Returns the merged configuration dictionary. Raises ``FileNotFoundError`` or
+    Returns the configuration dictionary. Raises ``FileNotFoundError`` or
     ``json.JSONDecodeError, yaml.YAMLError`` on failure when ``config_path`` is a
     path-like object.
     """
-
-    defaults_path_yaml = Path(__file__).resolve().with_name("config_defaults.yaml")
-    defaults_path_json = Path(__file__).resolve().with_name("config_defaults.json")
-    defaults: dict = {}
-    if defaults_path_yaml.is_file():
-        with open(defaults_path_yaml, "r", encoding="utf-8") as f:
-            defaults = yaml.safe_load(f) or {}
-    elif defaults_path_json.is_file():
-        with open(defaults_path_json, "r", encoding="utf-8") as f:
-            defaults = json.load(f, object_pairs_hook=_no_duplicates_object_pairs_hook)
 
     if isinstance(config_path, Mapping):
         cfg = dict(config_path)
@@ -365,7 +353,7 @@ def load_config(config_path):
             else:
                 cfg = json.load(f, object_pairs_hook=_no_duplicates_object_pairs_hook)
 
-    # Validate user config for required keys before applying defaults
+    # Validate user config for required keys
     validator = jsonschema.Draft7Validator(CONFIG_SCHEMA)
     missing = []
     for err in validator.iter_errors(cfg):
@@ -375,9 +363,6 @@ def load_config(config_path):
             missing.append(dotted)
     if missing:
         raise ValueError("Missing required keys: " + ", ".join(missing))
-
-    if defaults:
-        cfg = merge_cfg(defaults, cfg)
 
     try:
         jsonschema.validate(cfg, CONFIG_SCHEMA)

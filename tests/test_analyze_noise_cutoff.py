@@ -95,4 +95,4 @@ def test_analyze_noise_cutoff(tmp_path, monkeypatch):
     analyze.main()
 
     assert captured.get("fit_times") == [2.0]
-    assert captured.get("plot_times") == []
+    assert captured.get("plot_times") == [np.datetime64("1970-01-01T00:00:02", "ns")]
