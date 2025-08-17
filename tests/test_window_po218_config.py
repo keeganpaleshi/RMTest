@@ -8,11 +8,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from io_utils import load_config
 
 
-def test_window_po218_default(tmp_path):
+def test_window_po218_from_config(tmp_path):
     cfg = {
         "pipeline": {"log_level": "INFO"},
         "spectral_fit": {},
-        "time_fit": {"do_time_fit": True},
+        "time_fit": {"do_time_fit": True, "window_po218": [5.90, 6.10]},
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
     }
