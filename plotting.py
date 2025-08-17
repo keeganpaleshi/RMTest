@@ -2,6 +2,7 @@ import matplotlib as _mpl
 _mpl.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.ticker as mticker
 from datetime import datetime
 from pathlib import Path
 
@@ -25,6 +26,7 @@ def plot_radon_activity(ts, outdir):
     ax.errorbar(times_dt, ts.activity, yerr=getattr(ts, "error", None), fmt="o")
     ax.set_ylabel("Radon activity [Bq]")
     ax.set_xlabel("Time (UTC)")
+    ax.ticklabel_format(axis="y", style="plain")
 
     locator = mdates.AutoDateLocator()
     try:
@@ -33,7 +35,22 @@ def plot_radon_activity(ts, outdir):
         formatter = mdates.AutoDateFormatter(locator)
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
+
+    base_dt = times_dt[0]
+
+    def _to_hours(x):
+        return (x - base_dt) * 24.0
+
+    def _to_dates(x):
+        return base_dt + x / 24.0
+
+    secax = ax.secondary_xaxis("top", functions=(_to_hours, _to_dates))
+    secax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, pos=None: f"{x:g}"))
+    secax.set_xlabel("Elapsed Time (h)")
+
     ax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.get_offset_text().set_visible(False)
+    secax.xaxis.get_offset_text().set_visible(False)
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(outdir / "radon_activity.png", dpi=300)
@@ -49,6 +66,7 @@ def plot_radon_trend(ts, outdir):
     ax.plot(times_dt, ts.activity, "o-")
     ax.set_ylabel("Radon activity [Bq]")
     ax.set_xlabel("Time (UTC)")
+    ax.ticklabel_format(axis="y", style="plain")
 
     locator = mdates.AutoDateLocator()
     try:
@@ -57,7 +75,22 @@ def plot_radon_trend(ts, outdir):
         formatter = mdates.AutoDateFormatter(locator)
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
+
+    base_dt = times_dt[0]
+
+    def _to_hours(x):
+        return (x - base_dt) * 24.0
+
+    def _to_dates(x):
+        return base_dt + x / 24.0
+
+    secax = ax.secondary_xaxis("top", functions=(_to_hours, _to_dates))
+    secax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, pos=None: f"{x:g}"))
+    secax.set_xlabel("Elapsed Time (h)")
+
     ax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.get_offset_text().set_visible(False)
+    secax.xaxis.get_offset_text().set_visible(False)
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(outdir / "radon_trend.png", dpi=300)

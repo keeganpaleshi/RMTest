@@ -823,7 +823,7 @@ def test_plot_radon_activity_axis_labels(tmp_path, monkeypatch):
     ax = plt.gca()
     assert ax.get_xlabel() == "Time (UTC)"
     assert "axis" in captured
-    assert captured["axis"].get_xlabel() == "Elapsed Time (s)"
+    assert captured["axis"].get_xlabel() == "Elapsed Time (h)"
 
 
 def test_plot_radon_activity_no_offset(tmp_path, monkeypatch):
@@ -832,13 +832,26 @@ def test_plot_radon_activity_no_offset(tmp_path, monkeypatch):
     errors = [0.1, 0.2, 0.3]
 
     import matplotlib.pyplot as plt
+    import matplotlib.axes
     monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
     monkeypatch.setattr("plot_utils.plt.close", lambda *a, **k: None)
+
+    captured = {}
+    orig_sec = matplotlib.axes.Axes.secondary_xaxis
+
+    def wrapper(self, *args, **kwargs):
+        sec = orig_sec(self, *args, **kwargs)
+        captured["axis"] = sec
+        return sec
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "secondary_xaxis", wrapper)
 
     plot_radon_activity({"time": times, "activity": activity, "error": errors}, str(tmp_path))
 
     ax = plt.gca()
     assert not ax.xaxis.get_offset_text().get_visible()
+    assert not ax.yaxis.get_offset_text().get_visible()
+    assert not captured["axis"].xaxis.get_offset_text().get_visible()
 
 
 def test_plot_radon_activity_full_no_offset(tmp_path, monkeypatch):
@@ -867,6 +880,7 @@ def test_plot_radon_activity_full_no_offset(tmp_path, monkeypatch):
 
     ax = plt.gca()
     assert not ax.xaxis.get_offset_text().get_visible()
+    assert not ax.yaxis.get_offset_text().get_visible()
     assert not captured["axis"].xaxis.get_offset_text().get_visible()
 
 
