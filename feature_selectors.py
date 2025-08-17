@@ -12,15 +12,23 @@ from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
 
-from fitting import softplus
+def _softplus(x):
+    x = np.asarray(x, dtype=float)
+    return np.log1p(np.exp(-np.abs(x))) + np.maximum(x, 0.0)
 
 
-def _existing_linear_bkg(E, params):
-    """Legacy linear background model returning counts/MeV."""
+def _legacy_unit_linear_bkg(Emin: float, Emax: float) -> Callable:
+    """Legacy linear background with softplus normalisation."""
 
-    b0 = params.get("b0", 0.0)
-    b1 = params.get("b1", 0.0)
-    return b0 + b1 * np.asarray(E)
+    from fitting import make_linear_bkg
+
+    shape = make_linear_bkg(Emin, Emax)
+
+    def bkg(E, params):
+        val = shape(E, params.get("b0", 0.0), params.get("b1", 0.0))
+        return _softplus(params.get("S_bkg", 0.0)) * val
+
+    return bkg
 
 
 def select_background_factory(opts: Any, Emin: float, Emax: float) -> Callable:
@@ -41,11 +49,11 @@ def select_background_factory(opts: Any, Emin: float, Emax: float) -> Callable:
 
         def bkg(E, params):
             val = shape(E, params["beta0"], params["beta1"])
-            return softplus(params["S_bkg"]) * val
+            return _softplus(params["S_bkg"]) * val
 
         return bkg
 
-    return lambda E, params: _existing_linear_bkg(E, params)
+    return _legacy_unit_linear_bkg(Emin, Emax)
 
 
 def select_neg_loglike(opts: Any) -> Callable:

@@ -15,6 +15,8 @@ from scipy.stats import chi2
 from calibration import emg_left, gaussian
 from constants import _TAU_MIN, CURVE_FIT_MAX_EVALS, safe_exp as _safe_exp
 from likelihood_ext import neg_loglike_extended
+from types import SimpleNamespace
+from feature_selectors import select_background_factory, select_neg_loglike
 
 
 def softplus(x: np.ndarray | float) -> np.ndarray | float:
@@ -360,6 +362,14 @@ def fit_spectrum(
     E_lo = float(edges[0])
     E_hi = float(edges[-1])
 
+    opts = SimpleNamespace(
+        background_model=flags.get("background_model", "linear"),
+        likelihood=flags.get("likelihood", "current"),
+    )
+
+    background_fn = select_background_factory(opts, E_lo, E_hi)
+    neg_loglike = select_neg_loglike(opts)
+
     # Augment priors with a background amplitude if not provided
     priors = dict(priors)
     if "S_bkg" not in priors:
@@ -369,15 +379,6 @@ def fit_spectrum(
         mu = max(mu, 0.0)
         sig = max(abs(mu) * 0.1, 1.0)
         priors["S_bkg"] = (mu, sig)
-    if flags.get("background_model") == "loglin_unit":
-        required = {"b0", "b1"}
-        missing = required - priors.keys()
-        if missing:
-            got = sorted(priors.keys())
-            raise ValueError(
-                "background_model=loglin_unit requires params {S_bkg, beta0, beta1}; got: "
-                f"{got}"
-            )
 
     # Guard against NaNs/Infs arising from unstable histogramming or EMG evals
     if not unbinned and not np.isfinite(hist).all():
@@ -428,10 +429,16 @@ def fit_spectrum(
         if use_emg[iso]:
             param_index[f"tau_{iso}"] = len(param_order)
             param_order.append(f"tau_{iso}")
-    param_index["b0"] = len(param_order)
-    param_order.append("b0")
-    param_index["b1"] = len(param_order)
-    param_order.append("b1")
+    if opts.background_model == "loglin_unit":
+        param_index["beta0"] = len(param_order)
+        param_order.append("beta0")
+        param_index["beta1"] = len(param_order)
+        param_order.append("beta1")
+    else:
+        param_index["b0"] = len(param_order)
+        param_order.append("b0")
+        param_index["b1"] = len(param_order)
+        param_order.append("b1")
     param_index["S_bkg"] = len(param_order)
     param_order.append("S_bkg")
 
@@ -475,7 +482,6 @@ def fit_spectrum(
 
     iso_list = ["Po210", "Po218", "Po214"]
     area_keys = [f"S_{iso}" for iso in iso_list] + ["S_bkg"]
-    bkg_shape = _make_linear_bkg(E_lo, E_hi)
 
     def _model_density(x, *params):
         if fix_sigma0:
@@ -501,11 +507,8 @@ def fit_spectrum(
             else:
                 sigma = np.sqrt(sigma0 ** 2 + F_current * x)
                 y += S * gaussian(x, mu, sigma)
-        beta0 = params[param_index["b0"]]
-        beta1 = params[param_index["b1"]]
-        B_raw = params[param_index["S_bkg"]]
-        B = _softplus(B_raw)
-        y += B * bkg_shape(x, beta0, beta1)
+        p_map = {name: params[param_index[name]] for name in param_order}
+        y += background_fn(x, p_map)
         return np.clip(y, 1e-300, np.inf)
 
     def _model_binned(x, *params):
@@ -546,13 +549,10 @@ def fit_spectrum(
 
         def _nll(*params):
             p_map = dict(zip(param_order, params))
-            return neg_loglike_extended(
-                e,
-                _intensity_fn,
-                p_map,
-                area_keys=area_keys,
-                background_model=flags.get("background_model"),
-            )
+            kwargs = {"area_keys": area_keys}
+            if opts.likelihood == "extended":
+                kwargs["background_model"] = flags.get("background_model")
+            return neg_loglike(e, _intensity_fn, p_map, **kwargs)
 
         m = Minuit(_nll, *p0, name=param_order)
         m.errordef = Minuit.LIKELIHOOD
