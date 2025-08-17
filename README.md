@@ -163,7 +163,7 @@ found to be non-positive definite.
 
 The parser is case sensitive, so all keys in `config.yaml` should be lowercase. Mixed-case names from older files remain supported for backward compatibility but are deprecated.
 If `--config` is not supplied, `analyze.py` automatically looks for a `config.yaml` file in the same directory as the script.
-Default values may also be provided in `config_defaults.yaml` at the repository root. When present this file is merged with your configuration so missing keys fall back to its values.
+Only this file is loaded; built-in defaults are applied internally and no `config_defaults.yaml` is consulted.
 
 `nominal_adc` under the `calibration` section sets the expected raw ADC
 centroids for Po‑210, Po‑218 and Po‑214 when using automatic calibration.
@@ -743,6 +743,8 @@ activity.
 The Po‑214 activity alone is plotted in `radon_activity_po214.png`. When
 ambient concentration data are available, `equivalent_air_po214.png`
 shows the equivalent air volume derived from this Po‑214 activity.
+
+**Invalid fits:** When `fit_valid` in `summary.json` is `false`, overlays are omitted and no extrapolated numbers are produced.
 
 If the combined activity of Po‑214 and Po‑218 is negative the pipeline
 aborts by default after clamping the result to zero.  Passing
