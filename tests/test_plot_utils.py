@@ -86,6 +86,45 @@ def test_plot_time_series_invalid_fit_skips_model(tmp_path, monkeypatch):
     assert not calls
 
 
+def test_plot_time_series_overlay_invalid_fit_skips_model(tmp_path, monkeypatch):
+    times = np.array([1001.0, 1002.0, 1003.0, 1004.0])
+    energies = np.array([7.7, 7.8, 7.6, 6.0])
+    out_png = tmp_path / "ts_overlay_invalid.png"
+
+    calls: list[object] = []
+
+    def fake_plot(*args, **kwargs):
+        calls.append(args)
+        return [None]
+
+    monkeypatch.setattr(plot_utils.plt, "plot", fake_plot)
+
+    cfg = basic_config()
+    cfg.update({"window_po218": [5.8, 6.3], "eff_po218": [1.0]})
+    fit_vals = {
+        "E_Po214": 0.1,
+        "B_Po214": 0.0,
+        "N0_Po214": 0.0,
+        "fit_valid_Po214": False,
+        "E_Po218": 0.2,
+        "B_Po218": 0.0,
+        "N0_Po218": 0.0,
+        "fit_valid_Po218": True,
+    }
+    plot_time_series(
+        times,
+        energies,
+        fit_vals,
+        1000.0,
+        1005.0,
+        cfg,
+        str(out_png),
+    )
+
+    assert out_png.exists()
+    assert len(calls) == 1
+
+
 def test_plot_time_series_auto_fd(tmp_path):
     # 100 uniform events over 5 seconds
     times = 1000.0 + np.linspace(0, 5, 100)

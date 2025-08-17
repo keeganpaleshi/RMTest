@@ -698,6 +698,24 @@ def test_model_uncertainty_nan_covariance():
     assert np.allclose(sigma_nan, sigma_zero)
 
 
+def test_model_uncertainty_invalid_fit_returns_none():
+    centers = np.array([0.0, 1.0])
+    widths = np.array([1.0, 1.0])
+    params = {
+        "E_Po214": 1.0,
+        "dE_Po214": 0.1,
+        "N0_Po214": 2.0,
+        "dN0_Po214": 0.2,
+        "B_Po214": 0.0,
+        "dB_Po214": 0.0,
+        "fit_valid": False,
+    }
+    fr = FitResult(params, np.zeros((3, 3)), 0)
+    cfg = {"time_fit": {"hl_po214": [10.0], "eff_po214": [1.0]}}
+    sigma = analyze._model_uncertainty(centers, widths, fr, "Po214", cfg, True)
+    assert sigma is None
+
+
 def test_spectrum_tail_amplitude_stability():
     rng = np.random.default_rng(50)
     base = np.concatenate([

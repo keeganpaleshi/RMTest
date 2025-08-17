@@ -646,6 +646,8 @@ def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
     if fit_obj is None:
         return None
     params = _fit_params(fit_obj)
+    if not bool(params.get("fit_valid", True)):
+        return None
     # Po-214 and Po-218 activities follow the radon (Rn-222) decay constant
     if iso in ("Po214", "Po218"):
         hl = _hl_value(cfg, "Rn222")
@@ -3117,6 +3119,8 @@ def main(argv=None):
                 ts_energy = pdata["events_energy"]
                 fit_obj = time_fit_results.get(iso)
                 fit_dict = _fit_params(fit_obj)
+                if "fit_valid" in fit_dict:
+                    fit_dict[f"fit_valid_{iso}"] = fit_dict.get("fit_valid")
             else:
                 ts_times = df_analysis["timestamp"].values
                 ts_energy = df_analysis["energy_MeV"].values
@@ -3124,7 +3128,13 @@ def main(argv=None):
                 for k in ("Po214", "Po218", "Po210"):
                     obj = time_fit_results.get(k)
                     if obj:
-                        fit_dict.update(_fit_params(obj))
+                        params_k = _fit_params(obj)
+                        if "fit_valid" in params_k:
+                            fit_dict[f"fit_valid_{k}"] = params_k.get("fit_valid")
+                            params_k = {
+                                kk: vv for kk, vv in params_k.items() if kk != "fit_valid"
+                            }
+                        fit_dict.update(params_k)
 
             centers, widths = _ts_bin_centers_widths(
                 ts_times, plot_cfg, t0_global.timestamp(), t_end_global_ts
@@ -3272,7 +3282,7 @@ def main(argv=None):
             config=cfg.get("plotting", {}),
         )
 
-        if radon_interval is not None:
+        if radon_interval is not None and (A214 is not None or A218 is not None):
             times_trend = np.linspace(
                 radon_interval[0].timestamp(),
                 radon_interval[1].timestamp(),
