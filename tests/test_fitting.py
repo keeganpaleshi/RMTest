@@ -173,7 +173,7 @@ def test_extended_likelihood_requires_S_bkg_for_loglin():
     def intensity(E_vals, params):
         return np.ones_like(E_vals)
 
-    params = {"beta0": 0.0, "beta1": 0.0}
+    params = {"b0": 0.0, "b1": 0.0}
     with pytest.raises(ValueError) as exc:
         neg_loglike_extended(
             E,
