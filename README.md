@@ -161,16 +161,36 @@ found to be non-positive definite.
 
 ## Configuration
 
-The parser is case sensitive, so all keys in `config.yaml` should be lowercase. Mixed-case names from older files remain supported for backward compatibility but are deprecated.
-If `--config` is not supplied, `analyze.py` automatically looks for a `config.yaml` file in the same directory as the script.
+All run‑time options live in a single YAML file `config.yaml`. The loader
+reads only this file and never consults a secondary defaults file. When the
+`--config` option is omitted `analyze.py` looks for `config.yaml` in the working
+directory. The parser is case sensitive, so keys should be lowercase.
+
+Common toggles include:
+
+- `calibration.noise_cutoff` – ADC threshold for the pedestal cut.
+- `calibration.slope_MeV_per_ch` and `calibration.float_slope` – fix or float
+  the ADC→MeV slope.
+- `burst_filter.burst_mode` – set to `rate` to enable burst rejection or
+  `none` to disable it.
+- `baseline.range` – two timestamps enabling baseline subtraction.
+- `analysis.analysis_start_time` / `analysis.analysis_end_time` – limit data to
+  a time range.
+- `analysis.spike_periods` and `analysis.run_periods` – exclude intervals.
+- `systematics.enable` – turn systematic scans on or off.
+- `spectral_fit.do_spectral_fit` and `time_fit.do_time_fit` – control spectral
+  and time-series fits.
+
+Values not specified fall back to built‑in defaults but must be supplied via
+`config.yaml`.
 
 `nominal_adc` under the `calibration` section sets the expected raw ADC
 centroids for Po‑210, Po‑218 and Po‑214 when using automatic calibration.
-If omitted, defaults of `{"Po210": 1250, "Po218": 1400, "Po214": 1800}`
+If omitted, defaults of `{ "Po210": 1250, "Po218": 1400, "Po214": 1800 }`
 are used.
 
 `sanity_tolerance_mev` in the same section specifies how close the fitted
-peak energies must be to their known values.  The default of `0.5` MeV
+peak energies must be to their known values. The default of `0.5` MeV
 causes calibration to fail when any Po‑210, Po‑218 or Po‑214 centroid
 deviates by more than this amount.
 
