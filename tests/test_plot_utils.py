@@ -823,7 +823,7 @@ def test_plot_radon_activity_axis_labels(tmp_path, monkeypatch):
     ax = plt.gca()
     assert ax.get_xlabel() == "Time (UTC)"
     assert "axis" in captured
-    assert captured["axis"].get_xlabel() == "Elapsed Time (s)"
+    assert captured["axis"].get_xlabel() == "Elapsed Time (h)"
 
 
 def test_plot_radon_activity_no_offset(tmp_path, monkeypatch):
@@ -839,6 +839,7 @@ def test_plot_radon_activity_no_offset(tmp_path, monkeypatch):
 
     ax = plt.gca()
     assert not ax.xaxis.get_offset_text().get_visible()
+    assert not ax.yaxis.get_offset_text().get_visible()
 
 
 def test_plot_radon_activity_full_no_offset(tmp_path, monkeypatch):
@@ -867,6 +868,7 @@ def test_plot_radon_activity_full_no_offset(tmp_path, monkeypatch):
 
     ax = plt.gca()
     assert not ax.xaxis.get_offset_text().get_visible()
+    assert not ax.yaxis.get_offset_text().get_visible()
     assert not captured["axis"].xaxis.get_offset_text().get_visible()
 
 
