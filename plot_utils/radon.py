@@ -19,10 +19,8 @@ def plot_radon_activity(ts_dict, outdir: Path, out_png: str | Path | None = None
     ax.errorbar(times_mpl, activity, yerr=errors, fmt="o")
     ax.set_ylabel("Rn-222 activity [Bq]")
     ax.set_xlabel("Time (UTC)")
-    ax.ticklabel_format(axis="y", style="plain")
     setup_time_axis(ax, times_mpl)
     fig.autofmt_xdate()
-    ax.yaxis.get_offset_text().set_visible(False)
     if out_png is not None:
         fig.savefig(out_png, dpi=300)
         plt.close(fig)
@@ -42,11 +40,9 @@ def plot_radon_trend(ts_dict, outdir: Path, out_png: str | Path | None = None) -
     ax.plot(times_mpl, np.polyval(coeff, times_mpl), label=f"slope={coeff[0]:.2e} Bq/s")
     ax.set_ylabel("Rn-222 activity [Bq]")
     ax.set_xlabel("Time (UTC)")
-    ax.ticklabel_format(axis="y", style="plain")
     ax.legend()
     setup_time_axis(ax, times_mpl)
     fig.autofmt_xdate()
-    ax.yaxis.get_offset_text().set_visible(False)
     if out_png is not None:
         fig.savefig(out_png, dpi=300)
         plt.close(fig)
