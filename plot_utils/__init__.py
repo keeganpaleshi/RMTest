@@ -9,13 +9,13 @@ import matplotlib as _mpl
 _mpl.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-import matplotlib.ticker as mticker
 import math
 from datetime import datetime
 from pathlib import Path
 from color_schemes import COLOR_SCHEMES
 from constants import PO214, PO218, PO210, RN222
 from .paths import get_targets
+from .time_axis import to_mpl_times, setup_time_axis
 
 # Half-life constants used for the time-series overlay [seconds]
 PO214_HALF_LIFE_S = PO214.half_life_s
@@ -540,49 +540,29 @@ def plot_radon_activity_full(
     When ``po214_activity`` is given it is overlaid for quality control
     on a secondary axis explicitly labelled as Po-214 activity.
     """
-    times = np.asarray(times, dtype=float)
+    times_mpl = to_mpl_times(times)
     activity = np.asarray(activity, dtype=float)
     errors = np.asarray(errors, dtype=float)
-
-    times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
 
     fig, ax = plt.subplots(figsize=(8, 4))
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("radon_activity", "#9467bd")
     label = None if po214_activity is None else "Rn-222 Activity"
-    ax.errorbar(times_dt, activity, yerr=errors, fmt="o-", color=color, label=label)
+    ax.errorbar(times_mpl, activity, yerr=errors, fmt="o-", color=color, label=label)
     ax.set_xlabel("Time (UTC)")
     ax.set_ylabel("Rn-222 Activity (Bq)")
     ax.set_title("Extrapolated Radon Activity vs. Time")
     ax.ticklabel_format(axis="y", style="plain")
 
-    locator = mdates.AutoDateLocator()
-    try:
-        formatter = mdates.ConciseDateFormatter(locator)
-    except AttributeError:
-        formatter = mdates.AutoDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
-
-    base_dt = times_dt[0]
-
-    def _to_hours(x):
-        return (x - base_dt) * 24.0
-
-    def _to_dates(x):
-        return base_dt + x / 24.0
-
-    secax = ax.secondary_xaxis("top", functions=(_to_hours, _to_dates))
-    secax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, pos=None: f"{x:g}"))
-    secax.set_xlabel("Elapsed Time (h)")
+    setup_time_axis(ax, times_mpl)
 
     if po214_activity is not None:
         po214_activity = np.asarray(po214_activity, dtype=float)
         color214 = palette.get("Po214", "#d62728")
         ax2 = ax.twinx()
         ax2.plot(
-            times_dt,
+            times_mpl,
             po214_activity,
             "--",
             color=color214,
@@ -596,9 +576,7 @@ def plot_radon_activity_full(
         ax.legend(lines1 + lines2, labels1 + labels2, loc="best")
 
     plt.gcf().autofmt_xdate()
-    ax.xaxis.get_offset_text().set_visible(False)
     ax.yaxis.get_offset_text().set_visible(False)
-    secax.xaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     targets = get_targets(config, out_png)
     for p in targets.values():
@@ -615,18 +593,16 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
         Ambient concentration label to include in the plot title. When ``None``
         the concentration is omitted from the title.
     """
-    times = np.asarray(times, dtype=float)
+    times_mpl = to_mpl_times(times)
     volumes = np.asarray(volumes, dtype=float)
     errors = np.asarray(errors, dtype=float)
-
-    times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
 
     plt.figure(figsize=(8, 4))
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("equivalent_air", "#2ca02c")
-    plt.errorbar(times_dt, volumes, yerr=errors, fmt="o-", color=color)
-    plt.xlabel("Time")
+    plt.errorbar(times_mpl, volumes, yerr=errors, fmt="o-", color=color)
+    plt.xlabel("Time (UTC)")
     plt.ylabel("Equivalent Air Volume")
     if conc is None:
         title = "Equivalent Air Volume vs. Time"
@@ -635,15 +611,10 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
     plt.title(title)
 
     ax = plt.gca()
-    locator = mdates.AutoDateLocator()
-    try:
-        formatter = mdates.ConciseDateFormatter(locator)
-    except AttributeError:
-        formatter = mdates.AutoDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
+    ax.ticklabel_format(axis="y", style="plain")
+    setup_time_axis(ax, times_mpl)
     plt.gcf().autofmt_xdate()
-    ax.xaxis.get_offset_text().set_visible(False)
+    ax.yaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     targets = get_targets(config, out_png)
     for p in targets.values():
@@ -712,46 +683,23 @@ def plot_radon_trend_full(times, activity, out_png, config=None, *, fit_valid=Tr
     """Plot modeled radon activity trend without uncertainties."""
     if not fit_valid:
         return
-    times = np.asarray(times, dtype=float)
+    times_mpl = to_mpl_times(times)
     activity = np.asarray(activity, dtype=float)
-
-    times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
 
     plt.figure(figsize=(8, 4))
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("radon_activity", "#9467bd")
-    plt.plot(times_dt, activity, "o-", color=color)
-    plt.xlabel("Time")
+    plt.plot(times_mpl, activity, "o-", color=color)
+    plt.xlabel("Time (UTC)")
     plt.ylabel("Radon Activity (Bq)")
     plt.title("Radon Activity Trend")
 
     ax = plt.gca()
     ax.ticklabel_format(axis="y", style="plain")
-    locator = mdates.AutoDateLocator()
-    try:
-        formatter = mdates.ConciseDateFormatter(locator)
-    except AttributeError:
-        formatter = mdates.AutoDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
-
-    base_dt = times_dt[0]
-
-    def _to_hours(x):
-        return (x - base_dt) * 24.0
-
-    def _to_dates(x):
-        return base_dt + x / 24.0
-
-    secax = ax.secondary_xaxis("top", functions=(_to_hours, _to_dates))
-    secax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, pos=None: f"{x:g}"))
-    secax.set_xlabel("Elapsed Time (h)")
-
+    setup_time_axis(ax, times_mpl)
     plt.gcf().autofmt_xdate()
-    ax.xaxis.get_offset_text().set_visible(False)
     ax.yaxis.get_offset_text().set_visible(False)
-    secax.xaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
 
     targets = get_targets(config, out_png)
@@ -765,41 +713,19 @@ def plot_radon_activity(ts_dict, outdir):
     import matplotlib.pyplot as plt
 
     outdir = Path(outdir)
-    times = np.asarray(ts_dict["time"], dtype=float)
+    times_mpl = to_mpl_times(ts_dict["time"])
     y = np.asarray(ts_dict["activity"], dtype=float)
     e = np.asarray(ts_dict["error"], dtype=float)
 
-    times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
-    plt.errorbar(times_dt, y, yerr=e, fmt="o")
+    plt.errorbar(times_mpl, y, yerr=e, fmt="o")
     plt.ylabel("Radon activity [Bq]")
     plt.xlabel("Time (UTC)")
 
     ax = plt.gca()
     ax.ticklabel_format(axis="y", style="plain")
-    locator = mdates.AutoDateLocator()
-    try:
-        formatter = mdates.ConciseDateFormatter(locator)
-    except AttributeError:
-        formatter = mdates.AutoDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
-
-    base_dt = times_dt[0]
-
-    def _to_hours(x):
-        return (x - base_dt) * 24.0
-
-    def _to_dates(x):
-        return base_dt + x / 24.0
-
-    secax = ax.secondary_xaxis("top", functions=(_to_hours, _to_dates))
-    secax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, pos=None: f"{x:g}"))
-    secax.set_xlabel("Elapsed Time (h)")
-
+    setup_time_axis(ax, times_mpl)
     plt.gcf().autofmt_xdate()
-    ax.xaxis.get_offset_text().set_visible(False)
     ax.yaxis.get_offset_text().set_visible(False)
-    secax.xaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     plt.savefig(outdir / "radon_activity.png", dpi=300)
     plt.close()
@@ -811,41 +737,19 @@ def plot_radon_trend(ts_dict, outdir):
     import matplotlib.pyplot as plt
 
     outdir = Path(outdir)
-    times = np.asarray(ts_dict["time"], dtype=float)
+    times_mpl = to_mpl_times(ts_dict["time"])
     y = np.asarray(ts_dict["activity"], dtype=float)
-    times_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in times])
-    coeff = np.polyfit(times_dt, y, 1)
-    plt.plot(times_dt, y, "o")
-    plt.plot(times_dt, np.polyval(coeff, times_dt))
+    coeff = np.polyfit(times_mpl, y, 1)
+    plt.plot(times_mpl, y, "o")
+    plt.plot(times_mpl, np.polyval(coeff, times_mpl))
     plt.ylabel("Radon activity [Bq]")
     plt.xlabel("Time (UTC)")
 
     ax = plt.gca()
     ax.ticklabel_format(axis="y", style="plain")
-    locator = mdates.AutoDateLocator()
-    try:
-        formatter = mdates.ConciseDateFormatter(locator)
-    except AttributeError:
-        formatter = mdates.AutoDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
-
-    base_dt = times_dt[0]
-
-    def _to_hours(x):
-        return (x - base_dt) * 24.0
-
-    def _to_dates(x):
-        return base_dt + x / 24.0
-
-    secax = ax.secondary_xaxis("top", functions=(_to_hours, _to_dates))
-    secax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, pos=None: f"{x:g}"))
-    secax.set_xlabel("Elapsed Time (h)")
-
+    setup_time_axis(ax, times_mpl)
     plt.gcf().autofmt_xdate()
-    ax.xaxis.get_offset_text().set_visible(False)
     ax.yaxis.get_offset_text().set_visible(False)
-    secax.xaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     plt.savefig(outdir / "radon_trend.png", dpi=300)
     plt.close()
