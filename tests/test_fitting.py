@@ -165,6 +165,26 @@ def test_extended_likelihood_missing_area_key():
     )
 
 
+def test_extended_likelihood_requires_S_bkg_for_loglin():
+    from likelihood_ext import neg_loglike_extended
+
+    E = np.array([1.0])
+
+    def intensity(E_vals, params):
+        return np.ones_like(E_vals)
+
+    params = {"beta0": 0.0, "beta1": 0.0}
+    with pytest.raises(ValueError) as exc:
+        neg_loglike_extended(
+            E,
+            intensity,
+            params,
+            area_keys=(),
+            background_model="loglin_unit",
+        )
+    assert "requires params {S_bkg}" in str(exc.value)
+
+
 def test_fit_spectrum_fixed_parameter_bounds():
     """Fixing a parameter should not trigger a bound error."""
     rng = np.random.default_rng(1)
@@ -272,7 +292,8 @@ def test_fit_spectrum_background_only_irregular_edges():
     }
 
     result = fit_spectrum(energies, priors, bin_edges=edges)
-    assert np.isclose(result.params["S_bkg"], 40.0, atol=0.1)
+    assert "S_bkg" not in result.params
+    assert np.isclose(result.params["b0"], 10.0, atol=0.1)
 
 
 def test_model_binned_variable_width(monkeypatch):
@@ -723,7 +744,12 @@ def test_spectrum_tail_amplitude_stability():
         "S_bkg": (0.0, 100.0),
     }
 
-    res = fit_spectrum(energies, priors, unbinned=True)
+    res = fit_spectrum(
+        energies,
+        priors,
+        flags={"background_model": "loglin_unit"},
+        unbinned=True,
+    )
     expected = 395  # median of 20 repeated fits → ~394.6
     tol = 0.03  # keep the same 3 % window
     assert abs(res.params["S_Po218"] - expected) / expected < tol
