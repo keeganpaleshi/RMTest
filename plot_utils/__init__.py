@@ -103,12 +103,13 @@ def plot_time_series(
     t_start, t_end: floats (absolute UNIX times) for the fit window
     config:         JSON dict or nested configuration
     out_png:        output path for the PNG file
-    hl_po214, hl_po218: optional half-life values in seconds. If not
-        provided, these are looked up using the configuration keys
-        ``hl_po214`` and ``hl_po218`` under ``time_fit`` and default to
-        ``PO214_HALF_LIFE_S`` and ``PO218_HALF_LIFE_S`` respectively.
-        When Po-210 is plotted the overlay uses the ``hl_po210``
-        configuration value.
+    hl_po214, hl_po218: optional half-life values in seconds for the
+        Po-214 and Po-218 time-series overlays.  When not provided, the
+        values are looked up using the configuration keys ``hl_po214``
+        and ``hl_po218`` under ``time_fit`` and default to the Rn-222
+        half-life.  This ensures the daughter activities are propagated
+        using the parent radon decay constant.  When Po-210 is plotted
+        the overlay uses the ``hl_po210`` configuration value.
     model_errors : dict[str, array-like], optional
         Mapping of isotope name to 1D arrays of uncertainties for the
         model curve. When provided, ``fill_between`` is used to draw
@@ -157,8 +158,8 @@ def plot_time_series(
         return cfg.get(key, default)
 
     default_const = config.get("nuclide_constants", {})
-    default214 = default_const.get("Po214", PO214).half_life_s
-    default218 = default_const.get("Po218", PO218).half_life_s
+    default_rn = default_const.get("Rn222", RN222).half_life_s
+    default210 = default_const.get("Po210", PO210).half_life_s
 
     if hl_po214 is None and "hl_po214" in _legacy_kwargs:
         hl_po214 = _legacy_kwargs.pop("hl_po214")
@@ -171,8 +172,8 @@ def plot_time_series(
             return float(val[0]) if val else float(default)
         return float(default) if val is None else float(val)
 
-    po214_hl = float(hl_po214) if hl_po214 is not None else _hl_param("hl_po214", default214)
-    po218_hl = float(hl_po218) if hl_po218 is not None else _hl_param("hl_po218", default218)
+    po214_hl = float(hl_po214) if hl_po214 is not None else _hl_param("hl_po214", default_rn)
+    po218_hl = float(hl_po218) if hl_po218 is not None else _hl_param("hl_po218", default_rn)
 
     if po214_hl <= 0:
         raise ValueError("hl_po214 must be positive")
@@ -184,10 +185,7 @@ def plot_time_series(
             # Energy window for Po-210 events (optional)
             "window": _cfg_get(config, "window_po210"),
             "eff": float(_cfg_get(config, "eff_po210", [1.0])[0]),
-            "half_life": _hl_param(
-                "hl_po210",
-                default_const.get("Po210", PO210).half_life_s,
-            ),
+            "half_life": _hl_param("hl_po210", default210),
         },
         "Po218": {
             # Energy window for Po-218 events
