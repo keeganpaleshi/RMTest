@@ -254,7 +254,7 @@ def plot_time_series(
         edges = np.linspace(0, (t_end - t_start), n_bins + 1)
     centers = 0.5 * (edges[:-1] + edges[1:])
     centers_abs = t_start + centers
-    centers_dt = mdates.date2num([datetime.utcfromtimestamp(t) for t in centers_abs])
+    centers_mpl = to_mpl_times(centers_abs)
     bin_widths = np.diff(edges)
 
     # Optional normalisation to counts / s (set in config)
@@ -288,7 +288,7 @@ def plot_time_series(
         style = str(config.get("plot_time_style", "steps")).lower()
         if style == "lines":
             plt.plot(
-                centers_dt,
+                centers_mpl,
                 counts_iso,
                 marker="o",
                 linestyle="-",
@@ -297,7 +297,7 @@ def plot_time_series(
             )
         else:
             plt.step(
-                centers_dt,
+                centers_mpl,
                 counts_iso,
                 where="mid",
                 color=colors[iso],
@@ -334,7 +334,7 @@ def plot_time_series(
             # Convert rate (counts/s) to expected counts per bin if not normalising
             model_counts = r_rel if normalise_rate else r_rel * bin_widths
             plt.plot(
-                centers_dt,
+                centers_mpl,
                 model_counts,
                 color=colors[iso],
                 lw=2,
@@ -346,7 +346,7 @@ def plot_time_series(
                 if err.size == model_counts.size:
                     kw = {"step": "mid"} if style != "lines" else {}
                     plt.fill_between(
-                        centers_dt,
+                        centers_mpl,
                         model_counts - err,
                         model_counts + err,
                         color=colors[iso],
