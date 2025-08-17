@@ -332,6 +332,12 @@ def fit_spectrum(
         flags.setdefault("fix_sigma0", True)
         flags.setdefault("fix_F", True)
 
+    if flags.get("fix_sigma0", False) and not flags.get("fix_F", True):
+        raise ValueError(
+            "Resolution flags conflict: cannot fix sigma0 while allowing "
+            "the energy resolution to float"
+        )
+
     e = np.asarray(energies, dtype=float)
     n_events = e.size
     if e.size == 0:

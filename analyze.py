@@ -2005,7 +2005,13 @@ def main(argv=None):
 
         # Flags controlling the spectral fit
         spec_flags = cfg["spectral_fit"].get("flags", {}).copy()
-        if not cfg["spectral_fit"].get("float_sigma_E", True):
+        float_resolution = cfg["spectral_fit"].get("float_sigma_E", True)
+        if float_resolution and spec_flags.get("fix_sigma0"):
+            raise ValueError(
+                "Configuration conflict: float_sigma_E is true but "
+                "fix_sigma0 flag is set"
+            )
+        if not float_resolution:
             spec_flags["fix_sigma0"] = True
             spec_flags.setdefault("fix_F", True)
 

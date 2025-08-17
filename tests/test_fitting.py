@@ -754,3 +754,26 @@ def test_spectrum_positive_amplitude_bound():
     assert res.params["fit_valid"]
     for key in ("S_Po210", "S_Po218", "S_Po214"):
         assert res.params[key] >= 0
+
+
+def test_resolution_flag_conflict():
+    rng = np.random.default_rng(0)
+    energies = np.concatenate([
+        rng.normal(5.3, 0.05, 10),
+        rng.normal(6.0, 0.05, 10),
+        rng.normal(7.7, 0.05, 10),
+    ])
+    priors = {
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (10, 1),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (10, 1),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (10, 1),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+    with pytest.raises(ValueError):
+        fit_spectrum(energies, priors, flags={"fix_sigma0": True, "fix_F": False})
