@@ -1,9 +1,11 @@
 import numpy as np
 import pytest
+import warnings
 
 from calibration import (
     intercept_fit_two_point,
     CalibrationResult,
+    fixed_slope_calibration,
 )
 
 
@@ -74,3 +76,21 @@ def test_intercept_fit_two_point_missing_slope():
     cfg = {"calibration": {}}
     with pytest.raises(KeyError):
         intercept_fit_two_point(adc, cfg)
+
+
+def test_intercept_fit_two_point_falls_back_when_peak_missing(monkeypatch):
+    def fake_calibrate_run(adc_values, cfg):
+        raise RuntimeError("No candidate peak found for Po214 around ADC=1800")
+
+    monkeypatch.setattr("calibration.calibrate_run", fake_calibrate_run)
+
+    rng = np.random.default_rng(0)
+    adc = rng.normal(1800, 2, 200)
+    cfg = sample_cfg()
+
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
+    with pytest.warns(RuntimeWarning, match="Two-point calibration failed"):
+        res = intercept_fit_two_point(adc, cfg)
+
+    expected = fixed_slope_calibration(adc, cfg)
+    assert res.coeffs == expected.coeffs
