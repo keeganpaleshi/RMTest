@@ -363,22 +363,23 @@ def fit_spectrum(
     E_lo = float(edges[0])
     E_hi = float(edges[-1])
 
-    # Augment priors with a background amplitude if not provided
+    # Configure background handling
+    background_model = flags.get("background_model")
     priors = dict(priors)
-    if "S_bkg" not in priors:
-        b0_mu = priors.get("b0", (0.0, 1.0))[0]
-        b1_mu = priors.get("b1", (0.0, 1.0))[0]
-        mu = b0_mu * (E_hi - E_lo) + 0.5 * b1_mu * (E_hi**2 - E_lo**2)
-        mu = max(mu, 0.0)
-        sig = max(abs(mu) * 0.1, 1.0)
-        priors["S_bkg"] = (mu, sig)
-    if flags.get("background_model") == "loglin_unit":
+    if background_model == "loglin_unit":
+        if "S_bkg" not in priors:
+            b0_mu = priors.get("b0", (0.0, 1.0))[0]
+            b1_mu = priors.get("b1", (0.0, 1.0))[0]
+            mu = b0_mu * (E_hi - E_lo) + 0.5 * b1_mu * (E_hi**2 - E_lo**2)
+            mu = max(mu, 0.0)
+            sig = max(abs(mu) * 0.1, 1.0)
+            priors["S_bkg"] = (mu, sig)
         required = {"b0", "b1"}
         missing = required - priors.keys()
         if missing:
             got = sorted(priors.keys())
             raise ValueError(
-                "background_model=loglin_unit requires params {S_bkg, beta0, beta1}; got: "
+                "background_model=loglin_unit requires params {S_bkg, b0, b1}; got: "
                 f"{got}"
             )
 
@@ -435,8 +436,9 @@ def fit_spectrum(
     param_order.append("b0")
     param_index["b1"] = len(param_order)
     param_order.append("b1")
-    param_index["S_bkg"] = len(param_order)
-    param_order.append("S_bkg")
+    if background_model == "loglin_unit" or "S_bkg" in priors:
+        param_index["S_bkg"] = len(param_order)
+        param_order.append("S_bkg")
 
     p0 = []
     bounds_lo, bounds_hi = [], []
@@ -477,8 +479,13 @@ def fit_spectrum(
         bounds_hi.append(hi)
 
     iso_list = ["Po210", "Po218", "Po214"]
-    area_keys = [f"S_{iso}" for iso in iso_list] + ["S_bkg"]
-    bkg_shape = _make_linear_bkg(E_lo, E_hi)
+    area_keys = [f"S_{iso}" for iso in iso_list]
+    if background_model == "loglin_unit" or "S_bkg" in priors:
+        area_keys = area_keys + ["S_bkg"]
+    if background_model == "loglin_unit":
+        bkg_shape = _make_linear_bkg(E_lo, E_hi)
+    else:
+        bkg_shape = None
 
     def _model_density(x, *params):
         if fix_sigma0:
@@ -506,9 +513,18 @@ def fit_spectrum(
                 y += S * gaussian(x, mu, sigma)
         beta0 = params[param_index["b0"]]
         beta1 = params[param_index["b1"]]
-        B_raw = params[param_index["S_bkg"]]
-        B = _softplus(B_raw)
-        y += B * bkg_shape(x, beta0, beta1)
+        if background_model == "loglin_unit":
+            B_raw = params[param_index["S_bkg"]]
+            B = _softplus(B_raw)
+            y += B * bkg_shape(x, beta0, beta1)
+        elif "S_bkg" in priors:
+            B_raw = params[param_index["S_bkg"]]
+            B = _softplus(B_raw)
+            norm = beta0 * (E_hi - E_lo) + 0.5 * beta1 * (E_hi**2 - E_lo**2)
+            if norm > 0:
+                y += B * (beta0 + beta1 * x) / norm
+        else:
+            y += beta0 + beta1 * x
         return np.clip(y, 1e-300, np.inf)
 
     def _model_binned(x, *params):
@@ -547,15 +563,21 @@ def fit_spectrum(
             arr = [p_map[name] for name in param_order]
             return _model_density(E_vals, *arr)
 
-        def _nll(*params):
-            p_map = dict(zip(param_order, params))
-            return neg_loglike_extended(
-                e,
-                _intensity_fn,
-                p_map,
-                area_keys=area_keys,
-                background_model=flags.get("background_model"),
-            )
+        if background_model == "loglin_unit" or "S_bkg" in priors:
+            def _nll(*params):
+                p_map = dict(zip(param_order, params))
+                return neg_loglike_extended(
+                    e,
+                    _intensity_fn,
+                    p_map,
+                    area_keys=area_keys,
+                    background_model="loglin_unit" if background_model == "loglin_unit" else None,
+                )
+        else:
+            def _nll(*params):
+                p_map = dict(zip(param_order, params))
+                lam = np.clip(_intensity_fn(e, p_map), 1e-300, np.inf)
+                return float(-np.sum(np.log(lam)))
 
         m = Minuit(_nll, *p0, name=param_order)
         m.errordef = Minuit.LIKELIHOOD
