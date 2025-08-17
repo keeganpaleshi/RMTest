@@ -417,6 +417,34 @@ def _spectral_fit_with_check(
     return result, dev
 
 
+def _resolve_spectral_flags(spectral_cfg: Mapping[str, Any]) -> dict[str, bool]:
+    """Return spectral fit flags with conflict checks.
+
+    Raises
+    ------
+    ValueError
+        If ``float_sigma_E`` is ``True`` while ``fix_sigma0`` is also ``True``.
+    """
+
+    spec_flags = spectral_cfg.get("flags", {}).copy()
+    float_sigma_E = spectral_cfg.get("float_sigma_E", True)
+
+    if not float_sigma_E:
+        spec_flags["fix_sigma0"] = True
+        spec_flags.setdefault("fix_F", True)
+
+    if spec_flags.pop("fix_sigma_E", False):
+        spec_flags.setdefault("fix_sigma0", True)
+        spec_flags.setdefault("fix_F", True)
+
+    if float_sigma_E and spec_flags.get("fix_sigma0", False):
+        raise ValueError(
+            "Configuration error: cannot float energy resolution while fixing sigma0"
+        )
+
+    return spec_flags
+
+
 def window_prob(E, sigma, lo, hi):
     """Return probability that each ``E`` lies in [lo, hi].
 
@@ -2004,15 +2032,7 @@ def main(argv=None):
             priors_spec["b1"] = tuple(cfg["spectral_fit"].get("b1_prior"))
 
         # Flags controlling the spectral fit
-        spec_flags = cfg["spectral_fit"].get("flags", {}).copy()
-        if not cfg["spectral_fit"].get("float_sigma_E", True):
-            spec_flags["fix_sigma0"] = True
-            spec_flags.setdefault("fix_F", True)
-
-        if "fix_sigma_E" in spec_flags:
-            if spec_flags.pop("fix_sigma_E"):
-                spec_flags.setdefault("fix_sigma0", True)
-                spec_flags.setdefault("fix_F", True)
+        spec_flags = _resolve_spectral_flags(cfg["spectral_fit"])
 
         # Launch the spectral fit
         spec_fit_out = None
