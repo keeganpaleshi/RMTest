@@ -165,6 +165,28 @@ def test_extended_likelihood_missing_area_key():
     )
 
 
+def test_extended_likelihood_requires_s_bkg_for_loglin():
+    from likelihood_ext import neg_loglike_extended
+
+    E = np.array([1.0, 2.0])
+
+    def intensity(E_vals, params):
+        return np.ones_like(E_vals)
+
+    params = {"beta0": 0.0, "beta1": 0.0}
+    with pytest.raises(ValueError) as exc:
+        neg_loglike_extended(
+            E,
+            intensity,
+            params,
+            area_keys=(),
+            background_model="loglin_unit",
+        )
+    assert "requires param S_bkg" in str(exc.value)
+
+    neg_loglike_extended(E, intensity, params, area_keys=(), background_model=None)
+
+
 def test_fit_spectrum_fixed_parameter_bounds():
     """Fixing a parameter should not trigger a bound error."""
     rng = np.random.default_rng(1)
@@ -272,7 +294,7 @@ def test_fit_spectrum_background_only_irregular_edges():
     }
 
     result = fit_spectrum(energies, priors, bin_edges=edges)
-    assert np.isclose(result.params["S_bkg"], 40.0, atol=0.1)
+    assert np.isclose(result.params["b0"], 10.0, atol=0.1)
 
 
 def test_model_binned_variable_width(monkeypatch):
