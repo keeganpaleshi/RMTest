@@ -311,7 +311,9 @@ def plot_time_series(
         # itself is considered valid.  Invalid fits often yield unphysical
         # parameters which would lead to wildly incorrect model curves.
         has_fit = any(k in fit_results for k in (f"E_{iso}", "E"))
-        fit_ok = bool(fit_results.get("fit_valid", True))
+        fit_ok = bool(
+            fit_results.get(f"fit_valid_{iso}", fit_results.get("fit_valid", True))
+        )
         if has_fit and fit_ok:
             lam = np.log(2.0) / iso_params[iso]["half_life"]
             eff = iso_params[iso]["eff"]
@@ -665,6 +667,7 @@ def plot_modeled_radon_activity(
     config=None,
     *,
     overlay_po214=False,
+    fit_valid=True,
 ):
     """Compute and plot modeled Rn-222 activity over time.
 
@@ -677,6 +680,9 @@ def plot_modeled_radon_activity(
     overlay_po214 : bool, optional
         When ``True`` overlay the Po-214 activity for QC on a secondary axis.
     """
+    if not fit_valid:
+        return
+
     from radon_activity import radon_activity_curve
 
     lam_rn = math.log(2.0) / RN222.half_life_s
