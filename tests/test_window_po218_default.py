@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from io_utils import load_config
 
 
-def test_window_po218_default(tmp_path):
+def test_window_po218_missing_not_added(tmp_path):
     cfg = {
         "pipeline": {"log_level": "INFO"},
         "spectral_fit": {},
@@ -21,4 +21,4 @@ def test_window_po218_default(tmp_path):
         json.dump(cfg, f)
 
     loaded = load_config(cfg_path)
-    assert loaded["time_fit"]["window_po218"] == [5.90, 6.10]
+    assert "window_po218" not in loaded["time_fit"]
