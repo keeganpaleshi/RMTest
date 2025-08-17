@@ -354,6 +354,13 @@ def load_config(config_path):
     else:
         val = bool(emg_cfg)
         spec["use_emg"] = {iso: val for iso in default_emg}
+    # Validate resolution settings
+    float_sigma_E = spec.get("float_sigma_E", True)
+    fix_sigma0 = spec.get("flags", {}).get("fix_sigma0", False)
+    if float_sigma_E and fix_sigma0:
+        raise ValueError(
+            "Resolution flags conflict: cannot float energy resolution while fixing sigma0"
+        )
     # CONFIG_SCHEMA validation already checks required keys
 
     return cfg
