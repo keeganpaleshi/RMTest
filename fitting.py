@@ -363,17 +363,16 @@ def fit_spectrum(
     E_lo = float(edges[0])
     E_hi = float(edges[-1])
 
-    # Augment priors with a background amplitude if not provided
     priors = dict(priors)
-    if "S_bkg" not in priors:
-        b0_mu = priors.get("b0", (0.0, 1.0))[0]
-        b1_mu = priors.get("b1", (0.0, 1.0))[0]
-        mu = b0_mu * (E_hi - E_lo) + 0.5 * b1_mu * (E_hi**2 - E_lo**2)
-        mu = max(mu, 0.0)
-        sig = max(abs(mu) * 0.1, 1.0)
-        priors["S_bkg"] = (mu, sig)
     if flags.get("background_model") == "loglin_unit":
-        required = {"b0", "b1"}
+        if "S_bkg" not in priors:
+            b0_mu = priors.get("b0", (0.0, 1.0))[0]
+            b1_mu = priors.get("b1", (0.0, 1.0))[0]
+            mu = b0_mu * (E_hi - E_lo) + 0.5 * b1_mu * (E_hi**2 - E_lo**2)
+            mu = max(mu, 0.0)
+            sig = max(abs(mu) * 0.1, 1.0)
+            priors["S_bkg"] = (mu, sig)
+        required = {"S_bkg", "b0", "b1"}
         missing = required - priors.keys()
         if missing:
             got = sorted(priors.keys())
@@ -435,8 +434,10 @@ def fit_spectrum(
     param_order.append("b0")
     param_index["b1"] = len(param_order)
     param_order.append("b1")
-    param_index["S_bkg"] = len(param_order)
-    param_order.append("S_bkg")
+    use_loglin = flags.get("background_model") == "loglin_unit"
+    if use_loglin:
+        param_index["S_bkg"] = len(param_order)
+        param_order.append("S_bkg")
 
     p0 = []
     bounds_lo, bounds_hi = [], []
@@ -477,8 +478,13 @@ def fit_spectrum(
         bounds_hi.append(hi)
 
     iso_list = ["Po210", "Po218", "Po214"]
-    area_keys = [f"S_{iso}" for iso in iso_list] + ["S_bkg"]
-    bkg_shape = _make_linear_bkg(E_lo, E_hi)
+    if use_loglin:
+        area_keys = [f"S_{iso}" for iso in iso_list] + ["S_bkg"]
+        bkg_shape = _make_linear_bkg(E_lo, E_hi)
+    else:
+        area_keys = [f"S_{iso}" for iso in iso_list]
+        def bkg_shape(x, beta0, beta1):
+            return beta0 + beta1 * x
 
     def _model_density(x, *params):
         if fix_sigma0:
@@ -506,9 +512,12 @@ def fit_spectrum(
                 y += S * gaussian(x, mu, sigma)
         beta0 = params[param_index["b0"]]
         beta1 = params[param_index["b1"]]
-        B_raw = params[param_index["S_bkg"]]
-        B = _softplus(B_raw)
-        y += B * bkg_shape(x, beta0, beta1)
+        if use_loglin:
+            B_raw = params[param_index["S_bkg"]]
+            B = _softplus(B_raw)
+            y += B * bkg_shape(x, beta0, beta1)
+        else:
+            y += bkg_shape(x, beta0, beta1)
         return np.clip(y, 1e-300, np.inf)
 
     def _model_binned(x, *params):
@@ -547,15 +556,28 @@ def fit_spectrum(
             arr = [p_map[name] for name in param_order]
             return _model_density(E_vals, *arr)
 
-        def _nll(*params):
-            p_map = dict(zip(param_order, params))
-            return neg_loglike_extended(
-                e,
-                _intensity_fn,
-                p_map,
-                area_keys=area_keys,
-                background_model=flags.get("background_model"),
-            )
+        if use_loglin:
+            def _nll(*params):
+                p_map = dict(zip(param_order, params))
+                return neg_loglike_extended(
+                    e,
+                    _intensity_fn,
+                    p_map,
+                    area_keys=area_keys,
+                    background_model=flags.get("background_model"),
+                )
+        else:
+            def _nll(*params):
+                p_map = dict(zip(param_order, params))
+                beta0 = p_map["b0"]
+                beta1 = p_map["b1"]
+                bkg_counts = max(
+                    beta0 * (E_hi - E_lo) + 0.5 * beta1 * (E_hi ** 2 - E_lo ** 2),
+                    0.0,
+                )
+                lam = np.clip(_intensity_fn(e, p_map), 1e-300, np.inf)
+                Nexp = float(sum(_softplus(p_map[f"S_{iso}"]) for iso in iso_list)) + bkg_counts
+                return float(-(np.sum(np.log(lam)) - Nexp))
 
         m = Minuit(_nll, *p0, name=param_order)
         m.errordef = Minuit.LIKELIHOOD
