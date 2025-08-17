@@ -159,10 +159,14 @@ to ``False``.  Passing ``strict=True`` (or ``--strict-covariance`` on the
 command line) instead raises a ``RuntimeError`` as soon as the matrix is
 found to be non-positive definite.
 
+### Invalid fits
+
+When ``fit_valid`` is ``False`` the analysis hides model overlays in plots and
+avoids extrapolating the derived numbers.
+
 ## Configuration
 
-The parser is case sensitive, so all keys in `config.yaml` should be lowercase. Mixed-case names from older files remain supported for backward compatibility but are deprecated.
-If `--config` is not supplied, `analyze.py` automatically looks for a `config.yaml` file in the same directory as the script.
+This pipeline relies on a single `config.yaml` only. The parser is case sensitive, so all keys in this file should be lowercase. Mixed-case names from older files remain supported for backward compatibility but are deprecated. If `--config` is not supplied, `analyze.py` automatically looks for `config.yaml` in the same directory as the script.
 
 Important toggles include:
 
