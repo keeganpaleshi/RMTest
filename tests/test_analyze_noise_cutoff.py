@@ -95,4 +95,5 @@ def test_analyze_noise_cutoff(tmp_path, monkeypatch):
     analyze.main()
 
     assert captured.get("fit_times") == [2.0]
-    assert captured.get("plot_times") == []
+    expected_time = pd.Timestamp(2.0, unit="s", tz="UTC").to_datetime64()
+    assert captured.get("plot_times") == [expected_time]
