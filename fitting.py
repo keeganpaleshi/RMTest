@@ -546,19 +546,35 @@ def fit_spectrum(
                 maxfev=CURVE_FIT_MAX_EVALS,
             )
     else:
-        def _intensity_fn(E_vals, p_map):
-            arr = [p_map[name] for name in param_order]
-            return _model_density(E_vals, *arr)
+        if use_loglin:
+            def _intensity_fn(E_vals, p_map):
+                arr = [p_map[name] for name in param_order]
+                return _model_density(E_vals, *arr)
 
-        def _nll(*params):
-            p_map = dict(zip(param_order, params))
-            return neg_loglike_extended(
-                e,
-                _intensity_fn,
-                p_map,
-                area_keys=area_keys,
-                background_model=flags.get("background_model"),
-            )
+            def _nll(*params):
+                p_map = dict(zip(param_order, params))
+                return neg_loglike_extended(
+                    e,
+                    _intensity_fn,
+                    p_map,
+                    area_keys=area_keys,
+                    background_model="loglin_unit",
+                )
+        else:
+            def _nll(*params):
+                rate = _model_density(e, *params)
+                if np.any(rate <= 0) or not np.isfinite(rate).all():
+                    return 1e50
+                S_sum = 0.0
+                for iso in iso_list:
+                    S_sum += float(_softplus(params[param_index[f"S_{iso}"]]))
+                b0 = params[param_index["b0"]]
+                b1 = params[param_index["b1"]]
+                bkg_int = b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
+                expected = S_sum + bkg_int
+                if expected <= 0 or not np.isfinite(expected):
+                    return 1e50
+                return expected - np.sum(np.log(rate))
 
         m = Minuit(_nll, *p0, name=param_order)
         m.errordef = Minuit.LIKELIHOOD
