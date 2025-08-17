@@ -85,6 +85,8 @@ from calibration import (
 )
 
 from fitting import fit_spectrum, fit_time_series, FitResult, FitParams
+from feature_selectors import select_background_factory, select_neg_loglike
+from types import SimpleNamespace
 
 from constants import (
     DEFAULT_NOISE_CUTOFF,
@@ -359,10 +361,27 @@ def _spectral_fit_with_check(
     if flags.get("fix_F", False) and "F" not in priors:
         priors_mapped["F"] = (0.0, 0.01)
 
+    analysis_opts = cfg.get("analysis", {})
+    opts = SimpleNamespace(
+        background_model=analysis_opts.get("background_model", "linear"),
+        likelihood=analysis_opts.get("likelihood", "current"),
+    )
+
+    Emin = float(bin_edges[0]) if bin_edges is not None and len(bin_edges) > 0 else float(np.min(energies))
+    Emax = float(bin_edges[-1]) if bin_edges is not None and len(bin_edges) > 0 else float(np.max(energies))
+
+    bkg_factory = select_background_factory(opts, Emin, Emax)
+    nll = select_neg_loglike(opts)
+
+    flags = dict(flags)
+    flags.setdefault("background_model", opts.background_model)
+
     fit_kwargs = {
         "energies": energies,
         "priors": priors_mapped,
         "flags": flags,
+        "background": bkg_factory,
+        "neg_loglike": nll,
     }
     if bins is not None or bin_edges is not None:
         fit_kwargs.update({"bins": bins, "bin_edges": bin_edges})
