@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from constants import PO210
+from constants import PO210, RN222
 from plot_utils import (
     plot_time_series,
     plot_spectrum,
@@ -118,6 +118,37 @@ def test_plot_time_series_auto_fd(tmp_path):
         expected = max(1, int(np.ceil((arr.max() - arr.min()) / bw)))
 
     assert len(centers) == expected
+
+
+def test_plot_time_series_defaults_to_rn_half_life(tmp_path, monkeypatch):
+    times = np.array([1000.1, 1001.1])
+    energies = np.array([7.6, 7.7])
+    cfg = basic_config()
+
+    captured = {}
+
+    def fake_plot(x, y, *args, **kwargs):
+        if kwargs.get("label") == "Model Po214":
+            captured["y"] = np.array(y)
+        return type("obj", (), {})()
+
+    monkeypatch.setattr("plot_utils.plt.plot", fake_plot)
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    plot_time_series(
+        times,
+        energies,
+        {"E": 0.1, "B": 0.0, "N0": 0.0},
+        1000.0,
+        1002.0,
+        cfg,
+        str(tmp_path / "ts_default.png"),
+    )
+
+    lam = np.log(2.0) / RN222.half_life_s
+    centers = np.array([0.5, 1.5])
+    expected = 0.1 * (1.0 - np.exp(-lam * centers))
+    assert np.allclose(captured.get("y"), expected, rtol=1e-4)
 
 
 def test_plot_spectrum_save_formats(tmp_path):
