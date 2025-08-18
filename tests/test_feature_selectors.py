@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+import likelihood_ext
 from fitting import fit_spectrum
 
 
@@ -37,7 +38,7 @@ def test_default_vs_explicit_linear_identical():
         assert res_linear.params[key] == pytest.approx(val)
 
 
-def test_explicit_extended_matches_default():
+def test_explicit_extended_matches_default(monkeypatch):
     energies = _generate_energies(1)
     priors = _base_priors()
     flags = {
@@ -48,8 +49,28 @@ def test_explicit_extended_matches_default():
         "fix_b1": True,
     }
     res_default = fit_spectrum(energies, priors, unbinned=True, flags=flags)
+
+    called = False
+    orig = likelihood_ext.neg_loglike_extended
+
+    def wrapped(E, intensity_fn, params, *, area_keys, clip=1e-300, background_model=None):
+        nonlocal called
+        called = True
+        return orig(
+            E,
+            intensity_fn,
+            params,
+            area_keys=area_keys,
+            clip=clip,
+            background_model=background_model,
+        )
+
+    monkeypatch.setattr(likelihood_ext, "neg_loglike_extended", wrapped)
+
     flags_ext = dict(flags)
     flags_ext["likelihood"] = "extended"
     res_ext = fit_spectrum(energies, priors, unbinned=True, flags=flags_ext)
+
+    assert called
     for key in ("mu_Po210", "mu_Po218", "mu_Po214"):
         assert res_ext.params[key] == pytest.approx(res_default.params[key], rel=5e-2)
