@@ -11,3 +11,7 @@ def test_cli_help():
         text=True,
     )
     assert result.returncode == 0
+    assert "--background-model" in result.stdout
+    assert "{linear,loglin_unit}" in result.stdout
+    assert "--likelihood" in result.stdout
+    assert "{current,extended}" in result.stdout

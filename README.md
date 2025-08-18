@@ -52,6 +52,7 @@ python analyze.py [--config config.yaml] --input merged_data.csv \
     [--settle-s SEC] [--debug] [--seed SEED] \
     [--ambient-file amb.txt (time conc)] [--ambient-concentration 0.1] \
     [--burst-mode rate] \
+    [--background-model linear|loglin_unit] [--likelihood current|extended] \
     [--plot-time-binning-mode fixed --plot-time-bin-width 3600] [--dump-time-series-json] \
     [--timezone UTC|EST|PST] \
     [--hierarchical-summary OUT.json]
