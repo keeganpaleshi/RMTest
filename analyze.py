@@ -2006,6 +2006,13 @@ def main(argv=None):
 
         # Flags controlling the spectral fit
         spec_flags = cfg["spectral_fit"].get("flags", {}).copy()
+        analysis_cfg = cfg.get("analysis", {})
+        bkg_model = analysis_cfg.get("background_model")
+        if bkg_model is not None:
+            spec_flags["background_model"] = bkg_model
+        like_model = analysis_cfg.get("likelihood")
+        if like_model is not None:
+            spec_flags["likelihood"] = like_model
         if float_sigma_E and spec_flags.get("fix_sigma0"):
             raise ValueError(
                 "Configuration error: cannot float energy resolution while fixing sigma0"

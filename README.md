@@ -46,6 +46,7 @@ python analyze.py [--config config.yaml] --input merged_data.csv \
     [--no-spike] [--slope RATE] \
     [--noise-cutoff N] [--calibration-slope M] \
     [--analysis-start-time ISO --analysis-end-time ISO --spike-end-time ISO] \
+    [--background-model {linear,loglin_unit}] [--likelihood {current,extended}] \
     [--spike-period START END] [--run-period START END] \
     [--radon-interval START END] \
     [--hl-po214 SEC] [--hl-po218 SEC] \
