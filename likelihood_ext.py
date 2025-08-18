@@ -52,20 +52,18 @@ def neg_loglike_extended(
 
     if background_model == "loglin_unit":
         required = {"S_bkg", "b0", "b1"}
-        missing = required - params.keys()
+        missing = [k for k in required if k not in params]
         if missing:
-            got = sorted(params.keys())
             raise ValueError(
-                "background_model=loglin_unit requires params {S_bkg, b0, b1}; got: "
-                f"{got}"
+                "background_model=loglin_unit missing params: "
+                + ", ".join(sorted(missing))
             )
 
     missing_areas = [k for k in area_keys if k not in params]
     if missing_areas:
-        got = sorted(params.keys())
-        needed = ", ".join(area_keys)
         raise ValueError(
-            f"likelihood=extended requires params {{{needed}}}; got: {got}"
+            "likelihood=extended missing params: "
+            + ", ".join(sorted(missing_areas))
         )
 
     lam = np.clip(intensity_fn(E, params), clip, np.inf)
