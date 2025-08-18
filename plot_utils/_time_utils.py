@@ -10,6 +10,27 @@ import matplotlib.ticker as mticker
 import numpy as np
 
 
+def guard_time_alias(namespace: dict) -> None:
+    """Raise ``AssertionError`` if stale time aliases are present.
+
+    Parameters
+    ----------
+    namespace : dict
+        Mapping of variable names to objects, typically ``locals()``.
+
+    Notes
+    -----
+    This helper prevents accidental use of deprecated ``times_dt`` or
+    ``times_mpl`` aliases that previously caused plotting bugs.
+    """
+
+    forbidden = {"times_dt", "times_mpl"}
+    overlap = forbidden.intersection(namespace)
+    if overlap:
+        names = ", ".join(sorted(overlap))
+        raise AssertionError(f"unexpected time alias: {names}")
+
+
 def to_mpl_times(times: Iterable) -> np.ndarray:
     """Convert an array-like of times to Matplotlib date numbers.
 
@@ -51,7 +72,7 @@ def to_mpl_times(times: Iterable) -> np.ndarray:
     return secs / 86400.0 + epoch
 
 
-def setup_time_axis(ax, times_mpl: np.ndarray):
+def setup_time_axis(ax, times: np.ndarray):
     """Apply UTC date labels and elapsed-hour secondary axis."""
     locator = mdates.AutoDateLocator()
     try:  # Concise formatter is available on newer Matplotlib
@@ -61,7 +82,7 @@ def setup_time_axis(ax, times_mpl: np.ndarray):
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
 
-    base = times_mpl[0]
+    base = times[0]
 
     def _to_hours(x):
         return (x - base) * 24.0
