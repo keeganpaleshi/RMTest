@@ -40,6 +40,13 @@ def select_background_factory(opts: Any, Emin: float, Emax: float) -> Callable:
         shape = make_linear_bkg(Emin, Emax)
 
         def bkg(E, params):
+            required = {"S_bkg", "b0", "b1"}
+            missing = sorted(required - params.keys())
+            if missing:
+                raise ValueError(
+                    "background_model=loglin_unit missing params: " + ", ".join(missing)
+                )
+
             val = shape(E, params["b0"], params["b1"])
             return softplus(params["S_bkg"]) * val
 
@@ -54,7 +61,31 @@ def select_neg_loglike(opts: Any) -> Callable:
     if getattr(opts, "likelihood", "") == "extended":
         from likelihood_ext import neg_loglike_extended
 
-        return neg_loglike_extended
+        def guarded(
+            E: Sequence[float],
+            intensity_fn: Callable[[Sequence[float], Mapping[str, float]], np.ndarray],
+            params: Mapping[str, float],
+            *,
+            area_keys: Sequence[str],
+            clip: float = 1e-300,
+            background_model: str | None = None,
+        ) -> float:
+            missing = [k for k in area_keys if k not in params]
+            if missing:
+                raise ValueError(
+                    "likelihood=extended missing params: " + ", ".join(sorted(missing))
+                )
+
+            return neg_loglike_extended(
+                E,
+                intensity_fn,
+                params,
+                area_keys=area_keys,
+                clip=clip,
+                background_model=background_model,
+            )
+
+        return guarded
 
     def neg_loglike_current(
         E: Sequence[float],
