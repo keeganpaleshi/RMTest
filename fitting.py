@@ -376,14 +376,6 @@ def fit_spectrum(
             mu = max(mu, 0.0)
             sig = max(abs(mu) * 0.1, 1.0)
             priors["S_bkg"] = (mu, sig)
-        required = {"b0", "b1"}
-        missing = required - priors.keys()
-        if missing:
-            got = sorted(priors.keys())
-            raise ValueError(
-                "background_model=loglin_unit requires params {S_bkg, b0, b1}; got: "
-                f"{got}"
-            )
 
     if "S_bkg" in priors or background_model == "loglin_unit":
         flags.setdefault("likelihood", "extended")

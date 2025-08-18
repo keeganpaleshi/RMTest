@@ -678,7 +678,7 @@ def parse_args(argv=None):
     p = argparse.ArgumentParser(
         description="Full Radon Monitor Analysis Pipeline",
         epilog=(
-            "See the README for details on opt-in spectral flags such as "
+            "See the README's Opt-in features section for "
             "background_model=loglin_unit and likelihood=extended."
         ),
     )

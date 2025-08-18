@@ -65,6 +65,13 @@ python analyze.py [--config config.yaml] --input merged_data.csv \
 The script exits with an error message if filtering removes all events at any stage
 (noise cut, burst filter, time-window selection or baseline subtraction).
 
+## Opt-in features
+
+Experimental background and likelihood implementations are gated behind
+explicit flags such as `--background-model loglin_unit` and `--likelihood extended`.
+These paths require additional parameters and will raise a concise error if any
+are missing.
+
 ## Event Filtering
 
 Noise removal, burst suppression, time-window trimming and baseline
