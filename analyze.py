@@ -2024,6 +2024,14 @@ def main(argv=None):
                 "Configuration error: fix_sigma0 requires fix_F when energy resolution is fixed"
             )
 
+        analysis_opts = cfg.get("analysis", {})
+        bg_model = analysis_opts.get("background_model")
+        like_mode = analysis_opts.get("likelihood")
+        if bg_model:
+            spec_flags["background_model"] = bg_model
+        if like_mode:
+            spec_flags["likelihood"] = like_mode
+
         # Launch the spectral fit
         spec_fit_out = None
         peak_deviation = {}

@@ -48,6 +48,7 @@ python analyze.py [--config config.yaml] --input merged_data.csv \
     [--analysis-start-time ISO --analysis-end-time ISO --spike-end-time ISO] \
     [--spike-period START END] [--run-period START END] \
     [--radon-interval START END] \
+    [--background-model {linear,loglin_unit}] [--likelihood {current,extended}] \
     [--hl-po214 SEC] [--hl-po218 SEC] \
     [--settle-s SEC] [--debug] [--seed SEED] \
     [--ambient-file amb.txt (time conc)] [--ambient-concentration 0.1] \
