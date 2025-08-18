@@ -2,7 +2,9 @@ import numpy as np
 import pytest
 
 import likelihood_ext
+from feature_selectors import select_background_factory
 from fitting import fit_spectrum
+from types import SimpleNamespace
 
 
 def _generate_energies(seed: int = 0, n: int = 20):
@@ -68,3 +70,14 @@ def test_explicit_extended_matches_default(monkeypatch):
         assert res_ext.params[key] == pytest.approx(
             res_default.params[key], rel=5e-2
         )
+
+
+def test_loglin_unit_missing_params():
+    opts = SimpleNamespace(background_model="loglin_unit")
+    bkg = select_background_factory(opts, 0.0, 1.0)
+    with pytest.raises(ValueError) as exc:
+        bkg([0.0], {})
+    assert (
+        str(exc.value)
+        == "background_model=loglin_unit missing params: S_bkg, b0, b1"
+    )

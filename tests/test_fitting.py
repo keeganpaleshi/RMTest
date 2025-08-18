@@ -144,25 +144,25 @@ def test_loglin_unit_bootstraps_background():
 
 
 def test_extended_likelihood_missing_area_key():
-    from likelihood_ext import neg_loglike_extended
+    from types import SimpleNamespace
+    from feature_selectors import select_neg_loglike
 
     E = np.array([1.0, 2.0, 3.0])
+
     def intensity(E_vals, params):
         return np.ones_like(E_vals)
 
     params = {"area": 0.0}
+    neg_loglike = select_neg_loglike(SimpleNamespace(likelihood="extended"))
     with pytest.raises(ValueError) as exc:
-        neg_loglike_extended(
+        neg_loglike(
             E,
             intensity,
             params,
             area_keys=("area", "missing"),
             background_model=None,
         )
-    assert (
-        str(exc.value)
-        == "likelihood=extended requires params {area, missing}; got: ['area']"
-    )
+    assert str(exc.value) == "likelihood=extended missing params: missing"
 
 
 def test_fit_spectrum_fixed_parameter_bounds():
