@@ -678,8 +678,8 @@ def parse_args(argv=None):
     p = argparse.ArgumentParser(
         description="Full Radon Monitor Analysis Pipeline",
         epilog=(
-            "See the README for details on opt-in spectral flags such as "
-            "background_model=loglin_unit and likelihood=extended."
+            "See the README's Opt-in section for details on experimental flags "
+            "such as background_model=loglin_unit and likelihood=extended."
         ),
     )
     default_cfg = Path(__file__).resolve().with_name("config.yaml")

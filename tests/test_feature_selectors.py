@@ -68,3 +68,39 @@ def test_explicit_extended_matches_default(monkeypatch):
         assert res_ext.params[key] == pytest.approx(
             res_default.params[key], rel=5e-2
         )
+
+
+def test_loglin_unit_missing_params():
+    from types import SimpleNamespace
+    from feature_selectors import select_background_factory
+
+    opts = SimpleNamespace(background_model="loglin_unit")
+    bkg = select_background_factory(opts, 0.0, 1.0)
+
+    with pytest.raises(ValueError) as exc:
+        bkg([0.5], {"b0": 0.0, "b1": 0.0})
+
+    assert (
+        str(exc.value)
+        == "background_model=loglin_unit requires params {S_bkg, b0, b1}; got: ['b0', 'b1']"
+    )
+
+
+def test_extended_likelihood_missing_keys_via_selector():
+    from types import SimpleNamespace
+    from feature_selectors import select_neg_loglike
+
+    opts = SimpleNamespace(likelihood="extended")
+    neg_ll = select_neg_loglike(opts)
+
+    E = np.array([1.0, 2.0, 3.0])
+    def intensity(E_vals, params):
+        return np.ones_like(E_vals)
+
+    with pytest.raises(ValueError) as exc:
+        neg_ll(E, intensity, {"area": 0.0}, area_keys=("area", "missing"))
+
+    assert (
+        str(exc.value)
+        == "likelihood=extended requires params {area, missing}; got: ['area']"
+    )
