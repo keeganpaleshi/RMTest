@@ -177,6 +177,24 @@ Key toggles in ``config.yaml`` include:
 - ``plotting.plot_save_formats`` – image formats to write
 - ``burst_filter.burst_mode`` – method for burst rejection
 
+### Opt-in background & extended likelihood
+
+These experimental modes are opt-in; the defaults remain a linear background with the current likelihood. Enable both via the command line:
+
+```bash
+python analyze.py --background-model loglin_unit --likelihood extended --input merged_data.csv
+```
+
+or in `config.yaml`:
+
+```yaml
+analysis:
+  background_model: loglin_unit
+  likelihood: extended
+```
+
+See [docs/analysis-modes.md](docs/analysis-modes.md) for rationale and definitions.
+
 `nominal_adc` under the `calibration` section sets the expected raw ADC
 centroids for Po‑210, Po‑218 and Po‑214 when using automatic calibration.
 If omitted, defaults of `{"Po210": 1250, "Po218": 1400, "Po214": 1800}`
