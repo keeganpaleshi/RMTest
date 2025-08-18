@@ -270,7 +270,9 @@ def plot_radon_activity(times, activity, out_png, errors=None, *, config=None):
 
 def plot_radon_trend(times, activity, out_png, *, config=None, fit_valid=True):
     """Wrapper used by tests expecting output path as third argument."""
-    return plot_radon_trend_full(times, activity, out_png, config=config, fit_valid=fit_valid)
+    return plot_radon_trend_full(
+        times, activity, out_png, config=config, fit_valid=fit_valid
+    )
 
 
 def _fit_params(obj: FitResult | Mapping[str, float] | None) -> FitParams:
@@ -1251,7 +1253,9 @@ def main(argv=None):
             "slope_MeV_per_ch",
             float(args.calibration_slope),
         )
-        cfg.setdefault("calibration", {})["slope_MeV_per_ch"] = float(args.calibration_slope)
+        cfg.setdefault("calibration", {})["slope_MeV_per_ch"] = float(
+            args.calibration_slope
+        )
 
     if args.float_slope:
         cfg.setdefault("calibration", {})["float_slope"] = True
@@ -1935,7 +1939,6 @@ def main(argv=None):
         priors_spec["sigma0"] = (sigE_mean, sigma_E_prior)
         priors_spec["F"] = (0.0, 0.0)
 
-
         for peak, centroid_adc in adc_peaks.items():
             mu = apply_calibration(centroid_adc, a, c, quadratic_coeff=a2)
             bounds_cfg = cfg["spectral_fit"].get("mu_bounds", {})
@@ -2006,6 +2009,12 @@ def main(argv=None):
 
         # Flags controlling the spectral fit
         spec_flags = cfg["spectral_fit"].get("flags", {}).copy()
+        analysis_opts = cfg.get("analysis", {})
+        if "background_model" in analysis_opts:
+            spec_flags["background_model"] = analysis_opts["background_model"]
+        if "likelihood" in analysis_opts:
+            spec_flags["likelihood"] = analysis_opts["likelihood"]
+
         if float_sigma_E and spec_flags.get("fix_sigma0"):
             raise ValueError(
                 "Configuration error: cannot float energy resolution while fixing sigma0"
@@ -3222,9 +3231,7 @@ def main(argv=None):
                 dN0 = fit.get("dN0_Po214", 0.0)
                 hl = _hl_value(cfg, "Rn222")
                 cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
-                A214, dA214 = radon_activity_curve(
-                    t_rel, E, dE, N0, dN0, hl, cov
-                )
+                A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
                 plot_radon_activity(
                     times,
                     A214,
@@ -3244,9 +3251,7 @@ def main(argv=None):
                 dN0 = fit.get("dN0_Po218", 0.0)
                 hl = _hl_value(cfg, "Rn222")
                 cov = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
-                A218, dA218 = radon_activity_curve(
-                    t_rel, E, dE, N0, dN0, hl, cov
-                )
+                A218, dA218 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
 
         activity_arr = err_arr = None
         if A214 is None and A218 is None:
