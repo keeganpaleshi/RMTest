@@ -3,6 +3,8 @@ import pytest
 
 import likelihood_ext
 from fitting import fit_spectrum
+from feature_selectors import select_background_factory, select_neg_loglike
+from types import SimpleNamespace
 
 
 def _generate_energies(seed: int = 0, n: int = 20):
@@ -68,3 +70,29 @@ def test_explicit_extended_matches_default(monkeypatch):
         assert res_ext.params[key] == pytest.approx(
             res_default.params[key], rel=5e-2
         )
+
+
+def test_loglin_unit_missing_param():
+    opts = SimpleNamespace(background_model="loglin_unit")
+    bkg = select_background_factory(opts, 4.0, 8.0)
+    with pytest.raises(ValueError) as exc:
+        bkg(np.array([5.0]), {"b0": 0.0, "S_bkg": 1.0})
+    assert (
+        str(exc.value)
+        == "background_model=loglin_unit requires params {S_bkg, b0, b1}; missing: ['b1']"
+    )
+
+
+def test_extended_likelihood_missing_area_key():
+    opts = SimpleNamespace(likelihood="extended")
+    neg_loglike = select_neg_loglike(opts)
+    E = np.array([1.0, 2.0, 3.0])
+    def intensity(E_vals, params):
+        return np.ones_like(E_vals)
+    params = {"area": 0.0}
+    with pytest.raises(ValueError) as exc:
+        neg_loglike(E, intensity, params, area_keys=("area", "missing"))
+    assert (
+        str(exc.value)
+        == "likelihood=extended requires params {area, missing}; missing: ['missing']"
+    )

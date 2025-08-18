@@ -143,28 +143,6 @@ def test_loglin_unit_bootstraps_background():
     assert "S_bkg" in res.params
 
 
-def test_extended_likelihood_missing_area_key():
-    from likelihood_ext import neg_loglike_extended
-
-    E = np.array([1.0, 2.0, 3.0])
-    def intensity(E_vals, params):
-        return np.ones_like(E_vals)
-
-    params = {"area": 0.0}
-    with pytest.raises(ValueError) as exc:
-        neg_loglike_extended(
-            E,
-            intensity,
-            params,
-            area_keys=("area", "missing"),
-            background_model=None,
-        )
-    assert (
-        str(exc.value)
-        == "likelihood=extended requires params {area, missing}; got: ['area']"
-    )
-
-
 def test_fit_spectrum_fixed_parameter_bounds():
     """Fixing a parameter should not trigger a bound error."""
     rng = np.random.default_rng(1)

@@ -29,8 +29,7 @@ def neg_loglike_extended(
     clip : float, optional
         Lower bound for the intensity to avoid ``log(0)``. Default is ``1e-300``.
     background_model : str, optional
-        Name of the background model. When set to ``"loglin_unit"`` required
-        background parameters are validated before evaluation.
+        Unused; parameters are assumed to be validated by the caller.
 
     Returns
     -------
@@ -49,24 +48,6 @@ def neg_loglike_extended(
     1.5...
     """
     E = np.asarray(E, dtype=float)
-
-    if background_model == "loglin_unit":
-        required = {"S_bkg", "b0", "b1"}
-        missing = required - params.keys()
-        if missing:
-            got = sorted(params.keys())
-            raise ValueError(
-                "background_model=loglin_unit requires params {S_bkg, b0, b1}; got: "
-                f"{got}"
-            )
-
-    missing_areas = [k for k in area_keys if k not in params]
-    if missing_areas:
-        got = sorted(params.keys())
-        needed = ", ".join(area_keys)
-        raise ValueError(
-            f"likelihood=extended requires params {{{needed}}}; got: {got}"
-        )
 
     lam = np.clip(intensity_fn(E, params), clip, np.inf)
     Nexp = float(sum(_softplus(params[k]) for k in area_keys))
