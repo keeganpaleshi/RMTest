@@ -58,6 +58,26 @@ python analyze.py [--config config.yaml] --input merged_data.csv \
     [--hierarchical-summary OUT.json]
 ```
 
+### Opt-in background & extended likelihood
+
+These analysis modes are experimental and opt-in. Defaults remain the legacy linear background and the current unextended likelihood.
+
+CLI example:
+
+```bash
+python analyze.py --input merged_data.csv --background-model loglin_unit --likelihood extended
+```
+
+Minimal `config.yaml` snippet:
+
+```yaml
+analysis:
+  background_model: loglin_unit
+  likelihood: extended
+```
+
+See [docs/analysis-modes.md](docs/analysis-modes.md) for brief rationale and definitions.
+
 ### Radon vs. progeny mode
 `--iso radon` (default) combines Po-218 & Po-214 counts via BLUE to yield the parent Rn-222 activity.
 `--iso po218` or `--iso po214` fits an individual progeny chain only (useful for diagnostics).
