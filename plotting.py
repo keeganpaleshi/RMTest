@@ -2,7 +2,7 @@ import matplotlib as _mpl
 _mpl.use("Agg")
 import matplotlib.pyplot as plt
 from pathlib import Path
-from plot_utils._time_utils import setup_time_axis, to_mpl_times
+from plot_utils._time_utils import guard_mpl_times, setup_time_axis
 
 __all__ = ["plot_radon_activity", "plot_radon_trend"]
 
@@ -19,7 +19,7 @@ def plot_radon_activity(ts, outdir):
     """
     outdir = Path(outdir)
     fig, ax = plt.subplots()
-    times_mpl = to_mpl_times(ts.time)
+    times_mpl = guard_mpl_times(times=ts.time)
     ax.errorbar(times_mpl, ts.activity, yerr=getattr(ts, "error", None), fmt="o")
     ax.set_ylabel("Radon activity [Bq]")
     ax.set_xlabel("Time (UTC)")
@@ -36,7 +36,7 @@ def plot_radon_trend(ts, outdir):
     """Plot radon activity trend without uncertainties."""
     outdir = Path(outdir)
     fig, ax = plt.subplots()
-    times_mpl = to_mpl_times(ts.time)
+    times_mpl = guard_mpl_times(times=ts.time)
     ax.plot(times_mpl, ts.activity, "o-")
     ax.set_ylabel("Radon activity [Bq]")
     ax.set_xlabel("Time (UTC)")

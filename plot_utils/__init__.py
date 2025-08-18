@@ -14,7 +14,7 @@ from pathlib import Path
 from color_schemes import COLOR_SCHEMES
 from constants import PO214, PO218, PO210, RN222
 from .paths import get_targets
-from ._time_utils import setup_time_axis, to_mpl_times
+from ._time_utils import guard_mpl_times, setup_time_axis
 
 # Half-life constants used for the time-series overlay [seconds]
 PO214_HALF_LIFE_S = PO214.half_life_s
@@ -253,7 +253,7 @@ def plot_time_series(
         edges = np.linspace(0, (t_end - t_start), n_bins + 1)
     centers = 0.5 * (edges[:-1] + edges[1:])
     centers_abs = t_start + centers
-    centers_mpl = to_mpl_times(centers_abs)
+    centers_mpl = guard_mpl_times(times=centers_abs)
     bin_widths = np.diff(edges)
 
     # Optional normalisation to counts / s (set in config)
@@ -535,7 +535,7 @@ def plot_radon_activity_full(
     When ``po214_activity`` is given it is overlaid for quality control
     on a secondary axis explicitly labelled as Po-214 activity.
     """
-    times_mpl = to_mpl_times(times)
+    times_mpl = guard_mpl_times(times=times)
     activity = np.asarray(activity, dtype=float)
     errors = np.asarray(errors, dtype=float)
 
@@ -581,7 +581,7 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
         Ambient concentration label to include in the plot title. When ``None``
         the concentration is omitted from the title.
     """
-    times_mpl = to_mpl_times(times)
+    times_mpl = guard_mpl_times(times=times)
     volumes = np.asarray(volumes, dtype=float)
     errors = np.asarray(errors, dtype=float)
 
@@ -669,7 +669,7 @@ def plot_radon_trend_full(times, activity, out_png, config=None, *, fit_valid=Tr
     """Plot modeled radon activity trend without uncertainties."""
     if not fit_valid:
         return
-    times_mpl = to_mpl_times(times)
+    times_mpl = guard_mpl_times(times=times)
     activity = np.asarray(activity, dtype=float)
 
     fig, ax = plt.subplots(figsize=(8, 4))
@@ -696,7 +696,7 @@ def plot_radon_trend_full(times, activity, out_png, config=None, *, fit_valid=Tr
 def plot_radon_activity(ts_dict, outdir):
     """Simple wrapper to plot radon activity time series."""
     outdir = Path(outdir)
-    times_mpl = to_mpl_times(ts_dict["time"])
+    times_mpl = guard_mpl_times(times=ts_dict["time"])
     y = np.asarray(ts_dict["activity"], dtype=float)
     e = np.asarray(ts_dict["error"], dtype=float)
 
@@ -716,7 +716,7 @@ def plot_radon_activity(ts_dict, outdir):
 def plot_radon_trend(ts_dict, outdir):
     """Simple wrapper to plot a radon activity trend."""
     outdir = Path(outdir)
-    times_mpl = to_mpl_times(ts_dict["time"])
+    times_mpl = guard_mpl_times(times=ts_dict["time"])
     y = np.asarray(ts_dict["activity"], dtype=float)
     coeff = np.polyfit(times_mpl, y, 1)
 

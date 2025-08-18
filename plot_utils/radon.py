@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
 
-from ._time_utils import setup_time_axis, to_mpl_times
+from ._time_utils import guard_mpl_times, setup_time_axis
 
 
 def _save(fig, outdir: Path, name: str) -> None:
@@ -12,7 +12,7 @@ def _save(fig, outdir: Path, name: str) -> None:
 
 
 def plot_radon_activity(ts_dict, outdir: Path, out_png: str | Path | None = None) -> None:
-    times_mpl = to_mpl_times(ts_dict["time"])
+    times_mpl = guard_mpl_times(times=ts_dict["time"])
     activity = np.asarray(ts_dict["activity"], dtype=float)
     errors = np.asarray(ts_dict["error"], dtype=float)
     fig, ax = plt.subplots()
@@ -31,7 +31,7 @@ def plot_radon_activity(ts_dict, outdir: Path, out_png: str | Path | None = None
 
 
 def plot_radon_trend(ts_dict, outdir: Path, out_png: str | Path | None = None) -> None:
-    times_mpl = to_mpl_times(ts_dict["time"])
+    times_mpl = guard_mpl_times(times=ts_dict["time"])
     activity = np.asarray(ts_dict["activity"], dtype=float)
     if times_mpl.size < 2:
         coeff = np.array([0.0, activity[0] if activity.size else 0.0])

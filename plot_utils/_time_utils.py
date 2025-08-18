@@ -51,6 +51,26 @@ def to_mpl_times(times: Iterable) -> np.ndarray:
     return secs / 86400.0 + epoch
 
 
+def guard_mpl_times(*, times=None, times_mpl=None, times_dt=None) -> np.ndarray:
+    """Normalize time inputs and forbid stale aliases.
+
+    Exactly one of ``times`` or ``times_mpl`` must be supplied. The legacy
+    ``times_dt`` alias is rejected to avoid accidental reintroduction of the
+    old ``times_dt``/``times_mpl`` bug. The return value is always a NumPy
+    array of Matplotlib date numbers.
+    """
+
+    if times_dt is not None:
+        raise AssertionError("times_dt is deprecated; use 'times' or 'times_mpl'")
+
+    provided = (times is not None, times_mpl is not None)
+    if sum(provided) != 1:
+        raise ValueError("Provide exactly one of 'times' or 'times_mpl'")
+
+    arr = times_mpl if times_mpl is not None else to_mpl_times(times)
+    return np.asarray(arr, dtype=float)
+
+
 def setup_time_axis(ax, times_mpl: np.ndarray):
     """Apply UTC date labels and elapsed-hour secondary axis."""
     locator = mdates.AutoDateLocator()
