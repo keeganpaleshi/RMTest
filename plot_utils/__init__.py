@@ -14,7 +14,7 @@ from pathlib import Path
 from color_schemes import COLOR_SCHEMES
 from constants import PO214, PO218, PO210, RN222
 from .paths import get_targets
-from ._time_utils import setup_time_axis, to_mpl_times
+from ._time_utils import guard_time_alias, setup_time_axis, to_mpl_times
 
 # Half-life constants used for the time-series overlay [seconds]
 PO214_HALF_LIFE_S = PO214.half_life_s
@@ -115,6 +115,7 @@ def plot_time_series(
         +/-1 sigma bands around the corresponding model.
     """
 
+    guard_time_alias(locals())
     if fit_results is None:
         fit_results = {}
 
@@ -253,7 +254,7 @@ def plot_time_series(
         edges = np.linspace(0, (t_end - t_start), n_bins + 1)
     centers = 0.5 * (edges[:-1] + edges[1:])
     centers_abs = t_start + centers
-    centers_mpl = to_mpl_times(centers_abs)
+    centers_plot = to_mpl_times(centers_abs)
     bin_widths = np.diff(edges)
 
     # Optional normalisation to counts / s (set in config)
@@ -287,7 +288,7 @@ def plot_time_series(
         style = str(config.get("plot_time_style", "steps")).lower()
         if style == "lines":
             plt.plot(
-                centers_mpl,
+                centers_plot,
                 counts_iso,
                 marker="o",
                 linestyle="-",
@@ -296,7 +297,7 @@ def plot_time_series(
             )
         else:
             plt.step(
-                centers_mpl,
+                centers_plot,
                 counts_iso,
                 where="mid",
                 color=colors[iso],
@@ -333,7 +334,7 @@ def plot_time_series(
             # Convert rate (counts/s) to expected counts per bin if not normalising
             model_counts = r_rel if normalise_rate else r_rel * bin_widths
             plt.plot(
-                centers_mpl,
+                centers_plot,
                 model_counts,
                 color=colors[iso],
                 lw=2,
@@ -345,7 +346,7 @@ def plot_time_series(
                 if err.size == model_counts.size:
                     kw = {"step": "mid"} if style != "lines" else {}
                     plt.fill_between(
-                        centers_mpl,
+                        centers_plot,
                         model_counts - err,
                         model_counts + err,
                         color=colors[iso],
@@ -364,7 +365,7 @@ def plot_time_series(
         plt.legend(fontsize="small")
 
     ax = plt.gca()
-    setup_time_axis(ax, centers_mpl)
+    setup_time_axis(ax, centers_plot)
     plt.gcf().autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)
     ax.ticklabel_format(axis="y", style="plain")
@@ -535,7 +536,8 @@ def plot_radon_activity_full(
     When ``po214_activity`` is given it is overlaid for quality control
     on a secondary axis explicitly labelled as Po-214 activity.
     """
-    times_mpl = to_mpl_times(times)
+    guard_time_alias(locals())
+    times = to_mpl_times(times)
     activity = np.asarray(activity, dtype=float)
     errors = np.asarray(errors, dtype=float)
 
@@ -544,18 +546,18 @@ def plot_radon_activity_full(
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("radon_activity", "#9467bd")
     label = None if po214_activity is None else "Rn-222 Activity"
-    ax.errorbar(times_mpl, activity, yerr=errors, fmt="o-", color=color, label=label)
+    ax.errorbar(times, activity, yerr=errors, fmt="o-", color=color, label=label)
     ax.set_xlabel("Time (UTC)")
     ax.set_ylabel("Rn-222 Activity (Bq)")
     ax.set_title("Extrapolated Radon Activity vs. Time")
     ax.ticklabel_format(axis="y", style="plain")
-    setup_time_axis(ax, times_mpl)
+    setup_time_axis(ax, times)
 
     if po214_activity is not None:
         po214_activity = np.asarray(po214_activity, dtype=float)
         color214 = palette.get("Po214", "#d62728")
         ax2 = ax.twinx()
-        ax2.plot(times_mpl, po214_activity, "--", color=color214, label="Po-214 Activity (QC)")
+        ax2.plot(times, po214_activity, "--", color=color214, label="Po-214 Activity (QC)")
         ax2.set_ylabel("Po-214 Activity (Bq)")
         ax2.ticklabel_format(axis="y", style="plain")
         ax2.yaxis.get_offset_text().set_visible(False)
@@ -581,7 +583,8 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
         Ambient concentration label to include in the plot title. When ``None``
         the concentration is omitted from the title.
     """
-    times_mpl = to_mpl_times(times)
+    guard_time_alias(locals())
+    times = to_mpl_times(times)
     volumes = np.asarray(volumes, dtype=float)
     errors = np.asarray(errors, dtype=float)
 
@@ -589,7 +592,7 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("equivalent_air", "#2ca02c")
-    ax.errorbar(times_mpl, volumes, yerr=errors, fmt="o-", color=color)
+    ax.errorbar(times, volumes, yerr=errors, fmt="o-", color=color)
     ax.set_xlabel("Time (UTC)")
     ax.set_ylabel("Equivalent Air Volume")
     if conc is None:
@@ -598,7 +601,7 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
         title = f"Equivalent Air Volume vs. Time (ambient {conc} Bq/L)"
     ax.set_title(title)
 
-    setup_time_axis(ax, times_mpl)
+    setup_time_axis(ax, times)
     fig.autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
@@ -669,20 +672,21 @@ def plot_radon_trend_full(times, activity, out_png, config=None, *, fit_valid=Tr
     """Plot modeled radon activity trend without uncertainties."""
     if not fit_valid:
         return
-    times_mpl = to_mpl_times(times)
+    guard_time_alias(locals())
+    times = to_mpl_times(times)
     activity = np.asarray(activity, dtype=float)
 
     fig, ax = plt.subplots(figsize=(8, 4))
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("radon_activity", "#9467bd")
-    ax.plot(times_mpl, activity, "o-", color=color)
+    ax.plot(times, activity, "o-", color=color)
     ax.set_xlabel("Time (UTC)")
     ax.set_ylabel("Radon Activity (Bq)")
     ax.set_title("Radon Activity Trend")
 
     ax.ticklabel_format(axis="y", style="plain")
-    setup_time_axis(ax, times_mpl)
+    setup_time_axis(ax, times)
     fig.autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
@@ -696,16 +700,17 @@ def plot_radon_trend_full(times, activity, out_png, config=None, *, fit_valid=Tr
 def plot_radon_activity(ts_dict, outdir):
     """Simple wrapper to plot radon activity time series."""
     outdir = Path(outdir)
-    times_mpl = to_mpl_times(ts_dict["time"])
+    guard_time_alias(locals())
+    times = to_mpl_times(ts_dict["time"])
     y = np.asarray(ts_dict["activity"], dtype=float)
     e = np.asarray(ts_dict["error"], dtype=float)
 
     fig, ax = plt.subplots()
-    ax.errorbar(times_mpl, y, yerr=e, fmt="o")
+    ax.errorbar(times, y, yerr=e, fmt="o")
     ax.set_ylabel("Radon activity [Bq]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
-    setup_time_axis(ax, times_mpl)
+    setup_time_axis(ax, times)
     fig.autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
@@ -716,17 +721,18 @@ def plot_radon_activity(ts_dict, outdir):
 def plot_radon_trend(ts_dict, outdir):
     """Simple wrapper to plot a radon activity trend."""
     outdir = Path(outdir)
-    times_mpl = to_mpl_times(ts_dict["time"])
+    guard_time_alias(locals())
+    times = to_mpl_times(ts_dict["time"])
     y = np.asarray(ts_dict["activity"], dtype=float)
-    coeff = np.polyfit(times_mpl, y, 1)
+    coeff = np.polyfit(times, y, 1)
 
     fig, ax = plt.subplots()
-    ax.plot(times_mpl, y, "o")
-    ax.plot(times_mpl, np.polyval(coeff, times_mpl))
+    ax.plot(times, y, "o")
+    ax.plot(times, np.polyval(coeff, times))
     ax.set_ylabel("Radon activity [Bq]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
-    setup_time_axis(ax, times_mpl)
+    setup_time_axis(ax, times)
     fig.autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)
     plt.tight_layout()

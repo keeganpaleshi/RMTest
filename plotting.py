@@ -2,7 +2,7 @@ import matplotlib as _mpl
 _mpl.use("Agg")
 import matplotlib.pyplot as plt
 from pathlib import Path
-from plot_utils._time_utils import setup_time_axis, to_mpl_times
+from plot_utils._time_utils import guard_time_alias, setup_time_axis, to_mpl_times
 
 __all__ = ["plot_radon_activity", "plot_radon_trend"]
 
@@ -18,13 +18,14 @@ def plot_radon_activity(ts, outdir):
         Output directory where ``radon_activity.png`` will be saved.
     """
     outdir = Path(outdir)
+    guard_time_alias(locals())
     fig, ax = plt.subplots()
-    times_mpl = to_mpl_times(ts.time)
-    ax.errorbar(times_mpl, ts.activity, yerr=getattr(ts, "error", None), fmt="o")
+    times = to_mpl_times(ts.time)
+    ax.errorbar(times, ts.activity, yerr=getattr(ts, "error", None), fmt="o")
     ax.set_ylabel("Radon activity [Bq]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
-    setup_time_axis(ax, times_mpl)
+    setup_time_axis(ax, times)
     fig.autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)
     fig.tight_layout()
@@ -36,12 +37,13 @@ def plot_radon_trend(ts, outdir):
     """Plot radon activity trend without uncertainties."""
     outdir = Path(outdir)
     fig, ax = plt.subplots()
-    times_mpl = to_mpl_times(ts.time)
-    ax.plot(times_mpl, ts.activity, "o-")
+    guard_time_alias(locals())
+    times = to_mpl_times(ts.time)
+    ax.plot(times, ts.activity, "o-")
     ax.set_ylabel("Radon activity [Bq]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
-    setup_time_axis(ax, times_mpl)
+    setup_time_axis(ax, times)
     fig.autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)
     fig.tight_layout()
