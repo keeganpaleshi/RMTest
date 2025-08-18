@@ -62,6 +62,25 @@ python analyze.py [--config config.yaml] --input merged_data.csv \
 `--iso po218` or `--iso po214` fits an individual progeny chain only (useful for diagnostics).
 
 
+### Opt-in background & extended likelihood
+
+These experimental analysis modes are opt-in; legacy linear background and current likelihood remain the defaults.
+
+```bash
+python analyze.py --background-model loglin_unit --likelihood extended --input merged_data.csv
+```
+
+Minimal `config.yaml`:
+
+```yaml
+analysis:
+  background_model: loglin_unit
+  likelihood: extended
+```
+
+See [analysis modes](docs/analysis-modes.md) for more details.
+
+
 The script exits with an error message if filtering removes all events at any stage
 (noise cut, burst filter, time-window selection or baseline subtraction).
 
