@@ -616,6 +616,10 @@ def write_summary(
 
     sanitized = to_native(summary_dict)
 
+    # Ensure a diagnostics block is always present
+    if not isinstance(sanitized.get("diagnostics"), dict):
+        sanitized["diagnostics"] = to_native(Diagnostics())
+
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(sanitized, f, indent=4)
 
