@@ -13,6 +13,7 @@ import pandas as pd
 from collections.abc import Mapping
 from typing import Any, Iterator
 from constants import load_nuclide_overrides
+from reporting import Diagnostics
 
 import numpy as np
 from utils import to_native
@@ -88,6 +89,7 @@ class Summary(Mapping[str, Any]):
     cli_sha256: str | None = None
     cli_args: list[str] = field(default_factory=list)
     analysis: dict = field(default_factory=dict)
+    diagnostics: Diagnostics = field(default_factory=Diagnostics)
 
     def __getitem__(self, key: str) -> Any:  # type: ignore[override]
         return getattr(self, key)
