@@ -330,6 +330,7 @@ def fit_spectrum(
     if flags is None:
         flags = {}
     likelihood_mode = "unbinned" if unbinned else "binned_poisson"
+    likelihood_path = "unbinned_extended" if unbinned else "binned_poisson"
     if flags.get("fix_sigma_E"):
         flags.setdefault("fix_sigma0", True)
         flags.setdefault("fix_F", True)
@@ -610,6 +611,7 @@ def fit_spectrum(
             out["chi2"] = float(2 * m.fval)
             out["chi2_ndf"] = out["chi2"] / ndf if ndf != 0 else np.nan
             out["aic"] = float(2 * m.fval + 2 * k)
+            out["likelihood_path"] = likelihood_path
             return FitResult(
                 out,
                 cov,
@@ -684,6 +686,7 @@ def fit_spectrum(
             cov = np.zeros((len(param_order), len(param_order)))
             k = len(param_order)
             out["aic"] = float(2 * m.fval + 2 * k)
+            out["likelihood_path"] = likelihood_path
             return FitResult(
                 out,
                 cov,
@@ -746,6 +749,7 @@ def fit_spectrum(
             out["dF"] = 0.0
         k = len(param_order)
         out["aic"] = float(2 * m.fval + 2 * k)
+        out["likelihood_path"] = likelihood_path
         return FitResult(
             out,
             cov,
@@ -801,6 +805,7 @@ def fit_spectrum(
         out["dF"] = 0.0
 
     out["fit_valid"] = fit_valid
+    out["likelihood_path"] = likelihood_path
 
     model_counts = _model_binned(centers, *popt)
     with np.errstate(divide="ignore", invalid="ignore"):

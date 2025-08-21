@@ -885,6 +885,7 @@ print(summary)
 ## Spectral fit hardening and defaults
 
 The spectral fitting routine now uses a binned Poisson likelihood by default, providing improved numerical stability for large event counts. The legacy unbinned path remains available by setting `spectral_fit.unbinned_likelihood` to `true` in the configuration.
+The `summary.json` spectral section reports this via a new `likelihood_path` field.
 
 Example:
 
