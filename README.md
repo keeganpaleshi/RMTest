@@ -882,3 +882,16 @@ summary = fit_hierarchical_runs(run_results)
 print(summary)
 ```
 
+## Spectral fit hardening and defaults
+
+The spectral fitting routine now uses a binned Poisson likelihood by default,
+providing improved numerical stability for large event counts. The legacy
+unbinned path remains available by setting ``spectral_fit.unbinned_likelihood``
+to ``true`` in the configuration.
+
+Example command line:
+
+```bash
+python analyze.py --input merged_data.csv
+```
+
