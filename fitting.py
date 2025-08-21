@@ -148,7 +148,9 @@ class FitResult:
             ordered = [
                 k
                 for k in self.params.keys()
-                if k != "fit_valid" and not k.startswith("d") and not k.startswith("cov_")
+                if k not in {"fit_valid", "nll"}
+                and not k.startswith("d")
+                and not k.startswith("cov_")
             ]
             self.param_index = {name: i for i, name in enumerate(ordered)}
         elif self.param_index is not None:
@@ -764,6 +766,7 @@ def _neg_log_likelihood_time(
     fix_b_map,
     fix_n0_map,
     param_indices,
+    fixed_b_values=None,
 ):
     """
     params: tuple of all (E_iso, [B_iso], [N0_iso], for each iso in iso_list, in the order recorded by param_indices)
@@ -775,6 +778,7 @@ def _neg_log_likelihood_time(
     fix_b_map, fix_n0_map: booleans per iso
     param_indices: dictionary mapping each parameter name ("E_Po214", "B_Po214", "N0_Po214", etc.)
                      index into the params tuple.
+    fixed_b_values: optional mapping iso -> fixed background rate when ``fix_b_map[iso]`` is True
     Returns: scalar negative log likelihood
     """
     nll = 0.0
@@ -796,7 +800,13 @@ def _neg_log_likelihood_time(
 
         # Extract parameters (some may be fixed to zero):
         E_iso = p[f"E_{iso}"]
-        B_iso = 0.0 if fix_b_map[iso] else p[f"B_{iso}"]
+        if fix_b_map[iso]:
+            if fixed_b_values is None:
+                B_iso = 0.0
+            else:
+                B_iso = float(fixed_b_values.get(iso, 0.0))
+        else:
+            B_iso = p[f"B_{iso}"]
         N0_iso = 0.0 if fix_n0_map[iso] else p[f"N0_{iso}"]
 
         # 1) Integral term. When per-event weights are supplied we
@@ -905,6 +915,7 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
     # 1) Build maps: lam_map, eff_map, fix_b_map, fix_n0_map
     lam_map, eff_map = {}, {}
     fix_b_map, fix_n0_map = {}, {}
+    b_fixed_values = {}
     for iso in iso_list:
         iso_cfg = config["isotopes"][iso]
         hl = float(iso_cfg["half_life_s"])
@@ -921,6 +932,8 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
             eff_map[iso] = eff
         fix_b_map[iso] = not bool(config.get("fit_background", False))
         fix_n0_map[iso] = not bool(config.get("fit_initial", False))
+        if fix_b_map[iso]:
+            b_fixed_values[iso] = float(config.get("background_guess", 0.0))
 
     # 2) Decide parameter ordering. We always fit E_iso, then optionally B_iso, N0_iso.
     param_indices = {}  # name   index in the flat parameter tuple
@@ -986,6 +999,7 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
             fix_b_map,
             fix_n0_map,
             param_indices,
+            b_fixed_values,
         )
 
     # Collect parameter names in the same order as initial_guesses
@@ -1071,9 +1085,11 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
         fix_b_map,
         fix_n0_map,
         param_indices,
+        b_fixed_values,
     )
     ts_val = max(0.0, 2.0 * (nll_null - best_nll))
     out["lrt_ts"] = ts_val
+    out["nll"] = best_nll
     try:
         crit = chi2.ppf(0.95, df=len(iso_list))
     except Exception:

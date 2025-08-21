@@ -882,3 +882,30 @@ summary = fit_hierarchical_runs(run_results)
 print(summary)
 ```
 
+## Time fit and baseline validation
+
+Time-series fitting now performs an optional two-pass procedure. The first
+pass holds the background term ``B`` fixed—using
+``time_fit.background_b_fixed_value`` or the Po-214 baseline rate—while fitting
+the activity and decay constant. The background is released in the second pass
+and that result is kept only if the Akaike Information Criterion improves by at
+least ``0.5``. Enable this behaviour via:
+
+```yaml
+time_fit:
+  fix_background_b_first_pass: true
+  background_b_fixed_value: null
+```
+
+Plots are guarded against missing Po-214/Po-210 series and the default time
+binning is ``1`` hour:
+
+```yaml
+plotting:
+  plot_time_binning_mode: fixed
+  plot_time_bin_width_s: 3600
+```
+
+Baseline windows are validated before analysis to catch inconsistent timestamps
+early.
+
