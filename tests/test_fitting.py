@@ -301,24 +301,47 @@ def test_model_binned_variable_width(monkeypatch):
         "b1": (0.0, 0.0),
     }
 
-    captured = {}
+    captured: dict[str, object] = {}
 
-    def dummy_curve_fit(func, xdata, ydata, p0=None, bounds=None, maxfev=None):
-        captured["func"] = func
-        captured["xdata"] = xdata
-        captured["p0"] = p0
-        return np.array(p0), np.eye(len(p0))
+    class DummyMinuit:
+        LIKELIHOOD = 0.5
 
-    monkeypatch.setattr(fitting_mod, "curve_fit", dummy_curve_fit)
+        def __init__(self, func, *args, name=None):
+            captured["func"] = func
+            captured["p0"] = args
+            self.values = {n: v for n, v in zip(name, args)}
+            self.errors = {n: 0.0 for n in name}
+            self.limits = {}
+            self.fixed = {}
+            self.valid = True
+            self.covariance = np.eye(len(args))
+            self.fval = 0.0
+
+        def migrad(self):
+            return None
+
+        def simplex(self):
+            return None
+
+        def hesse(self):
+            return None
+
+    monkeypatch.setattr(fitting_mod, "Minuit", DummyMinuit)
     fit_spectrum(energies, priors, bin_edges=edges)
 
-    func = captured["func"]
-    xdata = captured["xdata"]
+    nll = captured["func"]
+    model_binned = None
+    for cell in nll.__closure__:
+        if callable(cell.cell_contents):
+            model_binned = cell.cell_contents
+            break
+    assert model_binned is not None
+    centers = 0.5 * (edges[:-1] + edges[1:])
     p0 = captured["p0"]
-    assert np.allclose(func(xdata, *p0), np.diff(edges))
+    assert np.allclose(model_binned(centers, *p0), np.diff(edges))
 
     with pytest.raises(KeyError):
-        func(np.array([0.5, 0.6]), *p0)
+        model_binned(np.array([0.5, 0.6]), *p0)
 
 
 def test_fit_spectrum_custom_bounds():
@@ -541,23 +564,38 @@ def test_fit_spectrum_covariance_checks(monkeypatch):
 
     import fitting as fitting_mod
 
-    orig_curve_fit = fitting_mod.curve_fit
+    class GoodMinuit:
+        LIKELIHOOD = 0.5
 
-    def good_curve_fit(*args, **kwargs):
-        popt, pcov = orig_curve_fit(*args, **kwargs)
-        return popt, np.eye(len(popt))
+        def __init__(self, func, *args, name=None):
+            self.func = func
+            self.values = {n: v for n, v in zip(name, args)}
+            self.errors = {n: 0.0 for n in name}
+            self.limits = {}
+            self.fixed = {}
+            self.valid = True
+            self.covariance = np.eye(len(args))
+            self.fval = 0.0
 
-    monkeypatch.setattr(fitting_mod, "curve_fit", good_curve_fit)
+        def migrad(self):
+            return None
+
+        def simplex(self):
+            return None
+
+        def hesse(self):
+            return None
+
+    class BadMinuit(GoodMinuit):
+        def hesse(self):
+            self.covariance = np.eye(len(self.values))
+            self.covariance[0, 0] = -1.0
+
+    monkeypatch.setattr(fitting_mod, "Minuit", GoodMinuit)
     out = fit_spectrum(energies, priors)
     assert out.params["fit_valid"]
 
-    def bad_curve_fit(*args, **kwargs):
-        popt, pcov = orig_curve_fit(*args, **kwargs)
-        pcov = np.eye(len(popt))
-        pcov[0, 0] = -1.0
-        return popt, pcov
-
-    monkeypatch.setattr(fitting_mod, "curve_fit", bad_curve_fit)
+    monkeypatch.setattr(fitting_mod, "Minuit", BadMinuit)
     out_bad = fit_spectrum(energies, priors)
     assert not out_bad.params["fit_valid"]
 
