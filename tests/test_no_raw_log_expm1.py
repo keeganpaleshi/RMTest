@@ -5,6 +5,7 @@ ALLOWED_FILES = {
     pathlib.Path('math_utils.py'),
     pathlib.Path('tests/test_math_utils.py'),
     pathlib.Path('tests/test_no_raw_log_expm1.py'),
+    pathlib.Path('tests/test_no_unsafe_expm1.py'),
 }
 
 pattern = re.compile(r"log\s*\(\s*[^)]*expm1")
