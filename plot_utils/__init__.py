@@ -752,7 +752,14 @@ def plot_spectrum_comparison(
         if data.size == 0:
             bin_edges = np.linspace(0.0, 1.0, bins + 1)
         else:
-            bin_edges = np.histogram_bin_edges(data, bins=bins)
+            # ``np.histogram_bin_edges`` can change between NumPy versions
+            # which leads to non-deterministic plots in tests.  Construct
+            # evenly spaced bins explicitly for reproducibility.
+            data_min = float(data.min())
+            data_max = float(data.max())
+            if data_max == data_min:
+                data_max = data_min + 1.0
+            bin_edges = np.linspace(data_min, data_max, bins + 1)
 
     hist_pre, edges = np.histogram(pre, bins=bin_edges)
     hist_post, _ = np.histogram(post, bins=edges)
