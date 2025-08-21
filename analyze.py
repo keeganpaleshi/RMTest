@@ -77,6 +77,7 @@ from io_utils import (
     apply_burst_filter,
     Summary,
 )
+from reporting import build_diagnostics
 from utils import to_native
 from calibration import (
     derive_calibration_constants,
@@ -3084,6 +3085,10 @@ def main(argv=None):
             raise FileExistsError(f"Results folder already exists: {results_dir}")
 
     copy_config(results_dir, cfg, exist_ok=args.overwrite)
+    diagnostics = build_diagnostics(
+        summary, spectrum_results, time_fit_results, df_analysis, cfg
+    )
+    summary.diagnostics = diagnostics
     out_dir = Path(write_summary(results_dir, summary))
     out_dir.mkdir(parents=True, exist_ok=True)
 
