@@ -882,24 +882,32 @@ summary = fit_hierarchical_runs(run_results)
 print(summary)
 ```
 
+## Spectral fit hardening and defaults
+
+The spectral fitting routine now uses a binned Poisson likelihood by default, providing improved numerical stability for large event counts. The legacy unbinned path remains available by setting `spectral_fit.unbinned_likelihood` to `true` in the configuration.
+
+Example:
+
+```bash
+python analyze.py --input path/to/merged_output.csv
+```
+
 ## Time fit and baseline validation
 
-The time-series fitter now performs two passes: the first pass can hold the
-background term ``B`` fixed while fitting the decay curve.  Set the following
-configuration keys to enable or customise the behaviour:
+The time-series fitter now performs two passes: the first pass can hold the background term `B` fixed while fitting the decay curve. Configure with:
 
 ```yaml
 time_fit:
   fix_background_b_first_pass: true
   background_b_fixed_value: null  # fall back to baseline Po214 rate
+plotting:
+  plot_time_binning_mode: fixed
+  plot_time_bin_width_s: 3600
 ```
 
-After the initial pass, the fit is repeated with ``B`` free and the result is
-kept only if the Akaike Information Criterion improves by at least 0.5.
+After the initial pass, the fit is repeated with `B` free and the result is kept only if the Akaike Information Criterion improves by at least 0.5.
 
-Baseline windows are also sanity-checked prior to analysis.  A configuration
-like the example below will trigger an early ``ValueError`` because the baseline
-starts after the analysis window ends:
+Baseline windows are validated before analysis. The configuration below will raise a `ValueError` because the baseline starts after the analysis window:
 
 ```yaml
 baseline:
@@ -908,9 +916,10 @@ analysis:
   analysis_end_time: "2024-01-01T23:00:00Z"
 ```
 
-Run the analysis as usual:
+Run as usual:
 
 ```bash
 python analyze.py --input path/to/merged_output.csv
 ```
+
 

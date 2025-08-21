@@ -1,0 +1,19 @@
+import numpy as np
+from math_utils import log_expm1_stable
+
+
+def test_log_expm1_stable_matches_numpy():
+    y = np.array([-50.0, -1e-6, 0.0, 1e-6, 1.0, 10.0])
+    tiny = np.finfo(float).tiny
+    expected = np.where(
+        y > 0,
+        y + np.log1p(-np.exp(-y)),
+        np.log(np.clip(np.expm1(y), tiny, None)),
+    )
+    np.testing.assert_allclose(log_expm1_stable(y), expected, rtol=1e-12, atol=0)
+
+
+def test_log_expm1_stable_large_monotonic():
+    vals = log_expm1_stable(np.array([800.0, 1000.0]))
+    assert np.isfinite(vals[0]) and np.isfinite(vals[1])
+    assert vals[1] > vals[0]

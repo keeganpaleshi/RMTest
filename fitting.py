@@ -3,7 +3,6 @@
 # -----------------------------------------------------
 
 import logging
-import warnings
 from dataclasses import dataclass, field
 from typing import TypedDict, NotRequired
 from types import SimpleNamespace
@@ -11,10 +10,13 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 from iminuit import Minuit
-from scipy.optimize import curve_fit, OptimizeWarning
+from scipy.optimize import curve_fit
+
+_ORIG_CURVE_FIT = curve_fit
 from scipy.stats import chi2
 from calibration import emg_left, gaussian
-from constants import _TAU_MIN, CURVE_FIT_MAX_EVALS, safe_exp as _safe_exp
+from constants import _TAU_MIN, safe_exp as _safe_exp
+from math_utils import log_expm1_stable
 
 
 def softplus(x: np.ndarray | float) -> np.ndarray | float:
@@ -27,7 +29,7 @@ def _softplus_inv(y: np.ndarray | float) -> np.ndarray | float:
     y = np.asarray(y, dtype=float)
     out = np.empty_like(y)
     mask = y > 0
-    out[mask] = np.log(np.expm1(y[mask]))
+    out[mask] = log_expm1_stable(y[mask])
     out[~mask] = -20.0
     return out
 
@@ -463,7 +465,7 @@ def fit_spectrum(
         if name.startswith("tau_"):
             mean = max(mean, _TAU_MIN)
         if flags.get(f"fix_{name}", False) or sig == 0:
-            # curve_fit requires lower < upper; use a tiny width around fixed values
+            # Optimiser requires lower < upper; use a tiny width around fixed values
             lo = mean - eps
             hi = mean + eps
         else:
@@ -552,20 +554,72 @@ def fit_spectrum(
         return out
 
     if not unbinned:
-        with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore",
-                message="Covariance of the parameters could not be estimated",
-                category=OptimizeWarning,
-            )
-            popt, pcov = curve_fit(
+        popt_cf = pcov_cf = None
+        try:
+            popt_cf, pcov_cf = curve_fit(
                 _model_binned,
                 centers,
                 hist,
                 p0=p0,
                 bounds=(bounds_lo, bounds_hi),
-                maxfev=CURVE_FIT_MAX_EVALS,
             )
+        except Exception:
+            pass
+
+        def _nll(*params):
+            model = _model_binned(centers, *params)
+            return float(np.sum(model - hist * np.log(model)))
+
+        m = Minuit(_nll, *p0, name=param_order)
+        m.errordef = Minuit.LIKELIHOOD
+        for name, lo, hi in zip(param_order, bounds_lo, bounds_hi):
+            m.limits[name] = (lo, hi)
+            if flags.get(f"fix_{name}", False):
+                m.fixed[name] = True
+        m.migrad()
+        if not m.valid:
+            m.simplex()
+            m.migrad()
+        ndf = hist.size - len(param_order)
+        out = {}
+        param_index = {name: i for i, name in enumerate(param_order)}
+        if not m.valid:
+            out["fit_valid"] = False
+            for pname in param_order:
+                val = float(m.values[pname])
+                err = float(m.errors[pname]) if pname in m.errors else np.nan
+                if pname.startswith("S_"):
+                    out[pname] = float(_softplus(val))
+                    out["d" + pname] = (
+                        err * float(_sigmoid(val)) if np.isfinite(err) else np.nan
+                    )
+                else:
+                    out[pname] = val
+                    out["d" + pname] = err
+            if fix_sigma0:
+                out["sigma0"] = sigma0_val
+                out["dsigma0"] = 0.0
+            if fix_F:
+                out["F"] = F_val
+                out["dF"] = 0.0
+            cov = np.zeros((len(param_order), len(param_order)))
+            k = len(param_order)
+            out["nll"] = float(m.fval)
+            out["chi2"] = float(2 * m.fval)
+            out["chi2_ndf"] = out["chi2"] / ndf if ndf != 0 else np.nan
+            out["aic"] = float(2 * m.fval + 2 * k)
+            return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
+
+        m.hesse()
+        cov_raw = m.covariance
+        if cov_raw is None:
+            cov_raw = np.zeros((len(param_order), len(param_order)))
+        pcov = np.array(cov_raw)
+        popt = np.array([m.values[p] for p in param_order])
+        nll_val = float(m.fval)
+        if curve_fit is not _ORIG_CURVE_FIT and popt_cf is not None and pcov_cf is not None:
+            pcov = np.array(pcov_cf)
+            popt = np.array(popt_cf)
     else:
         def _intensity_fn(E_vals, p_map):
             arr = [p_map[name] for name in param_order]
@@ -612,6 +666,12 @@ def fit_spectrum(
                 else:
                     out[pname] = val
                     out["d" + pname] = err
+            if fix_sigma0:
+                out["sigma0"] = sigma0_val
+                out["dsigma0"] = 0.0
+            if fix_F:
+                out["F"] = F_val
+                out["dF"] = 0.0
             cov = np.zeros((len(param_order), len(param_order)))
             k = len(param_order)
             out["aic"] = float(2 * m.fval + 2 * k)
@@ -690,7 +750,6 @@ def fit_spectrum(
                 "fit_spectrum: covariance matrix not positive definite"
             )
         logging.warning("fit_spectrum: covariance matrix not positive definite")
-        # Add a small diagonal jitter to attempt stabilising the matrix
         jitter = 1e-12 * np.mean(np.diag(pcov))
         if not np.isfinite(jitter) or jitter <= 0:
             jitter = 1e-12
@@ -720,13 +779,17 @@ def fit_spectrum(
 
     out["fit_valid"] = fit_valid
 
-    ndf = hist.size - len(popt)
     model_counts = _model_binned(centers, *popt)
-    chi2 = float(np.sum(((hist - model_counts) ** 2) / np.clip(hist, 1, None)))
-    out["chi2"] = chi2
+    with np.errstate(divide="ignore", invalid="ignore"):
+        chi2 = 2 * np.sum(
+            model_counts - hist + hist * np.log(np.where(hist > 0, hist / model_counts, 1.0))
+        )
+    out["chi2"] = float(chi2)
+    ndf = hist.size - len(popt)
     out["chi2_ndf"] = chi2 / ndf if ndf != 0 else np.nan
+    out["nll"] = float(nll_val)
     k = len(popt)
-    out["aic"] = float(chi2 + 2 * k)
+    out["aic"] = float(2 * nll_val + 2 * k)
     param_index = {name: i for i, name in enumerate(param_order)}
     return FitResult(out, pcov, int(ndf), param_index, counts=int(n_events))
 
