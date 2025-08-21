@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import pandas as pd
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -28,8 +29,21 @@ def test_two_pass_time_fit_invoked(tmp_path, monkeypatch):
         return orig(*args, **kwargs)
 
     monkeypatch.setattr(analyze, "two_pass_time_fit", wrapped)
-    analyze.main(["-i", str(csv), "-c", str(cfg), "-o", str(tmp_path)])
+    monkeypatch.setattr(analyze, "write_summary", lambda *a, **k: str(tmp_path))
+    analyze.main(
+        ["-i", str(csv), "-c", str(cfg), "-o", str(tmp_path), "--dump-ts-json"]
+    )
     assert calls["n"] > 0
+
+    json_path = tmp_path / "time_series_Po214_ts.json"
+    assert json_path.exists()
+    with open(json_path) as f:
+        ts = json.load(f)
+    n_bins = len(ts["centers_s"])
+    df = pd.read_csv(csv, usecols=["timestamp"])
+    t_start = df["timestamp"].min()
+    t_end = df["timestamp"].max()
+    assert n_bins == (t_end - t_start) // 3600
 
 
 def test_baseline_validation_fails_before_time_fit(tmp_path, monkeypatch):
