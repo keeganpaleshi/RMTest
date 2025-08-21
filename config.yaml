@@ -72,7 +72,7 @@ calibration:
 spectral_fit:
   do_spectral_fit: true
   spectral_binning_mode: adc
-  adc_bin_width: 1
+  adc_bin_width: 2
   fd_hist_bins: 400
   mu_sigma: 0.02
   amp_prior_scale: 5.0
@@ -102,8 +102,8 @@ spectral_fit:
   peak_search_method: prominence
   peak_search_cwt_widths: null
   refit_aic_threshold: 2.0
-  use_plot_bins_for_fit: false
-  unbinned_likelihood: true
+  use_plot_bins_for_fit: true
+  unbinned_likelihood: false
   flags:
     fix_sigma0: false  # allow the width to float
     sigma0_prior:
