@@ -882,3 +882,26 @@ summary = fit_hierarchical_runs(run_results)
 print(summary)
 ```
 
+
+## Time fit and baseline validation
+
+This release introduces a two‑pass time fit that can optionally hold the
+background constant in the first pass. Provide a value via
+`time_fit.background_b_fixed_value` or leave it unset to use the baseline
+Po‑214 rate. The second pass is kept only if the Akaike Information Criterion
+improves by at least 0.5.
+
+The configuration is validated before analysis to ensure the baseline window
+precedes the analysis end time and has positive duration.
+
+Example snippet:
+
+```yaml
+time_fit:
+  fix_background_b_first_pass: true
+  background_b_fixed_value: 0.05
+plotting:
+  plot_time_binning_mode: fixed
+  plot_time_bin_width_s: 3600
+```
+
