@@ -616,6 +616,9 @@ def write_summary(
 
     sanitized = to_native(summary_dict)
 
+    if "diagnostics" not in sanitized or sanitized["diagnostics"] is None:
+        sanitized["diagnostics"] = to_native(Diagnostics())
+
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(sanitized, f, indent=4)
 
