@@ -78,6 +78,7 @@ from io_utils import (
     Summary,
 )
 from utils import to_native
+from config.validation import validate_baseline_window
 from calibration import (
     derive_calibration_constants,
     derive_calibration_constants_auto,
@@ -85,6 +86,7 @@ from calibration import (
 )
 
 from fitting import fit_spectrum, fit_time_series, FitResult, FitParams
+from time_fitting import two_pass_time_fit
 
 from constants import (
     DEFAULT_NOISE_CUTOFF,
@@ -1086,6 +1088,7 @@ def main(argv=None):
         logger.error("Could not load config '%s': %s", args.config, e)
         sys.exit(1)
 
+
     def _log_override(section, key, new_val):
         prev = cfg.get(section, {}).get(key)
         if prev is not None and prev != new_val:
@@ -1720,6 +1723,9 @@ def main(argv=None):
             logging.warning(
                 "Invalid baseline.range %r -> %s", baseline_cfg.get("range"), e
             )
+
+    # Validate baseline configuration after applying overrides
+    validate_baseline_window(cfg)
 
     monitor_vol = float(baseline_cfg.get("monitor_volume_l", 605.0))
     sample_vol = float(baseline_cfg.get("sample_volume_l", 0.0))
@@ -2361,6 +2367,16 @@ def main(argv=None):
             "n0_guess_fraction": cfg["time_fit"].get("n0_guess_fraction", 0.1),
             "min_counts": thr,
         }
+        fit_cfg["fix_background_b_first_pass"] = cfg["time_fit"].get(
+            "fix_background_b_first_pass", True
+        )
+        fit_cfg["background_b_fixed_value"] = cfg["time_fit"].get(
+            "background_b_fixed_value"
+        )
+
+        baseline_rate = (
+            cfg.get("baseline", {}).get("rate_Bq", {}).get(iso)
+        )
 
         # Run time-series fit
         decay_out = None  # fresh variable each iteration
@@ -2372,23 +2388,16 @@ def main(argv=None):
                 t_start_fit = to_utc_datetime(
                     t_start_val if t_start_val is not None else t0_global
                 ).timestamp()
-            try:
-                decay_out = fit_time_series(
-                    times_dict,
-                    t_start_fit,
-                    t_end_global_ts,
-                    fit_cfg,
-                    weights=weights_map,
-                    strict=args.strict_covariance,
-                )
-            except TypeError:
-                decay_out = fit_time_series(
-                    times_dict,
-                    t_start_fit,
-                    t_end_global_ts,
-                    fit_cfg,
-                    strict=args.strict_covariance,
-                )
+            decay_out = two_pass_time_fit(
+                times_dict,
+                t_start_fit,
+                t_end_global_ts,
+                fit_cfg,
+                weights=weights_map,
+                strict=args.strict_covariance,
+                baseline_rate=baseline_rate,
+                fit_func=fit_time_series,
+            )
             time_fit_results[iso] = decay_out
         except Exception as e:
             logger.warning("Decay-curve fit for %s failed -> %s", iso, e)
