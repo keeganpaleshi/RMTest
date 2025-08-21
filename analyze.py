@@ -261,6 +261,8 @@ from baseline_utils import (
     BaselineError,
 )
 import baseline
+from time_fitting import two_pass_time_fit
+from config.validation import validate_baseline_window
 
 
 def plot_radon_activity(times, activity, out_png, errors=None, *, config=None):
@@ -1721,6 +1723,12 @@ def main(argv=None):
                 "Invalid baseline.range %r -> %s", baseline_cfg.get("range"), e
             )
 
+    # Validate baseline window against analysis times
+    try:
+        validate_baseline_window(cfg)
+    except ValueError as e:
+        raise
+
     monitor_vol = float(baseline_cfg.get("monitor_volume_l", 605.0))
     sample_vol = float(baseline_cfg.get("sample_volume_l", 0.0))
     base_events = pd.DataFrame()
@@ -2360,9 +2368,28 @@ def main(argv=None):
             "background_guess": cfg["time_fit"].get("background_guess", 0.0),
             "n0_guess_fraction": cfg["time_fit"].get("n0_guess_fraction", 0.1),
             "min_counts": thr,
+            "fix_background_b_first_pass": cfg["time_fit"].get(
+                "fix_background_b_first_pass", True
+            ),
+            "background_b_fixed_value": cfg["time_fit"].get(
+                "background_b_fixed_value"
+            ),
         }
 
-        # Run time-series fit
+        # Determine baseline rate for fixed-background first pass
+        baseline_rate_iso = None
+        if baseline_live_time > 0:
+            eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
+            if isinstance(eff_cfg, list):
+                eff_rate = eff_cfg[0]
+            else:
+                eff_rate = eff_cfg if eff_cfg is not None else 1.0
+            if eff_rate > 0:
+                baseline_rate_iso = baseline_counts.get(iso, 0.0) / (
+                    baseline_live_time * eff_rate
+                )
+
+        # Run time-series fit (two-pass)
         decay_out = None  # fresh variable each iteration
         try:
             t_start_val = t_start_map.get(iso)
@@ -2372,26 +2399,19 @@ def main(argv=None):
                 t_start_fit = to_utc_datetime(
                     t_start_val if t_start_val is not None else t0_global
                 ).timestamp()
-            try:
-                decay_out = fit_time_series(
-                    times_dict,
-                    t_start_fit,
-                    t_end_global_ts,
-                    fit_cfg,
-                    weights=weights_map,
-                    strict=args.strict_covariance,
-                )
-            except TypeError:
-                decay_out = fit_time_series(
-                    times_dict,
-                    t_start_fit,
-                    t_end_global_ts,
-                    fit_cfg,
-                    strict=args.strict_covariance,
-                )
+            decay_out = two_pass_time_fit(
+                times_dict,
+                t_start_fit,
+                t_end_global_ts,
+                fit_cfg,
+                baseline_rate=baseline_rate_iso,
+                weights=weights_map,
+                strict=args.strict_covariance,
+                fit_func=fit_time_series,
+            )
             time_fit_results[iso] = decay_out
         except Exception as e:
-            logger.warning("Decay-curve fit for %s failed -> %s", iso, e)
+            logging.warning("Decay-curve fit for %s failed -> %s", iso, e)
             time_fit_results[iso] = {}
 
         # Store inputs for plotting later

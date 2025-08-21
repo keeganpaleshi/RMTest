@@ -827,6 +827,7 @@ def _neg_log_likelihood_time(
     fix_b_map,
     fix_n0_map,
     param_indices,
+    fixed_b_values=None,
 ):
     """
     params: tuple of all (E_iso, [B_iso], [N0_iso], for each iso in iso_list, in the order recorded by param_indices)
@@ -857,9 +858,14 @@ def _neg_log_likelihood_time(
         if eff <= 0:
             return 1e50
 
-        # Extract parameters (some may be fixed to zero):
+        # Extract parameters (some may be fixed to specific values):
         E_iso = p[f"E_{iso}"]
-        B_iso = 0.0 if fix_b_map[iso] else p[f"B_{iso}"]
+        if fix_b_map[iso]:
+            B_iso = 0.0
+            if fixed_b_values and iso in fixed_b_values:
+                B_iso = float(fixed_b_values[iso])
+        else:
+            B_iso = p[f"B_{iso}"]
         N0_iso = 0.0 if fix_n0_map[iso] else p[f"N0_{iso}"]
 
         # 1) Integral term. When per-event weights are supplied we
@@ -905,7 +911,15 @@ def _neg_log_likelihood_time(
     return nll
 
 
-def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=False):
+def fit_time_series(
+    times_dict,
+    t_start,
+    t_end,
+    config,
+    weights=None,
+    strict=False,
+    fixed_background=None,
+):
     """
     times_dict: mapping of isotope -> array of timestamps in seconds.
     weights : dict or None
@@ -1049,6 +1063,7 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
             fix_b_map,
             fix_n0_map,
             param_indices,
+            fixed_background,
         )
 
     # Collect parameter names in the same order as initial_guesses
@@ -1081,6 +1096,13 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
             err = float(m.errors[pname]) if pname in m.errors else np.nan
             out[pname] = val
             out["d" + pname] = err
+        out["nll"] = float(m.fval)
+        if fixed_background:
+            for iso, val in fixed_background.items():
+                key = f"B_{iso}"
+                if key not in out:
+                    out[key] = float(val)
+                    out["d" + key] = 0.0
         cov = np.zeros((len(ordered_params), len(ordered_params)))
         if "E_Po214" in ordered_params and "N0_Po214" in ordered_params:
             i1 = ordered_params.index("E_Po214")
@@ -1137,6 +1159,7 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
     )
     ts_val = max(0.0, 2.0 * (nll_null - best_nll))
     out["lrt_ts"] = ts_val
+    out["nll"] = best_nll
     try:
         crit = chi2.ppf(0.95, df=len(iso_list))
     except Exception:
@@ -1146,6 +1169,13 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
     for i, pname in enumerate(ordered_params):
         out[pname] = float(m.values[pname])
         out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
+
+    if fixed_background:
+        for iso, val in fixed_background.items():
+            key = f"B_{iso}"
+            if key not in out:
+                out[key] = float(val)
+                out["d" + key] = 0.0
 
     if "E_Po214" in ordered_params and "N0_Po214" in ordered_params:
         i1 = ordered_params.index("E_Po214")

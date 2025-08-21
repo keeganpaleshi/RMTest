@@ -135,7 +135,7 @@ the file:
 
 The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--job-id` is given the folder `<output_dir>/<job-id>/` is used instead. If `--output_dir` is omitted it defaults to `results`. If the folder already exists run with `--overwrite` to replace it. The directory includes:
 
-- `summary.json` – calibration and fit summary.
+- `summary.json` – calibration and fit summary with run diagnostics.
 - `config_used.json` – copy of the configuration used.
   Any timestamps overridden on the command line are written
   back to this file as ISO timestamps.
@@ -884,14 +884,42 @@ print(summary)
 
 ## Spectral fit hardening and defaults
 
-The spectral fitting routine now uses a binned Poisson likelihood by default,
-providing improved numerical stability for large event counts. The legacy
-unbinned path remains available by setting ``spectral_fit.unbinned_likelihood``
-to ``true`` in the configuration.
+The spectral fitting routine now uses a binned Poisson likelihood by default, providing improved numerical stability for large event counts. The legacy unbinned path remains available by setting `spectral_fit.unbinned_likelihood` to `true` in the configuration.
 
-Example command line:
+Example:
 
 ```bash
-python analyze.py --input merged_data.csv
+python analyze.py --input path/to/merged_output.csv
 ```
+
+## Time fit and baseline validation
+
+The time-series fitter now performs two passes: the first pass can hold the background term `B` fixed while fitting the decay curve. Configure with:
+
+```yaml
+time_fit:
+  fix_background_b_first_pass: true
+  background_b_fixed_value: null  # fall back to baseline Po214 rate
+plotting:
+  plot_time_binning_mode: fixed
+  plot_time_bin_width_s: 3600
+```
+
+After the initial pass, the fit is repeated with `B` free and the result is kept only if the Akaike Information Criterion improves by at least 0.5.
+
+Baseline windows are validated before analysis. The configuration below will raise a `ValueError` because the baseline starts after the analysis window:
+
+```yaml
+baseline:
+  range: ["2024-01-02T00:00:00Z", "2024-01-03T00:00:00Z"]
+analysis:
+  analysis_end_time: "2024-01-01T23:00:00Z"
+```
+
+Run as usual:
+
+```bash
+python analyze.py --input path/to/merged_output.csv
+```
+
 
