@@ -1,31 +1,17 @@
 import logging
-from dataclasses import dataclass, field
-from typing import List
+from copy import deepcopy
+from typing import Any, Dict, List, Mapping
 
 
-@dataclass
-class Diagnostics:
-    """Container for lightweight run diagnostics.
-
-    Parameters
-    ----------
-    spectral_fit_fit_valid : bool | None
-        Whether the spectral fit converged.
-    time_fit_po214_fit_valid : bool | None
-        Whether the Po214 time fit converged.
-    n_events_loaded : int
-        Total number of events loaded from file.
-    n_events_discarded : int
-        Number of events discarded by cuts.
-    warnings : list[str]
-        Collected log warning messages.
-    """
-
-    spectral_fit_fit_valid: bool | None = None
-    time_fit_po214_fit_valid: bool | None = None
-    n_events_loaded: int = 0
-    n_events_discarded: int = 0
-    warnings: List[str] = field(default_factory=list)
+DEFAULT_DIAGNOSTICS: Dict[str, Any] = {
+    "spectral_fit_fit_valid": None,
+    "time_fit_po214_fit_valid": None,
+    "time_fit_po218_fit_valid": None,
+    "n_events_loaded": 0,
+    "n_events_discarded": 0,
+    "selected_analysis_modes": {},
+    "warnings": [],
+}
 
 
 class _WarningCapture(logging.Handler):
@@ -61,4 +47,80 @@ def get_captured_warnings() -> List[str]:
     return msgs
 
 
-__all__ = ["Diagnostics", "start_warning_capture", "get_captured_warnings"]
+def build_diagnostics(
+    summary: Mapping[str, Any],
+    spectrum_results: Mapping[str, Any] | Any,
+    time_fit_results: Mapping[str, Any],
+    df_analysis,
+    cfg: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """Return a diagnostics dictionary for the run."""
+
+    diagnostics = deepcopy(DEFAULT_DIAGNOSTICS)
+
+    # Spectral fit validity
+    fit_valid = None
+    if spectrum_results is not None:
+        if isinstance(spectrum_results, Mapping):
+            fit_valid = spectrum_results.get("fit_valid")
+        else:
+            fit_valid = getattr(getattr(spectrum_results, "params", {}), "get", lambda *a: None)(
+                "fit_valid"
+            )
+    diagnostics["spectral_fit_fit_valid"] = (
+        bool(fit_valid) if fit_valid is not None else None
+    )
+
+    # Time-fit validity for Po214 and Po218
+    tf214 = time_fit_results.get("Po214") if time_fit_results else None
+    if tf214 is not None:
+        if isinstance(tf214, Mapping):
+            val = tf214.get("fit_valid")
+        else:
+            val = getattr(getattr(tf214, "params", {}), "get", lambda *a: None)("fit_valid")
+        diagnostics["time_fit_po214_fit_valid"] = bool(val) if val is not None else None
+
+    tf218 = time_fit_results.get("Po218") if time_fit_results else None
+    if tf218 is not None:
+        if isinstance(tf218, Mapping):
+            val = tf218.get("fit_valid")
+        else:
+            val = getattr(getattr(tf218, "params", {}), "get", lambda *a: None)("fit_valid")
+        diagnostics["time_fit_po218_fit_valid"] = bool(val) if val is not None else None
+
+    removed_noise = summary.get("noise_cut", {}).get("removed_events", 0)
+    removed_burst = summary.get("burst_filter", {}).get("removed_events", 0)
+    n_loaded = len(df_analysis) + int(removed_noise) + int(removed_burst)
+    diagnostics["n_events_loaded"] = int(n_loaded)
+    diagnostics["n_events_discarded"] = int(n_loaded - len(df_analysis))
+
+    bin_mode = str(
+        cfg.get("plot_time_binning_mode", cfg.get("time_bin_mode", "fixed"))
+    ).lower()
+    bin_width = None
+    if bin_mode not in ("fd", "auto"):
+        bin_width = cfg.get("plot_time_bin_width_s", cfg.get("time_bin_s"))
+
+    diagnostics["selected_analysis_modes"] = {
+        "background_model": summary.get("analysis", {}).get("background_model"),
+        "spectral_fit": {
+            "unbinned_likelihood": bool(
+                cfg.get("spectral_fit", {}).get("unbinned_likelihood", False)
+            )
+        },
+        "plotting": {
+            "time_bin_mode": bin_mode,
+            "time_bin_width_s": bin_width,
+        },
+    }
+
+    diagnostics["warnings"] = get_captured_warnings()
+    return diagnostics
+
+
+__all__ = [
+    "DEFAULT_DIAGNOSTICS",
+    "start_warning_capture",
+    "get_captured_warnings",
+    "build_diagnostics",
+]
