@@ -1886,11 +1886,9 @@ def main(argv=None):
             bin_edges = None
         else:
             # "ADC" binning mode -> fixed width in raw channels
-            width = 1
+            width = cfg["spectral_fit"].get("adc_bin_width", 2)
             if bin_cfg is not None:
-                width = bin_cfg.get("adc_bin_width", 1)
-            else:
-                width = cfg["spectral_fit"].get("adc_bin_width", 1)
+                width = bin_cfg.get("adc_bin_width", width)
             adc_min = df_analysis["adc"].min()
             adc_max = df_analysis["adc"].max()
             bins = int(np.ceil((adc_max - adc_min + 1) / width))
@@ -2040,7 +2038,7 @@ def main(argv=None):
                 "priors": priors_spec,
                 "flags": spec_flags,
             }
-            if cfg["spectral_fit"].get("use_plot_bins_for_fit", False):
+            if cfg["spectral_fit"].get("use_plot_bins_for_fit", True):
                 fit_kwargs.update({"bins": bins, "bin_edges": bin_edges})
             if cfg["spectral_fit"].get("unbinned_likelihood", False):
                 fit_kwargs["unbinned"] = True
