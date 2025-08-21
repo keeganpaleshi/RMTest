@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from dataclasses import asdict
 
 from io_utils import Summary, write_summary
 from reporting import Diagnostics
@@ -29,3 +30,12 @@ def test_diagnostics_written(tmp_path):
         "warnings",
     }:
         assert key in diag
+
+
+def test_minimal_diagnostics_added(tmp_path):
+    # Summary dictionary without diagnostics should still get a diagnostics block
+    results_dir = write_summary(tmp_path, {})
+    summary_path = Path(results_dir) / "summary.json"
+    data = json.loads(summary_path.read_text())
+
+    assert data["diagnostics"] == asdict(Diagnostics())
