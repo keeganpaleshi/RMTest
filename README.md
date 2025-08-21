@@ -464,10 +464,13 @@ fit.  Important keys include:
   `"prominence"` applies `find_peaks` with the `peak_search_prominence` and
   `peak_search_width_adc` thresholds. `"cwt"` uses
   `find_peaks_cwt` with widths from `peak_search_cwt_widths`.
-- `peak_search_cwt_widths` – list of widths for wavelet peak detection
-  when `peak_search_method` is `"cwt"`.
-- `unbinned_likelihood` – when `true` use an extended unbinned likelihood
-  instead of the default χ² fit to histogrammed data.
+  - `peak_search_cwt_widths` – list of widths for wavelet peak detection
+    when `peak_search_method` is `"cwt"`.
+  - `adc_bin_width` – histogram bin width in ADC channels; default `2`.
+  - `use_plot_bins_for_fit` – when `true` use the plotting bin width for the
+    spectral fit; default `true`.
+  - `unbinned_likelihood` – when `true` use an extended unbinned likelihood
+    instead of the default χ² fit to histogrammed data; default `false`.
 - `emg_left` evaluations are wrapped in `np.errstate` and passed through
   `np.nan_to_num` for stability so that NaN or infinite values never
   reach `curve_fit`.
