@@ -610,6 +610,7 @@ def fit_spectrum(
             out["chi2"] = float(2 * m.fval)
             out["chi2_ndf"] = out["chi2"] / ndf if ndf != 0 else np.nan
             out["aic"] = float(2 * m.fval + 2 * k)
+            out["likelihood_path"] = likelihood_mode
             return FitResult(
                 out,
                 cov,
@@ -684,6 +685,7 @@ def fit_spectrum(
             cov = np.zeros((len(param_order), len(param_order)))
             k = len(param_order)
             out["aic"] = float(2 * m.fval + 2 * k)
+            out["likelihood_path"] = likelihood_mode
             return FitResult(
                 out,
                 cov,
@@ -746,6 +748,7 @@ def fit_spectrum(
             out["dF"] = 0.0
         k = len(param_order)
         out["aic"] = float(2 * m.fval + 2 * k)
+        out["likelihood_path"] = likelihood_mode
         return FitResult(
             out,
             cov,
@@ -814,6 +817,7 @@ def fit_spectrum(
     k = len(popt)
     out["aic"] = float(2 * nll_val + 2 * k)
     param_index = {name: i for i, name in enumerate(param_order)}
+    out["likelihood_path"] = likelihood_mode
     return FitResult(
         out,
         pcov,
