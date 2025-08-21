@@ -467,7 +467,7 @@ fit.  Important keys include:
 - `peak_search_cwt_widths` – list of widths for wavelet peak detection
   when `peak_search_method` is `"cwt"`.
 - `unbinned_likelihood` – when `true` use an extended unbinned likelihood
-  instead of the default χ² fit to histogrammed data.
+  instead of the default binned Poisson fit to histogrammed data.
 - `emg_left` evaluations are wrapped in `np.errstate` and passed through
   `np.nan_to_num` for stability so that NaN or infinite values never
   reach `curve_fit`.
