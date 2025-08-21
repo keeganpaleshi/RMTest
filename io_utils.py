@@ -18,6 +18,7 @@ import numpy as np
 from utils import to_native
 from utils.time_utils import parse_timestamp, to_epoch_seconds, tz_convert_utc
 import jsonschema
+from reporting import diagnostics_block
 
 
 def extract_time_series_events(events, cfg):
@@ -88,6 +89,7 @@ class Summary(Mapping[str, Any]):
     cli_sha256: str | None = None
     cli_args: list[str] = field(default_factory=list)
     analysis: dict = field(default_factory=dict)
+    diagnostics: dict = field(default_factory=dict)
 
     def __getitem__(self, key: str) -> Any:  # type: ignore[override]
         return getattr(self, key)
@@ -613,6 +615,11 @@ def write_summary(
     summary_path = results_folder / "summary.json"
 
     sanitized = to_native(summary_dict)
+    diag = sanitized.get("diagnostics")
+    if isinstance(diag, Mapping):
+        sanitized["diagnostics"] = diagnostics_block(**diag)
+    else:
+        sanitized["diagnostics"] = diagnostics_block()
 
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(sanitized, f, indent=4)
