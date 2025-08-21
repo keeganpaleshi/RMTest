@@ -142,6 +142,7 @@ class FitResult:
     ndf: int
     param_index: dict[str, int] | None = None
     counts: int | None = None
+    likelihood: str | None = None
     _cov_df: pd.DataFrame | None = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
@@ -325,9 +326,10 @@ def fit_spectrum(
     dict
         Best fit values and uncertainties.
     """
-
+    
     if flags is None:
         flags = {}
+    likelihood_mode = "unbinned" if unbinned else "binned_poisson"
     if flags.get("fix_sigma_E"):
         flags.setdefault("fix_sigma0", True)
         flags.setdefault("fix_F", True)
@@ -608,7 +610,14 @@ def fit_spectrum(
             out["chi2"] = float(2 * m.fval)
             out["chi2_ndf"] = out["chi2"] / ndf if ndf != 0 else np.nan
             out["aic"] = float(2 * m.fval + 2 * k)
-            return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
+            return FitResult(
+                out,
+                cov,
+                int(ndf),
+                param_index,
+                counts=int(n_events),
+                likelihood=likelihood_mode,
+            )
 
         m.hesse()
         cov_raw = m.covariance
@@ -675,7 +684,14 @@ def fit_spectrum(
             cov = np.zeros((len(param_order), len(param_order)))
             k = len(param_order)
             out["aic"] = float(2 * m.fval + 2 * k)
-            return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
+            return FitResult(
+                out,
+                cov,
+                int(ndf),
+                param_index,
+                counts=int(n_events),
+                likelihood=likelihood_mode,
+            )
 
         m.hesse()
         cov_raw = m.covariance
@@ -730,7 +746,14 @@ def fit_spectrum(
             out["dF"] = 0.0
         k = len(param_order)
         out["aic"] = float(2 * m.fval + 2 * k)
-        return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
+        return FitResult(
+            out,
+            cov,
+            int(ndf),
+            param_index,
+            counts=int(n_events),
+            likelihood=likelihood_mode,
+        )
 
     g = np.ones(len(param_order))
     for i, name in enumerate(param_order):
@@ -791,7 +814,14 @@ def fit_spectrum(
     k = len(popt)
     out["aic"] = float(2 * nll_val + 2 * k)
     param_index = {name: i for i, name in enumerate(param_order)}
-    return FitResult(out, pcov, int(ndf), param_index, counts=int(n_events))
+    return FitResult(
+        out,
+        pcov,
+        int(ndf),
+        param_index,
+        counts=int(n_events),
+        likelihood=likelihood_mode,
+    )
 
 
 def _integral_model(E, N0, B, lam, eff, T):
