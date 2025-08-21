@@ -3,6 +3,7 @@ from pathlib import Path
 
 from io_utils import Summary, write_summary
 from reporting import Diagnostics
+from dataclasses import asdict
 
 
 def test_diagnostics_written(tmp_path):
@@ -29,3 +30,12 @@ def test_diagnostics_written(tmp_path):
         "warnings",
     }:
         assert key in diag
+
+
+def test_missing_diagnostics_are_injected(tmp_path):
+    results_dir = write_summary(tmp_path, {})
+    summary_path = Path(results_dir) / "summary.json"
+    data = json.loads(summary_path.read_text())
+
+    assert "diagnostics" in data
+    assert data["diagnostics"] == asdict(Diagnostics())

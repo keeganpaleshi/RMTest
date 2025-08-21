@@ -616,6 +616,18 @@ def write_summary(
 
     sanitized = to_native(summary_dict)
 
+    # Ensure a diagnostics block is always present in the summary.  Some
+    # callers may provide a plain mapping without the ``diagnostics`` key;
+    # others may supply a partial dictionary.  Attach a minimal set of
+    # diagnostics fields in these cases so downstream consumers can rely on
+    # their existence.
+    diag_defaults = to_native(Diagnostics())
+    if not isinstance(sanitized.get("diagnostics"), dict):
+        sanitized["diagnostics"] = diag_defaults
+    else:
+        for k, v in diag_defaults.items():
+            sanitized["diagnostics"].setdefault(k, v)
+
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(sanitized, f, indent=4)
 
