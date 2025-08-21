@@ -882,3 +882,23 @@ summary = fit_hierarchical_runs(run_results)
 print(summary)
 ```
 
+## Time fit and baseline validation
+
+The time-series fitter now performs a two-pass procedure. The first pass fixes
+the background rate, optionally to a user-provided value. A second pass then
+releases the background parameter and is kept only if the Akaike Information
+Criterion improves by at least 0.5. Configuration example:
+
+```yaml
+time_fit:
+  fix_background_b_first_pass: true
+  background_b_fixed_value: null  # falls back to baseline rate
+plotting:
+  plot_time_binning_mode: fixed
+  plot_time_bin_width_s: 3600
+```
+
+A lightweight check also validates the baseline window against the analysis
+range. If the baseline interval is invalid, the analysis stops with a clear
+`ValueError` showing the offending timestamps.
+

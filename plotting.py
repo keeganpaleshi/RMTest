@@ -1,5 +1,6 @@
 import matplotlib as _mpl
 _mpl.use("Agg")
+import logging
 import matplotlib.pyplot as plt
 from pathlib import Path
 from plot_utils._time_utils import guard_mpl_times, setup_time_axis
@@ -18,6 +19,9 @@ def plot_radon_activity(ts, outdir):
         Output directory where ``radon_activity.png`` will be saved.
     """
     outdir = Path(outdir)
+    if ts is None or getattr(ts, "time", None) is None or len(getattr(ts, "time", [])) == 0:
+        logging.warning("plot_radon_activity: no data provided, skipping plot")
+        return
     fig, ax = plt.subplots()
     times_mpl = guard_mpl_times(times=ts.time)
     ax.errorbar(times_mpl, ts.activity, yerr=getattr(ts, "error", None), fmt="o")
@@ -35,6 +39,9 @@ def plot_radon_activity(ts, outdir):
 def plot_radon_trend(ts, outdir):
     """Plot radon activity trend without uncertainties."""
     outdir = Path(outdir)
+    if ts is None or getattr(ts, "time", None) is None or len(getattr(ts, "time", [])) == 0:
+        logging.warning("plot_radon_trend: no data provided, skipping plot")
+        return
     fig, ax = plt.subplots()
     times_mpl = guard_mpl_times(times=ts.time)
     ax.plot(times_mpl, ts.activity, "o-")

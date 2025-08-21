@@ -5,7 +5,7 @@
 import logging
 import warnings
 from dataclasses import dataclass, field
-from typing import TypedDict, NotRequired
+from typing import TypedDict, NotRequired, Mapping
 from types import SimpleNamespace
 
 import numpy as np
@@ -140,6 +140,7 @@ class FitResult:
     ndf: int
     param_index: dict[str, int] | None = None
     counts: int | None = None
+    nll: float | None = None
     _cov_df: pd.DataFrame | None = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
@@ -670,7 +671,7 @@ def fit_spectrum(
             out["dF"] = 0.0
         k = len(param_order)
         out["aic"] = float(2 * m.fval + 2 * k)
-        return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
+        return FitResult(out, cov, int(ndf), param_index, counts=int(n_events), nll=best_nll)
 
     g = np.ones(len(param_order))
     for i, name in enumerate(param_order):
@@ -764,6 +765,7 @@ def _neg_log_likelihood_time(
     fix_b_map,
     fix_n0_map,
     param_indices,
+    fixed_b_values=None,
 ):
     """
     params: tuple of all (E_iso, [B_iso], [N0_iso], for each iso in iso_list, in the order recorded by param_indices)
@@ -796,7 +798,10 @@ def _neg_log_likelihood_time(
 
         # Extract parameters (some may be fixed to zero):
         E_iso = p[f"E_{iso}"]
-        B_iso = 0.0 if fix_b_map[iso] else p[f"B_{iso}"]
+        if fix_b_map[iso]:
+            B_iso = 0.0 if fixed_b_values is None else float(fixed_b_values.get(iso, 0.0))
+        else:
+            B_iso = p[f"B_{iso}"]
         N0_iso = 0.0 if fix_n0_map[iso] else p[f"N0_{iso}"]
 
         # 1) Integral term. When per-event weights are supplied we
@@ -905,6 +910,10 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
     # 1) Build maps: lam_map, eff_map, fix_b_map, fix_n0_map
     lam_map, eff_map = {}, {}
     fix_b_map, fix_n0_map = {}, {}
+    fixed_b_values = {}
+    fixed_b_cfg = config.get("fixed_background", {})
+    if not isinstance(fixed_b_cfg, Mapping):
+        fixed_b_cfg = {}
     for iso in iso_list:
         iso_cfg = config["isotopes"][iso]
         hl = float(iso_cfg["half_life_s"])
@@ -920,6 +929,9 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
                 raise ValueError("efficiency must be positive")
             eff_map[iso] = eff
         fix_b_map[iso] = not bool(config.get("fit_background", False))
+        if iso in fixed_b_cfg and fixed_b_cfg[iso] is not None:
+            fix_b_map[iso] = True
+            fixed_b_values[iso] = float(fixed_b_cfg[iso])
         fix_n0_map[iso] = not bool(config.get("fit_initial", False))
 
     # 2) Decide parameter ordering. We always fit E_iso, then optionally B_iso, N0_iso.
@@ -986,6 +998,7 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
             fix_b_map,
             fix_n0_map,
             param_indices,
+            fixed_b_values,
         )
 
     # Collect parameter names in the same order as initial_guesses
@@ -1006,6 +1019,7 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
         m.simplex()
         m.migrad()
 
+    best_nll = float(m.fval)
     n_events = sum(len(np.asarray(times_dict.get(iso, []))) for iso in iso_list)
     ndf = n_events - len(ordered_params)
 
@@ -1023,7 +1037,7 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
             i1 = ordered_params.index("E_Po214")
             i2 = ordered_params.index("N0_Po214")
             out["cov_E_Po214_N0_Po214"] = float(cov[i1, i2])
-        return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
+        return FitResult(out, cov, int(ndf), param_index, counts=int(n_events), nll=best_nll)
 
     m.hesse()  # compute uncertainties
     cov = np.array(m.covariance)
@@ -1053,7 +1067,6 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
             fit_valid = False
 
     # Likelihood ratio test against background-only model
-    best_nll = float(m.fval)
     null_params = [float(m.values[p]) for p in ordered_params]
     for iso in iso_list:
         idx = param_indices.get(f"E_{iso}")
@@ -1071,6 +1084,7 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
         fix_b_map,
         fix_n0_map,
         param_indices,
+        fixed_b_values,
     )
     ts_val = max(0.0, 2.0 * (nll_null - best_nll))
     out["lrt_ts"] = ts_val
@@ -1089,7 +1103,7 @@ def fit_time_series(times_dict, t_start, t_end, config, weights=None, strict=Fal
         i2 = ordered_params.index("N0_Po214")
         out["cov_E_Po214_N0_Po214"] = float(cov[i1, i2])
 
-    return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
+    return FitResult(out, cov, int(ndf), param_index, counts=int(n_events), nll=best_nll)
 
 
 # -----------------------------------------------------

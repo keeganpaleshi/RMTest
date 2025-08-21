@@ -1,0 +1,7 @@
+time_fit:
+  fix_background_b_first_pass: true
+  background_b_fixed_value: null
+plotting:
+  plot_time_binning_mode: fixed
+  plot_time_bin_width_s: 3600
+  plot_save_formats: [png]
