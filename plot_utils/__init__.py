@@ -5,6 +5,7 @@
 import os
 import numpy as np
 import matplotlib as _mpl
+import logging
 
 _mpl.use("Agg")
 import matplotlib.pyplot as plt
@@ -117,6 +118,9 @@ def plot_time_series(
 
     if fit_results is None:
         fit_results = {}
+    if all_timestamps is None or all_energies is None:
+        logging.warning("plot_time_series: missing input arrays, skipping plot")
+        return None
 
     # Convert timestamps to UNIX seconds when datetime64 or datetime objects
     ts_array = np.asarray(all_timestamps)
@@ -269,6 +273,7 @@ def plot_time_series(
         "Po210": palette.get("Po210", "#2ca02c"),
     }
 
+    plotted_isos = []
     for iso in iso_list:
         emin, emax = iso_params[iso]["window"]
         mask_iso = (
@@ -278,6 +283,10 @@ def plot_time_series(
             & (all_timestamps <= t_end)
         )
         t_iso_rel = times_rel[mask_iso]
+        if t_iso_rel.size == 0:
+            logging.warning("plot_time_series: no data for %s", iso)
+            continue
+        plotted_isos.append(iso)
 
         # Histogram of observed counts:
         counts_iso, _ = np.histogram(t_iso_rel, bins=edges)
@@ -357,7 +366,7 @@ def plot_time_series(
 
     plt.xlabel("Time (UTC)")
     plt.ylabel("Counts / s" if normalise_rate else "Counts per bin")
-    title_isos = " & ".join(iso_list)
+    title_isos = " & ".join(plotted_isos)
     plt.title(f"{title_isos} Time Series Fit")
     handles, labels = plt.gca().get_legend_handles_labels()
     if handles:

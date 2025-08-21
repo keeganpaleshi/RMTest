@@ -2372,23 +2372,50 @@ def main(argv=None):
                 t_start_fit = to_utc_datetime(
                     t_start_val if t_start_val is not None else t0_global
                 ).timestamp()
-            try:
-                decay_out = fit_time_series(
-                    times_dict,
-                    t_start_fit,
-                    t_end_global_ts,
-                    fit_cfg,
-                    weights=weights_map,
-                    strict=args.strict_covariance,
-                )
-            except TypeError:
-                decay_out = fit_time_series(
-                    times_dict,
-                    t_start_fit,
-                    t_end_global_ts,
-                    fit_cfg,
-                    strict=args.strict_covariance,
-                )
+
+            def _run_fit(local_cfg):
+                try:
+                    return fit_time_series(
+                        times_dict,
+                        t_start_fit,
+                        t_end_global_ts,
+                        local_cfg,
+                        weights=weights_map,
+                        strict=args.strict_covariance,
+                    )
+                except TypeError:
+                    return fit_time_series(
+                        times_dict,
+                        t_start_fit,
+                        t_end_global_ts,
+                        local_cfg,
+                        strict=args.strict_covariance,
+                    )
+
+            if cfg.get("time_fit", {}).get("fix_background_b_first_pass", False):
+                b_fixed = cfg.get("time_fit", {}).get("background_b_fixed_value")
+                if b_fixed is None:
+                    b_fixed = baseline_info.get("rate_Bq", {}).get(iso)
+                if b_fixed is not None:
+                    cfg_fixed = dict(fit_cfg)
+                    cfg_fixed["fit_background"] = False
+                    cfg_fixed["fixed_background"] = {iso: b_fixed}
+                    res1 = _run_fit(cfg_fixed)
+                    cfg_free = dict(fit_cfg)
+                    cfg_free["fit_background"] = True
+                    res2 = _run_fit(cfg_free)
+                    if res1 and res2:
+                        k1 = len(res1.param_index) if res1.param_index else 0
+                        k2 = len(res2.param_index) if res2.param_index else 0
+                        aic1 = 2 * k1 + 2 * (res1.nll or 0.0)
+                        aic2 = 2 * k2 + 2 * (res2.nll or 0.0)
+                        decay_out = res2 if (aic1 - aic2) >= 0.5 else res1
+                    else:
+                        decay_out = res2 or res1
+                else:
+                    decay_out = _run_fit(fit_cfg)
+            else:
+                decay_out = _run_fit(fit_cfg)
             time_fit_results[iso] = decay_out
         except Exception as e:
             logger.warning("Decay-curve fit for %s failed -> %s", iso, e)

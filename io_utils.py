@@ -19,6 +19,8 @@ from utils import to_native
 from utils.time_utils import parse_timestamp, to_epoch_seconds, tz_convert_utc
 import jsonschema
 
+from config.validation import validate_baseline_window
+
 
 def extract_time_series_events(events, cfg):
     """Slice events for time-series fits based on isotope windows.
@@ -130,6 +132,8 @@ CONFIG_SCHEMA = {
             "type": "object",
             "properties": {
                 "do_time_fit": {"type": "boolean"},
+                "fix_background_b_first_pass": {"type": "boolean"},
+                "background_b_fixed_value": {"type": ["number", "null"]},
                 "hl_po214": {
                     "type": ["array", "null"],
                     "items": {"type": "number"},
@@ -158,7 +162,11 @@ CONFIG_SCHEMA = {
         },
         "plotting": {
             "type": "object",
-            "properties": {"plot_save_formats": {"type": "array"}},
+            "properties": {
+                "plot_save_formats": {"type": "array"},
+                "plot_time_binning_mode": {"type": "string"},
+                "plot_time_bin_width_s": {"type": "number"},
+            },
             "required": ["plot_save_formats"],
         },
         "baseline": {
@@ -294,6 +302,17 @@ _UniqueKeyLoader.add_constructor(
 )
 
 
+def _deep_merge(base: Mapping, override: Mapping) -> dict:
+    """Recursively merge two mapping objects."""
+    out = dict(base)
+    for key, val in override.items():
+        if key in out and isinstance(out[key], Mapping) and isinstance(val, Mapping):
+            out[key] = _deep_merge(out[key], val)
+        else:
+            out[key] = val
+    return out
+
+
 def ensure_dir(path):
     """Create directory if it does not exist."""
     p = Path(path)
@@ -318,6 +337,12 @@ def load_config(config_path):
             raise ValueError("Config file must be YAML")
         with open(path, "r", encoding="utf-8") as f:
             cfg = yaml.load(f, Loader=_UniqueKeyLoader) or {}
+
+    defaults_path = Path(__file__).with_name("config").joinpath("defaults.yaml")
+    if defaults_path.is_file():
+        with open(defaults_path, "r", encoding="utf-8") as f:
+            defaults = yaml.safe_load(f) or {}
+        cfg = _deep_merge(defaults, cfg)
 
     validator = jsonschema.Draft7Validator(CONFIG_SCHEMA)
     missing = []
@@ -363,6 +388,7 @@ def load_config(config_path):
         )
     # CONFIG_SCHEMA validation already checks required keys
 
+    validate_baseline_window(cfg)
     return cfg
 
 
