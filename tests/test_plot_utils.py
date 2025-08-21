@@ -122,18 +122,18 @@ def test_plot_time_series_invalid_fit_po218_skips_model(tmp_path, monkeypatch):
     assert not calls
 
 
-def test_plot_time_series_auto_fd(tmp_path):
+def test_plot_time_series_fd(tmp_path):
     # 100 uniform events over 5 seconds
     times = 1000.0 + np.linspace(0, 5, 100)
     energies = np.full(100, 7.7)
     cfg = basic_config()
     cfg.update({
-        "plot_time_binning_mode": "AUTO",
+        "plot_time_binning_mode": "FD",
         "dump_time_series_json": True,
     })
-    out_png = tmp_path / "ts_auto.png"
+    out_png = tmp_path / "ts_fd.png"
     plot_time_series(times, energies, None, 1000.0, 1005.0, cfg, str(out_png))
-    js = out_png.with_name("ts_auto_ts.json")
+    js = out_png.with_name("ts_fd_ts.json")
     assert out_png.exists() and js.exists()
 
     import json
@@ -1028,7 +1028,7 @@ def test_plot_time_series_datetime64(tmp_path):
     )
     energies = np.array([7.7, 7.8, 7.7])
     cfg = basic_config()
-    cfg.update({"plot_time_binning_mode": "auto", "time_bins_fallback": 1})
+    cfg.update({"plot_time_binning_mode": "fd", "time_bins_fallback": 1})
     out_png = tmp_path / "ts_dt.png"
 
     plot_time_series(
