@@ -3,7 +3,6 @@
 # -----------------------------------------------------
 
 import logging
-import warnings
 from dataclasses import dataclass, field
 from typing import TypedDict, NotRequired
 from types import SimpleNamespace
@@ -11,10 +10,10 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 from iminuit import Minuit
-from scipy.optimize import curve_fit, OptimizeWarning
 from scipy.stats import chi2
 from calibration import emg_left, gaussian
-from constants import _TAU_MIN, CURVE_FIT_MAX_EVALS, safe_exp as _safe_exp
+from constants import _TAU_MIN, safe_exp as _safe_exp
+from math_utils import log_expm1_stable
 
 
 def softplus(x: np.ndarray | float) -> np.ndarray | float:
@@ -27,7 +26,7 @@ def _softplus_inv(y: np.ndarray | float) -> np.ndarray | float:
     y = np.asarray(y, dtype=float)
     out = np.empty_like(y)
     mask = y > 0
-    out[mask] = np.log(np.expm1(y[mask]))
+    out[mask] = log_expm1_stable(y[mask])
     out[~mask] = -20.0
     return out
 
@@ -552,20 +551,94 @@ def fit_spectrum(
         return out
 
     if not unbinned:
-        with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore",
-                message="Covariance of the parameters could not be estimated",
-                category=OptimizeWarning,
+        def _nll(*params):
+            model = _model_binned(centers, *params)
+            lam = np.clip(model, 1e-300, np.inf)
+            return float(np.sum(lam) - np.dot(hist, np.log(lam)))
+
+        m = Minuit(_nll, *p0, name=param_order)
+        m.errordef = Minuit.LIKELIHOOD
+        for name, lo, hi in zip(param_order, bounds_lo, bounds_hi):
+            m.limits[name] = (lo, hi)
+            if flags.get(f"fix_{name}", False):
+                m.fixed[name] = True
+        m.migrad()
+        if not m.valid:
+            m.simplex()
+            m.migrad()
+        ndf = hist.size - len(param_order)
+        out = {}
+        param_index = {name: i for i, name in enumerate(param_order)}
+        if not m.valid:
+            out["fit_valid"] = False
+            for pname in param_order:
+                val = float(m.values[pname])
+                err = float(m.errors[pname]) if pname in m.errors else np.nan
+                if pname.startswith("S_"):
+                    out[pname] = float(_softplus(val))
+                    out["d" + pname] = err * float(_sigmoid(val)) if np.isfinite(err) else np.nan
+                else:
+                    out[pname] = val
+                    out["d" + pname] = err
+            cov = np.zeros((len(param_order), len(param_order)))
+            k = len(param_order)
+            out["aic"] = float(2 * m.fval + 2 * k)
+            return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
+
+        m.hesse()
+        cov_raw = m.covariance
+        if cov_raw is None:
+            cov = np.zeros((len(param_order), len(param_order)))
+            perr = np.zeros(len(param_order))
+        else:
+            cov = np.array(cov_raw)
+            g = np.ones(len(param_order))
+            for i, pname in enumerate(param_order):
+                if pname.startswith("S_"):
+                    g[i] = float(_sigmoid(m.values[pname]))
+            cov = cov * (g[:, None] * g[None, :])
+            perr = np.sqrt(np.clip(np.diag(cov), 0, None))
+        try:
+            eigvals = np.linalg.eigvals(cov)
+            fit_valid = bool(np.all(eigvals > 0))
+        except np.linalg.LinAlgError:
+            fit_valid = False
+        if not fit_valid:
+            if strict:
+                raise RuntimeError(
+                    "fit_spectrum: covariance matrix not positive definite"
+                )
+            logging.warning(
+                "fit_spectrum: covariance matrix not positive definite"
             )
-            popt, pcov = curve_fit(
-                _model_binned,
-                centers,
-                hist,
-                p0=p0,
-                bounds=(bounds_lo, bounds_hi),
-                maxfev=CURVE_FIT_MAX_EVALS,
-            )
+            jitter = 1e-12 * np.mean(np.diag(cov))
+            if not np.isfinite(jitter) or jitter <= 0:
+                jitter = 1e-12
+            cov = cov + jitter * np.eye(cov.shape[0])
+            try:
+                np.linalg.cholesky(cov)
+                fit_valid = True
+                perr = np.sqrt(np.clip(np.diag(cov), 0, None))
+            except np.linalg.LinAlgError:
+                pass
+        out["fit_valid"] = fit_valid
+        for i, pname in enumerate(param_order):
+            val = float(m.values[pname])
+            if pname.startswith("S_"):
+                out[pname] = float(_softplus(val))
+                out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
+            else:
+                out[pname] = val
+                out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
+        if fix_sigma0:
+            out["sigma0"] = sigma0_val
+            out["dsigma0"] = 0.0
+        if fix_F:
+            out["F"] = F_val
+            out["dF"] = 0.0
+        k = len(param_order)
+        out["aic"] = float(2 * m.fval + 2 * k)
+        return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
     else:
         def _intensity_fn(E_vals, p_map):
             arr = [p_map[name] for name in param_order]
@@ -672,63 +745,6 @@ def fit_spectrum(
         out["aic"] = float(2 * m.fval + 2 * k)
         return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
 
-    g = np.ones(len(param_order))
-    for i, name in enumerate(param_order):
-        if name.startswith("S_"):
-            g[i] = float(_sigmoid(popt[i]))
-    pcov = pcov * (g[:, None] * g[None, :])
-    perr = np.sqrt(np.clip(np.diag(pcov), 0, None))
-    try:
-        eigvals = np.linalg.eigvals(pcov)
-        fit_valid = bool(np.all(eigvals > 0))
-    except np.linalg.LinAlgError:
-        fit_valid = False
-
-    if not fit_valid:
-        if strict:
-            raise RuntimeError(
-                "fit_spectrum: covariance matrix not positive definite"
-            )
-        logging.warning("fit_spectrum: covariance matrix not positive definite")
-        # Add a small diagonal jitter to attempt stabilising the matrix
-        jitter = 1e-12 * np.mean(np.diag(pcov))
-        if not np.isfinite(jitter) or jitter <= 0:
-            jitter = 1e-12
-        pcov = pcov + jitter * np.eye(pcov.shape[0])
-        try:
-            np.linalg.cholesky(pcov)
-            fit_valid = True
-            perr = np.sqrt(np.clip(np.diag(pcov), 0, None))
-        except np.linalg.LinAlgError:
-            pass
-    out = {}
-    for i, name in enumerate(param_order):
-        val = float(popt[i])
-        if name.startswith("S_"):
-            out[name] = float(_softplus(val))
-            out["d" + name] = float(perr[i])
-        else:
-            out[name] = val
-            out["d" + name] = float(perr[i])
-
-    if fix_sigma0:
-        out["sigma0"] = sigma0_val
-        out["dsigma0"] = 0.0
-    if fix_F:
-        out["F"] = F_val
-        out["dF"] = 0.0
-
-    out["fit_valid"] = fit_valid
-
-    ndf = hist.size - len(popt)
-    model_counts = _model_binned(centers, *popt)
-    chi2 = float(np.sum(((hist - model_counts) ** 2) / np.clip(hist, 1, None)))
-    out["chi2"] = chi2
-    out["chi2_ndf"] = chi2 / ndf if ndf != 0 else np.nan
-    k = len(popt)
-    out["aic"] = float(chi2 + 2 * k)
-    param_index = {name: i for i, name in enumerate(param_order)}
-    return FitResult(out, pcov, int(ndf), param_index, counts=int(n_events))
 
 
 def _integral_model(E, N0, B, lam, eff, T):
