@@ -752,7 +752,9 @@ def plot_spectrum_comparison(
         if data.size == 0:
             bin_edges = np.linspace(0.0, 1.0, bins + 1)
         else:
-            bin_edges = np.histogram_bin_edges(data, bins=bins)
+            e_min = float(data.min())
+            e_max = float(data.max())
+            bin_edges = np.linspace(e_min, e_max, bins + 1)
 
     hist_pre, edges = np.histogram(pre, bins=bin_edges)
     hist_post, _ = np.histogram(post, bins=edges)

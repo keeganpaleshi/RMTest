@@ -1723,11 +1723,8 @@ def main(argv=None):
                 "Invalid baseline.range %r -> %s", baseline_cfg.get("range"), e
             )
 
-    # Validate baseline window against analysis times
-    try:
-        validate_baseline_window(cfg)
-    except ValueError as e:
-        raise
+    # Validate baseline window against analysis times and fail fast on errors
+    validate_baseline_window(cfg)
 
     monitor_vol = float(baseline_cfg.get("monitor_volume_l", 605.0))
     sample_vol = float(baseline_cfg.get("sample_volume_l", 0.0))
@@ -2399,6 +2396,7 @@ def main(argv=None):
                 t_start_fit = to_utc_datetime(
                     t_start_val if t_start_val is not None else t0_global
                 ).timestamp()
+            assert two_pass_time_fit is not fit_time_series
             decay_out = two_pass_time_fit(
                 times_dict,
                 t_start_fit,
