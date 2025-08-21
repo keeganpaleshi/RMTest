@@ -240,6 +240,28 @@ def test_plot_spectrum_irregular_edges_residuals(tmp_path, monkeypatch):
     np.testing.assert_allclose(captured[1], expected)
 
 
+def test_plot_spectrum_comparison_fixed_bins(tmp_path, monkeypatch):
+    pre = np.linspace(0.2, 0.8, 10)
+    post = pre + 0.01
+    captured: list[np.ndarray] = []
+
+    orig_hist = plot_utils.np.histogram
+
+    def wrapped(data, bins=None, **kwargs):
+        captured.append(np.asarray(bins))
+        return orig_hist(data, bins=bins, **kwargs)
+
+    monkeypatch.setattr(plot_utils.np, "histogram", wrapped)
+    monkeypatch.setattr(plot_utils.plt, "savefig", lambda *a, **k: None)
+
+    out_png = tmp_path / "cmp.png"
+    plot_utils.plot_spectrum_comparison(pre, post, bins=4, out_png=str(out_png))
+
+    assert captured  # ensure our wrapper ran
+    expected_edges = np.linspace(0.0, 1.0, 5)
+    np.testing.assert_allclose(captured[0], expected_edges)
+
+
 def test_plot_time_series_custom_half_life(tmp_path, monkeypatch):
     times = np.array([1000.1, 1000.2, 1001.1, 1001.8])
     energies = np.array([7.6, 7.7, 7.8, 7.7])

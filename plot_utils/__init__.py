@@ -743,16 +743,20 @@ def plot_spectrum_comparison(
     out_png="spectrum_pre_post.png",
     config=None,
 ):
-    """Overlay spectra before and after filtering and return ROI differences."""
+    """Overlay spectra before and after filtering and return ROI differences.
+
+    When ``bin_edges`` is not supplied a fixed ``0 – 1 MeV`` range is used
+    for the histogram binning.  Using deterministic bin edges avoids
+    differences between runs that could arise from data-dependent bin
+    calculations and makes generated plots reproducible.
+    """
 
     pre = np.asarray(pre_energies, dtype=float)
     post = np.asarray(post_energies, dtype=float)
     if bin_edges is None:
-        data = np.concatenate([pre, post])
-        if data.size == 0:
-            bin_edges = np.linspace(0.0, 1.0, bins + 1)
-        else:
-            bin_edges = np.histogram_bin_edges(data, bins=bins)
+        # Use a fixed binning scheme for reproducibility rather than deriving
+        # edges from the data distribution which could vary run-to-run.
+        bin_edges = np.linspace(0.0, 1.0, int(bins) + 1)
 
     hist_pre, edges = np.histogram(pre, bins=bin_edges)
     hist_post, _ = np.histogram(post, bins=edges)
