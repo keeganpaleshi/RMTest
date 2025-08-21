@@ -13,12 +13,12 @@ import pandas as pd
 from collections.abc import Mapping
 from typing import Any, Iterator
 from constants import load_nuclide_overrides
-from reporting import Diagnostics
 
 import numpy as np
 from utils import to_native
 from utils.time_utils import parse_timestamp, to_epoch_seconds, tz_convert_utc
 import jsonschema
+from reporting import DEFAULT_DIAGNOSTICS
 
 
 def extract_time_series_events(events, cfg):
@@ -89,7 +89,7 @@ class Summary(Mapping[str, Any]):
     cli_sha256: str | None = None
     cli_args: list[str] = field(default_factory=list)
     analysis: dict = field(default_factory=dict)
-    diagnostics: Diagnostics = field(default_factory=Diagnostics)
+    diagnostics: dict | None = None
 
     def __getitem__(self, key: str) -> Any:  # type: ignore[override]
         return getattr(self, key)
@@ -617,7 +617,7 @@ def write_summary(
     sanitized = to_native(summary_dict)
 
     if "diagnostics" not in sanitized or sanitized["diagnostics"] is None:
-        sanitized["diagnostics"] = to_native(Diagnostics())
+        sanitized["diagnostics"] = to_native(DEFAULT_DIAGNOSTICS)
 
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(sanitized, f, indent=4)

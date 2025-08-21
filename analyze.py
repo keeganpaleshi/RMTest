@@ -85,6 +85,7 @@ from calibration import (
 )
 
 from fitting import fit_spectrum, fit_time_series, FitResult, FitParams
+from reporting import build_diagnostics, start_warning_capture
 
 from constants import (
     DEFAULT_NOISE_CUTOFF,
@@ -1014,6 +1015,8 @@ def main(argv=None):
         requirements_sha256 = "unknown"
 
     args = parse_args(argv)
+
+    start_warning_capture()
 
     if args.reproduce:
         rep_path = Path(args.reproduce)
@@ -3077,6 +3080,10 @@ def main(argv=None):
     if weights is not None:
         summary.efficiency = summary.efficiency or {}
         summary.efficiency["blue_weights"] = list(weights)
+
+    summary.diagnostics = build_diagnostics(
+        summary, spectrum_results, time_fit_results, df_analysis, cfg
+    )
 
     results_dir = Path(args.output_dir) / (args.job_id or now_str)
     if results_dir.exists():
