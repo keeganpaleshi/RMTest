@@ -13,6 +13,8 @@ import pandas as pd
 from iminuit import Minuit
 from scipy.optimize import curve_fit, OptimizeWarning
 from scipy.stats import chi2
+from scipy.special import gammaln
+from math_utils import log_expm1_stable
 from calibration import emg_left, gaussian
 from constants import _TAU_MIN, CURVE_FIT_MAX_EVALS, safe_exp as _safe_exp
 
@@ -27,7 +29,7 @@ def _softplus_inv(y: np.ndarray | float) -> np.ndarray | float:
     y = np.asarray(y, dtype=float)
     out = np.empty_like(y)
     mask = y > 0
-    out[mask] = np.log(np.expm1(y[mask]))
+    out[mask] = log_expm1_stable(y[mask])
     out[~mask] = -20.0
     return out
 
@@ -463,7 +465,6 @@ def fit_spectrum(
         if name.startswith("tau_"):
             mean = max(mean, _TAU_MIN)
         if flags.get(f"fix_{name}", False) or sig == 0:
-            # curve_fit requires lower < upper; use a tiny width around fixed values
             lo = mean - eps
             hi = mean + eps
         else:
@@ -552,39 +553,36 @@ def fit_spectrum(
         return out
 
     if not unbinned:
+        counts = hist.astype(float)
+
+        fit_valid_curve = True
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 "ignore",
                 message="Covariance of the parameters could not be estimated",
                 category=OptimizeWarning,
             )
-            popt, pcov = curve_fit(
-                _model_binned,
-                centers,
-                hist,
-                p0=p0,
-                bounds=(bounds_lo, bounds_hi),
-                maxfev=CURVE_FIT_MAX_EVALS,
-            )
-    else:
-        def _intensity_fn(E_vals, p_map):
-            arr = [p_map[name] for name in param_order]
-            return _model_density(E_vals, *arr)
-
-        if flags.get("likelihood") == "extended":
-            def _nll(*params):
-                p_map = dict(zip(param_order, params))
-                return neg_loglike(
-                    e,
-                    _intensity_fn,
-                    p_map,
-                    area_keys=area_keys,
-                    background_model="loglin_unit" if background_model == "loglin_unit" else None,
+            try:
+                _, pcov_cf = curve_fit(
+                    _model_binned,
+                    centers,
+                    counts,
+                    p0=p0,
+                    bounds=(bounds_lo, bounds_hi),
+                    maxfev=CURVE_FIT_MAX_EVALS,
                 )
-        else:
-            def _nll(*params):
-                p_map = dict(zip(param_order, params))
-                return neg_loglike(e, _intensity_fn, p_map)
+                eig_cf = np.linalg.eigvals(pcov_cf)
+                fit_valid_curve = bool(np.all(eig_cf > 0))
+            except Exception:
+                fit_valid_curve = True
+        if strict and not fit_valid_curve:
+            raise RuntimeError("fit_spectrum: covariance matrix not positive definite")
+
+        def _nll(*params):
+            mu = _model_binned(centers, *params)
+            if np.any(mu <= 0):
+                return 1e50
+            return float(np.sum(mu - counts * np.log(mu) + gammaln(counts + 1)))
 
         m = Minuit(_nll, *p0, name=param_order)
         m.errordef = Minuit.LIKELIHOOD
@@ -596,7 +594,7 @@ def fit_spectrum(
         if not m.valid:
             m.simplex()
             m.migrad()
-        ndf = e.size - len(param_order)
+        ndf = counts.size - len(param_order)
         out = {}
         param_index = {name: i for i, name in enumerate(param_order)}
         if not m.valid:
@@ -612,6 +610,12 @@ def fit_spectrum(
                 else:
                     out[pname] = val
                     out["d" + pname] = err
+            if fix_sigma0:
+                out["sigma0"] = sigma0_val
+                out["dsigma0"] = 0.0
+            if fix_F:
+                out["F"] = F_val
+                out["dF"] = 0.0
             cov = np.zeros((len(param_order), len(param_order)))
             k = len(param_order)
             out["aic"] = float(2 * m.fval + 2 * k)
@@ -632,10 +636,10 @@ def fit_spectrum(
             perr = np.sqrt(np.clip(np.diag(cov), 0, None))
         try:
             eigvals = np.linalg.eigvals(cov)
-            fit_valid = bool(np.all(eigvals > 0))
+            fit_valid_minuit = bool(np.all(eigvals > 0))
         except np.linalg.LinAlgError:
-            fit_valid = False
-        if not fit_valid:
+            fit_valid_minuit = False
+        if not fit_valid_minuit:
             if strict:
                 raise RuntimeError(
                     "fit_spectrum: covariance matrix not positive definite"
@@ -649,10 +653,11 @@ def fit_spectrum(
             cov = cov + jitter * np.eye(cov.shape[0])
             try:
                 np.linalg.cholesky(cov)
-                fit_valid = True
+                fit_valid_minuit = True
                 perr = np.sqrt(np.clip(np.diag(cov), 0, None))
             except np.linalg.LinAlgError:
                 pass
+        fit_valid = fit_valid_curve and fit_valid_minuit
         out["fit_valid"] = fit_valid
         for i, pname in enumerate(param_order):
             val = float(m.values[pname])
@@ -672,63 +677,116 @@ def fit_spectrum(
         out["aic"] = float(2 * m.fval + 2 * k)
         return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
 
-    g = np.ones(len(param_order))
-    for i, name in enumerate(param_order):
-        if name.startswith("S_"):
-            g[i] = float(_sigmoid(popt[i]))
-    pcov = pcov * (g[:, None] * g[None, :])
-    perr = np.sqrt(np.clip(np.diag(pcov), 0, None))
+    def _intensity_fn(E_vals, p_map):
+        arr = [p_map[name] for name in param_order]
+        return _model_density(E_vals, *arr)
+
+    if flags.get("likelihood") == "extended":
+        def _nll(*params):
+            p_map = dict(zip(param_order, params))
+            return neg_loglike(
+                e,
+                _intensity_fn,
+                p_map,
+                area_keys=area_keys,
+                background_model="loglin_unit" if background_model == "loglin_unit" else None,
+            )
+    else:
+        def _nll(*params):
+            p_map = dict(zip(param_order, params))
+            return neg_loglike(e, _intensity_fn, p_map)
+
+    m = Minuit(_nll, *p0, name=param_order)
+    m.errordef = Minuit.LIKELIHOOD
+    for name, lo, hi in zip(param_order, bounds_lo, bounds_hi):
+        m.limits[name] = (lo, hi)
+        if flags.get(f"fix_{name}", False):
+            m.fixed[name] = True
+    m.migrad()
+    if not m.valid:
+        m.simplex()
+        m.migrad()
+    ndf = e.size - len(param_order)
+    out = {}
+    param_index = {name: i for i, name in enumerate(param_order)}
+    if not m.valid:
+        out["fit_valid"] = False
+        for pname in param_order:
+            val = float(m.values[pname])
+            err = float(m.errors[pname]) if pname in m.errors else np.nan
+            if pname.startswith("S_"):
+                out[pname] = float(_softplus(val))
+                out["d" + pname] = (
+                    err * float(_sigmoid(val)) if np.isfinite(err) else np.nan
+                )
+            else:
+                out[pname] = val
+                out["d" + pname] = err
+        if fix_sigma0:
+            out["sigma0"] = sigma0_val
+            out["dsigma0"] = 0.0
+        if fix_F:
+            out["F"] = F_val
+            out["dF"] = 0.0
+        cov = np.zeros((len(param_order), len(param_order)))
+        k = len(param_order)
+        out["aic"] = float(2 * m.fval + 2 * k)
+        return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
+
+    m.hesse()
+    cov_raw = m.covariance
+    if cov_raw is None:
+        cov = np.zeros((len(param_order), len(param_order)))
+        perr = np.zeros(len(param_order))
+    else:
+        cov = np.array(cov_raw)
+        g = np.ones(len(param_order))
+        for i, pname in enumerate(param_order):
+            if pname.startswith("S_"):
+                g[i] = float(_sigmoid(m.values[pname]))
+        cov = cov * (g[:, None] * g[None, :])
+        perr = np.sqrt(np.clip(np.diag(cov), 0, None))
     try:
-        eigvals = np.linalg.eigvals(pcov)
+        eigvals = np.linalg.eigvals(cov)
         fit_valid = bool(np.all(eigvals > 0))
     except np.linalg.LinAlgError:
         fit_valid = False
-
     if not fit_valid:
         if strict:
             raise RuntimeError(
                 "fit_spectrum: covariance matrix not positive definite"
             )
-        logging.warning("fit_spectrum: covariance matrix not positive definite")
-        # Add a small diagonal jitter to attempt stabilising the matrix
-        jitter = 1e-12 * np.mean(np.diag(pcov))
+        logging.warning(
+            "fit_spectrum: covariance matrix not positive definite"
+        )
+        jitter = 1e-12 * np.mean(np.diag(cov))
         if not np.isfinite(jitter) or jitter <= 0:
             jitter = 1e-12
-        pcov = pcov + jitter * np.eye(pcov.shape[0])
+        cov = cov + jitter * np.eye(cov.shape[0])
         try:
-            np.linalg.cholesky(pcov)
+            np.linalg.cholesky(cov)
             fit_valid = True
-            perr = np.sqrt(np.clip(np.diag(pcov), 0, None))
+            perr = np.sqrt(np.clip(np.diag(cov), 0, None))
         except np.linalg.LinAlgError:
             pass
-    out = {}
-    for i, name in enumerate(param_order):
-        val = float(popt[i])
-        if name.startswith("S_"):
-            out[name] = float(_softplus(val))
-            out["d" + name] = float(perr[i])
+    out["fit_valid"] = fit_valid
+    for i, pname in enumerate(param_order):
+        val = float(m.values[pname])
+        if pname.startswith("S_"):
+            out[pname] = float(_softplus(val))
+            out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
         else:
-            out[name] = val
-            out["d" + name] = float(perr[i])
-
+            out[pname] = val
+            out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
     if fix_sigma0:
         out["sigma0"] = sigma0_val
         out["dsigma0"] = 0.0
     if fix_F:
         out["F"] = F_val
         out["dF"] = 0.0
-
-    out["fit_valid"] = fit_valid
-
-    ndf = hist.size - len(popt)
-    model_counts = _model_binned(centers, *popt)
-    chi2 = float(np.sum(((hist - model_counts) ** 2) / np.clip(hist, 1, None)))
-    out["chi2"] = chi2
-    out["chi2_ndf"] = chi2 / ndf if ndf != 0 else np.nan
-    k = len(popt)
-    out["aic"] = float(chi2 + 2 * k)
-    param_index = {name: i for i, name in enumerate(param_order)}
-    return FitResult(out, pcov, int(ndf), param_index, counts=int(n_events))
+    k = len(param_order)
+    out["aic"] = float(2 * m.fval + 2 * k)
+    return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
 
 
 def _integral_model(E, N0, B, lam, eff, T):
