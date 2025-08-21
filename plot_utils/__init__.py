@@ -19,6 +19,7 @@ from ._time_utils import guard_mpl_times, setup_time_axis
 # Half-life constants used for the time-series overlay [seconds]
 PO214_HALF_LIFE_S = PO214.half_life_s
 PO218_HALF_LIFE_S = PO218.half_life_s
+RN222_HALF_LIFE_S = RN222.half_life_s
 
 __all__ = [
     "extract_time_series",
@@ -636,8 +637,12 @@ def plot_modeled_radon_activity(
 
     from radon_activity import radon_activity_curve
 
-    lam_rn = math.log(2.0) / RN222.half_life_s
-    lam_po214 = math.log(2.0) / PO214_HALF_LIFE_S
+    consts = config.get("nuclide_constants", {}) if isinstance(config, dict) else {}
+    hl_rn = consts.get("Rn222", RN222).half_life_s
+    hl_po214 = consts.get("Po214", PO214).half_life_s
+
+    lam_rn = math.log(2.0) / hl_rn
+    lam_po214 = math.log(2.0) / hl_po214
     scale = lam_rn / lam_po214
 
     E_bq = E * scale
@@ -646,13 +651,13 @@ def plot_modeled_radon_activity(
     dN0_bq = dN0 * scale
 
     activity, sigma = radon_activity_curve(
-        times, E_bq, dE_bq, N0_bq, dN0_bq, RN222.half_life_s
+        times, E_bq, dE_bq, N0_bq, dN0_bq, hl_rn
     )
 
     po214_activity = None
     if overlay_po214:
         po214_activity, _ = radon_activity_curve(
-            times, E, dE, N0, dN0, PO214_HALF_LIFE_S
+            times, E, dE, N0, dN0, hl_po214
         )
 
     plot_radon_activity_full(
