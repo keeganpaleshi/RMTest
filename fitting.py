@@ -15,6 +15,7 @@ from scipy.optimize import curve_fit, OptimizeWarning
 from scipy.stats import chi2
 from calibration import emg_left, gaussian
 from constants import _TAU_MIN, CURVE_FIT_MAX_EVALS, safe_exp as _safe_exp
+from math_utils import log_expm1_stable
 
 
 def softplus(x: np.ndarray | float) -> np.ndarray | float:
@@ -27,7 +28,7 @@ def _softplus_inv(y: np.ndarray | float) -> np.ndarray | float:
     y = np.asarray(y, dtype=float)
     out = np.empty_like(y)
     mask = y > 0
-    out[mask] = np.log(np.expm1(y[mask]))
+    out[mask] = log_expm1_stable(y[mask])
     out[~mask] = -20.0
     return out
 
