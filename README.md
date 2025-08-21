@@ -882,3 +882,35 @@ summary = fit_hierarchical_runs(run_results)
 print(summary)
 ```
 
+## Time fit and baseline validation
+
+The time-series fitter now performs two passes: the first pass can hold the
+background term ``B`` fixed while fitting the decay curve.  Set the following
+configuration keys to enable or customise the behaviour:
+
+```yaml
+time_fit:
+  fix_background_b_first_pass: true
+  background_b_fixed_value: null  # fall back to baseline Po214 rate
+```
+
+After the initial pass, the fit is repeated with ``B`` free and the result is
+kept only if the Akaike Information Criterion improves by at least 0.5.
+
+Baseline windows are also sanity-checked prior to analysis.  A configuration
+like the example below will trigger an early ``ValueError`` because the baseline
+starts after the analysis window ends:
+
+```yaml
+baseline:
+  range: ["2024-01-02T00:00:00Z", "2024-01-03T00:00:00Z"]
+analysis:
+  analysis_end_time: "2024-01-01T23:00:00Z"
+```
+
+Run the analysis as usual:
+
+```bash
+python analyze.py --input path/to/merged_output.csv
+```
+
