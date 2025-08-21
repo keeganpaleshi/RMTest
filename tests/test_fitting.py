@@ -430,6 +430,32 @@ def test_fit_spectrum_unbinned_runs():
     out = fit_spectrum(energies, priors, unbinned=True)
     assert "sigma0" in out.params
     assert "F" in out.params
+    assert out.likelihood == "unbinned"
+
+
+def test_fit_spectrum_records_default_branch():
+    rng = np.random.default_rng(7)
+    energies = np.concatenate([
+        rng.normal(5.3, 0.05, 150),
+        rng.normal(6.0, 0.05, 150),
+        rng.normal(7.7, 0.05, 150),
+    ])
+
+    priors = {
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (150, 15),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (150, 15),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (150, 15),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+
+    out = fit_spectrum(energies, priors)
+    assert out.likelihood == "binned_poisson"
 
 
 def test_fit_spectrum_unbinned_consistent():
@@ -457,6 +483,8 @@ def test_fit_spectrum_unbinned_consistent():
     out_unbinned = fit_spectrum(energies, priors, unbinned=True)
     diff = abs(out_hist.params["mu_Po210"] - out_unbinned.params["mu_Po210"])
     assert diff < 0.2
+    assert out_hist.likelihood == "binned_poisson"
+    assert out_unbinned.likelihood == "unbinned"
 
 
 def test_fit_spectrum_fixed_resolution():

@@ -2960,6 +2960,8 @@ def main(argv=None):
         spec_dict = dict(spectrum_results.params)
         spec_dict["cov"] = spectrum_results.cov.tolist()
         spec_dict["ndf"] = spectrum_results.ndf
+        if spectrum_results.likelihood is not None:
+            spec_dict["likelihood"] = spectrum_results.likelihood
     elif isinstance(spectrum_results, dict):
         spec_dict = spectrum_results
     if peak_deviation:
