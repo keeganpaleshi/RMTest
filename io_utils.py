@@ -89,7 +89,7 @@ class Summary(Mapping[str, Any]):
     cli_sha256: str | None = None
     cli_args: list[str] = field(default_factory=list)
     analysis: dict = field(default_factory=dict)
-    diagnostics: Diagnostics = field(default_factory=Diagnostics)
+    diagnostics: dict | None = None
 
     def __getitem__(self, key: str) -> Any:  # type: ignore[override]
         return getattr(self, key)

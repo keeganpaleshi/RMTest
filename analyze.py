@@ -77,6 +77,7 @@ from io_utils import (
     apply_burst_filter,
     Summary,
 )
+from reporting import build_diagnostics
 from utils import to_native
 from calibration import (
     derive_calibration_constants,
@@ -3075,6 +3076,14 @@ def main(argv=None):
     if weights is not None:
         summary.efficiency = summary.efficiency or {}
         summary.efficiency["blue_weights"] = list(weights)
+
+    summary.diagnostics = build_diagnostics(
+        summary,
+        spectrum_results,
+        time_fit_results,
+        df_analysis,
+        cfg,
+    )
 
     results_dir = Path(args.output_dir) / (args.job_id or now_str)
     if results_dir.exists():
