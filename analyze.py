@@ -95,6 +95,7 @@ from constants import (
     DEFAULT_ADC_CENTROIDS,
     DEFAULT_KNOWN_ENERGIES,
 )
+from reporting import start_warning_capture, build_diagnostics
 
 NUCLIDES = {
     "Po210": PO210,
@@ -1013,6 +1014,7 @@ def main(argv=None):
     except Exception:
         requirements_sha256 = "unknown"
 
+    start_warning_capture()
     args = parse_args(argv)
 
     if args.reproduce:
@@ -3084,6 +3086,8 @@ def main(argv=None):
             raise FileExistsError(f"Results folder already exists: {results_dir}")
 
     copy_config(results_dir, cfg, exist_ok=args.overwrite)
+    diagnostics = build_diagnostics(summary, spectrum_results, time_fit_results, df_analysis, cfg)
+    summary.diagnostics = diagnostics
     out_dir = Path(write_summary(results_dir, summary))
     out_dir.mkdir(parents=True, exist_ok=True)
 
