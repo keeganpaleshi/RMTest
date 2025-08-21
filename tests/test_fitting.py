@@ -431,6 +431,7 @@ def test_fit_spectrum_unbinned_runs():
     assert "sigma0" in out.params
     assert "F" in out.params
     assert out.likelihood == "unbinned"
+    assert out.params.get("likelihood_path") == "unbinned"
 
 
 def test_fit_spectrum_records_binned_default():
@@ -456,6 +457,7 @@ def test_fit_spectrum_records_binned_default():
 
     out = fit_spectrum(energies, priors)
     assert out.likelihood == "binned_poisson"
+    assert out.params.get("likelihood_path") == "binned_poisson"
 
 
 def test_fit_spectrum_unbinned_consistent():

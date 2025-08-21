@@ -330,6 +330,7 @@ def fit_spectrum(
     if flags is None:
         flags = {}
     likelihood_mode = "unbinned" if unbinned else "binned_poisson"
+    likelihood_path = likelihood_mode
     if flags.get("fix_sigma_E"):
         flags.setdefault("fix_sigma0", True)
         flags.setdefault("fix_F", True)
@@ -391,6 +392,11 @@ def fit_spectrum(
 
     if "S_bkg" in priors or background_model == "loglin_unit":
         flags.setdefault("likelihood", "extended")
+
+    if unbinned and flags.get("likelihood") == "extended":
+        likelihood_path = "unbinned_extended"
+    else:
+        likelihood_path = likelihood_mode
 
     from feature_selectors import select_background_factory, select_neg_loglike
 
@@ -610,6 +616,7 @@ def fit_spectrum(
             out["chi2"] = float(2 * m.fval)
             out["chi2_ndf"] = out["chi2"] / ndf if ndf != 0 else np.nan
             out["aic"] = float(2 * m.fval + 2 * k)
+            out["likelihood_path"] = likelihood_path
             return FitResult(
                 out,
                 cov,
@@ -684,6 +691,7 @@ def fit_spectrum(
             cov = np.zeros((len(param_order), len(param_order)))
             k = len(param_order)
             out["aic"] = float(2 * m.fval + 2 * k)
+            out["likelihood_path"] = likelihood_path
             return FitResult(
                 out,
                 cov,
@@ -746,6 +754,7 @@ def fit_spectrum(
             out["dF"] = 0.0
         k = len(param_order)
         out["aic"] = float(2 * m.fval + 2 * k)
+        out["likelihood_path"] = likelihood_path
         return FitResult(
             out,
             cov,
@@ -813,6 +822,7 @@ def fit_spectrum(
     out["nll"] = float(nll_val)
     k = len(popt)
     out["aic"] = float(2 * nll_val + 2 * k)
+    out["likelihood_path"] = likelihood_path
     param_index = {name: i for i, name in enumerate(param_order)}
     return FitResult(
         out,
