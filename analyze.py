@@ -85,6 +85,8 @@ from calibration import (
 )
 
 from fitting import fit_spectrum, fit_time_series, FitResult, FitParams
+from time_fitting import two_pass_time_fit
+from config.validation import validate_baseline_window
 
 from constants import (
     DEFAULT_NOISE_CUTOFF,
@@ -1278,6 +1280,12 @@ def main(argv=None):
     if args.palette:
         cfg.setdefault("plotting", {})["palette"] = args.palette
 
+    try:
+        validate_baseline_window(cfg)
+    except ValueError as e:
+        logger.error("%s", e)
+        sys.exit(1)
+
     # Timestamp for this analysis run
     now_str = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
@@ -2149,6 +2157,16 @@ def main(argv=None):
     po214_estimate_info = None
     po218_estimate_info = None
     if cfg.get("time_fit", {}).get("do_time_fit", False):
+        baseline_rate_po214 = None
+        b_cnt = baseline_counts.get("Po214")
+        if b_cnt is not None and baseline_live_time > 0:
+            eff_cfg = cfg["time_fit"].get("eff_po214")
+            if isinstance(eff_cfg, list):
+                eff = eff_cfg[0]
+            else:
+                eff = eff_cfg if eff_cfg is not None else 1.0
+            if eff > 0:
+                baseline_rate_po214 = b_cnt / (baseline_live_time * eff)
         for iso in ("Po218", "Po214"):
             win_key = f"window_{iso.lower()}"
 
@@ -2344,6 +2362,13 @@ def main(argv=None):
             eff_value = 1.0
         else:
             eff_value = None
+        background_guess = cfg["time_fit"].get("background_guess", 0.0)
+        if iso == "Po214":
+            b_fixed_cfg = cfg["time_fit"].get("background_b_fixed_value")
+            if b_fixed_cfg is not None:
+                background_guess = b_fixed_cfg
+            elif baseline_rate_po214 is not None:
+                background_guess = baseline_rate_po214
         fit_cfg = {
             "isotopes": {
                 iso: {
@@ -2357,7 +2382,7 @@ def main(argv=None):
             "fit_initial": not cfg["time_fit"]["flags"].get(
                 f"fix_N0_{iso.lower()}", False
             ),
-            "background_guess": cfg["time_fit"].get("background_guess", 0.0),
+            "background_guess": background_guess,
             "n0_guess_fraction": cfg["time_fit"].get("n0_guess_fraction", 0.1),
             "min_counts": thr,
         }
@@ -2372,23 +2397,58 @@ def main(argv=None):
                 t_start_fit = to_utc_datetime(
                     t_start_val if t_start_val is not None else t0_global
                 ).timestamp()
-            try:
-                decay_out = fit_time_series(
-                    times_dict,
-                    t_start_fit,
-                    t_end_global_ts,
-                    fit_cfg,
-                    weights=weights_map,
-                    strict=args.strict_covariance,
-                )
-            except TypeError:
-                decay_out = fit_time_series(
-                    times_dict,
-                    t_start_fit,
-                    t_end_global_ts,
-                    fit_cfg,
-                    strict=args.strict_covariance,
-                )
+            if iso == "Po214":
+                try:
+                    decay_out = two_pass_time_fit(
+                        times_dict,
+                        t_start_fit,
+                        t_end_global_ts,
+                        fit_cfg,
+                        baseline_rate=baseline_rate_po214,
+                        background_b_fixed_value=cfg["time_fit"].get(
+                            "background_b_fixed_value"
+                        ),
+                        fix_first_pass=cfg["time_fit"].get(
+                            "fix_background_b_first_pass", True
+                        ),
+                        weights=weights_map,
+                        strict=args.strict_covariance,
+                        fit_func=fit_time_series,
+                    )
+                except TypeError:
+                    decay_out = two_pass_time_fit(
+                        times_dict,
+                        t_start_fit,
+                        t_end_global_ts,
+                        fit_cfg,
+                        baseline_rate=baseline_rate_po214,
+                        background_b_fixed_value=cfg["time_fit"].get(
+                            "background_b_fixed_value"
+                        ),
+                        fix_first_pass=cfg["time_fit"].get(
+                            "fix_background_b_first_pass", True
+                        ),
+                        strict=args.strict_covariance,
+                        fit_func=fit_time_series,
+                    )
+            else:
+                try:
+                    decay_out = fit_time_series(
+                        times_dict,
+                        t_start_fit,
+                        t_end_global_ts,
+                        fit_cfg,
+                        weights=weights_map,
+                        strict=args.strict_covariance,
+                    )
+                except TypeError:
+                    decay_out = fit_time_series(
+                        times_dict,
+                        t_start_fit,
+                        t_end_global_ts,
+                        fit_cfg,
+                        strict=args.strict_covariance,
+                    )
             time_fit_results[iso] = decay_out
         except Exception as e:
             logger.warning("Decay-curve fit for %s failed -> %s", iso, e)

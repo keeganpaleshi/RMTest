@@ -1,3 +1,4 @@
+import logging
 import matplotlib as _mpl
 _mpl.use("Agg")
 import matplotlib.pyplot as plt
@@ -18,9 +19,14 @@ def plot_radon_activity(ts, outdir):
         Output directory where ``radon_activity.png`` will be saved.
     """
     outdir = Path(outdir)
+    times = getattr(ts, "time", None)
+    activity = getattr(ts, "activity", None)
+    if times is None or activity is None or len(times) == 0:
+        logging.warning("plot_radon_activity: missing data, skipping plot")
+        return
     fig, ax = plt.subplots()
-    times_mpl = guard_mpl_times(times=ts.time)
-    ax.errorbar(times_mpl, ts.activity, yerr=getattr(ts, "error", None), fmt="o")
+    times_mpl = guard_mpl_times(times=times)
+    ax.errorbar(times_mpl, activity, yerr=getattr(ts, "error", None), fmt="o")
     ax.set_ylabel("Radon activity [Bq]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
@@ -35,9 +41,14 @@ def plot_radon_activity(ts, outdir):
 def plot_radon_trend(ts, outdir):
     """Plot radon activity trend without uncertainties."""
     outdir = Path(outdir)
+    times = getattr(ts, "time", None)
+    activity = getattr(ts, "activity", None)
+    if times is None or activity is None or len(times) == 0:
+        logging.warning("plot_radon_trend: missing data, skipping plot")
+        return
     fig, ax = plt.subplots()
-    times_mpl = guard_mpl_times(times=ts.time)
-    ax.plot(times_mpl, ts.activity, "o-")
+    times_mpl = guard_mpl_times(times=times)
+    ax.plot(times_mpl, activity, "o-")
     ax.set_ylabel("Radon activity [Bq]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
