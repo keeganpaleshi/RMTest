@@ -1044,3 +1044,25 @@ def test_plot_time_series_datetime64(tmp_path):
     assert out_png.exists()
 
 
+def test_plot_spectrum_comparison_fixed_bins(tmp_path, monkeypatch):
+    pre = np.array([0.1, 0.2, 0.3])
+    post = np.array([0.2, 0.3, 0.4])
+    out_png = tmp_path / "cmp.png"
+
+    captured = {}
+
+    orig_hist = plot_utils.np.histogram
+
+    def capture_hist(data, bins):
+        captured["bins"] = bins
+        return orig_hist(data, bins)
+
+    monkeypatch.setattr(plot_utils.np, "histogram", capture_hist)
+
+    plot_utils.plot_spectrum_comparison(pre, post, bins=4, out_png=str(out_png))
+
+    assert out_png.exists()
+    expected = np.linspace(0.1, 0.4, 5)
+    assert np.allclose(captured["bins"], expected)
+
+
