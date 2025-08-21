@@ -136,6 +136,8 @@ the file:
 The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--job-id` is given the folder `<output_dir>/<job-id>/` is used instead. If `--output_dir` is omitted it defaults to `results`. If the folder already exists run with `--overwrite` to replace it. The directory includes:
 
 - `summary.json` – calibration and fit summary.
+- The file now includes a small `diagnostics` block with validation flags,
+  event counts and any collected warnings to quickly spot problems.
 - `config_used.json` – copy of the configuration used.
   Any timestamps overridden on the command line are written
   back to this file as ISO timestamps.
