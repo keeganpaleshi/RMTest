@@ -44,15 +44,13 @@ def validate_baseline_window(cfg: dict) -> None:
 
     if a_end_dt is not None and start >= a_end_dt:
         raise ValueError(
-            "baseline.start >= analysis_end_time: "
-            f"{start.isoformat()} vs {a_end_dt.isoformat()}. "
-            "Check baseline.range and analysis.analysis_end_time"
+            "baseline range does not intersect analysis window: "
+            f"[{start.isoformat()}, {end.isoformat()}] vs end {a_end_dt.isoformat()}"
         )
 
     if a_start_dt is not None and end <= a_start_dt:
         raise ValueError(
-            "Baseline interval entirely before analysis window: "
-            f"[{start.isoformat()}, {end.isoformat()}] vs "
-            f"start {a_start_dt.isoformat()}"
+            "baseline range does not intersect analysis window: "
+            f"[{start.isoformat()}, {end.isoformat()}] vs start {a_start_dt.isoformat()}"
         )
 
