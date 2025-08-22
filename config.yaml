@@ -29,7 +29,7 @@ columns:
 baseline:
   range:
   - '2024-09-28T00:00:00Z'
-  - '2024-10-28T23:59:59Z'
+  - '2024-09-29T00:00:00Z'
   monitor_volume_l: 605.0
   sample_volume_l: 10.0
   isotopes_to_subtract:
