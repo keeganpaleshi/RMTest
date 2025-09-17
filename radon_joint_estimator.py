@@ -11,12 +11,6 @@ from radon_activity import compute_radon_activity
 __all__ = ["estimate_radon_activity"]
 
 
-def _decay_constant(hl_s: float) -> float:
-    if hl_s <= 0:
-        raise ValueError("half-life must be positive")
-    return math.log(2.0) / hl_s
-
-
 def estimate_radon_activity(
     N218: int | None = None,
     epsilon218: float | None = None,
@@ -25,6 +19,8 @@ def estimate_radon_activity(
     epsilon214: float | None = None,
     f214: float | None = None,
     *,
+    live_time218_s: float | None = None,
+    live_time214_s: float | None = None,
     rate214: float | None = None,
     err214: float | None = None,
     rate218: float | None = None,
@@ -42,6 +38,9 @@ def estimate_radon_activity(
         Detection efficiencies for each isotope.
     f218, f214 : float
         Fraction of progeny decaying inside the cell.
+    live_time218_s, live_time214_s : float, optional
+        Measurement live time in seconds corresponding to the Po-218/Po-214
+        counts. Required whenever the respective ``N`` value is provided.
     analysis_isotope : {"radon", "po218", "po214"}
         Determines whether to combine the estimates or return a single isotope.
     nuclide_constants : mapping, optional
@@ -112,19 +111,30 @@ def estimate_radon_activity(
         }
 
     consts = load_nuclide_overrides(nuclide_constants)
-    lam_rn = _decay_constant(consts.get("Rn222", RN222).half_life_s)
-    lam_218 = _decay_constant(consts.get("Po218", PO218).half_life_s)
-    lam_214 = _decay_constant(consts.get("Po214", PO214).half_life_s)
+    # Accessing the constants keeps API compatibility for callers that expect
+    # half-life overrides to be validated, even though they no longer enter the
+    # counts-based rate calculation.
+    _ = consts.get("Rn222", RN222)
+    _ = consts.get("Po218", PO218)
+    _ = consts.get("Po214", PO214)
 
-    def _estimate(counts: int | None, eff: float, frac: float, lam_dau: float):
+    def _estimate(
+        counts: int | None,
+        eff: float,
+        frac: float,
+        live_time: float | None,
+        label: str,
+    ):
         if counts is None or counts <= 0:
             return None
-        rn = counts / (eff * frac) * (lam_rn / lam_dau)
-        var = rn / counts
+        if live_time is None or live_time <= 0:
+            raise ValueError(f"live_time for {label} must be positive")
+        rn = counts / (eff * frac * live_time)
+        var = counts / (eff**2 * frac**2 * live_time**2)
         return rn, var
 
-    res218 = _estimate(N218, epsilon218, f218, lam_218)
-    res214 = _estimate(N214, epsilon214, f214, lam_214)
+    res218 = _estimate(N218, epsilon218, f218, live_time218_s, "Po-218")
+    res214 = _estimate(N214, epsilon214, f214, live_time214_s, "Po-214")
 
     components: dict[str, Any] = {}
     if res218:
