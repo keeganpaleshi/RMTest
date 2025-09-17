@@ -169,6 +169,19 @@ def _burst_sensitivity_scan(
             if filtered.empty:
                 results[(m, w)] = 0.0
                 continue
+            timestamps = pd.to_datetime(filtered["timestamp"], utc=True, errors="coerce")
+            if timestamps.isna().all():
+                results[(m, w)] = 0.0
+                continue
+            t_min = timestamps.min()
+            t_max = timestamps.max()
+            if pd.isna(t_min) or pd.isna(t_max):
+                results[(m, w)] = 0.0
+                continue
+            live_time_s = (t_max - t_min).total_seconds()
+            if not np.isfinite(live_time_s) or live_time_s <= 0:
+                results[(m, w)] = 0.0
+                continue
             energies = cal_result.predict(filtered["adc"])
             counts = {}
             for iso in ("Po218", "Po214"):
@@ -198,6 +211,8 @@ def _burst_sensitivity_scan(
                 N214=counts.get("Po214"),
                 epsilon214=eff214,
                 f214=1.0,
+                live_time218_s=live_time_s,
+                live_time214_s=live_time_s,
             )
             results[(m, w)] = float(est.get("Rn_activity_Bq", 0.0))
 
@@ -2473,6 +2488,8 @@ def main(argv=None):
                 if fit214
                 else 1.0
             )
+            lt218 = iso_live_time.get("Po218") if have_218 else None
+            lt214 = iso_live_time.get("Po214") if have_214 else None
             radon_estimate_info = estimate_radon_activity(
                 N218=N218,
                 epsilon218=eps218,
@@ -2480,6 +2497,8 @@ def main(argv=None):
                 N214=N214,
                 epsilon214=eps214,
                 f214=1.0,
+                live_time218_s=lt218,
+                live_time214_s=lt214,
             )
         elif (fit214 and fit214.rate is not None) or (
             fit218 and fit218.rate is not None
@@ -3057,6 +3076,8 @@ def main(argv=None):
             epsilon214=fit214.params.get("eff", 1.0) if fit214 else 1.0,
             f218=1.0,
             f214=1.0,
+            live_time218_s=iso_live_time.get("Po218") if fit218 else None,
+            live_time214_s=iso_live_time.get("Po214") if fit214 else None,
         )
 
         # ── Construct a one-point time-series so the plotters don’t crash ──
