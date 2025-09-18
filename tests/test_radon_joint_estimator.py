@@ -53,3 +53,31 @@ def test_counts_without_live_time_raises():
             f214=1.0,
         )
 
+
+def test_single_isotope_po218_missing_counts_raises():
+    with pytest.raises(ValueError, match="Po-218 counts unavailable"):
+        estimate_radon_activity(
+            N218=None,
+            epsilon218=0.5,
+            f218=1.0,
+            N214=20,
+            epsilon214=0.6,
+            f214=1.0,
+            live_time214_s=3600.0,
+            analysis_isotope="po218",
+        )
+
+
+def test_single_isotope_po214_missing_counts_raises():
+    with pytest.raises(ValueError, match="Po-214 counts unavailable"):
+        estimate_radon_activity(
+            N218=15,
+            epsilon218=0.5,
+            f218=1.0,
+            N214=None,
+            epsilon214=0.6,
+            f214=1.0,
+            live_time218_s=3600.0,
+            analysis_isotope="po214",
+        )
+
