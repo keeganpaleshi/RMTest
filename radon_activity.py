@@ -75,15 +75,19 @@ def compute_radon_activity(
     -------
     float
         Average radon activity in Bq.  A weighted mean is used only when
-        both rates have valid uncertainties; otherwise an unweighted mean
-        of the available rates is returned.
+        both rates have valid uncertainties.  When only one rate carries a
+        valid uncertainty that rate is returned without averaging.  If no
+        uncertainties are available the unweighted mean of the supplied
+        rates is returned.
     float
-        Propagated 1-sigma uncertainty.  When the mean is unweighted the
-        errors are combined as ``sqrt(err218**2 + err214**2) / N`` where
-        ``N`` is the number of rates included.  Negative uncertainties are
-        ignored while zero-valued uncertainties are accepted as exact
-        measurements.  If two rates are provided but neither uncertainty is
-        valid, the returned uncertainty is ``math.nan``.
+        Propagated 1-sigma uncertainty.  When a single rate is used its
+        own uncertainty is returned (zero when the rate is treated as
+        exact).  When the mean is unweighted the errors are combined as
+        ``sqrt(err218**2 + err214**2) / N`` where ``N`` is the number of
+        rates included.  Negative uncertainties are ignored while
+        zero-valued uncertainties are accepted as exact measurements.  If
+        two rates are provided but neither uncertainty is valid, the
+        returned uncertainty is ``math.nan``.
     """
     if eff218 < 0:
         raise ValueError("eff218 must be non-negative")
@@ -140,10 +144,22 @@ def compute_radon_activity(
         return A, sigma
 
     if len(values) == 2:
+        valid_idx = [i for i, w in enumerate(weights) if w is not None]
+        if len(valid_idx) == 1:
+            idx = valid_idx[0]
+            weight = cast(float, weights[idx])
+            A = values[idx]
+            if math.isinf(weight):
+                sigma = 0.0
+            else:
+                sigma = math.sqrt(1.0 / weight)
+            return A, sigma
+
         A = (values[0] + values[1]) / 2.0
         if all(w is None for w in weights):
             return A, math.nan
-        # Unweighted average when any uncertainty is missing or invalid
+        # All remaining cases should correspond to invalid uncertainties for both
+        # isotopes; fall back to reporting the combined statistical spread.
         e218 = err218 if err218 is not None and err218 >= 0 else 0.0
         e214 = err214 if err214 is not None and err214 >= 0 else 0.0
         sigma = math.sqrt(e218**2 + e214**2) / 2.0
