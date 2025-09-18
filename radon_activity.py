@@ -172,7 +172,8 @@ def compute_total_radon(
 
     The ``monitor_volume`` of the counting chamber and the ``sample_volume`` of
     the air sample must be supplied using the same units.  The configuration
-    files included with this repository use liters.
+    files included with this repository use liters, making the derived
+    concentration a Bq/L value.
 
     Both ``monitor_volume`` and ``sample_volume`` must be non-negative.  A
     ``ValueError`` is raised if ``monitor_volume`` is not positive, if
@@ -185,7 +186,8 @@ def compute_total_radon(
     Returns
     -------
     concentration : float
-        Radon concentration in Bq per same unit as ``monitor_volume``.
+        Radon concentration expressed per unit of ``monitor_volume`` (Bq/L when
+        the volumes are given in liters).
     sigma_conc : float
         Uncertainty on the concentration.
     total_bq : float

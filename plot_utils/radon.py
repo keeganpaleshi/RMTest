@@ -17,7 +17,7 @@ def plot_radon_activity(ts_dict, outdir: Path, out_png: str | Path | None = None
     errors = np.asarray(ts_dict["error"], dtype=float)
     fig, ax = plt.subplots()
     ax.errorbar(times_mpl, activity, yerr=errors, fmt="o")
-    ax.set_ylabel("Rn-222 activity [Bq]")
+    ax.set_ylabel("Rn-222 concentration [Bq/L]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
     setup_time_axis(ax, times_mpl)
@@ -39,8 +39,12 @@ def plot_radon_trend(ts_dict, outdir: Path, out_png: str | Path | None = None) -
         coeff = np.polyfit(times_mpl, activity, 1)
     fig, ax = plt.subplots()
     ax.plot(times_mpl, activity, "o")
-    ax.plot(times_mpl, np.polyval(coeff, times_mpl), label=f"slope={coeff[0]:.2e} Bq/s")
-    ax.set_ylabel("Rn-222 activity [Bq]")
+    ax.plot(
+        times_mpl,
+        np.polyval(coeff, times_mpl),
+        label=f"slope={coeff[0]:.2e} Bq/L/s",
+    )
+    ax.set_ylabel("Rn-222 concentration [Bq/L]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
     ax.legend()

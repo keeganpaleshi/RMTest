@@ -145,7 +145,7 @@ The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--j
 - Optional `*_ts.json` files containing binned time series when enabled.
 - `efficiency.png` – bar chart of individual efficiencies and the BLUE result.
 - `eff_cov.png` – heatmap of the efficiency covariance matrix.
-- `radon_activity.png` – extrapolated radon activity over time.
+- `radon_activity.png` – extrapolated radon concentration (Bq/L) over time.
  - `equivalent_air.png` – equivalent air volume plot when `--ambient-file` or
    `--ambient-concentration` is provided.
 
@@ -764,11 +764,11 @@ sigmas = cal.uncertainty([1500, 1700])
 ## Radon Activity Output
 
 After the decay fits a weighted average of the Po‑218 and Po‑214 rates is
-converted to an instantaneous radon activity.  The result is written to
-`summary.json` under `radon_results` together with the corresponding
-concentration (per liter) and the total amount of radon contained in the
-sample volume.  The file `radon_activity.png` visualises this
-activity versus time.  When either `--ambient-file` or
+converted to an instantaneous radon activity for the counting cell.  Dividing
+by the monitor volume yields the radon concentration (Bq/L) reported in
+`summary.json` under `radon_results` alongside the total amount of radon in the
+sample volume.  The file `radon_activity.png` visualises this concentration over
+time using Bq/L on the vertical axis.  When either `--ambient-file` or
 `--ambient-concentration` is supplied an additional plot
 `equivalent_air.png` shows the volume of ambient air containing the same
 activity.

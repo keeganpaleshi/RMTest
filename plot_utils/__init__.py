@@ -543,11 +543,11 @@ def plot_radon_activity_full(
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("radon_activity", "#9467bd")
-    label = None if po214_activity is None else "Rn-222 Activity"
+    label = None if po214_activity is None else "Rn-222 Concentration"
     ax.errorbar(times_mpl, activity, yerr=errors, fmt="o-", color=color, label=label)
     ax.set_xlabel("Time (UTC)")
-    ax.set_ylabel("Rn-222 Activity (Bq)")
-    ax.set_title("Extrapolated Radon Activity vs. Time")
+    ax.set_ylabel("Rn-222 Concentration (Bq/L)")
+    ax.set_title("Extrapolated Radon Concentration vs. Time")
     ax.ticklabel_format(axis="y", style="plain")
     setup_time_axis(ax, times_mpl)
 
@@ -555,8 +555,14 @@ def plot_radon_activity_full(
         po214_activity = np.asarray(po214_activity, dtype=float)
         color214 = palette.get("Po214", "#d62728")
         ax2 = ax.twinx()
-        ax2.plot(times_mpl, po214_activity, "--", color=color214, label="Po-214 Activity (QC)")
-        ax2.set_ylabel("Po-214 Activity (Bq)")
+        ax2.plot(
+            times_mpl,
+            po214_activity,
+            "--",
+            color=color214,
+            label="Po-214 Concentration (QC)",
+        )
+        ax2.set_ylabel("Po-214 Concentration (Bq/L)")
         ax2.ticklabel_format(axis="y", style="plain")
         ax2.yaxis.get_offset_text().set_visible(False)
         lines1, labels1 = ax.get_legend_handles_labels()
@@ -678,8 +684,8 @@ def plot_radon_trend_full(times, activity, out_png, config=None, *, fit_valid=Tr
     color = palette.get("radon_activity", "#9467bd")
     ax.plot(times_mpl, activity, "o-", color=color)
     ax.set_xlabel("Time (UTC)")
-    ax.set_ylabel("Radon Activity (Bq)")
-    ax.set_title("Radon Activity Trend")
+    ax.set_ylabel("Radon Concentration (Bq/L)")
+    ax.set_title("Radon Concentration Trend")
 
     ax.ticklabel_format(axis="y", style="plain")
     setup_time_axis(ax, times_mpl)
@@ -702,7 +708,7 @@ def plot_radon_activity(ts_dict, outdir):
 
     fig, ax = plt.subplots()
     ax.errorbar(times_mpl, y, yerr=e, fmt="o")
-    ax.set_ylabel("Radon activity [Bq]")
+    ax.set_ylabel("Radon concentration [Bq/L]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
     setup_time_axis(ax, times_mpl)
