@@ -156,7 +156,9 @@ def estimate_radon_activity(
     if mode not in {"radon", "po218", "po214"}:
         raise ValueError("invalid isotope mode")
 
-    if mode == "po218" and res218:
+    if mode == "po218":
+        if not res218:
+            raise ValueError("Po-218 counts unavailable for requested analysis_isotope='po218'")
         rn, var = res218
         return {
             "isotope_mode": "po218",
@@ -164,7 +166,9 @@ def estimate_radon_activity(
             "stat_unc_Bq": math.sqrt(var),
             "components": components,
         }
-    if mode == "po214" and res214:
+    if mode == "po214":
+        if not res214:
+            raise ValueError("Po-214 counts unavailable for requested analysis_isotope='po214'")
         rn, var = res214
         return {
             "isotope_mode": "po214",

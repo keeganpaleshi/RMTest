@@ -198,7 +198,7 @@ def compute_total_radon(
     Examples
     --------
     >>> compute_total_radon(5.0, 0.5, 10.0, 20.0)
-    (0.5, 0.05, 10.0, 1.0)
+    (0.5, 0.05, 15.0, 1.5)
     """
     if monitor_volume <= 0:
         raise ValueError("monitor_volume must be positive")
@@ -220,8 +220,9 @@ def compute_total_radon(
     conc = activity_bq / monitor_volume
     sigma_conc = err_bq / monitor_volume
 
-    total_bq = conc * sample_volume
-    sigma_total = sigma_conc * sample_volume
+    total_volume = monitor_volume + sample_volume
+    total_bq = conc * total_volume
+    sigma_total = sigma_conc * total_volume
     return conc, sigma_conc, total_bq, sigma_total
 
 
