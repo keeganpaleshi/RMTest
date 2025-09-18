@@ -36,14 +36,14 @@ def test_compute_radon_activity_efficiencies_not_weighted():
 
 def test_compute_radon_activity_only_214_error():
     a, s = compute_radon_activity(10.0, None, 1.0, 12.0, 2.0, 1.0)
-    assert a == pytest.approx((10.0 + 12.0) / 2)
-    assert s == pytest.approx(1.0)
+    assert a == pytest.approx(12.0)
+    assert s == pytest.approx(2.0)
 
 
 def test_compute_radon_activity_only_214_error_eff_not_one():
     a, s = compute_radon_activity(10.0, None, 0.8, 12.0, 2.0, 0.9)
-    assert a == pytest.approx((10.0 + 12.0) / 2)
-    assert s == pytest.approx(1.0)
+    assert a == pytest.approx(12.0)
+    assert s == pytest.approx(2.0)
 
 
 def test_compute_radon_activity_mixed_efficiency():
@@ -54,14 +54,14 @@ def test_compute_radon_activity_mixed_efficiency():
 
 def test_compute_radon_activity_only_218_error():
     a, s = compute_radon_activity(10.0, 1.0, 1.0, 12.0, None, 1.0)
-    assert a == pytest.approx((10.0 + 12.0) / 2)
-    assert s == pytest.approx(0.5)
+    assert a == pytest.approx(10.0)
+    assert s == pytest.approx(1.0)
 
 
 def test_compute_radon_activity_only_218_error_eff_not_one():
     a, s = compute_radon_activity(10.0, 1.0, 0.7, 12.0, None, 0.6)
-    assert a == pytest.approx((10.0 + 12.0) / 2)
-    assert s == pytest.approx(0.5)
+    assert a == pytest.approx(10.0)
+    assert s == pytest.approx(1.0)
 
 
 def test_compute_radon_activity_only_214_error_zero_218_error():
@@ -78,14 +78,14 @@ def test_compute_radon_activity_only_218_error_zero_214_error():
 
 def test_compute_radon_activity_mixed_error_sign():
     a, s = compute_radon_activity(10.0, -1.0, 1.0, 12.0, 2.0, 1.0)
-    assert a == pytest.approx((10.0 + 12.0) / 2)
-    assert s == pytest.approx(1.0)
+    assert a == pytest.approx(12.0)
+    assert s == pytest.approx(2.0)
 
 
 def test_compute_radon_activity_mixed_error_sign_214():
     a, s = compute_radon_activity(10.0, 1.0, 1.0, 12.0, -2.0, 1.0)
-    assert a == pytest.approx((10.0 + 12.0) / 2)
-    assert s == pytest.approx(0.5)
+    assert a == pytest.approx(10.0)
+    assert s == pytest.approx(1.0)
 
 
 def test_compute_radon_activity_mixed_efficiency_214():
@@ -121,10 +121,10 @@ def test_compute_radon_activity_single_218_eff_not_one():
 
 
 def test_compute_radon_activity_uncertainty_po214_only():
-    """Returns unweighted average when only Po-214 error is valid."""
+    """Returns the Po-214 rate when only its uncertainty is valid."""
     a, s = compute_radon_activity(4.0, None, 1.0, 5.0, 0.3, 1.0)
-    assert a == pytest.approx((4.0 + 5.0) / 2)
-    assert s == pytest.approx(0.15)
+    assert a == pytest.approx(5.0)
+    assert s == pytest.approx(0.3)
 
 
 def test_compute_radon_activity_negative_eff218():
@@ -176,11 +176,18 @@ def test_compute_radon_activity_missing_uncertainty_returns_nan():
     assert math.isnan(s)
 
 
-def test_compute_radon_activity_unweighted_one_error_missing():
-    """Average both rates when one uncertainty is missing."""
+def test_compute_radon_activity_single_rate_when_other_error_missing():
+    """Prefer the rate with a stated uncertainty when the other is missing."""
     a, s = compute_radon_activity(5.0, 0.5, 1.0, 7.0, None, 1.0)
-    assert a == pytest.approx(6.0)
-    assert s == pytest.approx(0.25)
+    assert a == pytest.approx(5.0)
+    assert s == pytest.approx(0.5)
+
+
+def test_compute_radon_activity_single_rate_when_other_error_missing_exact():
+    """Retain an exact measurement when the companion uncertainty is missing."""
+    a, s = compute_radon_activity(10.0, 0.0, 1.0, 12.0, None, 1.0)
+    assert a == pytest.approx(10.0)
+    assert s == pytest.approx(0.0)
 
 
 def test_compute_radon_activity_both_missing_errors():
