@@ -69,6 +69,8 @@ def estimate_radon_activity(
             require_equilibrium=False,
         )
         mode = analysis_isotope.lower()
+        if mode not in {"radon", "po214", "po218"}:
+            raise ValueError("invalid isotope mode")
         if mode == "radon":
             return {
                 "isotope_mode": "radon",
@@ -77,20 +79,26 @@ def estimate_radon_activity(
                 "components": comp,
             }
         if mode == "po214":
+            if rate214 is None:
+                raise ValueError(
+                    "Po-214 rate unavailable for requested analysis_isotope='po214'"
+                )
             return {
                 "isotope_mode": "po214",
                 "activity_Bq": rate214,
                 "stat_unc_Bq": err214,
                 "components": comp,
             }
-        if mode == "po218":
-            return {
-                "isotope_mode": "po218",
-                "activity_Bq": rate218,
-                "stat_unc_Bq": err218,
-                "components": comp,
-            }
-        raise ValueError("invalid isotope mode")
+        if rate218 is None:
+            raise ValueError(
+                "Po-218 rate unavailable for requested analysis_isotope='po218'"
+            )
+        return {
+            "isotope_mode": "po218",
+            "activity_Bq": rate218,
+            "stat_unc_Bq": err218,
+            "components": comp,
+        }
 
     if epsilon218 is None or epsilon214 is None or f218 is None or f214 is None:
         raise ValueError("counts mode requires efficiencies and fractions")
