@@ -179,9 +179,9 @@ def apply_baseline_subtraction(
 
     rate_bl, live_bl = rate_histogram(baseline_subset, bins)
 
-    if mode in ("electronics", "radon", "all"):
+    if mode in ("electronics", "all"):
         net_counts = (rate_an - rate_bl) * live_time_analysis
-    else:  # mode == "none"
+    else:  # ``mode`` is "none" or "radon"
         net_counts = rate_an * live_time_analysis
 
     df_out = df_analysis.copy()

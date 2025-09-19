@@ -20,7 +20,7 @@ def estimate_linear_background(energies, centroids, peak_width=0.3, bins="fd"):
         Half-width around each centroid to exclude from the fit.
     bins : int or sequence or str, optional
         Histogram bin specification passed to ``numpy.histogram``.
-        The fit is weighted by ``sqrt(counts)`` assuming Poisson statistics.
+        The fit is weighted by ``1/sqrt(counts)`` assuming Poisson statistics.
 
     Returns
     -------
@@ -34,12 +34,15 @@ def estimate_linear_background(energies, centroids, peak_width=0.3, bins="fd"):
 
     hist, edges = np.histogram(e, bins=bins)
     centers = 0.5 * (edges[:-1] + edges[1:])
-    weights = np.sqrt(np.clip(hist, 1, None))
+    counts = hist.astype(float)
+    weights = np.zeros_like(counts, dtype=float)
+    positive = counts > 0
+    weights[positive] = 1.0 / np.sqrt(counts[positive])
     mask = np.ones_like(centers, dtype=bool)
     for mu in centroids.values():
         mask &= ~((centers >= mu - peak_width) & (centers <= mu + peak_width))
 
-    if mask.sum() < 2:
+    if mask.sum() < 2 or not np.any(weights[mask] > 0):
         return 0.0, 0.0
 
     coeffs = np.polyfit(centers[mask], hist[mask], 1, w=weights[mask])
@@ -80,12 +83,15 @@ def estimate_polynomial_background(
 
     hist, edges = np.histogram(e, bins=bins)
     centers = 0.5 * (edges[:-1] + edges[1:])
-    weights = np.sqrt(np.clip(hist, 1, None))
+    counts = hist.astype(float)
+    weights = np.zeros_like(counts, dtype=float)
+    positive = counts > 0
+    weights[positive] = 1.0 / np.sqrt(counts[positive])
     mask = np.ones_like(centers, dtype=bool)
     for mu in centroids.values():
         mask &= ~((centers >= mu - peak_width) & (centers <= mu + peak_width))
 
-    if mask.sum() <= degree:
+    if mask.sum() <= degree or not np.any(weights[mask] > 0):
         return np.zeros(degree + 1)
 
     coeffs = np.polyfit(centers[mask], hist[mask], degree, w=weights[mask])
@@ -119,7 +125,10 @@ def estimate_polynomial_background_auto(
 
     hist, edges = np.histogram(np.asarray(energies, dtype=float), bins=bins)
     centers = 0.5 * (edges[:-1] + edges[1:])
-    weights = np.sqrt(np.clip(hist, 1, None))
+    counts = hist.astype(float)
+    weights = np.zeros_like(counts, dtype=float)
+    positive = counts > 0
+    weights[positive] = 1.0 / np.sqrt(counts[positive])
     mask = np.ones_like(centers, dtype=bool)
     for mu in centroids.values():
         mask &= ~((centers >= mu - peak_width) & (centers <= mu + peak_width))
@@ -128,11 +137,11 @@ def estimate_polynomial_background_auto(
     y = hist[mask]
     w = weights[mask]
 
-    if x.size == 0:
+    if x.size == 0 or not np.any(w > 0):
         return best_coeffs, best_order
 
     for n in range(max_order + 1):
-        if x.size <= n:
+        if x.size <= n or not np.any(w > 0):
             break
         coeffs = np.polyfit(x, y, n, w=w)
         y_pred = np.polyval(coeffs, x)
