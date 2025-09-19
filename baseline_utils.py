@@ -135,7 +135,8 @@ def apply_baseline_subtraction(
     interpreted in UTC and compared using integer nanoseconds to avoid
     issues with differing time zone information between ``df_full`` and
     the provided range. When ``baseline_range`` matches no events a warning is
-    logged and a copy of ``df_analysis`` is returned.
+    logged and a copy of ``df_analysis`` is returned unless ``allow_fallback``
+    is ``False``, in which case :class:`BaselineError` is raised.
     """
 
     assert mode in ("none", "electronics", "radon", "all")
@@ -158,17 +159,19 @@ def apply_baseline_subtraction(
         events_start = pd.Timestamp(ts_full.min(), tz="UTC")
         events_end = pd.Timestamp(ts_full.max(), tz="UTC")
         if t1 < events_start or t0 > events_end:
-            logging.warning(
-                "Baseline interval outside data range – taking counts anyway"
-            )
+            msg = "Baseline interval outside data range"
+            logging.warning("%s – taking counts anyway", msg)
+            if not allow_fallback:
+                raise BaselineError(msg)
     ts_int = ts_full.view("int64")
     t0_ns = t0.value
     t1_ns = t1.value
     mask = (ts_int >= t0_ns) & (ts_int <= t1_ns)
     if not mask.any():
-        logging.warning(
-            "baseline_range matched no events – subtraction skipped"
-        )
+        msg = "baseline_range matched no events"
+        logging.warning("%s – subtraction skipped", msg)
+        if not allow_fallback:
+            raise BaselineError(msg)
         hist = rate_an * live_time_analysis
         return df_analysis.copy(), hist
 
