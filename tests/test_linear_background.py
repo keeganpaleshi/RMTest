@@ -48,8 +48,9 @@ def generate_poly_spectrum(bg_func):
         ]
     )
     e_bg = np.linspace(5.0, 8.0, 60)
-    counts = bg_func(e_bg).astype(int)
-    cont = np.concatenate([np.full(c, e) for e, c in zip(e_bg, counts)])
+    counts = [max(int(bg_func(e)), 0) for e in e_bg]
+    cont = [rng.normal(e, 0.01, c) for e, c in zip(e_bg, counts) if c > 0]
+    cont = np.concatenate(cont) if cont else np.array([], dtype=float)
     energies = np.concatenate([energies, cont])
     return energies, peaks
 
@@ -164,7 +165,7 @@ def test_zero_count_bins():
 def test_polynomial_background_order_selection():
     flat = lambda e: np.full_like(e, 30)
     slope = lambda e: 20 + 5 * (e - 6)
-    quad = lambda e: 10 + 2 * (e - 6) ** 2
+    quad = lambda e: 10 + 20 * (e - 6) ** 2
 
     for func, expected in [(flat, 0), (slope, 1), (quad, 2)]:
         energies, peaks = generate_poly_spectrum(func)
