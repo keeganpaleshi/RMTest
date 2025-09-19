@@ -64,6 +64,20 @@ def test_apply_linear_adc_shift_quadratic():
     assert np.allclose(out, [0.0, 1.5, 4.0])
 
 
+def test_apply_linear_adc_shift_quadratic_ignores_rate_parameter():
+    adc = np.zeros(3)
+    t = np.array([0.0, 1.0, 2.0])
+    out = apply_linear_adc_shift(
+        adc,
+        t,
+        rate=5.0,
+        mode="quadratic",
+        params={"a": 0.5},
+    )
+    assert isinstance(out, np.ndarray)
+    assert np.allclose(out, [0.0, 0.5, 2.0])
+
+
 def test_apply_linear_adc_shift_piecewise():
     adc = np.zeros(4)
     t = np.array([0.0, 1.0, 2.0, 3.0])

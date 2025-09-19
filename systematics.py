@@ -57,7 +57,7 @@ def apply_linear_adc_shift(
     elif mode == "quadratic":
         p = params or {}
         a = float(p.get("a", 0.0))
-        b = float(p.get("b", rate))
+        b = float(p.get("b", 0.0))
         shift = a * dt ** 2 + b * dt
     elif mode == "piecewise":
         if not params or "times" not in params or "shifts" not in params:
