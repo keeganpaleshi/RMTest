@@ -81,3 +81,19 @@ def test_single_isotope_po214_missing_counts_raises():
             analysis_isotope="po214",
         )
 
+
+def test_rate_shortcut_requires_requested_isotope_data():
+    with pytest.raises(ValueError, match="Po-214 rate unavailable"):
+        estimate_radon_activity(
+            rate218=1.0,
+            err218=0.1,
+            analysis_isotope="po214",
+        )
+
+    with pytest.raises(ValueError, match="Po-218 rate unavailable"):
+        estimate_radon_activity(
+            rate214=0.9,
+            err214=0.05,
+            analysis_isotope="po218",
+        )
+
