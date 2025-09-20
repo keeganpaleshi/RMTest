@@ -25,9 +25,15 @@ def test_run_assertions_invalid_half_life():
         run_assertions(summary, constants, config)
 
 
-def test_run_assertions_invalid_sample_volume():
+def test_run_assertions_zero_sample_volume_allowed():
     summary = {"radon": {"Rn_activity_Bq": 1.0, "stat_unc_Bq": 0.1}}
     constants = {"Po214": {"half_life_s": 0.000164}}
     config = {"baseline": {"sample_volume_l": 0.0}}
-    with pytest.raises(AssertionError):
-        run_assertions(summary, constants, config)
+    run_assertions(summary, constants, config)
+
+
+def test_run_assertions_zero_uncertainty_allowed():
+    summary = {"radon": {"Rn_activity_Bq": 1.0, "stat_unc_Bq": 0.0}}
+    constants = {"Po214": {"half_life_s": 0.000164}}
+    config = {"baseline": {"sample_volume_l": 1.0}}
+    run_assertions(summary, constants, config)

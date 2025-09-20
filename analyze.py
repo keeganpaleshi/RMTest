@@ -3494,17 +3494,37 @@ def main(argv=None):
                 cal = dat.get("calibration", {})
                 slope, dslope = cal.get("a", (None, None))
                 intercept, dintercept = cal.get("c", (None, None))
-                if hl is not None:
-                    run_results.append(
-                        {
-                            "half_life": hl,
-                            "dhalf_life": dhl,
-                            "slope_MeV_per_ch": slope,
-                            "dslope": dslope,
-                            "intercept": intercept,
-                            "dintercept": dintercept,
-                        }
-                    )
+                if hl is None or not np.isfinite(hl):
+                    logger.warning("Skipping %s -> invalid half-life", p)
+                    continue
+                if dhl is None or not np.isfinite(dhl) or dhl < 0:
+                    logger.warning("Skipping %s -> missing half-life uncertainty", p)
+                    continue
+
+                entry = {
+                    "half_life": float(hl),
+                    "dhalf_life": float(dhl),
+                }
+
+                if (
+                    slope is not None
+                    and dslope is not None
+                    and np.isfinite(slope)
+                    and np.isfinite(dslope)
+                ):
+                    entry["slope_MeV_per_ch"] = float(slope)
+                    entry["dslope"] = float(dslope)
+
+                if (
+                    intercept is not None
+                    and dintercept is not None
+                    and np.isfinite(intercept)
+                    and np.isfinite(dintercept)
+                ):
+                    entry["intercept"] = float(intercept)
+                    entry["dintercept"] = float(dintercept)
+
+                run_results.append(entry)
             if run_results:
                 hier_out = fit_hierarchical_runs(run_results)
                 with open(args.hierarchical_summary, "w", encoding="utf-8") as f:

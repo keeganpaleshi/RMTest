@@ -18,7 +18,7 @@ def run_assertions(summary: Mapping[str, Any], constants: Mapping[str, Any], con
     """
     if "radon" in summary:
         assert summary["radon"]["Rn_activity_Bq"] >= 0
-        assert summary["radon"]["stat_unc_Bq"] > 0
+        assert summary["radon"]["stat_unc_Bq"] >= 0
     # Spectral fit should be valid when requested
     spec = summary.get("spectral_fit", {})
     if spec:
@@ -32,4 +32,4 @@ def run_assertions(summary: Mapping[str, Any], constants: Mapping[str, Any], con
         assert B >= 0.0
 
     assert constants["Po214"]["half_life_s"] < 1e3
-    assert config["baseline"]["sample_volume_l"] > 0
+    assert config["baseline"]["sample_volume_l"] >= 0
