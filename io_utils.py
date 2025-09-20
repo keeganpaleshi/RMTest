@@ -174,7 +174,7 @@ CONFIG_SCHEMA = {
                     "maxItems": 2,
                 },
                 "monitor_volume_l": {"type": "number", "minimum": 0},
-                "sample_volume_l": {"type": "number", "minimum": 0},
+                "sample_volume_l": {"type": "number", "exclusiveMinimum": 0},
                 "isotopes_to_subtract": {"type": "array", "items": {"type": "string"}},
             },
         },
