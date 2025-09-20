@@ -29,22 +29,59 @@ def fit_hierarchical_runs(run_results, draws=2000, tune=1000, chains=2, random_s
         parameters ``half_life``, ``slope_MeV_per_ch`` and ``intercept``.
     """
 
-    n = len(run_results)
+    sanitized = []
+    for entry in run_results:
+        hl = entry.get("half_life")
+        dhl = entry.get("dhalf_life")
+        if hl is None or dhl is None:
+            continue
+        hl = float(hl)
+        dhl = float(dhl)
+        if not np.isfinite(hl) or not np.isfinite(dhl) or dhl < 0:
+            continue
+
+        clean = {"half_life": hl, "dhalf_life": dhl}
+
+        slope = entry.get("slope_MeV_per_ch")
+        dslope = entry.get("dslope")
+        if (
+            slope is not None
+            and dslope is not None
+            and np.isfinite(slope)
+            and np.isfinite(dslope)
+        ):
+            clean["slope_MeV_per_ch"] = float(slope)
+            clean["dslope"] = float(dslope)
+
+        intercept = entry.get("intercept")
+        dintercept = entry.get("dintercept")
+        if (
+            intercept is not None
+            and dintercept is not None
+            and np.isfinite(intercept)
+            and np.isfinite(dintercept)
+        ):
+            clean["intercept"] = float(intercept)
+            clean["dintercept"] = float(dintercept)
+
+        sanitized.append(clean)
+
+    n = len(sanitized)
     if n == 0:
-        raise ValueError("run_results must not be empty")
+        raise ValueError("run_results must contain finite half-life measurements")
 
-    hl_obs = np.array([r["half_life"] for r in run_results], dtype=float)
-    hl_err = np.array([max(r.get("dhalf_life", np.nan), 1e-6) for r in run_results], dtype=float)
+    hl_obs = np.array([r["half_life"] for r in sanitized], dtype=float)
+    hl_err = np.array([max(r["dhalf_life"], 1e-6) for r in sanitized], dtype=float)
 
-    use_slope = all("slope_MeV_per_ch" in r and "dslope" in r for r in run_results)
+    use_slope = all("slope_MeV_per_ch" in r and "dslope" in r for r in sanitized)
     if use_slope:
-        slope_obs = np.array([r["slope_MeV_per_ch"] for r in run_results], dtype=float)
-        slope_err = np.array([max(r.get("dslope", np.nan), 1e-6) for r in run_results], dtype=float)
+        slope_obs = np.array([r["slope_MeV_per_ch"] for r in sanitized], dtype=float)
+        slope_err = np.array([max(r["dslope"], 1e-6) for r in sanitized], dtype=float)
 
-    use_intercept = all("intercept" in r and "dintercept" in r for r in run_results)
+    use_intercept = all("intercept" in r and "dintercept" in r for r in sanitized)
     if use_intercept:
-        int_obs = np.array([r["intercept"] for r in run_results], dtype=float)
-        int_err = np.array([max(r.get("dintercept", np.nan), 1e-6) for r in run_results], dtype=float)
+        int_obs = np.array([r["intercept"] for r in sanitized], dtype=float)
+        int_err = np.array([max(r["dintercept"], 1e-6) for r in sanitized], dtype=float)
 
     with pm.Model():
         # Global mean and between-run scatter for half-life
