@@ -781,13 +781,14 @@ aborts by default after clamping the result to zero.  Passing
 `--allow-negative-activity` preserves the negative value and processing
 continues.
 
-### Radon vs Po214 Mode
+### Radon vs Progeny Mode
 
-The configuration key `analysis_isotope` selects how the radon activity is
-reported. The default value `radon` combines the Po‑218 and Po‑214 estimates
-using inverse-variance weighting. Setting it to `po214` or `po218` uses only
-the chosen progeny. The command line option `--iso` overrides this setting
-for a particular run.
+The configuration key `analysis_isotope` selects which progeny drives the
+radon estimate. The default value `radon` combines the Po‑218 and Po‑214
+estimates using inverse-variance weighting. Setting it to `po214` or `po218`
+uses only the chosen progeny while still recording the result under the
+`radon` entry of `summary.json`. The command line option `--iso` overrides
+this setting for a particular run.
 
 ## Efficiency Calculations
 

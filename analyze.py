@@ -745,7 +745,10 @@ def parse_args(argv=None):
     p.add_argument(
         "--iso",
         choices=["radon", "po218", "po214"],
-        help="Analysis isotope mode (overrides analysis_isotope in config.yaml)",
+        help=(
+            "Select which progeny drives the radon estimate "
+            "(overrides analysis_isotope in config.yaml)"
+        ),
     )
     p.add_argument(
         "--allow-negative-baseline",
@@ -2854,6 +2857,7 @@ def main(argv=None):
 
     radon_results = {}
     radon_combined_info = None
+    iso_mode = cfg.get("analysis_isotope", "radon").lower()
 
     def _eff_value_local(key):
         val = cfg.get("time_fit", {}).get(key)
@@ -2890,11 +2894,34 @@ def main(argv=None):
                 "E_Po218",
             )
 
+    if iso_mode == "radon":
+        r218 = rate218
+        e218 = err218
+        r214 = rate214
+        e214 = err214
+    elif iso_mode == "po218":
+        r218 = rate218
+        e218 = err218
+        r214 = None
+        e214 = None
+    elif iso_mode == "po214":
+        r218 = None
+        e218 = None
+        r214 = rate214
+        e214 = err214
+    else:
+        raise ValueError(f"Unknown analysis_isotope {iso_mode!r}")
+
     A_radon, dA_radon = compute_radon_activity(
-        rate218, err218, eff_po218, rate214, err214, eff_po214
+        r218,
+        e218,
+        eff_po218,
+        r214,
+        e214,
+        eff_po214,
     )
 
-    if cfg.get("analysis_isotope", "radon") == "radon":
+    if iso_mode == "radon":
         radon_combined_info = {
             "activity_Bq": A_radon,
             "unc_Bq": dA_radon,
@@ -3094,36 +3121,27 @@ def main(argv=None):
 
     from radon_joint_estimator import estimate_radon_activity
 
-    iso_mode = cfg.get("analysis_isotope", "radon").lower()
-    if iso_mode == "radon":
-        radon = estimate_radon_activity(
-            N218=fit218.counts if fit218 else 0,
-            epsilon218=fit218.params.get("eff", 1.0) if fit218 else 1.0,
-            N214=fit214.counts if fit214 else 0,
-            epsilon214=fit214.params.get("eff", 1.0) if fit214 else 1.0,
-            f218=1.0,
-            f214=1.0,
-            live_time218_s=iso_live_time.get("Po218") if fit218 else None,
-            live_time214_s=iso_live_time.get("Po214") if fit214 else None,
-        )
+    radon = estimate_radon_activity(
+        N218=fit218.counts if fit218 else 0,
+        epsilon218=fit218.params.get("eff", 1.0) if fit218 else 1.0,
+        N214=fit214.counts if fit214 else 0,
+        epsilon214=fit214.params.get("eff", 1.0) if fit214 else 1.0,
+        f218=1.0,
+        f214=1.0,
+        live_time218_s=iso_live_time.get("Po218") if fit218 else None,
+        live_time214_s=iso_live_time.get("Po214") if fit214 else None,
+        analysis_isotope=iso_mode,
+    )
 
-        # ── Construct a one-point time-series so the plotters don’t crash ──
-        run_midpoint = 0.5 * (t0_cfg.timestamp() + t_end_cfg.timestamp())
-        radon["time_series"] = {
-            "time": [run_midpoint],
-            "activity": [radon["Rn_activity_Bq"]],
-            "error": [radon["stat_unc_Bq"]],
-        }
+    # ── Construct a one-point time-series so the plotters don’t crash ──
+    run_midpoint = 0.5 * (t0_cfg.timestamp() + t_end_cfg.timestamp())
+    radon["time_series"] = {
+        "time": [run_midpoint],
+        "activity": [radon["Rn_activity_Bq"]],
+        "error": [radon["stat_unc_Bq"]],
+    }
 
-        summary["radon"] = radon
-    elif iso_mode == "po218":
-        if fit218:
-            summary["po218"] = {"activity_Bq": fit218.rate, "stat_unc_Bq": fit218.err}
-    elif iso_mode == "po214":
-        if fit214:
-            summary["po214"] = {"activity_Bq": fit214.rate, "stat_unc_Bq": fit214.err}
-    else:
-        raise ValueError(f"Unknown analysis_isotope {iso_mode!r}")
+    summary["radon"] = radon
 
     if weights is not None:
         summary.efficiency = summary.efficiency or {}
