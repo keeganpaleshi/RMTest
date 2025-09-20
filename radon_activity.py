@@ -104,24 +104,34 @@ def compute_radon_activity(
     weights: list[Optional[float]] = []
 
     if rate218 is not None and eff218 > 0:
-        values.append(rate218)
-        if err218 is not None and err218 >= 0:
-            if err218 == 0:
-                weights.append(float("inf"))
-            else:
-                weights.append(1.0 / err218**2)
+        if not math.isfinite(rate218):
+            logging.warning(
+                "Skipping non-finite Po-218 rate when computing radon activity"
+            )
         else:
-            weights.append(None)
+            values.append(rate218)
+            if err218 is not None and err218 >= 0:
+                if err218 == 0:
+                    weights.append(float("inf"))
+                else:
+                    weights.append(1.0 / err218**2)
+            else:
+                weights.append(None)
 
     if rate214 is not None and eff214 > 0:
-        values.append(rate214)
-        if err214 is not None and err214 >= 0:
-            if err214 == 0:
-                weights.append(float("inf"))
-            else:
-                weights.append(1.0 / err214**2)
+        if not math.isfinite(rate214):
+            logging.warning(
+                "Skipping non-finite Po-214 rate when computing radon activity"
+            )
         else:
-            weights.append(None)
+            values.append(rate214)
+            if err214 is not None and err214 >= 0:
+                if err214 == 0:
+                    weights.append(float("inf"))
+                else:
+                    weights.append(1.0 / err214**2)
+            else:
+                weights.append(None)
 
     if not values:
         return 0.0, math.nan

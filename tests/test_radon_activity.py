@@ -197,6 +197,13 @@ def test_compute_radon_activity_both_missing_errors():
     assert math.isnan(s)
 
 
+def test_compute_radon_activity_skips_nan_rate():
+    """Treat non-finite rates as absent measurements."""
+    a, s = compute_radon_activity(float("nan"), 0.4, 1.0, 7.0, 0.6, 1.0)
+    assert a == pytest.approx(7.0)
+    assert s == pytest.approx(0.6)
+
+
 def test_compute_total_radon_negative_sample_volume():
     with pytest.raises(ValueError):
         compute_total_radon(5.0, 0.5, 10.0, -1.0)
