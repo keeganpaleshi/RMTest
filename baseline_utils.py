@@ -38,10 +38,11 @@ def compute_dilution_factor(monitor_volume: float, sample_volume: float) -> floa
     Parameters
     ----------
     monitor_volume:
-        Detector chamber volume in litres. Must be strictly positive.
+        Detector chamber volume in litres. Must be finite and strictly
+        positive.
     sample_volume:
         Volume of the sample air introduced to the chamber in litres. Must be
-        non-negative.
+        finite and non-negative.
 
     Raises
     ------
@@ -51,6 +52,10 @@ def compute_dilution_factor(monitor_volume: float, sample_volume: float) -> floa
 
     monitor = float(monitor_volume)
     sample = float(sample_volume)
+    if not np.isfinite(monitor):
+        raise ValueError("monitor_volume must be finite")
+    if not np.isfinite(sample):
+        raise ValueError("sample_volume must be finite")
     if monitor <= 0:
         raise ValueError("monitor_volume must be positive")
     if sample < 0:
