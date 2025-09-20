@@ -1,4 +1,5 @@
 from pathlib import Path
+import math
 import sys
 
 import pytest
@@ -37,6 +38,10 @@ def test_compute_dilution_factor():
         (0.0, 5.0, "monitor_volume must be positive"),
         (-1.0, 5.0, "monitor_volume must be positive"),
         (10.0, -0.5, "sample_volume must be non-negative"),
+        (math.nan, 1.0, "monitor_volume must be finite"),
+        (math.inf, 1.0, "monitor_volume must be finite"),
+        (10.0, math.nan, "sample_volume must be finite"),
+        (10.0, math.inf, "sample_volume must be finite"),
     ],
 )
 def test_compute_dilution_factor_invalid_inputs(monitor_volume, sample_volume, message):
