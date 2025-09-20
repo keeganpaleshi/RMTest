@@ -651,6 +651,155 @@ def test_sigma_rate_uses_weighted_counts(tmp_path, monkeypatch):
     assert dE_corr == pytest.approx(0.2198, rel=1e-3)
 
 
+def _prepare_config(tmp_path, cfg):
+    cfg_path = tmp_path / "cfg.yaml"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    return cfg_path
+
+
+def _prepare_events(tmp_path):
+    df = pd.DataFrame(
+        {
+            "fUniqueID": [1, 2, 3],
+            "fBits": [0, 0, 0],
+            "timestamp": [
+                pd.Timestamp(1.0, unit="s", tz="UTC"),
+                pd.Timestamp(2.0, unit="s", tz="UTC"),
+                pd.Timestamp(3.0, unit="s", tz="UTC"),
+            ],
+            "adc": [8.0, 8.0, 8.0],
+            "fchannel": [1, 1, 1],
+        }
+    )
+    data_path = tmp_path / "data.csv"
+    df.to_csv(data_path, index=False)
+    return data_path
+
+
+def _patch_minimal_pipeline(monkeypatch, captured):
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0],
+        cov=np.zeros((2, 2)),
+        peaks={"Po210": {"centroid_adc": 10}},
+        sigma_E=1.0,
+        sigma_E_error=0.0,
+    )
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch())
+    monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(baseline_noise, "estimate_baseline_noise", lambda *a, **k: (None, {}))
+
+    def fake_fit(ts_dict, t_start, t_end, cfg_fit, **kwargs):
+        captured["times"] = ts_dict.get("Po214", [])
+        return FitResult(FitParams({"E_Po214": 1.0}), np.zeros((1, 1)), 0)
+
+    monkeypatch.setattr(analyze, "fit_time_series", fake_fit)
+
+    def fake_write(out_dir, summary, timestamp=None):
+        captured["summary"] = asdict(summary)
+        d = Path(out_dir) / (timestamp or "x")
+        d.mkdir(parents=True, exist_ok=True)
+        return str(d)
+
+    monkeypatch.setattr(analyze, "write_summary", fake_write)
+    monkeypatch.setattr(analyze, "copy_config", lambda *a, **k: None)
+
+
+def test_invalid_dilution_factor_raises_without_fallback(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "baseline": {
+            "range": [0, 5],
+            "monitor_volume_l": 0.0,
+            "sample_volume_l": 1.0,
+        },
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {
+            "do_time_fit": True,
+            "window_po214": [0, 20],
+            "hl_po214": [1.0, 0.0],
+            "eff_po214": [1.0, 0.0],
+            "flags": {},
+        },
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+
+    cfg_path = _prepare_config(tmp_path, cfg)
+    data_path = _prepare_events(tmp_path)
+    captured = {}
+    _patch_minimal_pipeline(monkeypatch, captured)
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+
+    with pytest.raises(ValueError, match="invalid baseline volumes"):
+        analyze.main()
+
+
+def test_invalid_dilution_factor_respects_fallback(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "allow_fallback": True,
+        "baseline": {
+            "range": [0, 5],
+            "monitor_volume_l": 605.0,
+            "sample_volume_l": -2.0,
+        },
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {
+            "do_time_fit": True,
+            "window_po214": [0, 20],
+            "hl_po214": [1.0, 0.0],
+            "eff_po214": [1.0, 0.0],
+            "flags": {},
+        },
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+
+    cfg_path = tmp_path / "cfg.yaml"
+    cfg_path.write_text("baseline:\n")
+    data_path = _prepare_events(tmp_path)
+    captured = {}
+    _patch_minimal_pipeline(monkeypatch, captured)
+    monkeypatch.setattr(analyze, "load_config", lambda *a, **k: cfg)
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+
+    analyze.main()
+
+    summary = captured.get("summary", {})
+    base_info = summary.get("baseline", {})
+    assert base_info.get("dilution_factor_fallback") is True
+    assert base_info.get("dilution_factor") == pytest.approx(1.0)
+    warnings_list = base_info.get("warnings", [])
+    assert any("invalid baseline volumes" in w for w in warnings_list)
+
+
 def test_rate_histogram_single_event():
     df = pd.DataFrame({"timestamp": [pd.Timestamp(1.0, unit="s", tz="UTC")], "adc": [10.0]})
     bins = np.array([0, 20])
