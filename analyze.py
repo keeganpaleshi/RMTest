@@ -3458,6 +3458,7 @@ def main(argv=None):
     if args.hierarchical_summary:
         try:
             run_results = []
+            dropped_runs = 0
             for p in args.output_dir.glob("*/summary.json"):
                 try:
                     with open(p, "r", encoding="utf-8") as f:
@@ -3470,17 +3471,75 @@ def main(argv=None):
                 cal = dat.get("calibration", {})
                 slope, dslope = cal.get("a", (None, None))
                 intercept, dintercept = cal.get("c", (None, None))
-                if hl is not None:
-                    run_results.append(
-                        {
-                            "half_life": hl,
-                            "dhalf_life": dhl,
-                            "slope_MeV_per_ch": slope,
-                            "dslope": dslope,
-                            "intercept": intercept,
-                            "dintercept": dintercept,
-                        }
+                try:
+                    hl_val = float(hl)
+                except (TypeError, ValueError):
+                    hl_val = None
+                try:
+                    dhl_val = float(dhl)
+                except (TypeError, ValueError):
+                    dhl_val = None
+
+                if hl_val is None or not math.isfinite(hl_val):
+                    logger.warning("Skipping %s -> invalid half-life '%s'", p, hl)
+                    dropped_runs += 1
+                    continue
+                if dhl_val is None or not math.isfinite(dhl_val):
+                    logger.warning(
+                        "Skipping %s -> missing/invalid half-life uncertainty '%s'",
+                        p,
+                        dhl,
                     )
+                    dropped_runs += 1
+                    continue
+
+                entry: dict[str, Any] = {
+                    "half_life": hl_val,
+                    "dhalf_life": dhl_val,
+                }
+
+                try:
+                    slope_val = float(slope)
+                    dslope_val = float(dslope)
+                except (TypeError, ValueError):
+                    slope_val = dslope_val = None
+                if (
+                    slope_val is not None
+                    and dslope_val is not None
+                    and math.isfinite(slope_val)
+                    and math.isfinite(dslope_val)
+                ):
+                    entry["slope_MeV_per_ch"] = slope_val
+                    entry["dslope"] = dslope_val
+                elif slope is not None or dslope is not None:
+                    logger.warning(
+                        "Ignoring calibration slope for %s due to invalid uncertainty", p
+                    )
+
+                try:
+                    intercept_val = float(intercept)
+                    dintercept_val = float(dintercept)
+                except (TypeError, ValueError):
+                    intercept_val = dintercept_val = None
+                if (
+                    intercept_val is not None
+                    and dintercept_val is not None
+                    and math.isfinite(intercept_val)
+                    and math.isfinite(dintercept_val)
+                ):
+                    entry["intercept"] = intercept_val
+                    entry["dintercept"] = dintercept_val
+                elif intercept is not None or dintercept is not None:
+                    logger.warning(
+                        "Ignoring calibration intercept for %s due to invalid uncertainty",
+                        p,
+                    )
+
+                run_results.append(entry)
+            if dropped_runs and not run_results:
+                logger.warning(
+                    "No runs available for hierarchical summary after filtering invalid entries"
+                )
             if run_results:
                 hier_out = fit_hierarchical_runs(run_results)
                 with open(args.hierarchical_summary, "w", encoding="utf-8") as f:
