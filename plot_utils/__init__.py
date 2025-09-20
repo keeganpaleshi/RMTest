@@ -212,7 +212,12 @@ def plot_time_series(
             config.get("time_bin_mode", "fixed"),
         )
     ).lower()
-    if bin_mode in ("fd", "auto"):
+    if bin_mode == "auto":
+        # ``auto`` previously invoked the Freedman–Diaconis rule which can
+        # yield run-to-run differences.  Map it to ``fixed`` for
+        # reproducibility.
+        bin_mode = "fixed"
+    if bin_mode == "fd":
         # Freedman Diaconis rule on the entire time range:
         data = times_rel[(times_rel >= 0) & (times_rel <= (t_end - t_start))]
         if len(data) < 2:
@@ -247,10 +252,10 @@ def plot_time_series(
     # ------------------------------------------------------------------
     # Build equally-spaced edges so delta t is identical for each bin
     # ------------------------------------------------------------------
-    if bin_mode not in ("fd", "auto"):
-        edges = np.arange(0, (n_bins + 1) * dt, dt, dtype=float)
-    else:
+    if bin_mode == "fd":
         edges = np.linspace(0, (t_end - t_start), n_bins + 1)
+    else:
+        edges = np.arange(0, (n_bins + 1) * dt, dt, dtype=float)
     centers = 0.5 * (edges[:-1] + edges[1:])
     centers_abs = t_start + centers
     centers_mpl = guard_mpl_times(times=centers_abs)
