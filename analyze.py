@@ -1743,8 +1743,11 @@ def main(argv=None):
     except ValueError as e:
         raise
 
-    monitor_vol = float(baseline_cfg.get("monitor_volume_l", 605.0))
-    sample_vol = float(baseline_cfg.get("sample_volume_l", 0.0))
+    try:
+        monitor_vol = float(baseline_cfg.get("monitor_volume_l", 605.0))
+        sample_vol = float(baseline_cfg.get("sample_volume_l", 0.0))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("baseline volumes must be numeric") from exc
     base_events = pd.DataFrame()
     baseline_live_time = 0.0
     mask_base = None
@@ -2721,7 +2724,28 @@ def main(argv=None):
                 baseline_rates[iso] = 0.0
                 baseline_unc[iso] = 0.0
 
-    dilution_factor = compute_dilution_factor(monitor_vol, sample_vol)
+    try:
+        dilution_factor = compute_dilution_factor(monitor_vol, sample_vol)
+    except ValueError as exc:
+        msg = (
+            "invalid baseline volumes: "
+            f"monitor_volume_l={monitor_vol!r}, sample_volume_l={sample_vol!r}"
+        )
+        if cfg.get("allow_fallback"):
+            monitor_safe = max(monitor_vol, 0.0)
+            sample_safe = max(sample_vol, 0.0)
+            total_safe = monitor_safe + sample_safe
+            if monitor_safe <= 0 or total_safe <= 0:
+                raise ValueError(msg) from exc
+            logger.warning("%s – clamping to non-negative values", msg)
+            monitor_vol = monitor_safe
+            sample_vol = sample_safe
+            dilution_factor = monitor_safe / total_safe
+            warnings_list = baseline_info.setdefault("warnings", [])
+            warnings_list.append(msg)
+            baseline_info["dilution_factor_fallback"] = True
+        else:
+            raise ValueError(msg) from exc
     scales = {
         "Po214": dilution_factor,
         "Po218": dilution_factor,

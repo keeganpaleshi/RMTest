@@ -1,5 +1,6 @@
-import sys
 from pathlib import Path
+import sys
+
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -28,5 +29,17 @@ def test_scaling_factor_zero_baseline():
 def test_compute_dilution_factor():
     d = baseline_utils.compute_dilution_factor(10.0, 5.0)
     assert d == pytest.approx(10.0 / 15.0)
-    d_zero = baseline_utils.compute_dilution_factor(0.0, 0.0)
-    assert d_zero == pytest.approx(0.0)
+
+
+@pytest.mark.parametrize(
+    "monitor_volume, sample_volume, message",
+    [
+        (0.0, 5.0, "monitor_volume must be positive"),
+        (-1.0, 5.0, "monitor_volume must be positive"),
+        (10.0, -0.5, "sample_volume must be non-negative"),
+    ],
+)
+def test_compute_dilution_factor_invalid_inputs(monitor_volume, sample_volume, message):
+    with pytest.raises(ValueError) as exc:
+        baseline_utils.compute_dilution_factor(monitor_volume, sample_volume)
+    assert message in str(exc.value)

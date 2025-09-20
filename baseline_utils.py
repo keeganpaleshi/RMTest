@@ -33,16 +33,36 @@ __all__ = [
 
 
 def compute_dilution_factor(monitor_volume: float, sample_volume: float) -> float:
-    """Return dilution factor ``monitor_volume / (monitor_volume + sample_volume)``.
+    """Return ``monitor_volume / (monitor_volume + sample_volume)``.
 
-    Returns zero when the combined volume is non-positive to avoid division by
-    zero or negative scales.
+    Parameters
+    ----------
+    monitor_volume:
+        Detector chamber volume in litres. Must be strictly positive.
+    sample_volume:
+        Volume of the sample air introduced to the chamber in litres. Must be
+        non-negative.
+
+    Raises
+    ------
+    ValueError
+        If either volume violates the physical constraints above.
     """
 
-    total = monitor_volume + sample_volume
+    monitor = float(monitor_volume)
+    sample = float(sample_volume)
+    if monitor <= 0:
+        raise ValueError("monitor_volume must be positive")
+    if sample < 0:
+        raise ValueError("sample_volume must be non-negative")
+
+    total = monitor + sample
     if total <= 0:
-        return 0.0
-    return float(monitor_volume) / float(total)
+        # The checks above should prevent this, but guard against unexpected
+        # floating-point behaviour.
+        raise ValueError("combined volume must be positive")
+
+    return monitor / total
 
 
 def baseline_period_before_data(baseline_end, data_start):
