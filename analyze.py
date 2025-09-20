@@ -2919,12 +2919,15 @@ def main(argv=None):
         "value": conc,
         "uncertainty": dconc,
     }
-    # Allow the analysis to proceed with negative activities when explicitly
-    # requested, but clamp the reported total to zero to avoid presenting a
-    # physically impossible negative quantity in the summary outputs.
     total_bq_display = total_bq
     if total_bq_display < 0:
-        total_bq_display = 0.0
+        if args.allow_negative_activity:
+            logger.warning(
+                "Negative total radon in sample reported (%.3f Bq) because --allow-negative-activity was requested",
+                total_bq_display,
+            )
+        else:
+            total_bq_display = 0.0
 
     radon_results["total_radon_in_sample_Bq"] = {
         "value": total_bq_display,

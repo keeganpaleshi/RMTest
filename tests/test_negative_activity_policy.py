@@ -25,7 +25,7 @@ def test_negative_activity_exit(tmp_path, monkeypatch):
     assert excinfo.value.code == 1
 
 
-def test_negative_activity_allowed(tmp_path, monkeypatch):
+def test_negative_activity_allowed(tmp_path, monkeypatch, caplog):
     csv, cfg = _setup(monkeypatch)
     captured = {}
 
@@ -37,6 +37,13 @@ def test_negative_activity_allowed(tmp_path, monkeypatch):
 
     monkeypatch.setattr(analyze, "write_summary", fake_write)
     monkeypatch.setattr(analyze, "copy_config", lambda *a, **k: None)
+    monkeypatch.setattr(
+        radon_activity,
+        "compute_total_radon",
+        lambda *a, **k: (0.0, 0.0, -5.0, 1.0),
+    )
+
+    caplog.set_level("WARNING")
 
     analyze.main([
         "-i",
@@ -49,4 +56,10 @@ def test_negative_activity_allowed(tmp_path, monkeypatch):
     ])
 
     summary = captured.get("summary", {})
-    assert summary["radon_results"]["total_radon_in_sample_Bq"]["value"] == pytest.approx(0.0)
+    total_entry = summary["radon_results"]["total_radon_in_sample_Bq"]
+    assert total_entry["value"] == pytest.approx(-5.0)
+    assert total_entry["uncertainty"] == pytest.approx(1.0)
+    assert any(
+        "Negative total radon in sample reported" in message
+        for message in caplog.messages
+    )
