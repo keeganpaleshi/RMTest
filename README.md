@@ -146,7 +146,7 @@ The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--j
 - `efficiency.png` – bar chart of individual efficiencies and the BLUE result.
 - `eff_cov.png` – heatmap of the efficiency covariance matrix.
 - `radon_activity.png` – extrapolated radon concentration (Bq/L) over time.
-- `total_radon.png` – total radon present in the assay volume (Bq).
+- `total_radon.png` – total radon present in the sampled air (Bq).
  - `equivalent_air.png` – equivalent air volume plot when `--ambient-file` or
    `--ambient-concentration` is provided.
 

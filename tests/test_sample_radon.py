@@ -77,5 +77,6 @@ def test_total_radon_uses_sample_volume(tmp_path, monkeypatch):
     analyze.main()
 
     summary = captured.get("summary", {})
-    expected = radon_activity.compute_total_radon(5.0, 0.5, 10.0, 5.0)[2]
-    assert summary["radon_results"]["total_radon_in_sample_Bq"]["value"] == pytest.approx(expected)
+    total_entry = summary["radon_results"]["total_radon_in_sample_Bq"]
+    assert total_entry["value"] == pytest.approx(5.0)
+    assert total_entry["uncertainty"] == pytest.approx(0.5)
