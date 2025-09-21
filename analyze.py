@@ -230,6 +230,7 @@ from plot_utils import (
     plot_time_series,
     plot_equivalent_air,
     plot_radon_activity_full,
+    plot_total_radon_full,
     plot_radon_trend_full,
     plot_spectrum_comparison,
     plot_activity_grid,
@@ -286,9 +287,32 @@ def plot_radon_activity(times, activity, out_png, errors=None, *, config=None):
     return plot_radon_activity_full(times, activity, errors, out_png, config=config)
 
 
+def plot_total_radon(times, total_bq, out_png, errors=None, *, config=None):
+    """Wrapper used by tests expecting output path as third argument."""
+
+    return plot_total_radon_full(times, total_bq, errors, out_png, config=config)
+
+
 def plot_radon_trend(times, activity, out_png, *, config=None, fit_valid=True):
     """Wrapper used by tests expecting output path as third argument."""
     return plot_radon_trend_full(times, activity, out_png, config=config, fit_valid=fit_valid)
+
+
+def _total_radon_series(activity, errors, monitor_volume, sample_volume):
+    """Return total radon Bq and uncertainties for a time series."""
+
+    activity_arr = np.asarray(activity, dtype=float)
+    err_arr = None if errors is None else np.asarray(errors, dtype=float)
+
+    if sample_volume <= 0:
+        total = np.zeros_like(activity_arr)
+        total_err = None if err_arr is None else np.zeros_like(err_arr)
+    else:
+        scale = (monitor_volume + sample_volume) / monitor_volume
+        total = activity_arr * scale
+        total_err = None if err_arr is None else err_arr * scale
+
+    return total, total_err
 
 
 def _fit_params(obj: FitResult | Mapping[str, float] | None) -> FitParams:
@@ -3143,6 +3167,19 @@ def main(argv=None):
         "activity": [radon["Rn_activity_Bq"]],
         "error": [radon["stat_unc_Bq"]],
     }
+    total_vals, total_errs = _total_radon_series(
+        radon["time_series"]["activity"],
+        radon["time_series"].get("error"),
+        monitor_vol,
+        sample_vol,
+    )
+    total_ts = {
+        "time": list(radon["time_series"]["time"]),
+        "activity": total_vals.tolist(),
+    }
+    if total_errs is not None:
+        total_ts["error"] = total_errs.tolist()
+    radon["total_time_series"] = total_ts
 
     summary["radon"] = radon
 
@@ -3173,6 +3210,19 @@ def main(argv=None):
             rad_ts["activity"],
             Path(out_dir) / "radon_activity.png",
             rad_ts.get("error"),
+            config=cfg.get("plotting", {}),
+        )
+        total_vals, total_errs = _total_radon_series(
+            rad_ts["activity"],
+            rad_ts.get("error"),
+            monitor_vol,
+            sample_vol,
+        )
+        plot_total_radon(
+            rad_ts["time"],
+            total_vals,
+            Path(out_dir) / "total_radon.png",
+            total_errs,
             config=cfg.get("plotting", {}),
         )
         plot_radon_trend(
@@ -3393,6 +3443,19 @@ def main(argv=None):
                 activity_arr,
                 Path(out_dir) / "radon_activity.png",
                 err_arr,
+                config=cfg.get("plotting", {}),
+            )
+            total_vals, total_errs = _total_radon_series(
+                activity_arr,
+                err_arr,
+                monitor_vol,
+                sample_vol,
+            )
+            plot_total_radon(
+                times,
+                total_vals,
+                Path(out_dir) / "total_radon.png",
+                total_errs,
                 config=cfg.get("plotting", {}),
             )
 

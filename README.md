@@ -146,6 +146,7 @@ The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--j
 - `efficiency.png` – bar chart of individual efficiencies and the BLUE result.
 - `eff_cov.png` – heatmap of the efficiency covariance matrix.
 - `radon_activity.png` – extrapolated radon concentration (Bq/L) over time.
+- `total_radon.png` – total radon present in the assay volume (Bq).
  - `equivalent_air.png` – equivalent air volume plot when `--ambient-file` or
    `--ambient-concentration` is provided.
 
@@ -768,7 +769,9 @@ converted to an instantaneous radon activity for the counting cell.  Dividing
 by the monitor volume yields the radon concentration (Bq/L) reported in
 `summary.json` under `radon_results` alongside the total amount of radon in the
 sample volume.  The file `radon_activity.png` visualises this concentration over
-time using Bq/L on the vertical axis.  When either `--ambient-file` or
+time using Bq/L on the vertical axis.  The companion `total_radon.png` plot
+uses the same timestamps but reports the total activity contained in the
+combined monitor+sample volume.  When either `--ambient-file` or
 `--ambient-concentration` is supplied an additional plot
 `equivalent_air.png` shows the volume of ambient air containing the same
 activity.

@@ -27,8 +27,10 @@ __all__ = [
     "plot_equivalent_air",
     "plot_modeled_radon_activity",
     "plot_radon_activity",
+    "plot_total_radon",
     "plot_radon_trend",
     "plot_radon_activity_full",
+    "plot_total_radon_full",
     "plot_radon_trend_full",
 ]
 
@@ -578,6 +580,34 @@ def plot_radon_activity_full(
     plt.close(fig)
 
 
+def plot_total_radon_full(times, total_bq, errors, out_png, config=None):
+    """Plot total radon present in the sample versus time."""
+
+    times_mpl = guard_mpl_times(times=times)
+    total_bq = np.asarray(total_bq, dtype=float)
+    errors_arr = None if errors is None else np.asarray(errors, dtype=float)
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    palette_name = str(config.get("palette", "default")) if config else "default"
+    palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
+    color = palette.get("total_radon", palette.get("radon_activity", "#9467bd"))
+    ax.errorbar(times_mpl, total_bq, yerr=errors_arr, fmt="o-", color=color)
+    ax.set_xlabel("Time (UTC)")
+    ax.set_ylabel("Total Radon in Sample (Bq)")
+    ax.set_title("Total Radon vs. Time")
+    ax.ticklabel_format(axis="y", style="plain")
+    setup_time_axis(ax, times_mpl)
+
+    plt.gcf().autofmt_xdate()
+    ax.yaxis.get_offset_text().set_visible(False)
+    plt.tight_layout()
+
+    targets = get_targets(config, out_png)
+    for p in targets.values():
+        fig.savefig(p, dpi=300)
+    plt.close(fig)
+
+
 def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
     """Plot equivalent air volume versus time.
 
@@ -716,6 +746,28 @@ def plot_radon_activity(ts_dict, outdir):
     ax.yaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
     fig.savefig(outdir / "radon_activity.png", dpi=300)
+    plt.close(fig)
+
+
+def plot_total_radon(ts_dict, outdir):
+    """Simple wrapper to plot total radon present in the sample."""
+
+    outdir = Path(outdir)
+    times_mpl = guard_mpl_times(times=ts_dict["time"])
+    total = np.asarray(ts_dict["activity"], dtype=float)
+    errors = ts_dict.get("error")
+    errors_arr = None if errors is None else np.asarray(errors, dtype=float)
+
+    fig, ax = plt.subplots()
+    ax.errorbar(times_mpl, total, yerr=errors_arr, fmt="o")
+    ax.set_ylabel("Total radon in sample [Bq]")
+    ax.set_xlabel("Time (UTC)")
+    ax.ticklabel_format(axis="y", style="plain")
+    setup_time_axis(ax, times_mpl)
+    fig.autofmt_xdate()
+    ax.yaxis.get_offset_text().set_visible(False)
+    plt.tight_layout()
+    fig.savefig(outdir / "total_radon.png", dpi=300)
     plt.close(fig)
 
 
