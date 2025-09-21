@@ -557,6 +557,31 @@ def test_plot_radon_activity_output(tmp_path):
     assert out_png.exists()
 
 
+def test_plot_total_radon_output(tmp_path):
+    times = [0.0, 1.0, 2.0]
+    total = [5.0, 6.0, 7.0]
+    errors = [0.5, 0.6, 0.7]
+    out_png = tmp_path / "total.png"
+
+    from plot_utils import plot_total_radon_full
+
+    plot_total_radon_full(times, total, errors, str(out_png))
+
+    assert out_png.exists()
+
+
+def test_plot_total_radon_no_errors(tmp_path):
+    times = [0.0, 1.0, 2.0]
+    total = [5.0, 6.0, 7.0]
+    out_png = tmp_path / "total_noerr.png"
+
+    from plot_utils import plot_total_radon_full
+
+    plot_total_radon_full(times, total, None, str(out_png))
+
+    assert out_png.exists()
+
+
 def test_plot_equivalent_air_output(tmp_path):
     times = [0.0, 1.0, 2.0]
     volumes = [0.1, 0.2, 0.3]
