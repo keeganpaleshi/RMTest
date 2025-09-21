@@ -220,7 +220,8 @@ def compute_total_radon(
         Total radon present in the sample. When ``sample_volume`` is positive the
         fitted activity is scaled by the combined counting volume
         ``(monitor_volume + sample_volume)`` to account for radon present in both
-        the counting chamber and the sampled air.
+        the counting chamber and the sampled air. The concentration is not scaled
+        by this factor so that it reflects the physical Bq per liter of the gas.
     sigma_total : float
         Uncertainty on ``total_bq``.
 
@@ -231,7 +232,7 @@ def compute_total_radon(
     Examples
     --------
     >>> compute_total_radon(5.0, 0.5, 10.0, 20.0)
-    (1.5, 0.15, 15.0, 1.5)
+    (0.5, 0.05, 15.0, 1.5)
     """
     if monitor_volume <= 0:
         raise ValueError("monitor_volume must be positive")
@@ -250,22 +251,16 @@ def compute_total_radon(
         activity_bq, err_bq = clamp_non_negative(activity_bq, err_bq)
     if math.isnan(activity_bq):
         raise ValueError("activity_bq must not be NaN")
-    if sample_volume > 0.0:
-        scale = (monitor_volume + sample_volume) / monitor_volume
-        activity_bq *= scale
-        err_bq *= scale
-    else:
-        scale = 1.0
-
     conc = activity_bq / monitor_volume
     sigma_conc = err_bq / monitor_volume
 
-    if sample_volume == 0.0:
+    if sample_volume > 0.0:
+        scale = (monitor_volume + sample_volume) / monitor_volume
+        total_bq = activity_bq * scale
+        sigma_total = err_bq * scale
+    else:
         total_bq = 0.0
         sigma_total = 0.0
-    else:
-        total_bq = activity_bq
-        sigma_total = err_bq
     return conc, sigma_conc, total_bq, sigma_total
 
 
