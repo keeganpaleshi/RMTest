@@ -308,8 +308,9 @@ def _total_radon_series(activity, errors, monitor_volume, sample_volume):
         total = np.zeros_like(activity_arr)
         total_err = None if err_arr is None else np.zeros_like(err_arr)
     else:
-        total = activity_arr
-        total_err = err_arr
+        scale = (monitor_volume + sample_volume) / monitor_volume
+        total = activity_arr * scale
+        total_err = None if err_arr is None else err_arr * scale
 
     return total, total_err
 
