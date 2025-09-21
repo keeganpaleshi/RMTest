@@ -157,8 +157,8 @@ def test_compute_total_radon():
     conc, dconc, tot, dtot = compute_total_radon(5.0, 0.5, 10.0, 20.0)
     assert conc == pytest.approx(0.5)
     assert dconc == pytest.approx(0.05)
-    assert tot == pytest.approx(10.0)
-    assert dtot == pytest.approx(1.0)
+    assert tot == pytest.approx(5.0)
+    assert dtot == pytest.approx(0.5)
 
 
 def test_compute_total_radon_zero_uncertainty():
@@ -231,8 +231,8 @@ def test_compute_total_radon_negative_activity_allowed(caplog):
     )
     assert conc == pytest.approx(-0.1)
     assert dconc == pytest.approx(0.05)
-    assert tot == pytest.approx(-0.1)
-    assert dtot == pytest.approx(0.05)
+    assert tot == pytest.approx(-1.0)
+    assert dtot == pytest.approx(0.5)
 
 
 def test_radon_activity_curve():

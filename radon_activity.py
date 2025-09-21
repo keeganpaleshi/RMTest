@@ -217,7 +217,8 @@ def compute_total_radon(
     sigma_conc : float
         Uncertainty on the concentration.
     total_bq : float
-        Total radon in the sample volume in Bq.
+        Total radon present in the sample, equal to the fitted activity when the
+        sample volume is positive.
     sigma_total : float
         Uncertainty on ``total_bq``.
 
@@ -227,7 +228,7 @@ def compute_total_radon(
     Examples
     --------
     >>> compute_total_radon(5.0, 0.5, 10.0, 20.0)
-    (0.5, 0.05, 10.0, 1.0)
+    (0.5, 0.05, 5.0, 0.5)
     """
     if monitor_volume <= 0:
         raise ValueError("monitor_volume must be positive")
@@ -253,9 +254,8 @@ def compute_total_radon(
         total_bq = 0.0
         sigma_total = 0.0
     else:
-        scaling = sample_volume / monitor_volume
-        total_bq = activity_bq * scaling
-        sigma_total = err_bq * scaling
+        total_bq = activity_bq
+        sigma_total = err_bq
     return conc, sigma_conc, total_bq, sigma_total
 
 
