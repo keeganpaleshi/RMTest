@@ -133,12 +133,17 @@ def estimate_radon_activity(
         live_time: float | None,
         label: str,
     ):
-        if counts is None or counts <= 0:
+        if counts is None:
             return None
         if live_time is None or live_time <= 0:
             raise ValueError(f"live_time for {label} must be positive")
+        if counts < 0:
+            raise ValueError(f"counts for {label} must be non-negative")
         rn = counts / (eff * frac * live_time)
-        var = counts / (eff**2 * frac**2 * live_time**2)
+        if counts == 0:
+            var = math.inf
+        else:
+            var = counts / (eff**2 * frac**2 * live_time**2)
         return rn, var
 
     res218 = _estimate(N218, epsilon218, f218, live_time218_s, "Po-218")

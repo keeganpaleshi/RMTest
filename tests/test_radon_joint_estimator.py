@@ -1,3 +1,4 @@
+import math
 import sys
 from pathlib import Path
 
@@ -96,4 +97,50 @@ def test_rate_shortcut_requires_requested_isotope_data():
             err214=0.05,
             analysis_isotope="po218",
         )
+
+
+def test_single_isotope_po218_zero_counts_returns_zero_with_inf_uncertainty():
+    result = estimate_radon_activity(
+        N218=0,
+        epsilon218=0.5,
+        f218=1.0,
+        N214=25,
+        epsilon214=0.6,
+        f214=1.0,
+        live_time218_s=3600.0,
+        live_time214_s=3600.0,
+        analysis_isotope="po218",
+    )
+
+    assert result["isotope_mode"] == "po218"
+    assert result["Rn_activity_Bq"] == pytest.approx(0.0)
+    assert math.isinf(result["stat_unc_Bq"])
+
+    comp218 = result["components"]["from_po218"]
+    assert comp218["counts"] == 0
+    assert comp218["activity_Bq"] == pytest.approx(0.0)
+    assert math.isinf(comp218["variance"])
+
+
+def test_single_isotope_po214_zero_counts_returns_zero_with_inf_uncertainty():
+    result = estimate_radon_activity(
+        N218=30,
+        epsilon218=0.5,
+        f218=1.0,
+        N214=0,
+        epsilon214=0.6,
+        f214=1.0,
+        live_time218_s=3600.0,
+        live_time214_s=3600.0,
+        analysis_isotope="po214",
+    )
+
+    assert result["isotope_mode"] == "po214"
+    assert result["Rn_activity_Bq"] == pytest.approx(0.0)
+    assert math.isinf(result["stat_unc_Bq"])
+
+    comp214 = result["components"]["from_po214"]
+    assert comp214["counts"] == 0
+    assert comp214["activity_Bq"] == pytest.approx(0.0)
+    assert math.isinf(comp214["variance"])
 
