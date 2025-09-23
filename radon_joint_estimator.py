@@ -111,11 +111,24 @@ def estimate_radon_activity(
     # propagating NaNs further down in the calculation and signals that the
     # activity is unconstrained.
     if (N218 or 0) + (N214 or 0) == 0:
+        components: dict[str, Any] = {}
+        if N218 is not None:
+            components["from_po218"] = {
+                "counts": N218,
+                "activity_Bq": 0.0,
+                "variance": math.inf,
+            }
+        if N214 is not None:
+            components["from_po214"] = {
+                "counts": N214,
+                "activity_Bq": 0.0,
+                "variance": math.inf,
+            }
         return {
             "isotope_mode": analysis_isotope.lower(),
             "Rn_activity_Bq": 0.0,
             "stat_unc_Bq": float("inf"),
-            "components": {},
+            "components": components,
         }
 
     consts = load_nuclide_overrides(nuclide_constants)
@@ -135,15 +148,16 @@ def estimate_radon_activity(
     ):
         if counts is None:
             return None
-        if live_time is None or live_time <= 0:
-            raise ValueError(f"live_time for {label} must be positive")
         if counts < 0:
             raise ValueError(f"counts for {label} must be non-negative")
-        rn = counts / (eff * frac * live_time)
         if counts == 0:
-            var = math.inf
-        else:
-            var = counts / (eff**2 * frac**2 * live_time**2)
+            if live_time is not None and live_time < 0:
+                raise ValueError(f"live_time for {label} must be non-negative")
+            return 0.0, math.inf
+        if live_time is None or live_time <= 0:
+            raise ValueError(f"live_time for {label} must be positive")
+        rn = counts / (eff * frac * live_time)
+        var = counts / (eff**2 * frac**2 * live_time**2)
         return rn, var
 
     res218 = _estimate(N218, epsilon218, f218, live_time218_s, "Po-218")
