@@ -225,9 +225,9 @@ def compute_total_radon(
     sigma_total : float
         Uncertainty on ``total_bq``.
 
-    When ``sample_volume`` is zero the returned ``total_bq`` and
-    ``sigma_total`` are both ``0.0`` regardless of the activity value and no
-    scaling is applied to the concentration.
+    When ``sample_volume`` is zero the total radon reflects only the counting
+    chamber contents (no additional scaling is applied) so that background runs
+    without a captured air sample still report their measured activity.
 
     Examples
     --------
@@ -242,8 +242,10 @@ def compute_total_radon(
         raise ValueError("err_bq must be non-negative")
 
     if activity_bq < 0:
-        if not allow_negative_activity:
-            activity_bq, err_bq = clamp_non_negative(activity_bq, err_bq)
+        if allow_negative_activity:
+            pass
+        else:
+            clamp_non_negative(activity_bq, err_bq)
             raise RuntimeError(
                 "Negative activity encountered. Re-run with --allow_negative_activity to override"
             )
@@ -254,13 +256,9 @@ def compute_total_radon(
     conc = activity_bq / monitor_volume
     sigma_conc = err_bq / monitor_volume
 
-    if sample_volume > 0.0:
-        scale = (monitor_volume + sample_volume) / monitor_volume
-        total_bq = activity_bq * scale
-        sigma_total = err_bq * scale
-    else:
-        total_bq = 0.0
-        sigma_total = 0.0
+    scale = (monitor_volume + sample_volume) / monitor_volume
+    total_bq = activity_bq * scale
+    sigma_total = err_bq * scale
     return conc, sigma_conc, total_bq, sigma_total
 
 
