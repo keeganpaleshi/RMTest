@@ -205,7 +205,7 @@ def compute_total_radon(
     ``ValueError`` is raised if ``monitor_volume`` is not positive, if
     ``sample_volume`` is negative, or if ``err_bq`` is negative.  Zero
     uncertainties are allowed and treated as exact measurements.  When
-    ``activity_bq`` is negative the value is clamped to zero unless
+    ``activity_bq`` is negative a ``RuntimeError`` is raised unless
     ``allow_negative_activity`` is ``True`` in which case the negative value is
     used without modification.
 
@@ -245,7 +245,10 @@ def compute_total_radon(
         if allow_negative_activity:
             pass
         else:
-            activity_bq, err_bq = clamp_non_negative(activity_bq, err_bq)
+            clamp_non_negative(activity_bq, err_bq)
+            raise RuntimeError(
+                "Negative activity encountered. Re-run with --allow_negative_activity to override"
+            )
     else:
         activity_bq, err_bq = clamp_non_negative(activity_bq, err_bq)
     if math.isnan(activity_bq):
