@@ -171,6 +171,14 @@ def test_compute_total_radon_zero_uncertainty():
     assert dtot == pytest.approx(0.0)
 
 
+def test_compute_total_radon_background_run():
+    conc, dconc, tot, dtot = compute_total_radon(5.0, 0.5, 10.0, 0.0)
+    assert conc == pytest.approx(5.0 / 10.0)
+    assert dconc == pytest.approx(0.5 / 10.0)
+    assert tot == pytest.approx(5.0)
+    assert dtot == pytest.approx(0.5)
+
+
 def test_compute_radon_activity_missing_uncertainty_returns_nan():
     """Single rate without uncertainty should propagate NaN error."""
     a, s = compute_radon_activity(5.0, None, 1.0, None, None, 1.0)
@@ -222,9 +230,14 @@ def test_clamp_non_negative():
     assert err == pytest.approx(0.01)
 
 
-def test_compute_total_radon_negative_activity_default_raises():
-    with pytest.raises(RuntimeError):
-        compute_total_radon(-1.0, 0.5, 10.0, 1.0)
+def test_compute_total_radon_negative_activity_clamps(caplog):
+    caplog.set_level("WARNING")
+    conc, dconc, tot, dtot = compute_total_radon(-1.0, 0.5, 10.0, 1.0)
+    assert conc == pytest.approx(0.0)
+    assert dconc == pytest.approx(0.5 / 10.0)
+    assert tot == pytest.approx(0.0)
+    assert dtot == pytest.approx(0.5 * (10.0 + 1.0) / 10.0)
+    assert any("Clamped negative activity" in rec.message for rec in caplog.records)
 
 
 def test_compute_total_radon_negative_activity_allowed(caplog):

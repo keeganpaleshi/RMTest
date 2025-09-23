@@ -205,7 +205,7 @@ def compute_total_radon(
     ``ValueError`` is raised if ``monitor_volume`` is not positive, if
     ``sample_volume`` is negative, or if ``err_bq`` is negative.  Zero
     uncertainties are allowed and treated as exact measurements.  When
-    ``activity_bq`` is negative a ``RuntimeError`` is raised unless
+    ``activity_bq`` is negative the value is clamped to zero unless
     ``allow_negative_activity`` is ``True`` in which case the negative value is
     used without modification.
 
@@ -225,9 +225,9 @@ def compute_total_radon(
     sigma_total : float
         Uncertainty on ``total_bq``.
 
-    When ``sample_volume`` is zero the returned ``total_bq`` and
-    ``sigma_total`` are both ``0.0`` regardless of the activity value and no
-    scaling is applied to the concentration.
+    When ``sample_volume`` is zero the total radon reflects only the counting
+    chamber contents (no additional scaling is applied) so that background runs
+    without a captured air sample still report their measured activity.
 
     Examples
     --------
@@ -242,11 +242,10 @@ def compute_total_radon(
         raise ValueError("err_bq must be non-negative")
 
     if activity_bq < 0:
-        if not allow_negative_activity:
+        if allow_negative_activity:
+            pass
+        else:
             activity_bq, err_bq = clamp_non_negative(activity_bq, err_bq)
-            raise RuntimeError(
-                "Negative activity encountered. Re-run with --allow_negative_activity to override"
-            )
     else:
         activity_bq, err_bq = clamp_non_negative(activity_bq, err_bq)
     if math.isnan(activity_bq):
@@ -254,13 +253,9 @@ def compute_total_radon(
     conc = activity_bq / monitor_volume
     sigma_conc = err_bq / monitor_volume
 
-    if sample_volume > 0.0:
-        scale = (monitor_volume + sample_volume) / monitor_volume
-        total_bq = activity_bq * scale
-        sigma_total = err_bq * scale
-    else:
-        total_bq = 0.0
-        sigma_total = 0.0
+    scale = (monitor_volume + sample_volume) / monitor_volume
+    total_bq = activity_bq * scale
+    sigma_total = err_bq * scale
     return conc, sigma_conc, total_bq, sigma_total
 
 
