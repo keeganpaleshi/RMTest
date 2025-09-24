@@ -72,6 +72,9 @@ def two_pass_time_fit(
         nll = res.params.get("nll", 0.0)
         return 2.0 * k + 2.0 * nll
 
-    if _aic(res1) - _aic(res2) >= 0.5:
+    valid1 = bool(res1.params.get("fit_valid", True))
+    valid2 = bool(res2.params.get("fit_valid", True))
+
+    if valid2 and (not valid1 or _aic(res1) - _aic(res2) >= 0.5):
         return res2
     return res1

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import is_dataclass
 from typing import Mapping, Any
 
 __all__ = ["run_assertions"]
@@ -31,5 +32,13 @@ def run_assertions(summary: Mapping[str, Any], constants: Mapping[str, Any], con
         B = float(spec.get("S_bkg", 0.0))
         assert B >= 0.0
 
-    assert constants["Po214"]["half_life_s"] < 1e3
+    def _const_field(obj: Any, field: str) -> float:
+        if isinstance(obj, Mapping):
+            return float(obj[field])
+        if is_dataclass(obj) or hasattr(obj, field):
+            return float(getattr(obj, field))
+        raise TypeError(f"Unsupported constant container for field {field!r}")
+
+    po214 = _const_field(constants["Po214"], "half_life_s")
+    assert po214 < 1e3
     assert config["baseline"]["sample_volume_l"] >= 0
