@@ -3,9 +3,38 @@
 from __future__ import annotations
 
 import logging
-from typing import Mapping
+from collections.abc import Mapping
+from math import isfinite
 
 from fitting import fit_time_series, FitResult
+
+
+def _prior_efficiency(config: Mapping[str, object], iso: str) -> float | None:
+    """Return the configured efficiency for ``iso`` if it is finite."""
+
+    try:
+        iso_cfg = config.get("isotopes", {}).get(iso, {})
+    except AttributeError:
+        return None
+
+    eff_cfg = None
+    if isinstance(iso_cfg, Mapping):
+        eff_cfg = iso_cfg.get("efficiency")
+    if isinstance(eff_cfg, (list, tuple)):
+        eff_cfg = eff_cfg[0] if eff_cfg else None
+
+    if eff_cfg is None:
+        return None
+
+    try:
+        eff_val = float(eff_cfg)
+    except (TypeError, ValueError):
+        return None
+
+    if not isfinite(eff_val) or eff_val <= 0:
+        return None
+
+    return eff_val
 
 
 def two_pass_time_fit(
@@ -33,6 +62,10 @@ def two_pass_time_fit(
     fixed_val = config.get("background_b_fixed_value")
     if fixed_val is None:
         fixed_val = baseline_rate
+        if fixed_val is not None and iso:
+            eff_val = _prior_efficiency(config, iso)
+            if eff_val is not None:
+                fixed_val = float(fixed_val) * eff_val
 
     if not fix_first or fixed_val is None or not iso:
         return fit_func(
@@ -53,7 +86,7 @@ def two_pass_time_fit(
         cfg_first,
         weights=weights,
         strict=strict,
-        fixed_background={iso: fixed_val},
+        fixed_background={iso: float(fixed_val)},
     )
 
     cfg_second = dict(config)

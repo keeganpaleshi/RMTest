@@ -135,7 +135,9 @@ def rate_histogram(df: pd.DataFrame, bins) -> tuple[np.ndarray, float]:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
     ts = _to_datetime64(df)
     ts_int = ts.view("int64")
-    live = float((ts_int[-1] - ts_int[0]) / 1e9)
+    start = int(ts_int.min())
+    end = int(ts_int.max())
+    live = float((end - start) / 1e9)
     hist_src = df.get("subtracted_adc_hist", df["adc"]).to_numpy()
     hist, _ = np.histogram(hist_src, bins=bins)
     if live <= 0:
