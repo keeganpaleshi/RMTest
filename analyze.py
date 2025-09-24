@@ -324,6 +324,49 @@ def _fit_params(obj: FitResult | Mapping[str, float] | None) -> FitParams:
     return {}
 
 
+def _config_efficiency(cfg: Mapping[str, Any], iso: str) -> float:
+    """Return the prior efficiency for ``iso`` from ``cfg``."""
+
+    eff_cfg = cfg.get("time_fit", {}).get(f"eff_{iso.lower()}")
+    if isinstance(eff_cfg, (list, tuple)):
+        return float(eff_cfg[0]) if eff_cfg else 1.0
+    if eff_cfg is None or eff_cfg == "null":
+        return 1.0
+    try:
+        return float(eff_cfg)
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def _fit_efficiency(params: Mapping[str, Any] | None, iso: str) -> float | None:
+    """Return fitted efficiency for ``iso`` if present in ``params``."""
+
+    if not params:
+        return None
+
+    keys = ("eff", f"eff_{iso}", f"eff_{iso.lower()}")
+    for key in keys:
+        val = params.get(key)
+        if val is None:
+            continue
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _resolved_efficiency(
+    cfg: Mapping[str, Any], iso: str, params: Mapping[str, Any] | None
+) -> float:
+    """Return efficiency for ``iso`` preferring fitted values over priors."""
+
+    fitted = _fit_efficiency(params, iso)
+    if fitted is not None and fitted > 0:
+        return fitted
+    return _config_efficiency(cfg, iso)
+
+
 def _cov_lookup(
     fit_result: FitResult | Mapping[str, float] | None, name1: str, name2: str
 ) -> float:
@@ -2494,23 +2537,23 @@ def main(argv=None):
         have_218 = (
             fit218
             and fit218.counts is not None
-            and ("eff" in fit218.params or "eff_Po218" in fit218.params)
+            and _fit_efficiency(fit218.params, "Po218") is not None
         )
         have_214 = (
             fit214
             and fit214.counts is not None
-            and ("eff" in fit214.params or "eff_Po214" in fit214.params)
+            and _fit_efficiency(fit214.params, "Po214") is not None
         )
         if have_218 or have_214:
             N218 = fit218.counts if have_218 else None
             N214 = fit214.counts if have_214 else None
             eps218 = (
-                fit218.params.get("eff", fit218.params.get("eff_Po218", 1.0))
+                _resolved_efficiency(cfg, "Po218", fit218.params)
                 if fit218
                 else 1.0
             )
             eps214 = (
-                fit214.params.get("eff", fit214.params.get("eff_Po214", 1.0))
+                _resolved_efficiency(cfg, "Po214", fit214.params)
                 if fit214
                 else 1.0
             )
@@ -2739,11 +2782,8 @@ def main(argv=None):
     baseline_unc = {}
     if baseline_live_time > 0:
         for iso, n in baseline_counts.items():
-            eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
-            if isinstance(eff_cfg, list):
-                eff = eff_cfg[0]
-            else:
-                eff = eff_cfg if eff_cfg is not None else 1.0
+            params = _fit_params(time_fit_results.get(iso))
+            eff = _resolved_efficiency(cfg, iso, params)
             if eff > 0:
                 baseline_rates[iso] = n / (baseline_live_time * eff)
                 baseline_unc[iso] = np.sqrt(n) / (baseline_live_time * eff)
@@ -2797,11 +2837,7 @@ def main(argv=None):
         err_fit = params.get(f"dE_{iso}", 0.0)
         live_time_iso = iso_live_time.get(iso, 0.0)
         count = iso_counts_raw.get(iso, baseline_counts.get(iso, 0.0))
-        eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
-        if isinstance(eff_cfg, list):
-            eff = eff_cfg[0]
-        else:
-            eff = eff_cfg if eff_cfg is not None else 1.0
+        eff = _resolved_efficiency(cfg, iso, params)
         base_cnt = baseline_counts.get(iso, 0.0)
         s = scales.get(iso, 1.0)
 
@@ -3150,9 +3186,13 @@ def main(argv=None):
 
     radon = estimate_radon_activity(
         N218=fit218.counts if fit218 else 0,
-        epsilon218=fit218.params.get("eff", 1.0) if fit218 else 1.0,
+        epsilon218=(
+            _resolved_efficiency(cfg, "Po218", fit218.params) if fit218 else 1.0
+        ),
         N214=fit214.counts if fit214 else 0,
-        epsilon214=fit214.params.get("eff", 1.0) if fit214 else 1.0,
+        epsilon214=(
+            _resolved_efficiency(cfg, "Po214", fit214.params) if fit214 else 1.0
+        ),
         f218=1.0,
         f214=1.0,
         live_time218_s=iso_live_time.get("Po218") if fit218 else None,

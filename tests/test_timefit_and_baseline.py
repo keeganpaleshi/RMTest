@@ -7,6 +7,8 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
+from fitting import FitParams, FitResult
+from time_fitting import two_pass_time_fit
 
 
 def test_default_time_bin_count():
@@ -22,4 +24,32 @@ def test_default_time_bin_count():
     centers, _ = analyze._ts_bin_centers_widths(times, plot_cfg, t_start, t_end)
     expected = math.floor((t_end - t_start) / plot_cfg["plot_time_bin_width_s"])
     assert len(centers) == expected
+
+
+def test_two_pass_time_fit_rejects_invalid_second_pass():
+    first = FitResult(
+        FitParams({"E_Po214": 1.0, "nll": 10.0, "fit_valid": True}),
+        None,
+        0,
+    )
+    second = FitResult(
+        FitParams({"E_Po214": 1.5, "nll": 9.0, "fit_valid": False}),
+        None,
+        0,
+    )
+
+    calls = iter([first, second])
+
+    def fake_fit(*args, **kwargs):
+        return next(calls)
+
+    out = two_pass_time_fit(
+        {"Po214": [0.0, 1.0]},
+        0.0,
+        10.0,
+        {"fix_background_b_first_pass": True},
+        fit_func=fake_fit,
+    )
+
+    assert out is first
 
