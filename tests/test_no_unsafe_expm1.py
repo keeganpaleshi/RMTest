@@ -59,6 +59,12 @@ def test_no_unsafe_expm1_usage():
 def test_log_expm1_stable_monotonic():
     y = np.array([-1e-8, 0.0, 1e-8, 50.0, 100.0, 500.0])
     vals = log_expm1_stable(y)
-    assert np.all(np.isfinite(vals))
-    diffs = np.diff(vals)
+
+    positive_mask = y > 0
+    finite_mask = np.isfinite(vals)
+    # Non-positive inputs should surface the underlying domain issues as
+    # ``nan``/``-inf`` while positive inputs stay finite.
+    assert np.array_equal(finite_mask, positive_mask)
+
+    diffs = np.diff(vals[positive_mask])
     assert np.all(diffs >= 0), "Values are not monotone increasing"
