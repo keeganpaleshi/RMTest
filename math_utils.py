@@ -19,10 +19,8 @@ def log_expm1_stable(y: np.ndarray) -> np.ndarray:
     mask = y > 0
     # For positive values use stable formulation that avoids overflow
     out[mask] = y[mask] + np.log1p(-np.exp(-y[mask]))
-    # For non-positive values fallback to direct computation while
-    # clamping the argument to avoid log(0)
-    tiny = np.finfo(float).tiny
-    tmp = np.expm1(y[~mask])
-    tmp = np.clip(tmp, tiny, None)
-    out[~mask] = np.log(tmp)
+    # For non-positive inputs defer to NumPy's behaviour so that values
+    # outside the domain ``expm1(y) > 0`` propagate ``nan``/``-inf``
+    # instead of being silently clamped to tiny positives.
+    out[~mask] = np.log(np.expm1(y[~mask]))
     return out

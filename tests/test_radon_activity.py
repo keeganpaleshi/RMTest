@@ -214,6 +214,12 @@ def test_compute_radon_activity_skips_nan_rate():
     assert s == pytest.approx(0.6)
 
 
+def test_compute_radon_activity_infinite_uncertainties_degrade_gracefully():
+    a, s = compute_radon_activity(5.0, math.inf, 1.0, 7.0, math.inf, 1.0)
+    assert a == pytest.approx(6.0)
+    assert math.isnan(s)
+
+
 def test_compute_total_radon_negative_sample_volume():
     with pytest.raises(ValueError):
         compute_total_radon(5.0, 0.5, 10.0, -1.0)
