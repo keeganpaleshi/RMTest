@@ -1,8 +1,11 @@
+import json
 import sys
 from pathlib import Path
 
 import numpy as np
 import pytest
+import matplotlib.pyplot as plt
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fitting import fit_time_series, fit_spectrum, FitResult, _TAU_MIN
@@ -85,6 +88,75 @@ def test_fit_time_series_time_window_config():
     assert count_narrow < count_full
     assert res_narrow.params["E_Po214"] < res_full.params["E_Po214"]
 
+
+def test_analyze_time_fit_respects_efficiency(tmp_path, monkeypatch):
+    """Pipeline time-fit should honour configured efficiencies."""
+
+    data_dir = Path(__file__).resolve().parent / "data" / "mini_run"
+    csv_path = data_dir / "run.csv"
+    cfg_path = data_dir / "config.yaml"
+
+    with open(cfg_path, "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+
+    cfg_time = cfg.setdefault("time_fit", {})
+    flags = cfg_time.setdefault("flags", {})
+    flags["fix_background_b"] = True
+    flags["fix_N0_po214"] = True
+
+    monkeypatch.setattr(plt, "savefig", lambda *args, **kwargs: None)
+
+    orig_two_pass = analyze.two_pass_time_fit
+    current = {"eff": None}
+    results = {}
+
+    def capture(times_dict, t_start, t_end, fit_cfg, **kwargs):
+        res = orig_two_pass(times_dict, t_start, t_end, fit_cfg, **kwargs)
+        iso_list = list(fit_cfg.get("isotopes", {}))
+        iso_name = iso_list[0] if iso_list else ""
+        eff = None
+        if iso_name:
+            eff = fit_cfg["isotopes"][iso_name].get("efficiency")
+        e_key = f"E_{iso_name}" if iso_name else "E_Po214"
+        e_val = res.params.get(e_key)
+        if e_val is None:
+            e_val = res.params.get("E_corrected")
+        results[current["eff"]] = {"E": e_val, "eff": eff}
+        return res
+
+    monkeypatch.setattr(analyze, "two_pass_time_fit", capture)
+
+    out_root = tmp_path / "outputs"
+    out_root.mkdir()
+
+    for eff in (0.4, 0.8):
+        cfg_copy = json.loads(json.dumps(cfg))
+        cfg_copy.setdefault("time_fit", {})["eff_po214"] = [eff, 0.0]
+        cfg_file = tmp_path / f"cfg_{eff}.yaml"
+        with open(cfg_file, "w", encoding="utf-8") as f:
+            yaml.safe_dump(cfg_copy, f)
+        current["eff"] = eff
+        analyze.main(
+            [
+                "-i",
+                str(csv_path),
+                "-c",
+                str(cfg_file),
+                "-o",
+                str(out_root),
+            ]
+        )
+
+    eff1, eff2 = 0.4, 0.8
+    res1 = results[eff1]
+    res2 = results[eff2]
+
+    assert res1["eff"] == pytest.approx(eff1)
+    assert res2["eff"] == pytest.approx(eff2)
+    assert res1["E"] and res2["E"]
+    corr1 = res1["E"] / res1["eff"]
+    corr2 = res2["E"] / res2["eff"]
+    assert corr1 == pytest.approx(corr2, rel=0.2)
 
 def test_fit_spectrum_use_emg_flag():
     """Adding a tau prior when use_emg is True should not break the fit."""

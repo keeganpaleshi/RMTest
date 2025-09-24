@@ -2434,11 +2434,25 @@ def main(argv=None):
         ts_vals = iso_events["timestamp"].map(to_epoch_seconds).to_numpy()
         times_dict = {iso: ts_vals}
         weights_map = {iso: iso_events["weight"].values}
-        eff_cfg_val = cfg["time_fit"].get(f"eff_{iso.lower()}")
+        eff_key = f"eff_{iso.lower()}"
+        eff_cfg_val = cfg["time_fit"].get(eff_key)
+        eff_value: float | None
         if args.eff_fixed:
-            eff_value = 1.0
-        else:
             eff_value = None
+        else:
+            explicit_null = False
+            if eff_key in cfg["time_fit"]:
+                if eff_cfg_val in (None, "null"):
+                    explicit_null = True
+                elif isinstance(eff_cfg_val, (list, tuple)):
+                    explicit_null = bool(eff_cfg_val) and eff_cfg_val[0] in (
+                        None,
+                        "null",
+                    )
+            if explicit_null:
+                eff_value = None
+            else:
+                eff_value = _config_efficiency(cfg, iso)
         fit_cfg = {
             "isotopes": {
                 iso: {
