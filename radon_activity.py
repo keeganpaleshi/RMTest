@@ -113,8 +113,10 @@ def compute_radon_activity(
             if err218 is not None and err218 >= 0:
                 if err218 == 0:
                     weights.append(float("inf"))
-                else:
+                elif math.isfinite(err218):
                     weights.append(1.0 / err218**2)
+                else:
+                    weights.append(None)
             else:
                 weights.append(None)
 
@@ -128,8 +130,10 @@ def compute_radon_activity(
             if err214 is not None and err214 >= 0:
                 if err214 == 0:
                     weights.append(float("inf"))
-                else:
+                elif math.isfinite(err214):
                     weights.append(1.0 / err214**2)
+                else:
+                    weights.append(None)
             else:
                 weights.append(None)
 
@@ -149,8 +153,13 @@ def compute_radon_activity(
             A = values[1]
             sigma = 0.0
         else:
-            A = (values[0] * w1 + values[1] * w2) / (w1 + w2)
-            sigma = math.sqrt(1.0 / (w1 + w2))
+            weight_sum = w1 + w2
+            if weight_sum <= 0:
+                A = (values[0] + values[1]) / 2.0
+                sigma = math.nan
+            else:
+                A = (values[0] * w1 + values[1] * w2) / weight_sum
+                sigma = math.sqrt(1.0 / weight_sum)
         return A, sigma
 
     if len(values) == 2:
