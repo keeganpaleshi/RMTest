@@ -268,7 +268,11 @@ def subtract(
         counts_bl = rate_bl * live_bl
         scale = live_time_analysis / live_bl if live_bl > 0 else 0.0
 
-        var = counts_an + (scale**2) * counts_bl
+        # ``counts_bl`` may be negative after noise subtraction. The baseline
+        # helpers treat them as Poisson variances using their absolute value to
+        # avoid unphysical negative uncertainties, so mirror that behaviour
+        # here.
+        var = counts_an + (scale**2) * np.abs(counts_bl)
         err_hist = np.sqrt(var)
 
     return df_corr, (hist, err_hist)
