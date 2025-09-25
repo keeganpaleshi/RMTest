@@ -74,7 +74,7 @@ def estimate_radon_activity(
         if mode == "radon":
             return {
                 "isotope_mode": "radon",
-                "activity_Bq": A,
+                "Rn_activity_Bq": A,
                 "stat_unc_Bq": sigma,
                 "components": comp,
             }
