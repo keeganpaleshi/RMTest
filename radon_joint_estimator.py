@@ -100,11 +100,21 @@ def estimate_radon_activity(
             "components": comp,
         }
 
-    if epsilon218 is None or epsilon214 is None or f218 is None or f214 is None:
+    has218 = N218 is not None
+    has214 = N214 is not None
+
+    if has218 and (epsilon218 is None or f218 is None):
         raise ValueError("counts mode requires efficiencies and fractions")
-    if epsilon218 <= 0 or epsilon214 <= 0:
+    if has214 and (epsilon214 is None or f214 is None):
+        raise ValueError("counts mode requires efficiencies and fractions")
+
+    if has218 and epsilon218 <= 0:
         raise ValueError("efficiencies must be positive")
-    if f218 <= 0 or f214 <= 0:
+    if has214 and epsilon214 <= 0:
+        raise ValueError("efficiencies must be positive")
+    if has218 and f218 <= 0:
+        raise ValueError("fractions must be positive")
+    if has214 and f214 <= 0:
         raise ValueError("fractions must be positive")
 
     # Handle the special case when both counts are zero.  This avoids
@@ -141,13 +151,15 @@ def estimate_radon_activity(
 
     def _estimate(
         counts: int | None,
-        eff: float,
-        frac: float,
+        eff: float | None,
+        frac: float | None,
         live_time: float | None,
         label: str,
     ):
         if counts is None:
             return None
+        if eff is None or frac is None:
+            raise ValueError("counts mode requires efficiencies and fractions")
         if counts < 0:
             raise ValueError(f"counts for {label} must be non-negative")
         if counts == 0:
