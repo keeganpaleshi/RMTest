@@ -8,7 +8,6 @@ import matplotlib as _mpl
 
 _mpl.use("Agg")
 import matplotlib.pyplot as plt
-import math
 from datetime import datetime
 from pathlib import Path
 from color_schemes import COLOR_SCHEMES
@@ -672,18 +671,12 @@ def plot_modeled_radon_activity(
 
     from radon_activity import radon_activity_curve
 
-    lam_rn = math.log(2.0) / RN222.half_life_s
-    lam_po214 = math.log(2.0) / PO214_HALF_LIFE_S
-    scale = lam_rn / lam_po214
-
-    E_bq = E * scale
-    dE_bq = dE * scale
-    N0_bq = N0 * scale
-    dN0_bq = dN0 * scale
-
-    activity, sigma = radon_activity_curve(
-        times, E_bq, dE_bq, N0_bq, dN0_bq, RN222.half_life_s
-    )
+    # The fitted Po-214 parameters are already decay rates in becquerels. The
+    # radon curve should therefore use them directly without any additional
+    # scaling factors.  Doing so preserves the physical units of the
+    # steady-state and initial activities when evaluated with the Rn-222
+    # half-life.
+    activity, sigma = radon_activity_curve(times, E, dE, N0, dN0, RN222.half_life_s)
 
     po214_activity = None
     if overlay_po214:
