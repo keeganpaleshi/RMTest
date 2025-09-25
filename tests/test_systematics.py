@@ -123,6 +123,19 @@ def test_scan_systematics_fractional_and_absolute():
     assert tot == pytest.approx(expected)
 
 
+def test_scan_systematics_fractional_uses_central_value():
+    priors = {"background": (0.0, 1.0)}
+
+    def fit_func(p):
+        mu = p["background"][0]
+        return {"background": 10.0 + mu}
+
+    shifts = {"background_frac": 0.1}
+    deltas, tot = scan_systematics(fit_func, priors, shifts)
+    assert deltas["background"] == pytest.approx(1.0)
+    assert tot == pytest.approx(1.0)
+
+
 def test_analyze_systematics_skip_unknown(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},

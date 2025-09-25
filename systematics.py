@@ -114,15 +114,16 @@ def scan_systematics(
     for full_key, val in sigma_dict.items():
         if full_key.endswith("_frac"):
             key = full_key[:-5]
-            if key not in priors:
-                raise RuntimeError(f"No prior entry for '{key}'")
-            delta = val * priors[key][0]
+            shift_mode = "fractional"
         elif full_key.endswith("_keV"):
             key = full_key[:-4]
-            delta = val * 1e-3  # convert keV to MeV
+            shift_mode = "kev"
         else:
             key = full_key
-            delta = val
+            shift_mode = "absolute"
+
+        if key not in priors:
+            raise RuntimeError(f"No prior entry for '{key}'")
 
         if is_dict:
             if key not in central:
@@ -131,8 +132,12 @@ def scan_systematics(
         else:
             v0 = central
 
-        if key not in priors:
-            raise RuntimeError(f"No prior entry for '{key}'")
+        if shift_mode == "fractional":
+            delta = val * abs(v0)
+        elif shift_mode == "kev":
+            delta = val * 1e-3  # convert keV to MeV
+        else:
+            delta = val
 
         priors_mod = copy.deepcopy(base_priors)
         mu, sig = priors_mod[key]
