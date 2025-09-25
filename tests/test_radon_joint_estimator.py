@@ -55,6 +55,34 @@ def test_counts_without_live_time_raises():
         )
 
 
+def test_single_isotope_po218_only_requires_matching_metadata():
+    result = estimate_radon_activity(
+        N218=42,
+        epsilon218=0.5,
+        f218=0.9,
+        live_time218_s=1800.0,
+        analysis_isotope="po218",
+    )
+
+    assert result["isotope_mode"] == "po218"
+    assert "from_po218" in result["components"]
+    assert "from_po214" not in result["components"]
+
+
+def test_single_isotope_po214_only_requires_matching_metadata():
+    result = estimate_radon_activity(
+        N214=13,
+        epsilon214=0.6,
+        f214=0.8,
+        live_time214_s=2400.0,
+        analysis_isotope="po214",
+    )
+
+    assert result["isotope_mode"] == "po214"
+    assert "from_po214" in result["components"]
+    assert "from_po218" not in result["components"]
+
+
 def test_single_isotope_po218_missing_counts_raises():
     with pytest.raises(ValueError, match="Po-218 counts unavailable"):
         estimate_radon_activity(
