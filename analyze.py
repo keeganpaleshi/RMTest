@@ -3198,6 +3198,18 @@ def main(argv=None):
 
     from radon_joint_estimator import estimate_radon_activity
 
+    rate214_final = corrected_rates.get("Po214") if corrected_rates else None
+    err214_final = corrected_unc.get("Po214") if corrected_unc else None
+    rate218_final = corrected_rates.get("Po218") if corrected_rates else None
+    err218_final = corrected_unc.get("Po218") if corrected_unc else None
+
+    if rate214_final is None and fit214:
+        rate214_final = fit214.rate
+        err214_final = fit214.err
+    if rate218_final is None and fit218:
+        rate218_final = fit218.rate
+        err218_final = fit218.err
+
     radon = estimate_radon_activity(
         N218=fit218.counts if fit218 else 0,
         epsilon218=(
@@ -3211,6 +3223,10 @@ def main(argv=None):
         f214=1.0,
         live_time218_s=iso_live_time.get("Po218") if fit218 else None,
         live_time214_s=iso_live_time.get("Po214") if fit214 else None,
+        rate214=rate214_final,
+        err214=err214_final,
+        rate218=rate218_final,
+        err218=err218_final,
         analysis_isotope=iso_mode,
     )
 
