@@ -156,8 +156,9 @@ def test_compute_radon_activity_equilibrium_check():
 def test_compute_total_radon():
     conc, dconc, tot, dtot = compute_total_radon(5.0, 0.5, 10.0, 20.0)
     scale = (10.0 + 20.0) / 10.0
-    assert conc == pytest.approx(5.0 / 10.0)
-    assert dconc == pytest.approx(0.5 / 10.0)
+    total_volume = 10.0 + 20.0
+    assert conc == pytest.approx(5.0 / total_volume)
+    assert dconc == pytest.approx(0.5 / total_volume)
     assert tot == pytest.approx(5.0 * scale)
     assert dtot == pytest.approx(0.5 * scale)
 
@@ -165,7 +166,8 @@ def test_compute_total_radon():
 def test_compute_total_radon_zero_uncertainty():
     conc, dconc, tot, dtot = compute_total_radon(5.0, 0.0, 10.0, 10.0)
     scale = (10.0 + 10.0) / 10.0
-    assert conc == pytest.approx(5.0 / 10.0)
+    total_volume = 10.0 + 10.0
+    assert conc == pytest.approx(5.0 / total_volume)
     assert dconc == pytest.approx(0.0)
     assert tot == pytest.approx(5.0 * scale)
     assert dtot == pytest.approx(0.0)
@@ -173,8 +175,9 @@ def test_compute_total_radon_zero_uncertainty():
 
 def test_compute_total_radon_background_run():
     conc, dconc, tot, dtot = compute_total_radon(5.0, 0.5, 10.0, 0.0)
-    assert conc == pytest.approx(5.0 / 10.0)
-    assert dconc == pytest.approx(0.5 / 10.0)
+    total_volume = 10.0 + 0.0
+    assert conc == pytest.approx(5.0 / total_volume)
+    assert dconc == pytest.approx(0.5 / total_volume)
     assert tot == pytest.approx(5.0)
     assert dtot == pytest.approx(0.5)
 
@@ -248,8 +251,9 @@ def test_compute_total_radon_negative_activity_allowed(caplog):
         -1.0, 0.5, 10.0, 1.0, allow_negative_activity=True
     )
     scale = (10.0 + 1.0) / 10.0
-    assert conc == pytest.approx(-1.0 / 10.0)
-    assert dconc == pytest.approx(0.5 / 10.0)
+    total_volume = 10.0 + 1.0
+    assert conc == pytest.approx(-1.0 / total_volume)
+    assert dconc == pytest.approx(0.5 / total_volume)
     assert tot == pytest.approx(-1.0 * scale)
     assert dtot == pytest.approx(0.5 * scale)
 
