@@ -127,6 +127,28 @@ def test_rate_shortcut_requires_requested_isotope_data():
         )
 
 
+def test_rate_shortcut_single_isotope_preserves_rn_key():
+    res_po218 = estimate_radon_activity(
+        rate218=0.42,
+        err218=0.07,
+        analysis_isotope="po218",
+    )
+
+    assert res_po218["isotope_mode"] == "po218"
+    assert res_po218["Rn_activity_Bq"] == pytest.approx(0.42)
+    assert res_po218["activity_Bq"] == pytest.approx(0.42)
+
+    res_po214 = estimate_radon_activity(
+        rate214=0.31,
+        err214=0.05,
+        analysis_isotope="po214",
+    )
+
+    assert res_po214["isotope_mode"] == "po214"
+    assert res_po214["Rn_activity_Bq"] == pytest.approx(0.31)
+    assert res_po214["activity_Bq"] == pytest.approx(0.31)
+
+
 def test_single_isotope_po218_zero_counts_returns_zero_with_inf_uncertainty():
     result = estimate_radon_activity(
         N218=0,

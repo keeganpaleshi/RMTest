@@ -85,6 +85,7 @@ def estimate_radon_activity(
                 )
             return {
                 "isotope_mode": "po214",
+                "Rn_activity_Bq": rate214,
                 "activity_Bq": rate214,
                 "stat_unc_Bq": err214,
                 "components": comp,
@@ -95,6 +96,7 @@ def estimate_radon_activity(
             )
         return {
             "isotope_mode": "po218",
+            "Rn_activity_Bq": rate218,
             "activity_Bq": rate218,
             "stat_unc_Bq": err218,
             "components": comp,
