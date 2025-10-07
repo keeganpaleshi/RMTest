@@ -3001,8 +3001,8 @@ def main(argv=None):
             "unc_Bq": dA_radon,
         }
 
-    # Convert activity to a concentration per liter of monitor volume and the
-    # total amount of radon present in the sampled air (undiluted by the chamber volume).
+    # Convert activity to a concentration per liter of the combined gas volume and
+    # the total amount of radon present in the sampled air (undiluted by the chamber volume).
     try:
         conc, dconc, total_bq, dtotal_bq = compute_total_radon(
             A_radon,
