@@ -129,6 +129,16 @@ def blue_combine(
     if vals.size == 0:
         raise ValueError("no values provided")
 
+    zero_mask = errs == 0
+    if np.any(zero_mask):
+        exact_values = vals[zero_mask]
+        reference_value = exact_values[0]
+        if not np.allclose(exact_values, reference_value):
+            raise ValueError("exact measurements with zero uncertainty disagree")
+        weights = np.zeros(vals.size, dtype=float)
+        weights[zero_mask] = 1.0 / zero_mask.sum()
+        return float(reference_value), 0.0, weights
+
     if corr is None:
         cov = np.diag(errs**2)
     else:

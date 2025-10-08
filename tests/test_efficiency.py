@@ -106,3 +106,19 @@ def test_blue_combine_negative_uncertainty_corr():
     corr = np.array([[1.0, 0.5], [0.5, 1.0]])
     with pytest.raises(ValueError, match="errors cannot be negative"):
         blue_combine(vals, errs, corr)
+
+
+def test_blue_combine_zero_uncertainty_exact_value_dominates():
+    vals = np.array([0.4, 0.5, 0.6])
+    errs = np.array([0.1, 0.0, 0.2])
+    combined, sigma, weights = blue_combine(vals, errs)
+    assert combined == pytest.approx(0.5)
+    assert sigma == 0.0
+    assert np.allclose(weights, [0.0, 1.0, 0.0])
+
+
+def test_blue_combine_zero_uncertainty_conflict():
+    vals = np.array([0.4, 0.5])
+    errs = np.array([0.0, 0.0])
+    with pytest.raises(ValueError, match="exact measurements with zero uncertainty disagree"):
+        blue_combine(vals, errs)
