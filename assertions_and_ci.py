@@ -41,4 +41,7 @@ def run_assertions(summary: Mapping[str, Any], constants: Mapping[str, Any], con
 
     po214 = _const_field(constants["Po214"], "half_life_s")
     assert po214 < 1e3
-    assert config["baseline"]["sample_volume_l"] >= 0
+
+    baseline_cfg = config.get("baseline") if isinstance(config, Mapping) else None
+    if baseline_cfg:
+        assert float(baseline_cfg.get("sample_volume_l", 0.0)) >= 0

@@ -41,6 +41,13 @@ def test_run_assertions_zero_uncertainty_allowed():
     run_assertions(summary, constants, config)
 
 
+def test_run_assertions_without_baseline_block():
+    summary = {"radon": {"Rn_activity_Bq": 1.0, "stat_unc_Bq": 0.1}}
+    constants = {"Po214": {"half_life_s": 0.000164}}
+    config = {}
+    run_assertions(summary, constants, config)
+
+
 def test_run_assertions_accepts_dataclass_constants():
     summary = {"radon": {"Rn_activity_Bq": 1.0, "stat_unc_Bq": 0.1}}
     constants = load_nuclide_overrides({})
