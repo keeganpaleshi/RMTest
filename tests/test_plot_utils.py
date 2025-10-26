@@ -468,6 +468,74 @@ def test_plot_time_series_po210_no_model(tmp_path, monkeypatch):
     assert "Model Po210" not in labels
 
 
+def test_plot_time_series_eff_none_defaults(tmp_path, monkeypatch):
+    times = np.array([1000.1, 1000.9, 1001.6])
+    energies = np.array([7.6, 7.7, 7.65])
+    cfg = basic_config()
+    cfg.update({"eff_po214": None})
+
+    captured = {}
+
+    def fake_plot(x, y, *args, **kwargs):
+        if kwargs.get("label") == "Model Po214":
+            captured["y"] = np.array(y, dtype=float)
+        return type("obj", (), {})()
+
+    monkeypatch.setattr("plot_utils.plt.plot", fake_plot)
+    monkeypatch.setattr("plot_utils.plt.step", fake_plot)
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    plot_time_series(
+        times,
+        energies,
+        {"E_Po214": 0.0, "B_Po214": 0.0, "N0_Po214": 1.0},
+        1000.0,
+        1002.0,
+        cfg,
+        str(tmp_path / "ts_eff_none.png"),
+    )
+
+    assert "y" in captured
+    lam = np.log(2.0) / RN222.half_life_s
+    centers = np.array([0.5, 1.5])
+    expected = lam * np.exp(-lam * centers)
+    assert np.allclose(captured["y"], expected)
+
+
+def test_plot_time_series_eff_scalar(tmp_path, monkeypatch):
+    times = np.array([1000.2, 1000.7, 1001.4])
+    energies = np.array([7.6, 7.7, 7.8])
+    cfg = basic_config()
+    cfg.update({"eff_po214": 0.5})
+
+    captured = {}
+
+    def fake_plot(x, y, *args, **kwargs):
+        if kwargs.get("label") == "Model Po214":
+            captured["y"] = np.array(y, dtype=float)
+        return type("obj", (), {})()
+
+    monkeypatch.setattr("plot_utils.plt.plot", fake_plot)
+    monkeypatch.setattr("plot_utils.plt.step", fake_plot)
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    plot_time_series(
+        times,
+        energies,
+        {"E_Po214": 0.0, "B_Po214": 0.0, "N0_Po214": 1.0},
+        1000.0,
+        1002.0,
+        cfg,
+        str(tmp_path / "ts_eff_scalar.png"),
+    )
+
+    assert "y" in captured
+    lam = np.log(2.0) / RN222.half_life_s
+    centers = np.array([0.5, 1.5])
+    expected = 0.5 * lam * np.exp(-lam * centers)
+    assert np.allclose(captured["y"], expected)
+
+
 def test_plot_time_series_po210_default_half_life(tmp_path, monkeypatch):
     times = np.array([1000.1, 1001.1, 1001.9])
     energies = np.array([5.3, 5.3, 5.3])
