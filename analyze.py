@@ -58,7 +58,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
-from typing import Any, Mapping, cast
+from typing import Any, Mapping, Sequence, cast
 
 import math
 import numpy as np
@@ -313,6 +313,40 @@ def _total_radon_series(activity, errors, monitor_volume, sample_volume):
         total_err = None if err_arr is None else err_arr * scale
 
     return total, total_err
+
+
+def _as_timestamp(value: Any) -> float:
+    """Return ``value`` as a UTC timestamp in seconds."""
+
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, np.generic):  # NumPy scalar
+        return float(value)
+    return to_utc_datetime(value).timestamp()
+
+
+def _radon_time_window(
+    start, end, radon_interval: Sequence[Any] | None
+) -> tuple[float, float]:
+    """Determine the plotting window for radon time-series outputs."""
+
+    start_ts = _as_timestamp(start)
+    end_ts = _as_timestamp(end)
+
+    if radon_interval and len(radon_interval) == 2:
+        try:
+            interval_start = max(start_ts, _as_timestamp(radon_interval[0]))
+            interval_end = min(end_ts, _as_timestamp(radon_interval[1]))
+        except Exception:
+            interval_start = interval_end = float("nan")
+        else:
+            if math.isfinite(interval_start) and math.isfinite(interval_end):
+                if interval_end > interval_start:
+                    return interval_start, interval_end
+                if interval_end == interval_start:
+                    return interval_start, interval_end
+
+    return start_ts, end_ts
 
 
 def _fit_params(obj: FitResult | Mapping[str, float] | None) -> FitParams:
@@ -3293,13 +3327,31 @@ def main(argv=None):
         analysis_isotope=iso_mode,
     )
 
-    # ── Construct a one-point time-series so the plotters don’t crash ──
-    run_midpoint = 0.5 * (t0_cfg.timestamp() + t_end_cfg.timestamp())
+    # ── Construct a minimal time-series aligned with the measurement window ──
+    ts_start, ts_end = _radon_time_window(t0_cfg, t_end_cfg, radon_interval_cfg)
+    ts_points: list[float]
+    if not math.isfinite(ts_start):
+        ts_start = to_utc_datetime(t0_cfg).timestamp()
+    if math.isfinite(ts_end) and ts_end > ts_start:
+        ts_points = [float(ts_start), float(ts_end)]
+    else:
+        ts_points = [float(ts_start)]
+
+    stat_unc = radon.get("stat_unc_Bq")
+    try:
+        stat_unc_val = float(stat_unc) if stat_unc is not None else float("nan")
+    except (TypeError, ValueError):
+        stat_unc_val = float("nan")
+    if not math.isfinite(stat_unc_val) or stat_unc_val < 0:
+        stat_unc_val = float("nan")
+    errors_ts = [stat_unc_val] * len(ts_points)
+
     radon["time_series"] = {
-        "time": [run_midpoint],
-        "activity": [radon["Rn_activity_Bq"]],
-        "error": [radon["stat_unc_Bq"]],
+        "time": ts_points,
+        "activity": [float(radon["Rn_activity_Bq"])] * len(ts_points),
     }
+    radon["time_series"]["error"] = errors_ts
+
     total_vals, total_errs = _total_radon_series(
         radon["time_series"]["activity"],
         radon["time_series"].get("error"),
@@ -3483,9 +3535,18 @@ def main(argv=None):
     try:
         from radon_activity import radon_activity_curve
 
-        times = np.linspace(t0_global.timestamp(), t_end_global_ts, 100)
-        times_dt = to_datetime_utc(times, unit="s")
+        window_start, window_end = _radon_time_window(
+            t0_global, t_end_global_ts, radon_interval
+        )
+        if not math.isfinite(window_start):
+            window_start = t0_global.timestamp()
+        if math.isfinite(window_end) and window_end > window_start:
+            time_grid = np.linspace(window_start, window_end, 100)
+        else:
+            time_grid = np.array([float(window_start)], dtype=float)
+        times_dt = to_datetime_utc(time_grid, unit="s")
         t_rel = (times_dt - analysis_start).total_seconds()
+        activity_times = time_grid
 
         if radon_combined_info is not None:
             try:
@@ -3514,7 +3575,7 @@ def main(argv=None):
                     t_rel, E, dE, N0, dN0, hl, cov
                 )
                 plot_radon_activity(
-                    times,
+                    time_grid,
                     A214,
                     Path(out_dir) / "radon_activity_po214.png",
                     dA214,
@@ -3539,14 +3600,24 @@ def main(argv=None):
         activity_arr = err_arr = None
         if A214 is None and A218 is None:
             if radon_results:
-                val = radon_results["radon_activity_Bq"]["value"]
-                unc = radon_results["radon_activity_Bq"]["uncertainty"]
-                activity_arr = np.full_like(times, val, dtype=float)
-                err_arr = np.full_like(times, unc, dtype=float)
+                val = radon_results["radon_activity_Bq"].get("value")
+                unc = radon_results["radon_activity_Bq"].get("uncertainty")
+                try:
+                    activity_val = float(val)
+                except (TypeError, ValueError):
+                    activity_val = float("nan")
+                try:
+                    unc_val = float(unc) if unc is not None else float("nan")
+                except (TypeError, ValueError):
+                    unc_val = float("nan")
+                if not math.isfinite(unc_val) or unc_val < 0:
+                    unc_val = float("nan")
+                activity_arr = np.full_like(time_grid, activity_val, dtype=float)
+                err_arr = np.full_like(time_grid, unc_val, dtype=float)
         else:
-            activity_arr = np.zeros_like(times, dtype=float)
-            err_arr = np.zeros_like(times, dtype=float)
-            for i in range(times.size):
+            activity_arr = np.zeros_like(time_grid, dtype=float)
+            err_arr = np.zeros_like(time_grid, dtype=float)
+            for i in range(time_grid.size):
                 r214 = err214_i = None
                 if A214 is not None:
                     r214 = A214[i]
@@ -3572,7 +3643,7 @@ def main(argv=None):
 
         if activity_arr is not None and err_arr is not None:
             plot_radon_activity(
-                times,
+                activity_times,
                 activity_arr,
                 Path(out_dir) / "radon_activity.png",
                 err_arr,
@@ -3585,7 +3656,7 @@ def main(argv=None):
                 sample_vol,
             )
             plot_total_radon(
-                times,
+                activity_times,
                 total_vals,
                 Path(out_dir) / "total_radon.png",
                 total_errs,
@@ -3647,7 +3718,7 @@ def main(argv=None):
         if args.ambient_file:
             try:
                 dat = np.loadtxt(args.ambient_file, usecols=(0, 1))
-                ambient_interp = np.interp(times, dat[:, 0], dat[:, 1])
+                ambient_interp = np.interp(activity_times, dat[:, 0], dat[:, 1])
             except Exception as e:
                 logger.warning(
                     "Could not read ambient file '%s': %s", args.ambient_file, e
@@ -3657,7 +3728,7 @@ def main(argv=None):
             vol_arr = activity_arr / ambient_interp
             vol_err = err_arr / ambient_interp
             plot_equivalent_air(
-                times,
+                activity_times,
                 vol_arr,
                 vol_err,
                 None,
@@ -3666,7 +3737,7 @@ def main(argv=None):
             )
             if A214 is not None:
                 plot_equivalent_air(
-                    times,
+                    time_grid,
                     A214 / ambient_interp,
                     dA214 / ambient_interp,
                     None,
@@ -3677,7 +3748,7 @@ def main(argv=None):
             vol_arr = activity_arr / float(ambient)
             vol_err = err_arr / float(ambient)
             plot_equivalent_air(
-                times,
+                activity_times,
                 vol_arr,
                 vol_err,
                 float(ambient),
@@ -3686,7 +3757,7 @@ def main(argv=None):
             )
             if A214 is not None:
                 plot_equivalent_air(
-                    times,
+                    time_grid,
                     A214 / float(ambient),
                     dA214 / float(ambient),
                     float(ambient),
