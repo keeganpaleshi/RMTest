@@ -386,18 +386,42 @@ def _cov_lookup(
 
 def _fallback_uncertainty(
     rate: float | None, fit_result: FitResult | Mapping[str, float] | None, param: str
-) -> float | None:
+) -> float:
     """Return uncertainty from covariance or a Poisson estimate."""
+
+    def _try_var(value: Any) -> float | None:
+        try:
+            var_val = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(var_val) or var_val <= 0:
+            return None
+        return var_val
+
+    candidates: list[Any] = []
     if isinstance(fit_result, FitResult):
         if fit_result.cov is not None and fit_result.param_index is not None:
             idx = fit_result.param_index.get(param)
             if idx is not None and idx < fit_result.cov.shape[0]:
-                var = float(fit_result.cov[idx, idx])
-                if var > 0:
-                    return math.sqrt(var)
-    if rate is None or rate == 0:
-        return math.nan
-    return math.sqrt(abs(rate))
+                candidates.append(fit_result.cov[idx, idx])
+        candidates.append(fit_result.params.get(f"cov_{param}_{param}"))
+    elif isinstance(fit_result, Mapping):
+        candidates.append(fit_result.get(f"cov_{param}_{param}"))
+
+    for cand in candidates:
+        var = _try_var(cand)
+        if var is not None:
+            return math.sqrt(var)
+
+    try:
+        rate_val = float(rate) if rate is not None else None
+    except (TypeError, ValueError):
+        rate_val = None
+
+    if rate_val is None or not math.isfinite(rate_val):
+        return 0.0
+
+    return math.sqrt(abs(rate_val))
 
 
 def _ensure_events(events: pd.DataFrame, stage: str) -> None:
@@ -2528,19 +2552,34 @@ def main(argv=None):
     fit214_obj = time_fit_results.get("Po214")
     fit218_obj = time_fit_results.get("Po218")
     fit214 = fit218 = None
+
+    def _coerce_float(value: Any) -> float | None:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
     if fit214_obj:
         p = _fit_params(fit214_obj)
+        rate_val = _coerce_float(p.get("E_corrected", p.get("E_Po214")))
+        err_val = _coerce_float(p.get("dE_corrected", p.get("dE_Po214")))
+        if err_val is None or not math.isfinite(err_val) or err_val < 0:
+            err_val = _fallback_uncertainty(rate_val, fit214_obj, "E_Po214")
         fit214 = SimpleNamespace(
-            rate=p.get("E_corrected", p.get("E_Po214")),
-            err=p.get("dE_corrected", p.get("dE_Po214")),
+            rate=rate_val,
+            err=err_val,
             counts=getattr(fit214_obj, "counts", None),
             params=p,
         )
     if fit218_obj:
         p = _fit_params(fit218_obj)
+        rate_val = _coerce_float(p.get("E_corrected", p.get("E_Po218")))
+        err_val = _coerce_float(p.get("dE_corrected", p.get("dE_Po218")))
+        if err_val is None or not math.isfinite(err_val) or err_val < 0:
+            err_val = _fallback_uncertainty(rate_val, fit218_obj, "E_Po218")
         fit218 = SimpleNamespace(
-            rate=p.get("E_corrected", p.get("E_Po218")),
-            err=p.get("dE_corrected", p.get("dE_Po218")),
+            rate=rate_val,
+            err=err_val,
             counts=getattr(fit218_obj, "counts", None),
             params=p,
         )
@@ -2946,27 +2985,51 @@ def main(argv=None):
     err214 = None
     if "Po214" in time_fit_results:
         fit_dict = _fit_params(time_fit_results["Po214"])
-        rate214 = fit_dict.get("E_corrected", fit_dict.get("E_Po214"))
-        err214 = fit_dict.get("dE_corrected", fit_dict.get("dE_Po214"))
-        if err214 is None or not math.isfinite(float(err214)):
+        rate_raw = fit_dict.get("E_corrected", fit_dict.get("E_Po214"))
+        try:
+            rate214 = float(rate_raw) if rate_raw is not None else None
+        except (TypeError, ValueError):
+            rate214 = None
+        err_raw = fit_dict.get("dE_corrected", fit_dict.get("dE_Po214"))
+        try:
+            err_val = float(err_raw) if err_raw is not None else None
+        except (TypeError, ValueError):
+            err_val = None
+        if err_val is not None and (not math.isfinite(err_val) or err_val < 0):
+            err_val = None
+        if err_val is None:
             err214 = _fallback_uncertainty(
                 rate214,
                 time_fit_results.get("Po214"),
                 "E_Po214",
             )
+        else:
+            err214 = err_val
 
     rate218 = None
     err218 = None
     if "Po218" in time_fit_results:
         fit_dict = _fit_params(time_fit_results["Po218"])
-        rate218 = fit_dict.get("E_corrected", fit_dict.get("E_Po218"))
-        err218 = fit_dict.get("dE_corrected", fit_dict.get("dE_Po218"))
-        if err218 is None or not math.isfinite(float(err218)):
+        rate_raw = fit_dict.get("E_corrected", fit_dict.get("E_Po218"))
+        try:
+            rate218 = float(rate_raw) if rate_raw is not None else None
+        except (TypeError, ValueError):
+            rate218 = None
+        err_raw = fit_dict.get("dE_corrected", fit_dict.get("dE_Po218"))
+        try:
+            err_val = float(err_raw) if err_raw is not None else None
+        except (TypeError, ValueError):
+            err_val = None
+        if err_val is not None and (not math.isfinite(err_val) or err_val < 0):
+            err_val = None
+        if err_val is None:
             err218 = _fallback_uncertainty(
                 rate218,
                 time_fit_results.get("Po218"),
                 "E_Po218",
             )
+        else:
+            err218 = err_val
 
     if iso_mode == "radon":
         r218 = rate218
