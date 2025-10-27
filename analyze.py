@@ -3483,9 +3483,10 @@ def main(argv=None):
     try:
         from radon_activity import radon_activity_curve
 
-        times = np.linspace(t0_global.timestamp(), t_end_global_ts, 100)
-        times_dt = to_datetime_utc(times, unit="s")
+        time_grid = np.linspace(t0_global.timestamp(), t_end_global_ts, 100)
+        times_dt = to_datetime_utc(time_grid, unit="s")
         t_rel = (times_dt - analysis_start).total_seconds()
+        activity_times = time_grid
 
         if radon_combined_info is not None:
             try:
@@ -3514,7 +3515,7 @@ def main(argv=None):
                     t_rel, E, dE, N0, dN0, hl, cov
                 )
                 plot_radon_activity(
-                    times,
+                    time_grid,
                     A214,
                     Path(out_dir) / "radon_activity_po214.png",
                     dA214,
@@ -3539,14 +3540,25 @@ def main(argv=None):
         activity_arr = err_arr = None
         if A214 is None and A218 is None:
             if radon_results:
-                val = radon_results["radon_activity_Bq"]["value"]
-                unc = radon_results["radon_activity_Bq"]["uncertainty"]
-                activity_arr = np.full_like(times, val, dtype=float)
-                err_arr = np.full_like(times, unc, dtype=float)
+                val = radon_results["radon_activity_Bq"].get("value")
+                unc = radon_results["radon_activity_Bq"].get("uncertainty")
+                try:
+                    activity_val = float(val)
+                except (TypeError, ValueError):
+                    activity_val = float("nan")
+                try:
+                    unc_val = float(unc) if unc is not None else float("nan")
+                except (TypeError, ValueError):
+                    unc_val = float("nan")
+                if not math.isfinite(unc_val) or unc_val < 0:
+                    unc_val = float("nan")
+                activity_arr = np.array([activity_val], dtype=float)
+                err_arr = np.array([unc_val], dtype=float)
+                activity_times = np.array([run_midpoint], dtype=float)
         else:
-            activity_arr = np.zeros_like(times, dtype=float)
-            err_arr = np.zeros_like(times, dtype=float)
-            for i in range(times.size):
+            activity_arr = np.zeros_like(time_grid, dtype=float)
+            err_arr = np.zeros_like(time_grid, dtype=float)
+            for i in range(time_grid.size):
                 r214 = err214_i = None
                 if A214 is not None:
                     r214 = A214[i]
@@ -3572,7 +3584,7 @@ def main(argv=None):
 
         if activity_arr is not None and err_arr is not None:
             plot_radon_activity(
-                times,
+                activity_times,
                 activity_arr,
                 Path(out_dir) / "radon_activity.png",
                 err_arr,
@@ -3585,7 +3597,7 @@ def main(argv=None):
                 sample_vol,
             )
             plot_total_radon(
-                times,
+                activity_times,
                 total_vals,
                 Path(out_dir) / "total_radon.png",
                 total_errs,
@@ -3647,7 +3659,7 @@ def main(argv=None):
         if args.ambient_file:
             try:
                 dat = np.loadtxt(args.ambient_file, usecols=(0, 1))
-                ambient_interp = np.interp(times, dat[:, 0], dat[:, 1])
+                ambient_interp = np.interp(activity_times, dat[:, 0], dat[:, 1])
             except Exception as e:
                 logger.warning(
                     "Could not read ambient file '%s': %s", args.ambient_file, e
@@ -3657,7 +3669,7 @@ def main(argv=None):
             vol_arr = activity_arr / ambient_interp
             vol_err = err_arr / ambient_interp
             plot_equivalent_air(
-                times,
+                activity_times,
                 vol_arr,
                 vol_err,
                 None,
@@ -3666,7 +3678,7 @@ def main(argv=None):
             )
             if A214 is not None:
                 plot_equivalent_air(
-                    times,
+                    time_grid,
                     A214 / ambient_interp,
                     dA214 / ambient_interp,
                     None,
@@ -3677,7 +3689,7 @@ def main(argv=None):
             vol_arr = activity_arr / float(ambient)
             vol_err = err_arr / float(ambient)
             plot_equivalent_air(
-                times,
+                activity_times,
                 vol_arr,
                 vol_err,
                 float(ambient),
@@ -3686,7 +3698,7 @@ def main(argv=None):
             )
             if A214 is not None:
                 plot_equivalent_air(
-                    times,
+                    time_grid,
                     A214 / float(ambient),
                     dA214 / float(ambient),
                     float(ambient),
