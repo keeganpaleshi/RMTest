@@ -2314,16 +2314,13 @@ def main(argv=None):
             spectrum_results = {}
 
         # Store plotting inputs (bin_edges now in energy units)
-        fit_vals = None
-        if isinstance(spec_fit_out, FitResult):
-            fit_vals = spec_fit_out.params
-        elif isinstance(spec_fit_out, dict):
-            fit_vals = spec_fit_out
         spec_plot_data = {
             "energies": df_analysis["energy_MeV"].values,
-            "fit_vals": fit_vals,
+            "fit_vals": spec_fit_out.params if isinstance(spec_fit_out, FitResult) else spec_fit_out,
+            "fit_result": spec_fit_out if isinstance(spec_fit_out, FitResult) else None,
             "bins": bins,
             "bin_edges": bin_edges,
+            "fit_flags": dict(spec_flags),
         }
 
     # ────────────────────────────────────────────────────────────
@@ -3542,11 +3539,15 @@ def main(argv=None):
         try:
             _ = plot_spectrum(
                 energies=spec_plot_data["energies"],
-                fit_vals=spec_plot_data["fit_vals"],
+                fit_vals=(
+                    spec_plot_data.get("fit_result")
+                    or spec_plot_data.get("fit_vals")
+                ),
                 out_png=Path(out_dir) / "spectrum.png",
                 bins=spec_plot_data["bins"],
                 bin_edges=spec_plot_data["bin_edges"],
                 config=cfg.get("plotting", {}),
+                fit_flags=spec_plot_data.get("fit_flags"),
             )
         except Exception as e:
             logger.warning("Could not create spectrum plot: %s", e)
