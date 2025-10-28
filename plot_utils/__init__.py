@@ -309,18 +309,36 @@ def plot_time_series(
 
         # Histogram of observed counts:
         counts_iso, _ = np.histogram(t_iso_rel, bins=edges)
+        counts_iso = counts_iso.astype(float)
+        errors_iso = np.sqrt(counts_iso)
+
         if normalise_rate:
-            counts_iso = counts_iso / bin_widths
+            with np.errstate(divide="ignore", invalid="ignore"):
+                counts_iso = np.divide(
+                    counts_iso,
+                    bin_widths,
+                    out=np.zeros_like(counts_iso, dtype=float),
+                    where=bin_widths > 0,
+                )
+                errors_iso = np.divide(
+                    errors_iso,
+                    bin_widths,
+                    out=np.zeros_like(errors_iso, dtype=float),
+                    where=bin_widths > 0,
+                )
+            counts_iso = np.nan_to_num(counts_iso, nan=0.0, posinf=0.0, neginf=0.0)
+            errors_iso = np.nan_to_num(errors_iso, nan=0.0, posinf=0.0, neginf=0.0)
 
         style = str(config.get("plot_time_style", "steps")).lower()
         if style == "lines":
-            plt.plot(
+            plt.errorbar(
                 centers_mpl,
                 counts_iso,
-                marker="o",
-                linestyle="-",
+                yerr=errors_iso,
+                fmt="o-",
                 color=colors[iso],
                 label=f"Data {iso}",
+                capsize=3,
             )
         else:
             plt.step(
@@ -329,6 +347,15 @@ def plot_time_series(
                 where="mid",
                 color=colors[iso],
                 label=f"Data {iso}",
+            )
+            plt.errorbar(
+                centers_mpl,
+                counts_iso,
+                yerr=errors_iso,
+                fmt="none",
+                ecolor=colors[iso],
+                elinewidth=1.0,
+                capsize=3,
             )
 
         # Overlay the continuous model curve (scaled to counts/bin)

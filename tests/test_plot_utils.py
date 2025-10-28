@@ -495,15 +495,15 @@ def test_plot_time_series_line_style(tmp_path, monkeypatch):
 
     called = {}
 
-    def fake_plot(*args, **kwargs):
-        called["plot"] = True
+    def fake_errorbar(*args, **kwargs):
+        called["errorbar"] = True
         return type("obj", (), {})()
 
     def fake_step(*args, **kwargs):
         called["step"] = True
         return type("obj", (), {})()
 
-    monkeypatch.setattr("plot_utils.plt.plot", fake_plot)
+    monkeypatch.setattr("plot_utils.plt.errorbar", fake_errorbar)
     monkeypatch.setattr("plot_utils.plt.step", fake_step)
     monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
 
@@ -517,7 +517,7 @@ def test_plot_time_series_line_style(tmp_path, monkeypatch):
         str(tmp_path / "ts_lines.png"),
     )
 
-    assert called.get("plot") and "step" not in called
+    assert called.get("errorbar") and "step" not in called
 
 
 def test_plot_time_series_po210_no_model(tmp_path, monkeypatch):
