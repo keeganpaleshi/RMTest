@@ -143,6 +143,7 @@ class FitResult:
     param_index: dict[str, int] | None = None
     counts: int | None = None
     likelihood: str | None = None
+    metadata: dict[str, object] = field(default_factory=dict)
     _cov_df: pd.DataFrame | None = field(init=False, default=None, repr=False)
 
     def __post_init__(self):

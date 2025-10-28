@@ -3343,6 +3343,8 @@ def main(argv=None):
             d = dict(fit.params)
             d["cov"] = fit.cov.tolist()
             d["ndf"] = fit.ndf
+            if getattr(fit, "metadata", None):
+                d["background"] = dict(fit.metadata)
         elif isinstance(fit, dict):
             d = fit
         else:
