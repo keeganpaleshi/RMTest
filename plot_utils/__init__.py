@@ -174,7 +174,7 @@ def _build_time_segments(
             continue
 
         if bin_mode in ("fd", "auto"):
-            mask = (timestamps >= float(start)) & (timestamps <= float(end))
+            mask = (timestamps >= float(start)) & (timestamps < float(end))
             data = timestamps[mask]
             if data.size < 2:
                 n_bins = 1
@@ -534,7 +534,7 @@ def plot_time_series(
                 (all_energies >= emin)
                 & (all_energies <= emax)
                 & (all_timestamps >= seg["start"])
-                & (all_timestamps <= seg["end"])
+                & (all_timestamps < seg["end"])
             )
             times_seg = all_timestamps[mask_seg]
             counts_hist = np.histogram(times_seg, bins=edges_abs)[0].astype(float)
