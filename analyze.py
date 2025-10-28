@@ -58,7 +58,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
-from typing import Any, Mapping, cast
+from typing import Any, Mapping, Sequence, cast
 
 import math
 import numpy as np
@@ -313,6 +313,40 @@ def _total_radon_series(activity, errors, monitor_volume, sample_volume):
         total_err = None if err_arr is None else err_arr * scale
 
     return total, total_err
+
+
+def _as_timestamp(value: Any) -> float:
+    """Return ``value`` as a UTC timestamp in seconds."""
+
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, np.generic):  # NumPy scalar
+        return float(value)
+    return to_utc_datetime(value).timestamp()
+
+
+def _radon_time_window(
+    start, end, radon_interval: Sequence[Any] | None
+) -> tuple[float, float]:
+    """Determine the plotting window for radon time-series outputs."""
+
+    start_ts = _as_timestamp(start)
+    end_ts = _as_timestamp(end)
+
+    if radon_interval and len(radon_interval) == 2:
+        try:
+            interval_start = max(start_ts, _as_timestamp(radon_interval[0]))
+            interval_end = min(end_ts, _as_timestamp(radon_interval[1]))
+        except Exception:
+            interval_start = interval_end = float("nan")
+        else:
+            if math.isfinite(interval_start) and math.isfinite(interval_end):
+                if interval_end > interval_start:
+                    return interval_start, interval_end
+                if interval_end == interval_start:
+                    return interval_start, interval_end
+
+    return start_ts, end_ts
 
 
 def _fit_params(obj: FitResult | Mapping[str, float] | None) -> FitParams:
@@ -3293,13 +3327,31 @@ def main(argv=None):
         analysis_isotope=iso_mode,
     )
 
-    # ── Construct a one-point time-series so the plotters don’t crash ──
-    run_midpoint = 0.5 * (t0_cfg.timestamp() + t_end_cfg.timestamp())
+    # ── Construct a minimal time-series aligned with the measurement window ──
+    ts_start, ts_end = _radon_time_window(t0_cfg, t_end_cfg, radon_interval_cfg)
+    ts_points: list[float]
+    if not math.isfinite(ts_start):
+        ts_start = to_utc_datetime(t0_cfg).timestamp()
+    if math.isfinite(ts_end) and ts_end > ts_start:
+        ts_points = [float(ts_start), float(ts_end)]
+    else:
+        ts_points = [float(ts_start)]
+
+    stat_unc = radon.get("stat_unc_Bq")
+    try:
+        stat_unc_val = float(stat_unc) if stat_unc is not None else float("nan")
+    except (TypeError, ValueError):
+        stat_unc_val = float("nan")
+    if not math.isfinite(stat_unc_val) or stat_unc_val < 0:
+        stat_unc_val = float("nan")
+    errors_ts = [stat_unc_val] * len(ts_points)
+
     radon["time_series"] = {
-        "time": [run_midpoint],
-        "activity": [radon["Rn_activity_Bq"]],
-        "error": [radon["stat_unc_Bq"]],
+        "time": ts_points,
+        "activity": [float(radon["Rn_activity_Bq"])] * len(ts_points),
     }
+    radon["time_series"]["error"] = errors_ts
+
     total_vals, total_errs = _total_radon_series(
         radon["time_series"]["activity"],
         radon["time_series"].get("error"),
@@ -3483,9 +3535,65 @@ def main(argv=None):
     try:
         from radon_activity import radon_activity_curve
 
-        times = np.linspace(t0_global.timestamp(), t_end_global_ts, 100)
-        times_dt = to_datetime_utc(times, unit="s")
+        rad_summary = summary.get("radon", {}) if hasattr(summary, "get") else {}
+        rad_ts_data = rad_summary.get("time_series", {}) if hasattr(rad_summary, "get") else {}
+
+        window_start, window_end = _radon_time_window(
+            t0_global, t_end_global_ts, radon_interval
+        )
+        if not math.isfinite(window_start):
+            window_start = t0_global.timestamp()
+        has_window_end = math.isfinite(window_end) and window_end > window_start
+
+        fallback_times = np.asarray(rad_ts_data.get("time", []), dtype=float)
+        fallback_activity = np.asarray(rad_ts_data.get("activity", []), dtype=float)
+        fallback_errs_raw = rad_ts_data.get("error") if hasattr(rad_ts_data, "get") else None
+        fallback_errs = (
+            np.asarray(fallback_errs_raw, dtype=float)
+            if fallback_errs_raw is not None
+            else None
+        )
+
+        if fallback_times.size == 0:
+            fallback_times = np.array(
+                [window_start, window_end] if has_window_end else [window_start],
+                dtype=float,
+            )
+
+        if fallback_activity.size != fallback_times.size:
+            fallback_activity = np.full(
+                fallback_times.shape,
+                float(radon.get("Rn_activity_Bq", float("nan"))),
+                dtype=float,
+            )
+
+        if fallback_errs is None or fallback_errs.size != fallback_times.size:
+            stat_unc_val = radon.get("stat_unc_Bq")
+            try:
+                err_val = float(stat_unc_val) if stat_unc_val is not None else float("nan")
+            except (TypeError, ValueError):
+                err_val = float("nan")
+            fallback_errs = np.full(fallback_times.shape, err_val, dtype=float)
+
+        valid_fits: dict[str, Mapping[str, Any]] = {}
+        for iso in ("Po214", "Po218"):
+            fit_obj = time_fit_results.get(iso)
+            if fit_obj is None:
+                continue
+            fit_params = _fit_params(fit_obj)
+            if fit_params.get("fit_valid", True) and fit_params.get(f"fit_valid_{iso}", True):
+                valid_fits[iso] = fit_params
+
+        if valid_fits and has_window_end:
+            time_grid = np.linspace(window_start, window_end, 100)
+        elif valid_fits:
+            time_grid = np.array([float(window_start)], dtype=float)
+        else:
+            time_grid = fallback_times
+
+        times_dt = to_datetime_utc(time_grid, unit="s")
         t_rel = (times_dt - analysis_start).total_seconds()
+        activity_times = time_grid
 
         if radon_combined_info is not None:
             try:
@@ -3500,53 +3608,45 @@ def main(argv=None):
                 logger.warning("Could not create radon combined plot -> %s", e)
 
         A214 = dA214 = None
-        if "Po214" in time_fit_results:
+        if "Po214" in valid_fits:
             fit_result = time_fit_results["Po214"]
-            fit = _fit_params(fit_result)
-            if fit.get("fit_valid", True) and fit.get("fit_valid_Po214", True):
-                E = fit.get("E_corrected", fit.get("E_Po214"))
-                dE = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
-                N0 = fit.get("N0_Po214", 0.0)
-                dN0 = fit.get("dN0_Po214", 0.0)
-                hl = _hl_value(cfg, "Po214")
-                cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
-                A214, dA214 = radon_activity_curve(
-                    t_rel, E, dE, N0, dN0, hl, cov
-                )
-                plot_radon_activity(
-                    times,
-                    A214,
-                    Path(out_dir) / "radon_activity_po214.png",
-                    dA214,
-                    config=cfg.get("plotting", {}),
-                )
+            fit = valid_fits["Po214"]
+            E = fit.get("E_corrected", fit.get("E_Po214"))
+            dE = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
+            N0 = fit.get("N0_Po214", 0.0)
+            dN0 = fit.get("dN0_Po214", 0.0)
+            hl = _hl_value(cfg, "Po214")
+            cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
+            A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
+            plot_radon_activity(
+                time_grid,
+                A214,
+                Path(out_dir) / "radon_activity_po214.png",
+                dA214,
+                config=cfg.get("plotting", {}),
+            )
 
         A218 = dA218 = None
-        if "Po218" in time_fit_results:
+        if "Po218" in valid_fits:
             fit_result = time_fit_results["Po218"]
-            fit = _fit_params(fit_result)
-            if fit.get("fit_valid", True) and fit.get("fit_valid_Po218", True):
-                E = fit.get("E_corrected", fit.get("E_Po218"))
-                dE = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
-                N0 = fit.get("N0_Po218", 0.0)
-                dN0 = fit.get("dN0_Po218", 0.0)
-                hl = _hl_value(cfg, "Po218")
-                cov = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
-                A218, dA218 = radon_activity_curve(
-                    t_rel, E, dE, N0, dN0, hl, cov
-                )
+            fit = valid_fits["Po218"]
+            E = fit.get("E_corrected", fit.get("E_Po218"))
+            dE = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
+            N0 = fit.get("N0_Po218", 0.0)
+            dN0 = fit.get("dN0_Po218", 0.0)
+            hl = _hl_value(cfg, "Po218")
+            cov = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
+            A218, dA218 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
 
         activity_arr = err_arr = None
         if A214 is None and A218 is None:
-            if radon_results:
-                val = radon_results["radon_activity_Bq"]["value"]
-                unc = radon_results["radon_activity_Bq"]["uncertainty"]
-                activity_arr = np.full_like(times, val, dtype=float)
-                err_arr = np.full_like(times, unc, dtype=float)
+            activity_arr = fallback_activity.astype(float, copy=True)
+            err_arr = fallback_errs.astype(float, copy=True)
+            activity_times = fallback_times
         else:
-            activity_arr = np.zeros_like(times, dtype=float)
-            err_arr = np.zeros_like(times, dtype=float)
-            for i in range(times.size):
+            activity_arr = np.zeros_like(time_grid, dtype=float)
+            err_arr = np.zeros_like(time_grid, dtype=float)
+            for i in range(time_grid.size):
                 r214 = err214_i = None
                 if A214 is not None:
                     r214 = A214[i]
@@ -3572,7 +3672,7 @@ def main(argv=None):
 
         if activity_arr is not None and err_arr is not None:
             plot_radon_activity(
-                times,
+                activity_times,
                 activity_arr,
                 Path(out_dir) / "radon_activity.png",
                 err_arr,
@@ -3585,7 +3685,7 @@ def main(argv=None):
                 sample_vol,
             )
             plot_total_radon(
-                times,
+                activity_times,
                 total_vals,
                 Path(out_dir) / "total_radon.png",
                 total_errs,
@@ -3647,7 +3747,7 @@ def main(argv=None):
         if args.ambient_file:
             try:
                 dat = np.loadtxt(args.ambient_file, usecols=(0, 1))
-                ambient_interp = np.interp(times, dat[:, 0], dat[:, 1])
+                ambient_interp = np.interp(activity_times, dat[:, 0], dat[:, 1])
             except Exception as e:
                 logger.warning(
                     "Could not read ambient file '%s': %s", args.ambient_file, e
@@ -3657,7 +3757,7 @@ def main(argv=None):
             vol_arr = activity_arr / ambient_interp
             vol_err = err_arr / ambient_interp
             plot_equivalent_air(
-                times,
+                activity_times,
                 vol_arr,
                 vol_err,
                 None,
@@ -3666,7 +3766,7 @@ def main(argv=None):
             )
             if A214 is not None:
                 plot_equivalent_air(
-                    times,
+                    time_grid,
                     A214 / ambient_interp,
                     dA214 / ambient_interp,
                     None,
@@ -3677,7 +3777,7 @@ def main(argv=None):
             vol_arr = activity_arr / float(ambient)
             vol_err = err_arr / float(ambient)
             plot_equivalent_air(
-                times,
+                activity_times,
                 vol_arr,
                 vol_err,
                 float(ambient),
@@ -3686,7 +3786,7 @@ def main(argv=None):
             )
             if A214 is not None:
                 plot_equivalent_air(
-                    times,
+                    time_grid,
                     A214 / float(ambient),
                     dA214 / float(ambient),
                     float(ambient),
