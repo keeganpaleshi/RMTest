@@ -142,8 +142,8 @@ Running `analyze.py` produces a consistent set of artifacts next to `summary.jso
 - `summary.json` – structured calibration, per-isotope fit results, radon activity/concentration time series, baseline metadata, the concatenated per-bin counts used for plotting, and other high-level diagnostics.
 - `spectrum.png` – spectrum, best-fit model components, and residuals in a three-panel layout that always ships with the report.
 - `spectrum_pre_post.png` – diagnostic spectrum overlay comparing pre/post cut spectra to highlight the impact of filtering.
-- Radon time-series plots – `radon_activity.png` (UTC and elapsed-hour views) is always written using the configured `background_mode` and statistical error bars.
-- Isotope time-series plots – `isotope_time_series.png` overlays Po-210 / Po-218 / Po-214 within the configured `run_periods`, and the per-isotope `time_series_Po214.png`, `time_series_Po218.png`, and (when `window_po210` is enabled) `time_series_Po210.png` provide the same data for single-isotope diagnostics.
+- Radon time-series plots – `radon_activity.png` presents total activity and concentration versus both absolute time (UTC) and elapsed hours, including statistical error bars and annotating the applied `background_mode`.
+- Isotope time-series plots – `isotope_time_series.png` overlays Po-210 / Po-218 / Po-214 restricted to the configured `run_periods`, with per-bin Poisson error bars; the per-isotope `time_series_Po214.png`, `time_series_Po218.png`, and (when `window_po210` is enabled) `time_series_Po210.png` provide the same data for single-isotope diagnostics.
 - `config_used.json` – copy of the configuration used. Any timestamps overridden on the command line are written back to this file as ISO timestamps.
 - Optional `*_ts.json` files – binned time series when explicit dumps are enabled.
 - `efficiency.png` – bar chart of individual efficiencies and the BLUE result.
@@ -454,22 +454,24 @@ fit.  Important keys include:
   an exponentially modified Gaussian (EMG) tail is enabled.  Use a
   strictly positive prior mean (e.g. ``0.005``) to prevent numerical
   overflow when the tail constant approaches zero.
+- When `use_emg` is `true` for an alpha peak the corresponding EMG tail
+  parameter (`tau`) is allowed to float inside broad yet physical limits
+  rather than being hard-clamped, which prevents the distorted Po-210
+  shoulders or background overfitting caused by the previous clamp.
 - `use_emg` – mapping of isotopes to boolean flags selecting an EMG tail.
   Set `{"Po210": true}` to enable only the Po‑210 tail, or use a single
   boolean to toggle all peaks (e.g. `true` enables EMG tails for every
   isotope).  When an explicit `tau_{iso}` prior is supplied the tail is
   automatically enabled even if the mapping omits the isotope, ensuring
   priors always take effect.
-- `mu_bounds` – optional lower/upper limits for each peak centroid.
-  Set for example `{"Po218": [5.9, 6.2]}` to keep the Po‑218 fit from
-
-  drifting into the Po‑210 region.  Centroid guesses found during peak
-  search are clamped to this range before the fit starts.
+- `mu_bounds` – optional dict mapping isotopes to `[lo, hi]` centroid
+  limits.  Set for example `{"Po218": [5.9, 6.1]}` to keep the Po‑218 fit
+  from drifting into the Po‑210 region.  Initial centroid guesses found
+  during peak search are clamped to this window before the fit starts.
 - `mu_bounds_units` – interpret the numbers supplied in `mu_bounds` as
-  either `"mev"` (default) or raw `"adc"` channels.  Bounds expressed
-  in ADC are converted to MeV with the current calibration before the
-  spectral fitter runs so that physical parameters (notably the peak
-  amplitudes) remain unconstrained by unit mismatches.
+  either `"mev"` (default) or raw `"adc"` channels.  ADC bounds are
+  converted to MeV with the current calibration before fitting so the
+  user’s ADC intuition never conflicts with the fitter’s MeV model.
 
 - `sigma_E_prior_source` – one-sigma width of the prior on the common
   energy resolution parameter. When omitted the uncertainty from the
