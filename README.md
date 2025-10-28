@@ -753,11 +753,11 @@ includes contributions from both count sets.
   months before or after the sample remain valid for this mode.
 
 Set ``allow_negative_baseline`` to ``true`` in the top-level
-configuration (or pass ``--allow-negative-baseline``) to allow small
-negative baseline-corrected activities. With the default ``false``
-setting, any negative baseline-subtracted value is clipped to
-``0.0`` Bq. When enabled, the raw fitted value is reported directly
-without applying an additional floor, even if it is slightly negative.
+configuration (or pass ``--allow-negative-baseline``) to preserve
+negative baseline-corrected activities exactly as reported by the fit.
+With the default ``false`` setting any negative value is clipped to
+``0.0`` so downstream steps never see negative activities unless the
+option is enabled explicitly.
 
 ### Baseline Noise Cut
 

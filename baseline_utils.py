@@ -10,7 +10,6 @@ from radon.baseline import (
     subtract_baseline_counts,
     subtract_baseline_rate,
 )
-from constants import NEGATIVE_ACTIVITY_FLOOR_BQ
 
 
 class BaselineError(RuntimeError):
@@ -303,17 +302,12 @@ def summarize_baseline(
     dict
         Mapping ``iso -> (raw_rate, baseline_rate, corrected_rate)`` in Bq.
 
-    Raises
-    ------
-    BaselineError
-        If any corrected rate is negative and ``cfg.get('allow_negative_baseline')``
-        is not ``True``.
-
     Notes
     -----
     When ``allow_negative_baseline`` is ``True`` the corrected rates are
-    clipped to :data:`constants.NEGATIVE_ACTIVITY_FLOOR_BQ` to prevent
-    extremely negative values from propagating into the report.
+    preserved exactly as reported by the fit, even if they are negative.
+    When it is ``False`` negative corrected rates are clipped to ``0.0`` so
+    downstream consumers never observe negative activities without opting in.
     """
 
     baseline = cfg.get("baseline", {})
@@ -332,10 +326,8 @@ def summarize_baseline(
         base = float(base_rates.get(iso, 0.0)) * float(scales.get(iso, 1.0))
         corr = float(fit.get("E_corrected", raw - base))
         raw = float(raw)
-        if allow_negative and corr < NEGATIVE_ACTIVITY_FLOOR_BQ:
-            corr = NEGATIVE_ACTIVITY_FLOOR_BQ
+        if not allow_negative and corr < 0.0:
+            corr = 0.0
         summary[iso] = (raw, base, corr)
-        if corr < 0 and not allow_negative:
-            raise BaselineError(f"negative corrected rate for {iso}")
 
     return summary

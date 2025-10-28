@@ -12,7 +12,6 @@ sys.modules.setdefault("pymc", types.ModuleType("pymc"))
 from calibration import CalibrationResult
 import analyze
 import baseline_noise
-from baseline_utils import BaselineError
 import radon.baseline as rb
 from dataclasses import asdict
 
@@ -111,9 +110,9 @@ def test_allow_negative_baseline_flag(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "copy_config", lambda *a, **k: None)
 
     def fake_summarize(cfg, iso):
-        if not cfg.get("allow_negative_baseline"):
-            raise BaselineError("neg")
-        return {i: (0.1, 0.2, -0.1) for i in iso}
+        captured["allow_negative_baseline"] = cfg.get("allow_negative_baseline", False)
+        corrected = -0.1 if captured["allow_negative_baseline"] else 0.0
+        return {i: (0.1, 0.2, corrected) for i in iso}
 
     monkeypatch.setattr(analyze, "summarize_baseline", fake_summarize)
 
@@ -130,3 +129,4 @@ def test_allow_negative_baseline_flag(tmp_path, monkeypatch):
     analyze.main()
 
     assert "summary" in captured
+    assert captured.get("allow_negative_baseline") is True
