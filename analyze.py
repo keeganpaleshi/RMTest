@@ -2593,49 +2593,50 @@ def main(argv=None):
                     priors_shrunk = priors_spec.copy()
                     for t in tau_keys:
                         mu, sig = priors_shrunk[t]
-                        priors_shrunk[t] = (mu, sig * 0.5)
-                    flags_fix = spec_flags.copy()
-                    for t in tau_keys:
-                        flags_fix[f"fix_{t}"] = True
-                    refit = fit_spectrum(
+                        if sig is None or not np.isfinite(sig):
+                            priors_shrunk[t] = (mu, sig)
+                        else:
+                            priors_shrunk[t] = (mu, sig * 0.5)
+
+                    # First attempt: allow the tau parameters to remain free but
+                    # encourage stability with narrower priors.
+                    free_fit = fit_spectrum(
                         df_analysis["energy_MeV"].values,
                         priors_shrunk,
-                        flags=flags_fix,
+                        flags=spec_flags,
                         bins=fit_kwargs.get("bins"),
                         bin_edges=fit_kwargs.get("bin_edges"),
                         bounds=fit_kwargs.get("bounds"),
                         unbinned=fit_kwargs.get("unbinned", False),
                         strict=fit_kwargs.get("strict", False),
                     )
-                    if isinstance(refit, FitResult) and refit.params.get(
+
+                    free_valid = isinstance(free_fit, FitResult) and free_fit.params.get(
                         "fit_valid", False
-                    ):
-                        thresh = spectral_cfg.get("refit_aic_threshold", 2.0)
-                        if (
-                            refit.params.get("aic", float("inf"))
-                            > spec_fit_out.params.get("aic", float("inf")) - thresh
+                    )
+
+                    if free_valid:
+                        spec_fit_out = free_fit
+                    else:
+                        # As a last resort, fix the tau parameters to their
+                        # shrunken prior means to recover a stable solution.
+                        flags_fix = spec_flags.copy()
+                        for t in tau_keys:
+                            flags_fix[f"fix_{t}"] = True
+                        refit = fit_spectrum(
+                            df_analysis["energy_MeV"].values,
+                            priors_shrunk,
+                            flags=flags_fix,
+                            bins=fit_kwargs.get("bins"),
+                            bin_edges=fit_kwargs.get("bin_edges"),
+                            bounds=fit_kwargs.get("bounds"),
+                            unbinned=fit_kwargs.get("unbinned", False),
+                            strict=fit_kwargs.get("strict", False),
+                        )
+                        if isinstance(refit, FitResult) and refit.params.get(
+                            "fit_valid", False
                         ):
                             spec_fit_out = refit
-                        else:
-                            free_fit = fit_spectrum(
-                                df_analysis["energy_MeV"].values,
-                                priors_shrunk,
-                                flags=spec_flags,
-                                bins=fit_kwargs.get("bins"),
-                                bin_edges=fit_kwargs.get("bin_edges"),
-                                bounds=fit_kwargs.get("bounds"),
-                                unbinned=fit_kwargs.get("unbinned", False),
-                                strict=fit_kwargs.get("strict", False),
-                            )
-                            if (
-                                isinstance(free_fit, FitResult)
-                                and free_fit.params.get("fit_valid", False)
-                                and free_fit.params.get("aic", float("inf"))
-                                < refit.params.get("aic", float("inf")) - thresh
-                            ):
-                                spec_fit_out = free_fit
-                            else:
-                                spec_fit_out = refit
             spectrum_results = spec_fit_out
         except Exception as e:
             logger.warning("Spectral fit failed -> %s", e)
