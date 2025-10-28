@@ -558,16 +558,26 @@ def _spectral_fit_with_check(
         F_val = float(params["F"])
         sigma_E_val = math.sqrt(max(sigma0**2 + F_val * e_ref, 0.0))
         result.params["sigma_E"] = sigma_E_val
-        if result.cov is not None:
-            var = (
-                (sigma0 / sigma_E_val) ** 2 * result.get_cov("sigma0", "sigma0")
-                + (0.5 * e_ref / sigma_E_val) ** 2 * result.get_cov("F", "F")
-                + 2
-                * (sigma0 / sigma_E_val)
-                * (0.5 * e_ref / sigma_E_val)
-                * result.get_cov("sigma0", "F")
-            )
-            result.params["dsigma_E"] = float(np.sqrt(max(var, 0.0)))
+        if result.cov is not None and sigma_E_val > 0.0:
+            param_index = getattr(result, "param_index", None) or {}
+            has_sigma0 = "sigma0" in param_index
+            has_F = "F" in param_index
+
+            var = 0.0
+            if has_sigma0:
+                var += (sigma0 / sigma_E_val) ** 2 * result.get_cov("sigma0", "sigma0")
+            if has_F:
+                var += (0.5 * e_ref / sigma_E_val) ** 2 * result.get_cov("F", "F")
+            if has_sigma0 and has_F:
+                var += (
+                    2
+                    * (sigma0 / sigma_E_val)
+                    * (0.5 * e_ref / sigma_E_val)
+                    * result.get_cov("sigma0", "F")
+                )
+
+            if has_sigma0 or has_F:
+                result.params["dsigma_E"] = float(np.sqrt(max(var, 0.0)))
     tol = cfg.get("spectral_fit", {}).get("spectral_peak_tolerance_mev", 0.2)
     dev = _centroid_deviation(params, known)
 
