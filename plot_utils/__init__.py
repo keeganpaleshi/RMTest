@@ -497,6 +497,15 @@ def plot_spectrum(
         centers_arr = np.asarray(centers, dtype=float)
         total = np.zeros_like(widths, dtype=float)
 
+        def _counts_from_density(density_vals: np.ndarray | float) -> np.ndarray:
+            density_arr = np.nan_to_num(
+                np.asarray(density_vals, dtype=float),
+                nan=0.0,
+                posinf=0.0,
+                neginf=0.0,
+            )
+            return np.multiply(density_arr, widths, out=np.zeros_like(widths))
+
         # Peak contributions
         sigma0 = fit_params.get("sigma0")
         F = fit_params.get("F", 0.0)
@@ -518,8 +527,7 @@ def plot_spectrum(
                 density = emg_left(centers_arr, float(mu), sigma_vals, float(tau))
             else:
                 density = gaussian(centers_arr, float(mu), sigma_vals)
-            density = np.nan_to_num(density, nan=0.0, posinf=0.0, neginf=0.0)
-            comps[iso] = float(amp) * density * widths
+            comps[iso] = _counts_from_density(float(amp) * density)
             total += comps[iso]
 
         # Background contribution
@@ -542,10 +550,7 @@ def plot_spectrum(
                     )
                     if norm > 0:
                         background_density = background_density * (amplitude / norm)
-            background_density = np.nan_to_num(
-                background_density, nan=0.0, posinf=0.0, neginf=0.0
-            )
-            background = background_density * widths
+            background = _counts_from_density(background_density)
             total += background
 
         if background is not None:
