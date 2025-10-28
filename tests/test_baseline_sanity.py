@@ -27,3 +27,17 @@ def test_summarize_baseline_allow_negative():
     }
     out = summarize_baseline(cfg, ["Po214"])
     assert out["Po214"] == pytest.approx((0.1, 0.2, -0.1))
+
+
+def test_summarize_baseline_allow_negative_clamps():
+    cfg = {
+        "allow_negative_baseline": True,
+        "baseline": {
+            "rate_Bq": {"Po214": 0.2},
+            "scales": {"Po214": 1.0},
+            "corrected_rate_Bq": {"Po214": -12.0},
+        },
+        "time_fit": {"Po214": {"E_Po214": 0.1, "E_corrected": -12.0}},
+    }
+    out = summarize_baseline(cfg, ["Po214"])
+    assert out["Po214"] == pytest.approx((0.1, 0.2, -1.0))

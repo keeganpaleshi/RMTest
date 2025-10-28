@@ -18,6 +18,9 @@ class BaselineError(RuntimeError):
     pass
 
 
+NEGATIVE_BASELINE_FLOOR_BQ = -1.0
+
+
 __all__ = [
     "BaselineError",
     "compute_dilution_factor",
@@ -29,6 +32,7 @@ __all__ = [
     "subtract",
     "summarize_baseline",
     "baseline_period_before_data",
+    "NEGATIVE_BASELINE_FLOOR_BQ",
 ]
 
 
@@ -325,6 +329,15 @@ def summarize_baseline(
         base = float(base_rates.get(iso, 0.0)) * float(scales.get(iso, 1.0))
         corr = float(fit.get("E_corrected", raw - base))
         raw = float(raw)
+
+        if allow_negative and corr < NEGATIVE_BASELINE_FLOOR_BQ:
+            logging.warning(
+                "Negative baseline-corrected rate for %s clipped to %.1f Bq",
+                iso,
+                NEGATIVE_BASELINE_FLOOR_BQ,
+            )
+            corr = NEGATIVE_BASELINE_FLOOR_BQ
+
         summary[iso] = (raw, base, corr)
         if corr < 0 and not allow_negative:
             raise BaselineError(f"negative corrected rate for {iso}")
