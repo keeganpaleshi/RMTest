@@ -454,6 +454,10 @@ fit.  Important keys include:
   an exponentially modified Gaussian (EMG) tail is enabled.  Use a
   strictly positive prior mean (e.g. ``0.005``) to prevent numerical
   overflow when the tail constant approaches zero.
+- When `use_emg` is `true` for an alpha peak the corresponding EMG tail
+  parameter (`tau`) is allowed to float inside broad yet physical limits
+  rather than being hard-clamped, which prevents the distorted Po-210
+  shoulders or background overfitting caused by the previous clamp.
 - `use_emg` – mapping of isotopes to boolean flags selecting an EMG tail.
   Set `{"Po210": true}` to enable only the Po‑210 tail, or use a single
   boolean to toggle all peaks (e.g. `true` enables EMG tails for every
