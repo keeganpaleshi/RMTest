@@ -278,6 +278,7 @@ from baseline_utils import (
     BaselineError,
 )
 import baseline
+import baseline_handling
 from time_fitting import two_pass_time_fit
 from config.validation import validate_baseline_window
 
@@ -1874,6 +1875,9 @@ def main(argv=None):
     # ────────────────────────────────────────────────────────────
     baseline_info = {}
     baseline_counts = {}
+    baseline_record = None
+    baseline_background_provenance: dict[str, dict[str, Any]] = {}
+    dilution_factor = None
     baseline_cfg = cfg.get("baseline", {})
     isotopes_to_subtract = baseline_cfg.get("isotopes_to_subtract", ["Po214", "Po218"])
     baseline_range = None
@@ -1956,6 +1960,42 @@ def main(argv=None):
             "live_time": baseline_live_time,
         }
 
+        try:
+            dilution_factor = compute_dilution_factor(monitor_vol, sample_vol)
+        except ValueError as exc:
+            msg = (
+                "invalid baseline volumes: "
+                f"monitor_volume_l={monitor_vol!r}, sample_volume_l={sample_vol!r}"
+            )
+            if cfg.get("allow_fallback"):
+                monitor_safe = max(monitor_vol, 0.0)
+                sample_safe = max(sample_vol, 0.0)
+                total_safe = monitor_safe + sample_safe
+                if monitor_safe <= 0 or total_safe <= 0:
+                    raise ValueError(msg) from exc
+                logger.warning("%s – clamping to non-negative values", msg)
+                monitor_vol = monitor_safe
+                sample_vol = sample_safe
+                dilution_factor = monitor_safe / total_safe
+                warnings_list = baseline_info.setdefault("warnings", [])
+                warnings_list.append(msg)
+                baseline_info["dilution_factor_fallback"] = True
+            else:
+                raise ValueError(msg) from exc
+
+        scales = {
+            "Po214": dilution_factor,
+            "Po218": dilution_factor,
+            "Po210": 1.0,
+            "noise": 1.0,
+        }
+        baseline_info["dilution_factor"] = dilution_factor
+        baseline_info["scales"] = scales
+        baseline_record = baseline_handling.initialize_baseline_record(
+            baseline_info,
+            calibration=cal_result,
+        )
+
         # Estimate electronic noise level from ADC values below Po-210
         noise_level = None
         try:
@@ -1988,6 +2028,14 @@ def main(argv=None):
         # Record noise counts in ``baseline_counts``
         if "mask_noise" in locals():
             baseline_counts["noise"] = int(np.sum(mask_noise))
+            if baseline_record is not None:
+                baseline_handling.update_record_with_counts(
+                    baseline_record,
+                    "noise",
+                    baseline_counts["noise"],
+                    baseline_live_time,
+                    1.0,
+                )
 
     _ensure_events(df_analysis, "baseline subtraction")
 
@@ -2470,6 +2518,15 @@ def main(argv=None):
                 eff = eff_cfg[0]
             else:
                 eff = eff_cfg if eff_cfg is not None else 1.0
+
+            if baseline_record is not None:
+                baseline_handling.update_record_with_counts(
+                    baseline_record,
+                    iso,
+                    n0_count,
+                    baseline_live_time,
+                    eff,
+                )
             if baseline_live_time > 0 and eff > 0:
                 n0_activity = n0_count / (baseline_live_time * eff)
                 n0_sigma = np.sqrt(n0_count) / (baseline_live_time * eff)
@@ -2600,7 +2657,17 @@ def main(argv=None):
 
         # Determine baseline rate for fixed-background first pass
         baseline_rate_iso = None
-        if baseline_live_time > 0:
+        baseline_fixed_info = None
+        if baseline_record is not None:
+            baseline_fixed_info = baseline_handling.get_fixed_background_for_time_fit(
+                baseline_record,
+                iso,
+                cfg.get("baseline", {}),
+            )
+            if baseline_fixed_info:
+                baseline_rate_iso = baseline_fixed_info.get("background_rate_Bq")
+
+        if baseline_rate_iso is None and baseline_live_time > 0:
             eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
             if isinstance(eff_cfg, list):
                 eff_rate = eff_cfg[0]
@@ -2649,13 +2716,23 @@ def main(argv=None):
         else:
             background_mode = "floated" if fit_cfg.get("fit_background") else "fixed"
 
-        if background_mode == "fixed" and baseline_rate_iso is not None:
-            baseline_rate_meta = float(baseline_rate_iso)
-            background_mode = "fixed_from_baseline"
+        if background_mode == "fixed":
+            if baseline_fixed_info:
+                baseline_rate_meta = float(
+                    baseline_fixed_info.get("background_rate_Bq", baseline_rate_iso or 0.0)
+                )
+                background_mode = baseline_fixed_info.get("mode", "baseline_fixed")
+                baseline_background_provenance[iso] = dict(baseline_fixed_info)
+            elif baseline_rate_iso is not None:
+                baseline_rate_meta = float(baseline_rate_iso)
 
         meta_entry: dict[str, Any] = {"mode": background_mode}
         if baseline_rate_meta is not None:
             meta_entry["baseline_rate_Bq"] = baseline_rate_meta
+        if baseline_fixed_info and baseline_fixed_info.get("background_unc_Bq") is not None:
+            meta_entry["baseline_unc_Bq"] = float(
+                baseline_fixed_info["background_unc_Bq"]
+            )
         time_fit_background_meta[iso] = meta_entry
 
         # Store inputs for plotting later
@@ -3019,46 +3096,81 @@ def main(argv=None):
     """
     baseline_rates = {}
     baseline_unc = {}
-    if baseline_live_time > 0:
-        for iso, n in baseline_counts.items():
-            params = _fit_params(time_fit_results.get(iso))
-            eff = _resolved_efficiency(cfg, iso, params)
-            if eff > 0:
-                baseline_rates[iso] = n / (baseline_live_time * eff)
-                baseline_unc[iso] = np.sqrt(n) / (baseline_live_time * eff)
-            else:
-                baseline_rates[iso] = 0.0
-                baseline_unc[iso] = 0.0
+    scales = baseline_info.get("scales", {})
 
-    try:
-        dilution_factor = compute_dilution_factor(monitor_vol, sample_vol)
-    except ValueError as exc:
-        msg = (
-            "invalid baseline volumes: "
-            f"monitor_volume_l={monitor_vol!r}, sample_volume_l={sample_vol!r}"
-        )
-        if cfg.get("allow_fallback"):
-            monitor_safe = max(monitor_vol, 0.0)
-            sample_safe = max(sample_vol, 0.0)
-            total_safe = monitor_safe + sample_safe
-            if monitor_safe <= 0 or total_safe <= 0:
-                raise ValueError(msg) from exc
-            logger.warning("%s – clamping to non-negative values", msg)
-            monitor_vol = monitor_safe
-            sample_vol = sample_safe
-            dilution_factor = monitor_safe / total_safe
-            warnings_list = baseline_info.setdefault("warnings", [])
-            warnings_list.append(msg)
-            baseline_info["dilution_factor_fallback"] = True
-        else:
-            raise ValueError(msg) from exc
-    scales = {
-        "Po214": dilution_factor,
-        "Po218": dilution_factor,
-        "Po210": 1.0,
-        "noise": 1.0,
-    }
-    baseline_info["scales"] = scales
+    if baseline_record is not None:
+        rates_map = baseline_record.get("rates_Bq")
+        if isinstance(rates_map, Mapping):
+            baseline_rates = {str(k): float(v) for k, v in rates_map.items()}
+        sig_map = baseline_record.get("rate_unc_Bq")
+        if isinstance(sig_map, Mapping):
+            baseline_unc = {str(k): float(v) for k, v in sig_map.items()}
+        if not scales:
+            scale_map = baseline_record.get("scale_factors")
+            if isinstance(scale_map, Mapping):
+                scales = {str(k): float(v) for k, v in scale_map.items()}
+                baseline_info["scales"] = scales
+    else:
+        if baseline_live_time > 0:
+            for iso, n in baseline_counts.items():
+                params = _fit_params(time_fit_results.get(iso))
+                eff = _resolved_efficiency(cfg, iso, params)
+                if eff > 0:
+                    baseline_rates[iso] = n / (baseline_live_time * eff)
+                    baseline_unc[iso] = np.sqrt(n) / (baseline_live_time * eff)
+                else:
+                    baseline_rates[iso] = 0.0
+                    baseline_unc[iso] = 0.0
+
+        if dilution_factor is None:
+            try:
+                dilution_factor = compute_dilution_factor(monitor_vol, sample_vol)
+            except ValueError as exc:
+                msg = (
+                    "invalid baseline volumes: "
+                    f"monitor_volume_l={monitor_vol!r}, sample_volume_l={sample_vol!r}"
+                )
+                if cfg.get("allow_fallback"):
+                    monitor_safe = max(monitor_vol, 0.0)
+                    sample_safe = max(sample_vol, 0.0)
+                    total_safe = monitor_safe + sample_safe
+                    if monitor_safe <= 0 or total_safe <= 0:
+                        raise ValueError(msg) from exc
+                    logger.warning("%s – clamping to non-negative values", msg)
+                    monitor_vol = monitor_safe
+                    sample_vol = sample_safe
+                    dilution_factor = monitor_safe / total_safe
+                    warnings_list = baseline_info.setdefault("warnings", [])
+                    warnings_list.append(msg)
+                    baseline_info["dilution_factor_fallback"] = True
+                else:
+                    raise ValueError(msg) from exc
+        if not scales:
+            if dilution_factor is not None:
+                scales = {
+                    "Po214": dilution_factor,
+                    "Po218": dilution_factor,
+                    "Po210": 1.0,
+                    "noise": 1.0,
+                }
+            else:
+                scales = {
+                    "Po214": 1.0,
+                    "Po218": 1.0,
+                    "Po210": 1.0,
+                    "noise": 1.0,
+                }
+            baseline_info["scales"] = scales
+    if baseline_record is not None:
+        baseline_handling.finalize_baseline_record(baseline_record, baseline_info)
+    else:
+        if baseline_rates:
+            baseline_info["rate_Bq"] = baseline_rates
+        if baseline_unc:
+            baseline_info["rate_unc_Bq"] = baseline_unc
+        if dilution_factor is not None:
+            baseline_info.setdefault("dilution_factor", dilution_factor)
+
     baseline_info["analysis_counts"] = iso_counts_raw
 
     corrected_rates = {}
@@ -3400,7 +3512,15 @@ def main(argv=None):
             d["background_mode"] = meta.get("mode")
             if meta.get("baseline_rate_Bq") is not None:
                 d["baseline_rate_Bq"] = meta["baseline_rate_Bq"]
+            if meta.get("baseline_unc_Bq") is not None:
+                d["baseline_unc_Bq"] = meta["baseline_unc_Bq"]
         time_fit_serializable[iso] = d
+
+    baseline_handling.apply_time_fit_provenance(
+        time_fit_serializable,
+        baseline_background_provenance,
+        baseline_record,
+    )
 
     if isinstance(cal_params, dict):
         cal_summary = cal_params
@@ -3548,6 +3668,19 @@ def main(argv=None):
     summary.diagnostics = build_diagnostics(
         summary, spectrum_results, time_fit_results, df_analysis, cfg
     )
+
+    drift_flag, drift_msg = baseline_handling.assess_baseline_drift(
+        baseline_record,
+        cal_result,
+        cfg.get("baseline", {}),
+    )
+    if drift_flag:
+        summary.diagnostics = summary.diagnostics or {}
+        summary.diagnostics["baseline_compat_warning"] = True
+        if drift_msg:
+            warn_list = summary.diagnostics.setdefault("warnings", [])
+            if drift_msg not in warn_list:
+                warn_list.append(drift_msg)
 
     results_dir = Path(args.output_dir) / (args.job_id or now_str)
     if results_dir.exists():
