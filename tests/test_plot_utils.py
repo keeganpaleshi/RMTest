@@ -1149,7 +1149,15 @@ def test_plot_radon_activity_axis_labels(tmp_path, monkeypatch):
     assert len(axes) >= 2
     ax_time, ax_elapsed = axes[:2]
     assert ax_time.get_xlabel() == "Time (UTC)"
+    assert ax_time.get_ylabel() in {
+        "Rn-222 Activity (Bq)",
+        "Rn-222 Concentration (Bq/L)",
+    }
     assert ax_elapsed.get_xlabel() == "Elapsed Time (h)"
+    assert ax_elapsed.get_ylabel() in {
+        "Rn-222 Activity (Bq)",
+        "Rn-222 Concentration (Bq/L)",
+    }
 
 
 def test_plot_radon_activity_no_offset(tmp_path, monkeypatch):
