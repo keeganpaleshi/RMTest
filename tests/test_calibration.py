@@ -11,6 +11,7 @@ from calibration import (
     gaussian,
     derive_calibration_constants,
 )
+import calibration as calib_mod
 from constants import DEFAULT_KNOWN_ENERGIES
 
 
@@ -385,3 +386,82 @@ def test_two_point_fallback_to_one_point_warns():
     assert res.coeffs[1] == 0.00435
     expected_c = 7.687 - 0.00435 * 1800
     assert res.coeffs[0] == pytest.approx(expected_c, abs=0.02)
+
+
+def _synth_emg_calibration_cfg():
+    return {
+        "calibration": {
+            "peak_prominence": 5,
+            "peak_width": 1,
+            "nominal_adc": {"Po210": 1000, "Po218": 1500, "Po214": 2000},
+            "fit_window_adc": 25,
+            "use_emg": True,
+            "init_sigma_adc": 3.0,
+            "init_tau_adc": 0.0,
+            "peak_search_radius": 10,
+            "sanity_tolerance_mev": 2.0,
+        }
+    }
+
+
+def _synth_adc_sample(seed: int) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    return np.concatenate(
+        [
+            rng.normal(1000, 3, 400),
+            rng.normal(1500, 3, 400),
+            rng.normal(2000, 3, 400),
+        ]
+    )
+
+
+def test_calibration_tau_bounds_defaults(monkeypatch):
+    adc = _synth_adc_sample(10)
+    cfg = _synth_emg_calibration_cfg()
+
+    captured_bounds = []
+
+    def fake_curve_fit(func, xdata, ydata, p0=None, bounds=(-np.inf, np.inf), **kwargs):
+        captured_bounds.append(bounds)
+        return np.asarray(p0), np.eye(len(p0))
+
+    monkeypatch.setattr(calib_mod, "curve_fit", fake_curve_fit)
+
+    res = derive_calibration_constants(adc, cfg)
+    assert set(res.peaks) == {"Po210", "Po218", "Po214"}
+
+    emg_bounds = [b for b in captured_bounds if len(b[0]) == 4]
+    assert len(emg_bounds) == 2
+
+    po210_bounds, po218_bounds = emg_bounds
+    assert po210_bounds[1][3] == pytest.approx(50.0)
+    assert po218_bounds[1][3] == pytest.approx(8.0)
+
+
+def test_calibration_tau_bounds_overrides(monkeypatch):
+    adc = _synth_adc_sample(11)
+    cfg = _synth_emg_calibration_cfg()
+    cfg["calibration"]["tau_bounds_adc"] = {
+        "default": (0.002, 9.5),
+        "Po218": (0.002, 3.5),
+    }
+
+    captured_bounds = []
+
+    def fake_curve_fit(func, xdata, ydata, p0=None, bounds=(-np.inf, np.inf), **kwargs):
+        captured_bounds.append(bounds)
+        return np.asarray(p0), np.eye(len(p0))
+
+    monkeypatch.setattr(calib_mod, "curve_fit", fake_curve_fit)
+
+    res = derive_calibration_constants(adc, cfg)
+    assert set(res.peaks) == {"Po210", "Po218", "Po214"}
+
+    emg_bounds = [b for b in captured_bounds if len(b[0]) == 4]
+    assert len(emg_bounds) == 2
+
+    po210_bounds, po218_bounds = emg_bounds
+    assert po210_bounds[0][3] == pytest.approx(0.002)
+    assert po210_bounds[1][3] == pytest.approx(9.5)
+    assert po218_bounds[0][3] == pytest.approx(0.002)
+    assert po218_bounds[1][3] == pytest.approx(3.5)
