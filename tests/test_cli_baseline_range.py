@@ -164,6 +164,32 @@ def test_time_fit_background_mode_floated(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "apply_burst_filter", lambda df, cfg, mode="rate": (df, 0))
     monkeypatch.setattr(baseline_noise, "estimate_baseline_noise", lambda *a, **k: (None, {}))
 
+    activity_calls: list[str | None] = []
+    total_calls: list[str | None] = []
+
+    def fake_plot_radon_activity(*args, **kwargs):
+        out_png = Path(args[2])
+        out_png.parent.mkdir(parents=True, exist_ok=True)
+        out_png.touch()
+        activity_calls.append(kwargs.get("background_mode"))
+        return None
+
+    def fake_plot_total_radon(*args, **kwargs):
+        out_png = Path(args[2])
+        out_png.parent.mkdir(parents=True, exist_ok=True)
+        out_png.touch()
+        total_calls.append(kwargs.get("background_mode"))
+        return None
+
+    monkeypatch.setattr(analyze, "plot_radon_activity", fake_plot_radon_activity)
+    monkeypatch.setattr(analyze, "plot_total_radon", fake_plot_total_radon)
+    monkeypatch.setattr(
+        analyze,
+        "plot_radon_trend",
+        lambda *a, **k: Path(a[2]).touch(),
+        raising=False,
+    )
+
     captured = {}
 
     def fake_fit(ts_dict, t_start, t_end, cfg_fit, **kwargs):
@@ -199,3 +225,15 @@ def test_time_fit_background_mode_floated(tmp_path, monkeypatch):
     tf_summary = captured.get("summary", {}).get("time_fit", {}).get("Po214", {})
     assert tf_summary.get("background_mode") == "floated"
     assert "baseline_rate_Bq" not in tf_summary
+
+    expected_mode = tf_summary.get("background_mode")
+    assert expected_mode == "floated"
+    radon_plot_series = (
+        captured.get("summary", {}).get("radon", {}).get("plot_series", {})
+    )
+    if radon_plot_series:
+        assert radon_plot_series.get("background_mode") == expected_mode
+    assert activity_calls
+    assert total_calls
+    assert activity_calls[-1] == expected_mode
+    assert total_calls[-1] == expected_mode
