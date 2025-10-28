@@ -304,13 +304,8 @@ def _total_radon_series(activity, errors, monitor_volume, sample_volume):
     activity_arr = np.asarray(activity, dtype=float)
     err_arr = None if errors is None else np.asarray(errors, dtype=float)
 
-    if sample_volume <= 0:
-        total = activity_arr.copy()
-        total_err = None if err_arr is None else err_arr.copy()
-    else:
-        scale = (monitor_volume + sample_volume) / monitor_volume
-        total = activity_arr * scale
-        total_err = None if err_arr is None else err_arr * scale
+    total = activity_arr.copy()
+    total_err = None if err_arr is None else err_arr.copy()
 
     return total, total_err
 
@@ -3131,8 +3126,9 @@ def main(argv=None):
             "unc_Bq": dA_radon,
         }
 
-    # Convert activity to a concentration per liter of the combined gas volume and
-    # the total amount of radon present in the sampled air (undiluted by the chamber volume).
+    # Convert activity to a concentration per liter of the sampled air (when present)
+    # and retain the total amount of radon inferred from the sample without
+    # diluting by the chamber volume.
     try:
         conc, dconc, total_bq, dtotal_bq = compute_total_radon(
             A_radon,
