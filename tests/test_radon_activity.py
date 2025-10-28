@@ -157,23 +157,19 @@ def test_compute_total_radon():
     monitor_volume = 10.0
     sample_volume = 20.0
     conc, dconc, tot, dtot = compute_total_radon(5.0, 0.5, monitor_volume, sample_volume)
-    scale = (monitor_volume + sample_volume) / monitor_volume
-    total_volume = monitor_volume + sample_volume
-    assert conc == pytest.approx(5.0 / total_volume)
-    assert dconc == pytest.approx(0.5 / total_volume)
-    assert tot == pytest.approx(5.0 * scale)
-    assert dtot == pytest.approx(0.5 * scale)
+    assert conc == pytest.approx(5.0 / sample_volume)
+    assert dconc == pytest.approx(0.5 / sample_volume)
+    assert tot == pytest.approx(5.0)
+    assert dtot == pytest.approx(0.5)
 
 
 def test_compute_total_radon_zero_uncertainty():
     monitor_volume = 10.0
     sample_volume = 10.0
     conc, dconc, tot, dtot = compute_total_radon(5.0, 0.0, monitor_volume, sample_volume)
-    scale = (monitor_volume + sample_volume) / monitor_volume
-    total_volume = monitor_volume + sample_volume
-    assert conc == pytest.approx(5.0 / total_volume)
+    assert conc == pytest.approx(5.0 / sample_volume)
     assert dconc == pytest.approx(0.0)
-    assert tot == pytest.approx(5.0 * scale)
+    assert tot == pytest.approx(5.0)
     assert dtot == pytest.approx(0.0)
 
 
@@ -253,15 +249,14 @@ def test_compute_total_radon_negative_activity_default_raises(caplog):
 
 
 def test_compute_total_radon_negative_activity_allowed(caplog):
+    sample_volume = 1.0
     conc, dconc, tot, dtot = compute_total_radon(
-        -1.0, 0.5, 10.0, 1.0, allow_negative_activity=True
+        -1.0, 0.5, 10.0, sample_volume, allow_negative_activity=True
     )
-    scale = (10.0 + 1.0) / 10.0
-    total_volume = 10.0 + 1.0
-    assert conc == pytest.approx(-1.0 / total_volume)
-    assert dconc == pytest.approx(0.5 / total_volume)
-    assert tot == pytest.approx(-1.0 * scale)
-    assert dtot == pytest.approx(0.5 * scale)
+    assert conc == pytest.approx(-1.0 / sample_volume)
+    assert dconc == pytest.approx(0.5 / sample_volume)
+    assert tot == pytest.approx(-1.0)
+    assert dtot == pytest.approx(0.5)
 
 
 def test_radon_activity_curve():

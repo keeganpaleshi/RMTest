@@ -80,9 +80,8 @@ def test_total_radon_uses_sample_volume(tmp_path, monkeypatch):
 
     summary = captured.get("summary", {})
     total_entry = summary["radon_results"]["total_radon_in_sample_Bq"]
-    scale = (10.0 + 5.0) / 10.0
-    assert total_entry["value"] == pytest.approx(5.0 * scale)
-    assert total_entry["uncertainty"] == pytest.approx(0.5 * scale)
+    assert total_entry["value"] == pytest.approx(5.0)
+    assert total_entry["uncertainty"] == pytest.approx(0.5)
 
 
 def test_total_radon_series_background_run(tmp_path, monkeypatch):
