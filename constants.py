@@ -17,6 +17,16 @@ DEFAULT_NOISE_CUTOFF = 400
 # Iteration cap for ``scipy.optimize.curve_fit``
 CURVE_FIT_MAX_EVALS = 10000
 
+# Floor applied when negative baseline-corrected activities are permitted.
+# Values more negative than this threshold are clipped to prevent
+# unphysical numbers from propagating through the reports while still
+# allowing small negative fluctuations.
+NEGATIVE_ACTIVITY_FLOOR_BQ = -1.0
+# Minimum uncertainty reported when the negative floor is applied.  This
+# acts as a sentinel to highlight that the value was clamped rather than
+# inferred directly from data.
+NEGATIVE_ACTIVITY_CLAMP_UNCERTAINTY_BQ = 5e-6
+
 # Clip exponents to ``+/-EXP_OVERFLOW_DOUBLE`` to avoid floating-point overflow
 # when evaluating functions with large tails (e.g. EMG).
 def safe_exp(x: np.ndarray) -> np.ndarray:
@@ -134,6 +144,8 @@ __all__ = [
     "EXP_OVERFLOW_DOUBLE",
     "DEFAULT_NOISE_CUTOFF",
     "CURVE_FIT_MAX_EVALS",
+    "NEGATIVE_ACTIVITY_FLOOR_BQ",
+    "NEGATIVE_ACTIVITY_CLAMP_UNCERTAINTY_BQ",
     "DEFAULT_NOMINAL_ADC",
     "DEFAULT_ADC_CENTROIDS",
     "DEFAULT_KNOWN_ENERGIES",
