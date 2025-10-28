@@ -247,6 +247,38 @@ def get_fixed_background_for_time_fit(
     return result
 
 
+_LEGACY_BACKGROUND_MODE_KEYS = {
+    "baselinefixed",
+    "baselinefrombaseline",
+    "fixedfrombaseline",
+}
+
+
+def _normalize_background_mode(mode: str | None) -> str | None:
+    """Return a canonical background mode string for reporting."""
+
+    if mode is None:
+        return None
+
+    if not isinstance(mode, str):
+        return mode
+
+    canonical = mode.strip()
+    lowered = canonical.lower().replace(" ", "")
+    lowered = lowered.replace("-", "").replace("_", "")
+
+    if lowered in _LEGACY_BACKGROUND_MODE_KEYS:
+        return "fixed_from_baseline"
+
+    return canonical
+
+
+def normalize_background_mode(mode: str | None) -> str | None:
+    """Public wrapper so other modules can normalize background modes."""
+
+    return _normalize_background_mode(mode)
+
+
 def apply_time_fit_provenance(
     time_fit_summary: MutableMapping[str, Any],
     provenance: Mapping[str, Mapping[str, Any]] | None,
@@ -268,7 +300,8 @@ def apply_time_fit_provenance(
         if entry is None:
             continue
 
-        mode = prov.get("mode") or "fixed_from_baseline"
+        mode = prov.get("mode")
+        mode = normalize_background_mode(mode) or "fixed_from_baseline"
         entry["background_source"] = mode
 
         range_val = prov.get("source_range")
