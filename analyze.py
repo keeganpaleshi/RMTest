@@ -90,6 +90,8 @@ from reporting import build_diagnostics, start_warning_capture
 
 from constants import (
     DEFAULT_NOISE_CUTOFF,
+    NEGATIVE_ACTIVITY_CLAMP_UNCERTAINTY_BQ,
+    NEGATIVE_ACTIVITY_FLOOR_BQ,
     PO210,
     PO214,
     PO218,
@@ -3681,10 +3683,19 @@ def main(argv=None):
     total_bq_display = total_bq
     if total_bq_display < 0:
         if args.allow_negative_activity:
-            logger.warning(
-                "Negative total radon in sample reported (%.3f Bq) because --allow-negative-activity was requested",
-                total_bq_display,
-            )
+            if total_bq_display < NEGATIVE_ACTIVITY_FLOOR_BQ:
+                logger.warning(
+                    "Negative total radon in sample (%.3f Bq) clipped to %.1f Bq because --allow-negative-activity was requested",
+                    total_bq_display,
+                    NEGATIVE_ACTIVITY_FLOOR_BQ,
+                )
+                total_bq_display = NEGATIVE_ACTIVITY_FLOOR_BQ
+                dtotal_bq = max(dtotal_bq, NEGATIVE_ACTIVITY_CLAMP_UNCERTAINTY_BQ)
+            else:
+                logger.warning(
+                    "Negative total radon in sample reported (%.3f Bq) because --allow-negative-activity was requested",
+                    total_bq_display,
+                )
         else:
             total_bq_display = 0.0
 
