@@ -277,6 +277,15 @@ from baseline_utils import (
     summarize_baseline,
     BaselineError,
 )
+from baseline_handling import (
+    annotate_summary_with_baseline,
+    build_baseline_record,
+    get_fixed_background_for_time_fit,
+    record_baseline_drift_warning,
+    set_dilution_factor as record_set_dilution_factor,
+    set_intrinsic_activity as record_set_intrinsic_activity,
+    set_scale as record_set_scale,
+)
 import baseline
 from time_fitting import two_pass_time_fit
 from config.validation import validate_baseline_window
@@ -1873,6 +1882,7 @@ def main(argv=None):
     # 4. Baseline run (optional)
     # ────────────────────────────────────────────────────────────
     baseline_info = {}
+    baseline_record = None
     baseline_counts = {}
     baseline_cfg = cfg.get("baseline", {})
     isotopes_to_subtract = baseline_cfg.get("isotopes_to_subtract", ["Po214", "Po218"])
@@ -1955,6 +1965,13 @@ def main(argv=None):
             "n_events": len(base_events),
             "live_time": baseline_live_time,
         }
+        baseline_record = build_baseline_record(
+            start=t_start_base,
+            end=t_end_base,
+            live_time_s=baseline_live_time,
+            calibration=cal_result,
+        )
+        baseline_info["record"] = baseline_record
 
         # Estimate electronic noise level from ADC values below Po-210
         noise_level = None
@@ -2473,6 +2490,16 @@ def main(argv=None):
             if baseline_live_time > 0 and eff > 0:
                 n0_activity = n0_count / (baseline_live_time * eff)
                 n0_sigma = np.sqrt(n0_count) / (baseline_live_time * eff)
+                if (
+                    baseline_record is not None
+                    and iso in isotopes_to_subtract
+                ):
+                    record_set_intrinsic_activity(
+                        baseline_record,
+                        iso,
+                        n0_activity,
+                        n0_sigma,
+                    )
             else:
                 n0_activity = 0.0
                 n0_sigma = 1.0
@@ -2600,16 +2627,25 @@ def main(argv=None):
 
         # Determine baseline rate for fixed-background first pass
         baseline_rate_iso = None
-        if baseline_live_time > 0:
-            eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
-            if isinstance(eff_cfg, list):
-                eff_rate = eff_cfg[0]
-            else:
-                eff_rate = eff_cfg if eff_cfg is not None else 1.0
-            if eff_rate > 0:
-                baseline_rate_iso = baseline_counts.get(iso, 0.0) / (
-                    baseline_live_time * eff_rate
+        baseline_unc_iso = None
+        baseline_mode_hint = None
+        if (
+            baseline_record is not None
+            and baseline_live_time > 0
+            and iso in isotopes_to_subtract
+        ):
+            try:
+                fixed_background = get_fixed_background_for_time_fit(
+                    baseline_record,
+                    iso,
+                    cfg,
                 )
+            except (KeyError, ValueError, TypeError):
+                pass
+            else:
+                baseline_rate_iso = fixed_background.rate_Bq
+                baseline_unc_iso = fixed_background.uncertainty_Bq
+                baseline_mode_hint = fixed_background.mode
 
         # Run time-series fit (two-pass)
         decay_out = None  # fresh variable each iteration
@@ -2639,6 +2675,7 @@ def main(argv=None):
         # Record how the background parameter was treated
         background_mode = "floated"
         baseline_rate_meta: float | None = None
+        baseline_unc_meta: float | None = None
         if isinstance(decay_out, FitResult):
             param_index = decay_out.param_index or {}
             has_background_param = f"B_{iso}" in param_index
@@ -2651,11 +2688,15 @@ def main(argv=None):
 
         if background_mode == "fixed" and baseline_rate_iso is not None:
             baseline_rate_meta = float(baseline_rate_iso)
-            background_mode = "fixed_from_baseline"
+            if baseline_unc_iso is not None:
+                baseline_unc_meta = float(baseline_unc_iso)
+            background_mode = baseline_mode_hint or "baseline_fixed"
 
         meta_entry: dict[str, Any] = {"mode": background_mode}
         if baseline_rate_meta is not None:
             meta_entry["baseline_rate_Bq"] = baseline_rate_meta
+        if baseline_unc_meta is not None:
+            meta_entry["baseline_unc_Bq"] = baseline_unc_meta
         time_fit_background_meta[iso] = meta_entry
 
         # Store inputs for plotting later
@@ -3052,6 +3093,7 @@ def main(argv=None):
             baseline_info["dilution_factor_fallback"] = True
         else:
             raise ValueError(msg) from exc
+    record_set_dilution_factor(baseline_record, dilution_factor)
     scales = {
         "Po214": dilution_factor,
         "Po218": dilution_factor,
@@ -3059,6 +3101,9 @@ def main(argv=None):
         "noise": 1.0,
     }
     baseline_info["scales"] = scales
+    if baseline_record is not None:
+        for iso_scale, value in scales.items():
+            record_set_scale(baseline_record, iso_scale, value)
     baseline_info["analysis_counts"] = iso_counts_raw
 
     corrected_rates = {}
@@ -3400,6 +3445,8 @@ def main(argv=None):
             d["background_mode"] = meta.get("mode")
             if meta.get("baseline_rate_Bq") is not None:
                 d["baseline_rate_Bq"] = meta["baseline_rate_Bq"]
+            if meta.get("baseline_unc_Bq") is not None:
+                d["baseline_unc_Bq"] = meta["baseline_unc_Bq"]
         time_fit_serializable[iso] = d
 
     if isinstance(cal_params, dict):
@@ -3541,12 +3588,20 @@ def main(argv=None):
 
     summary["radon"] = radon
 
+    annotate_summary_with_baseline(summary, baseline_record, time_fit_background_meta)
+
     if weights is not None:
         summary.efficiency = summary.efficiency or {}
         summary.efficiency["blue_weights"] = list(weights)
 
     summary.diagnostics = build_diagnostics(
         summary, spectrum_results, time_fit_results, df_analysis, cfg
+    )
+
+    record_baseline_drift_warning(
+        summary,
+        baseline_record,
+        summary.get("calibration"),
     )
 
     results_dir = Path(args.output_dir) / (args.job_id or now_str)
