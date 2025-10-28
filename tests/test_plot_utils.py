@@ -1104,6 +1104,9 @@ def test_plot_radon_activity_axis_labels(tmp_path, monkeypatch):
     ax_time, ax_elapsed = axes[:2]
     assert ax_time.get_xlabel() == "Time (UTC)"
     assert ax_elapsed.get_xlabel() == "Elapsed Time (h)"
+    y_label = ax_time.get_ylabel()
+    assert y_label
+    assert ax_elapsed.get_ylabel() == y_label
 
 
 def test_plot_radon_activity_no_offset(tmp_path, monkeypatch):
