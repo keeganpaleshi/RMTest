@@ -2721,7 +2721,9 @@ def main(argv=None):
                 baseline_rate_meta = float(
                     baseline_fixed_info.get("background_rate_Bq", baseline_rate_iso or 0.0)
                 )
-                background_mode = baseline_fixed_info.get("mode", "baseline_fixed")
+                background_mode = baseline_fixed_info.get(
+                    "mode", "fixed_from_baseline"
+                )
                 baseline_background_provenance[iso] = dict(baseline_fixed_info)
             elif baseline_rate_iso is not None:
                 baseline_rate_meta = float(baseline_rate_iso)

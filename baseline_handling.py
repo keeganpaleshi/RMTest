@@ -234,7 +234,7 @@ def get_fixed_background_for_time_fit(
     result = {
         "background_rate_Bq": float(background_rate),
         "background_unc_Bq": float(background_unc),
-        "mode": "baseline_fixed",
+        "mode": "fixed_from_baseline",
         "baseline_activity_Bq": float(background_rate),
         "baseline_activity_unc_Bq": float(background_unc),
         "dilution_factor": record.get("dilution_factor"),
@@ -268,7 +268,7 @@ def apply_time_fit_provenance(
         if entry is None:
             continue
 
-        mode = prov.get("mode") or "baseline_fixed"
+        mode = prov.get("mode") or "fixed_from_baseline"
         entry["background_source"] = mode
 
         range_val = prov.get("source_range")

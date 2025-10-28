@@ -216,7 +216,7 @@ def test_time_fit_background_provenance(tmp_path, monkeypatch):
     record = summary["baseline"]["record"]
     entry = summary["time_fit"]["Po214"]
 
-    assert entry["background_source"] == "baseline_fixed"
+    assert entry["background_source"] == "fixed_from_baseline"
     assert entry["baseline_activity_Bq"] == pytest.approx(entry["baseline_rate_Bq"])
     assert entry["baseline_dilution_factor"] == pytest.approx(
         summary["baseline"]["dilution_factor"]
