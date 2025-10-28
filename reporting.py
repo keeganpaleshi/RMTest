@@ -63,10 +63,14 @@ def build_diagnostics(
     if spectrum_results is not None:
         if isinstance(spectrum_results, Mapping):
             fit_valid = spectrum_results.get("fit_valid")
+            if fit_valid is None and spectrum_results:
+                fit_valid = True
         else:
             fit_valid = getattr(getattr(spectrum_results, "params", {}), "get", lambda *a: None)(
                 "fit_valid"
             )
+            if fit_valid is None and getattr(spectrum_results, "params", None):
+                fit_valid = True
     diagnostics["spectral_fit_fit_valid"] = (
         bool(fit_valid) if fit_valid is not None else None
     )

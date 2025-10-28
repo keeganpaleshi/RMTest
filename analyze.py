@@ -440,10 +440,13 @@ def _cov_lookup(
             try:
                 return float(fit_result.get_cov(name1, name2))
             except KeyError:
-                return 0.0
+                return float("nan")
     if isinstance(fit_result, Mapping):
-        return float(fit_result.get(f"cov_{name1}_{name2}", 0.0))
-    return 0.0
+        try:
+            return float(fit_result.get(f"cov_{name1}_{name2}"))
+        except (TypeError, ValueError):
+            return float("nan")
+    return float("nan")
 
 
 def _fallback_uncertainty(
@@ -559,20 +562,32 @@ def _spectral_fit_with_check(
             has_F = "F" in param_index
 
             var = 0.0
+            missing_cov = False
             if has_sigma0:
-                var += (sigma0 / sigma_E_val) ** 2 * result.get_cov("sigma0", "sigma0")
+                try:
+                    var += (sigma0 / sigma_E_val) ** 2 * result.get_cov("sigma0", "sigma0")
+                except KeyError:
+                    missing_cov = True
             if has_F:
-                var += (0.5 * e_ref / sigma_E_val) ** 2 * result.get_cov("F", "F")
+                try:
+                    var += (0.5 * e_ref / sigma_E_val) ** 2 * result.get_cov("F", "F")
+                except KeyError:
+                    missing_cov = True
             if has_sigma0 and has_F:
-                var += (
-                    2
-                    * (sigma0 / sigma_E_val)
-                    * (0.5 * e_ref / sigma_E_val)
-                    * result.get_cov("sigma0", "F")
-                )
+                try:
+                    var += (
+                        2
+                        * (sigma0 / sigma_E_val)
+                        * (0.5 * e_ref / sigma_E_val)
+                        * result.get_cov("sigma0", "F")
+                    )
+                except KeyError:
+                    missing_cov = True
 
             if has_sigma0 or has_F:
-                result.params["dsigma_E"] = float(np.sqrt(max(var, 0.0)))
+                result.params["dsigma_E"] = (
+                    float("nan") if missing_cov else float(np.sqrt(max(var, 0.0)))
+                )
     tol = cfg.get("spectral_fit", {}).get("spectral_peak_tolerance_mev", 0.2)
     dev = _centroid_deviation(params, known)
 
@@ -3328,9 +3343,13 @@ def main(argv=None):
     spec_dict = {}
     if isinstance(spectrum_results, FitResult):
         spec_dict = dict(spectrum_results.params)
-        spec_dict["cov"] = spectrum_results.cov.tolist()
+        cov_matrix = getattr(spectrum_results, "cov", None)
+        spec_dict["cov"] = (
+            np.asarray(cov_matrix).tolist() if cov_matrix is not None else None
+        )
         spec_dict["ndf"] = spectrum_results.ndf
         spec_dict["likelihood_path"] = spectrum_results.params.get("likelihood_path")
+        spec_dict.setdefault("fit_valid", True)
     elif isinstance(spectrum_results, dict):
         spec_dict = spectrum_results
         spec_dict["likelihood_path"] = spectrum_results.get("likelihood_path")
@@ -3341,7 +3360,8 @@ def main(argv=None):
     for iso, fit in time_fit_results.items():
         if isinstance(fit, FitResult):
             d = dict(fit.params)
-            d["cov"] = fit.cov.tolist()
+            cov_matrix = getattr(fit, "cov", None)
+            d["cov"] = np.asarray(cov_matrix).tolist() if cov_matrix is not None else None
             d["ndf"] = fit.ndf
         elif isinstance(fit, dict):
             d = fit
