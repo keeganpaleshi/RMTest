@@ -505,6 +505,73 @@ def _centroid_deviation(
     return dev
 
 
+def _normalise_mu_bounds(
+    bounds_cfg: Mapping[str, Sequence[float] | None] | None,
+    *,
+    units: str,
+    slope: float,
+    intercept: float,
+    quadratic_coeff: float,
+) -> dict[str, tuple[float, float]]:
+    """Return spectral centroid bounds expressed in MeV.
+
+    ``bounds_cfg`` maps isotope names to lower/upper limits.  The
+    ``units`` flag specifies whether those values are already in MeV or
+    given in raw ADC channels.  When ADC bounds are provided they are
+    converted to MeV using the supplied calibration coefficients so that
+    downstream spectral fits, which operate in MeV, use consistent
+    limits.
+    """
+
+    if not bounds_cfg:
+        return {}
+
+    units_norm = str(units).lower()
+    if units_norm not in {"mev", "adc"}:
+        raise ValueError(
+            "mu_bounds_units must be either 'mev' or 'adc'"
+        )
+
+    normalised: dict[str, tuple[float, float]] = {}
+    for iso, bounds in bounds_cfg.items():
+        if bounds is None:
+            continue
+        if isinstance(bounds, (str, bytes)) or not isinstance(bounds, Sequence):
+            raise ValueError(
+                f"mu_bounds for {iso} must be a sequence of two numbers"
+            )
+        if len(bounds) != 2:
+            raise ValueError(
+                f"mu_bounds for {iso} must contain exactly two elements"
+            )
+        try:
+            lo_raw = float(bounds[0])
+            hi_raw = float(bounds[1])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"mu_bounds for {iso} must be numeric; got {bounds}"
+            ) from exc
+        if not lo_raw < hi_raw:
+            raise ValueError(f"mu_bounds for {iso} require lower < upper")
+
+        if units_norm == "adc":
+            energies = apply_calibration(
+                np.asarray([lo_raw, hi_raw], dtype=float),
+                slope,
+                intercept,
+                quadratic_coeff=quadratic_coeff,
+            )
+            lo_val = float(np.min(energies))
+            hi_val = float(np.max(energies))
+        else:
+            lo_val = float(lo_raw)
+            hi_val = float(hi_raw)
+
+        normalised[iso] = (lo_val, hi_val)
+
+    return normalised
+
+
 def _spectral_fit_with_check(
     energies: np.ndarray,
     priors: Mapping[str, tuple[float, float]],
@@ -2047,15 +2114,17 @@ def main(argv=None):
     peak_deviation = {}
     if cfg.get("spectral_fit", {}).get("do_spectral_fit", False):
         # Decide binning: new 'binning' dict or legacy keys
-        bin_cfg = cfg["spectral_fit"].get("binning")
+        spectral_cfg = cfg["spectral_fit"]
+
+        bin_cfg = spectral_cfg.get("binning")
         if bin_cfg is not None:
             method = bin_cfg.get("method", "adc").lower()
             default_bins = bin_cfg.get("default_bins")
         else:
             method = str(
-                cfg["spectral_fit"].get("spectral_binning_mode", "adc")
+                spectral_cfg.get("spectral_binning_mode", "adc")
             ).lower()
-            default_bins = cfg["spectral_fit"].get("fd_hist_bins")
+            default_bins = spectral_cfg.get("fd_hist_bins")
 
         if method == "fd":
             E_all = df_analysis["energy_MeV"].values
@@ -2105,7 +2174,7 @@ def main(argv=None):
             if bin_cfg is not None:
                 width = bin_cfg.get("adc_bin_width", 1)
             else:
-                width = cfg["spectral_fit"].get("adc_bin_width", 1)
+                width = spectral_cfg.get("adc_bin_width", 1)
             adc_min = df_analysis["adc"].min()
             adc_max = df_analysis["adc"].max()
             bins = int(np.ceil((adc_max - adc_min + 1) / width))
@@ -2116,7 +2185,7 @@ def main(argv=None):
 
         # Find approximate ADC centroids for Po‐210, Po‐218, Po‐214
 
-        expected_peaks = cfg.get("spectral_fit", {}).get("expected_peaks")
+        expected_peaks = spectral_cfg.get("expected_peaks")
         if expected_peaks is None:
             expected_peaks = DEFAULT_ADC_CENTROIDS
 
@@ -2124,23 +2193,23 @@ def main(argv=None):
         adc_peaks = find_adc_bin_peaks(
             df_analysis["adc"].values,
             expected=expected_peaks,
-            window=cfg["spectral_fit"].get("peak_search_width_adc", 50),
-            prominence=cfg["spectral_fit"].get("peak_search_prominence", 0),
-            width=cfg["spectral_fit"].get("peak_search_width_adc", None),
-            method=cfg["spectral_fit"].get("peak_search_method", "prominence"),
-            cwt_widths=cfg["spectral_fit"].get("peak_search_cwt_widths"),
+            window=spectral_cfg.get("peak_search_width_adc", 50),
+            prominence=spectral_cfg.get("peak_search_prominence", 0),
+            width=spectral_cfg.get("peak_search_width_adc", None),
+            method=spectral_cfg.get("peak_search_method", "prominence"),
+            cwt_widths=spectral_cfg.get("peak_search_cwt_widths"),
         )
 
         # Build priors for the unbinned spectrum fit:
         priors_spec = {}
         # Resolution prior: map calibrated sigma_E -> sigma0 parameter
-        sigma_E_prior = cfg["spectral_fit"].get("sigma_E_prior_source", sigE_sigma)
-        float_sigma_E = cfg["spectral_fit"].get("float_sigma_E", True)
+        sigma_E_prior = spectral_cfg.get("sigma_E_prior_source", sigE_sigma)
+        float_sigma_E = spectral_cfg.get("float_sigma_E", True)
         if float_sigma_E:
             priors_spec["sigma0"] = (sigE_mean, sigma_E_prior)
             priors_spec["F"] = (
                 0.0,
-                cfg["spectral_fit"].get("F_prior_sigma", 0.01),
+                spectral_cfg.get("F_prior_sigma", 0.01),
             )
 
         priors_spec["sigma_E"] = (sigE_mean, sigma_E_prior)
@@ -2151,19 +2220,25 @@ def main(argv=None):
         priors_spec["F"] = (0.0, 0.0)
 
 
+        mu_bounds_units = spectral_cfg.get("mu_bounds_units", "mev")
+        mu_bounds_fit = _normalise_mu_bounds(
+            spectral_cfg.get("mu_bounds"),
+            units=mu_bounds_units,
+            slope=a,
+            intercept=c,
+            quadratic_coeff=a2,
+        )
+
         for peak, centroid_adc in adc_peaks.items():
             mu = apply_calibration(centroid_adc, a, c, quadratic_coeff=a2)
-            bounds_cfg = cfg["spectral_fit"].get("mu_bounds", {})
-            bounds = bounds_cfg.get(peak)
+            bounds = mu_bounds_fit.get(peak)
             if bounds is not None:
                 lo, hi = bounds
-                if not lo < hi:
-                    raise ValueError(f"mu_bounds for {peak} require lower < upper")
                 if not (lo <= mu <= hi):
-                    mu = np.clip(mu, lo, hi)
-            priors_spec[f"mu_{peak}"] = (mu, cfg["spectral_fit"].get("mu_sigma"))
+                    mu = float(np.clip(mu, lo, hi))
+            priors_spec[f"mu_{peak}"] = (mu, spectral_cfg.get("mu_sigma"))
             # Observed raw-counts around the expected energy window
-            peak_tol = cfg["spectral_fit"].get("spectral_peak_tolerance_mev", 0.3)
+            peak_tol = spectral_cfg.get("spectral_peak_tolerance_mev", 0.3)
             raw_count = float(
                 (
                     (df_analysis["energy_MeV"] >= mu - peak_tol)
@@ -2172,24 +2247,24 @@ def main(argv=None):
             )
             mu_amp = max(raw_count, 1.0)
             sigma_amp = max(
-                np.sqrt(mu_amp), cfg["spectral_fit"].get("amp_prior_scale") * mu_amp
+                np.sqrt(mu_amp), spectral_cfg.get("amp_prior_scale") * mu_amp
             )
             priors_spec[f"S_{peak}"] = (mu_amp, sigma_amp)
 
             # If EMG tails are requested for this peak:
-            if cfg["spectral_fit"].get("use_emg", {}).get(peak, False):
+            if spectral_cfg.get("use_emg", {}).get(peak, False):
                 priors_spec[f"tau_{peak}"] = (
-                    cfg["spectral_fit"].get(f"tau_{peak}_prior_mean"),
-                    cfg["spectral_fit"].get(f"tau_{peak}_prior_sigma"),
+                    spectral_cfg.get(f"tau_{peak}_prior_mean"),
+                    spectral_cfg.get(f"tau_{peak}_prior_sigma"),
                 )
 
         # Continuum priors
-        bkg_mode = str(cfg["spectral_fit"].get("bkg_mode", "manual")).lower()
+        bkg_mode = str(spectral_cfg.get("bkg_mode", "manual")).lower()
         if bkg_mode == "auto":
             from background import estimate_linear_background
 
             mu_map = {k: priors_spec[f"mu_{k}"][0] for k in adc_peaks.keys()}
-            peak_tol = cfg["spectral_fit"].get("spectral_peak_tolerance_mev", 0.3)
+            peak_tol = spectral_cfg.get("spectral_peak_tolerance_mev", 0.3)
             b0_est, b1_est = estimate_linear_background(
                 df_analysis["energy_MeV"].values,
                 mu_map,
@@ -2201,7 +2276,7 @@ def main(argv=None):
             from background import estimate_polynomial_background_auto
 
             mu_map = {k: priors_spec[f"mu_{k}"][0] for k in adc_peaks.keys()}
-            peak_tol = cfg["spectral_fit"].get("spectral_peak_tolerance_mev", 0.3)
+            peak_tol = spectral_cfg.get("spectral_peak_tolerance_mev", 0.3)
             try:
                 max_n = int(bkg_mode.split("auto_poly")[-1])
             except ValueError:
@@ -2216,11 +2291,11 @@ def main(argv=None):
                 priors_spec[f"b{i}"] = (float(c), abs(float(c)) * 0.1 + 1e-3)
             priors_spec["poly_order"] = order
         else:
-            priors_spec["b0"] = tuple(cfg["spectral_fit"].get("b0_prior"))
-            priors_spec["b1"] = tuple(cfg["spectral_fit"].get("b1_prior"))
+            priors_spec["b0"] = tuple(spectral_cfg.get("b0_prior"))
+            priors_spec["b1"] = tuple(spectral_cfg.get("b1_prior"))
 
         # Flags controlling the spectral fit
-        spec_flags = cfg["spectral_fit"].get("flags", {}).copy()
+        spec_flags = spectral_cfg.get("flags", {}).copy()
         analysis_cfg = cfg.get("analysis", {})
         bkg_model = analysis_cfg.get("background_model")
         if bkg_model is not None:
@@ -2255,18 +2330,17 @@ def main(argv=None):
                 "priors": priors_spec,
                 "flags": spec_flags,
             }
-            if cfg["spectral_fit"].get("use_plot_bins_for_fit", False):
+            if spectral_cfg.get("use_plot_bins_for_fit", False):
                 fit_kwargs.update({"bins": bins, "bin_edges": bin_edges})
-            if cfg["spectral_fit"].get("unbinned_likelihood", False):
+            if spectral_cfg.get("unbinned_likelihood", False):
                 fit_kwargs["unbinned"] = True
             if args.strict_covariance:
                 fit_kwargs["strict"] = True
-            bounds_cfg = cfg["spectral_fit"].get("mu_bounds", {})
-            if bounds_cfg:
-                bounds_map = {}
-                for iso, bnd in bounds_cfg.items():
-                    if bnd is not None:
-                        bounds_map[f"mu_{iso}"] = tuple(bnd)
+            if mu_bounds_fit:
+                bounds_map = {
+                    f"mu_{iso}": tuple(bounds)
+                    for iso, bounds in mu_bounds_fit.items()
+                }
                 if bounds_map:
                     fit_kwargs["bounds"] = bounds_map
 
@@ -2306,7 +2380,7 @@ def main(argv=None):
                     if isinstance(refit, FitResult) and refit.params.get(
                         "fit_valid", False
                     ):
-                        thresh = cfg["spectral_fit"].get("refit_aic_threshold", 2.0)
+                        thresh = spectral_cfg.get("refit_aic_threshold", 2.0)
                         if (
                             refit.params.get("aic", float("inf"))
                             > spec_fit_out.params.get("aic", float("inf")) - thresh

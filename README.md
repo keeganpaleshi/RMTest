@@ -459,9 +459,15 @@ fit.  Important keys include:
   `true` while Po‑218 and Po‑214 default to `false`.
 - `mu_bounds` – optional lower/upper limits for each peak centroid.
   Set for example `{"Po218": [5.9, 6.2]}` to keep the Po‑218 fit from
-  drifting into the Po‑210 region.  Values are always specified in MeV.
-  Centroid guesses found during peak search are clamped to this range before
-  the fit starts.
+
+  drifting into the Po‑210 region.  Centroid guesses found during peak
+  search are clamped to this range before the fit starts.
+- `mu_bounds_units` – interpret the numbers supplied in `mu_bounds` as
+  either `"mev"` (default) or raw `"adc"` channels.  Bounds expressed
+  in ADC are converted to MeV with the current calibration before the
+  spectral fitter runs so that physical parameters (notably the peak
+  amplitudes) remain unconstrained by unit mismatches.
+
 - `sigma_E_prior_source` – one-sigma width of the prior on the common
   energy resolution parameter. When omitted the uncertainty from the
   calibration step is used.
