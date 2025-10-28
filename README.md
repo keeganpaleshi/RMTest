@@ -451,12 +451,15 @@ fit.  Important keys include:
   continuum terms.
 - `tau_{iso}_prior_mean` and `tau_{iso}_prior_sigma` – mean and
   uncertainty for the exponential tail constant of each isotope when
-  `use_emg` enables that tail.  Use a strictly positive prior mean (e.g.
-  ``0.005``) to prevent numerical overflow when the tail constant
-  approaches zero.
-- `use_emg` – mapping of isotopes to boolean flags selecting an
-  exponentially modified Gaussian tail.  If omitted Po‑210 defaults to
-  `true` while Po‑218 and Po‑214 default to `false`.
+  an exponentially modified Gaussian (EMG) tail is enabled.  Use a
+  strictly positive prior mean (e.g. ``0.005``) to prevent numerical
+  overflow when the tail constant approaches zero.
+- `use_emg` – mapping of isotopes to boolean flags selecting an EMG tail.
+  Set `{"Po210": true}` to enable only the Po‑210 tail, or use a single
+  boolean to toggle all peaks (e.g. `true` enables EMG tails for every
+  isotope).  When an explicit `tau_{iso}` prior is supplied the tail is
+  automatically enabled even if the mapping omits the isotope, ensuring
+  priors always take effect.
 - `mu_bounds` – optional lower/upper limits for each peak centroid.
   Set for example `{"Po218": [5.9, 6.2]}` to keep the Po‑218 fit from
 
@@ -496,9 +499,18 @@ Example snippet:
     "b1_prior": [0.0, 1.0],
     "mu_sigma": 0.05,
     "amp_prior_scale": 1.0,
+    "use_emg": {"Po210": true},
+    "tau_Po210_prior_mean": 0.005,
+    "tau_Po210_prior_sigma": 0.002,
     "unbinned_likelihood": false
 }
 ```
+
+The fitter enforces a minimum positive tail constant of ``1e-6`` to keep
+the EMG model numerically stable.  Bounds derived from the priors are
+expanded automatically so that ``tau`` can float over a physically
+reasonable range rather than being forced to the prior mean when the fit
+prefers a longer tail.
 
 `dump_time_series_json` under `plotting` saves a `*_ts.json` file
 containing the binned time-series data when set to `true`.
