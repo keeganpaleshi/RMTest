@@ -65,6 +65,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 from dateutil.tz import UTC, gettz
+import radon_activity
 
 from hierarchical import fit_hierarchical_runs
 
@@ -280,7 +281,6 @@ from baseline_utils import (
 import baseline
 from time_fitting import two_pass_time_fit
 from config.validation import validate_baseline_window
-from radon_activity import compute_total_radon
 
 
 def plot_radon_activity(
@@ -327,7 +327,7 @@ def _total_radon_series(activity, errors, monitor_volume, sample_volume):
     for idx, value in enumerate(activity_arr):
         err_val = 0.0 if err_arr is None else float(err_arr[idx])
         try:
-            _, _, total_bq, sigma_total = compute_total_radon(
+            _, _, total_bq, sigma_total = radon_activity.compute_total_radon(
                 float(value),
                 float(err_val),
                 float(monitor_volume),
@@ -3256,7 +3256,7 @@ def main(argv=None):
     # and retain the total amount of radon inferred from the sample without
     # diluting by the chamber volume.
     try:
-        conc, dconc, total_bq, dtotal_bq = compute_total_radon(
+        conc, dconc, total_bq, dtotal_bq = radon_activity.compute_total_radon(
             A_radon,
             dA_radon,
             monitor_vol,
@@ -3898,28 +3898,44 @@ def main(argv=None):
 
         if activity_arr is not None and err_arr is not None:
             times_list = [float(t) for t in np.asarray(activity_times, dtype=float)]
-            radon_series = {
+            plot_series = {
                 "time": times_list,
                 "activity": np.asarray(activity_arr, dtype=float).tolist(),
                 "error": np.asarray(err_arr, dtype=float).tolist(),
-                "sample_volume_l": float(sample_vol),
             }
-            summary_radon = summary.get("radon") if hasattr(summary, "get") else None
-            if isinstance(summary_radon, Mapping):
-                summary_radon = dict(summary_radon)
-            if summary_radon is None:
-                summary_radon = {}
-            summary_radon["time_series"] = radon_series
+            if sample_vol is not None:
+                try:
+                    plot_series["sample_volume_l"] = float(sample_vol)
+                except (TypeError, ValueError):
+                    pass
+
             total_vals, total_errs = _total_radon_series(
                 activity_arr,
                 err_arr,
                 monitor_vol,
                 sample_vol,
             )
-            total_series = {"time": list(times_list), "activity": total_vals.tolist()}
+            total_series = {
+                "time": list(times_list),
+                "activity": total_vals.tolist(),
+            }
             if total_errs is not None:
                 total_series["error"] = total_errs.tolist()
-            summary_radon["total_time_series"] = total_series
+
+            summary_radon = summary.get("radon") if hasattr(summary, "get") else None
+            if not isinstance(summary_radon, Mapping):
+                summary_radon = {}
+            else:
+                summary_radon = dict(summary_radon)
+
+            plot_payload = summary_radon.get("plot_series")
+            if isinstance(plot_payload, Mapping):
+                plot_payload = dict(plot_payload)
+            else:
+                plot_payload = {}
+            plot_payload["time_series"] = plot_series
+            plot_payload["total_time_series"] = total_series
+            summary_radon["plot_series"] = plot_payload
             summary["radon"] = summary_radon
 
             plot_radon_activity(
