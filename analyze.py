@@ -2433,7 +2433,36 @@ def main(argv=None):
         # Build priors for the unbinned spectrum fit:
         priors_spec = {}
         # Resolution prior: map calibrated sigma_E -> sigma0 parameter
-        sigma_E_prior = spectral_cfg.get("sigma_E_prior_source", sigE_sigma)
+        sigma_E_prior_source = spectral_cfg.get("sigma_E_prior_source", "calibration")
+        sigma_E_prior_sigma = spectral_cfg.get("sigma_E_prior_sigma")
+        sigma_E_prior = sigE_sigma
+        if isinstance(sigma_E_prior_source, str):
+            source = sigma_E_prior_source.strip().lower()
+            if source == "calibration":
+                sigma_E_prior = sigE_sigma
+            elif source in {"config", "manual"}:
+                if sigma_E_prior_sigma is None:
+                    raise ValueError(
+                        "sigma_E_prior_sigma must be provided when sigma_E_prior_source is 'config'"
+                    )
+                sigma_E_prior = float(sigma_E_prior_sigma)
+            else:
+                try:
+                    sigma_E_prior = float(sigma_E_prior_source)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(
+                        f"Unrecognised sigma_E_prior_source: {sigma_E_prior_source!r}"
+                    ) from exc
+        elif sigma_E_prior_source is not None:
+            sigma_E_prior = float(sigma_E_prior_source)
+
+        if not np.isfinite(sigma_E_prior) or sigma_E_prior <= 0.0:
+            if sigma_E_prior_sigma is not None:
+                sigma_E_prior = float(sigma_E_prior_sigma)
+            elif np.isfinite(sigE_sigma) and sigE_sigma > 0.0:
+                sigma_E_prior = sigE_sigma
+            else:
+                sigma_E_prior = 0.01
         float_sigma_E = spectral_cfg.get("float_sigma_E", True)
         if float_sigma_E:
             priors_spec["sigma0"] = (sigE_mean, sigma_E_prior)

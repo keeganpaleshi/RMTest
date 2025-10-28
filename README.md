@@ -468,9 +468,13 @@ fit.  Important keys include:
   spectral fitter runs so that physical parameters (notably the peak
   amplitudes) remain unconstrained by unit mismatches.
 
-- `sigma_E_prior_source` – one-sigma width of the prior on the common
-  energy resolution parameter. When omitted the uncertainty from the
-  calibration step is used.
+- `sigma_E_prior_source` – selects the one-sigma width of the prior on the
+  common energy resolution parameter. Set to `"calibration"` (the default) to
+  use the uncertainty returned by the calibration step, set to `"config"` to use
+  `sigma_E_prior_sigma`, or provide a numeric value directly.
+- `float_sigma_E` – when `true` (default) the common resolution parameter is
+  fitted with the Gaussian prior described above rather than being frozen to
+  the calibration value.
 
 - `expected_peaks` – approximate ADC centroids used to locate the
   Po‑210, Po‑218 and Po‑214 peaks before fitting. The default is
