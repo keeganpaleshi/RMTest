@@ -736,7 +736,7 @@ def _compute_ylim(values: np.ndarray, errors: np.ndarray | None) -> tuple[float,
     if lower == upper:
         delta = abs(lower) * 0.1 if lower != 0 else 0.5
         return lower - delta, upper + delta
-    pad = 0.05 * (upper - lower)
+    pad = 0.1 * (upper - lower)
     return lower - pad, upper + pad
 
 
@@ -799,6 +799,7 @@ def plot_radon_activity_full(
         **_errorbar_kwargs(color),
     )
     ax_rel.set_xlabel("Elapsed Time (h)")
+    ax_rel.set_ylabel(label_units)
     ax_rel.set_title("Radon Concentration vs. Elapsed Hours")
     ax_rel.ticklabel_format(axis="y", style="plain")
     ax_rel.xaxis.get_offset_text().set_visible(False)
@@ -883,6 +884,7 @@ def plot_total_radon_full(
         **_errorbar_kwargs(color),
     )
     ax_rel.set_xlabel("Elapsed Time (h)")
+    ax_rel.set_ylabel("Total Radon in Sample (Bq)")
     ax_rel.set_title("Total Radon vs. Elapsed Hours")
     ax_rel.ticklabel_format(axis="y", style="plain")
     ax_rel.xaxis.get_offset_text().set_visible(False)
