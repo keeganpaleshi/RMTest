@@ -3,6 +3,7 @@
 # -----------------------------------------------------
 
 import os
+
 import numpy as np
 import matplotlib as _mpl
 
@@ -10,7 +11,9 @@ _mpl.use("Agg")
 import matplotlib.pyplot as plt
 from datetime import datetime
 from pathlib import Path
+from calibration import emg_left, gaussian
 from color_schemes import COLOR_SCHEMES
+from fitting import make_linear_bkg
 from constants import PO214, PO218, PO210, RN222
 from .paths import get_targets
 from ._time_utils import guard_mpl_times, setup_time_axis
@@ -416,6 +419,7 @@ def plot_spectrum(
     bins=400,
     bin_edges=None,
     config=None,
+    fit_flags=None,
 ):
     """Plot energy spectrum and optional fit overlay.
 
@@ -435,6 +439,8 @@ def plot_spectrum(
         are supported and override ``bins``.
     config : dict, optional
         Plotting configuration dictionary.
+    fit_flags : dict, optional
+        Flags used during the spectral fit (e.g. background model selection).
     """
     show_res = bool(fit_vals)
     if (
@@ -476,35 +482,97 @@ def plot_spectrum(
         ax_main.set_xlim(lo, hi)
 
     if fit_vals:
-        sigma_E = fit_vals.get("sigma_E", 1.0)
-        b0 = fit_vals.get("b0", 0.0)
-        b1 = fit_vals.get("b1", 0.0)
-        bkg_cent = b0 + b1 * centers
-        bkg_norm = b0 * (edges[-1] - edges[0]) + 0.5 * b1 * (edges[-1] ** 2 - edges[0] ** 2)
-        y_cent = np.zeros_like(centers)
-        if "S_bkg" in fit_vals and bkg_norm > 0:
-            y_cent += fit_vals["S_bkg"] * bkg_cent / bkg_norm
+        fit_flags = fit_flags or {}
+        centers_arr = np.asarray(centers, dtype=float)
+        widths_arr = np.asarray(width, dtype=float)
+        sigma0 = float(fit_vals.get("sigma0", 0.0))
+        F_val = float(fit_vals.get("F", 0.0))
+        sigma_sq = np.clip(sigma0**2 + F_val * centers_arr, 0.0, None)
+        sigma = np.sqrt(sigma_sq)
+        sigma = np.where(sigma > 0.0, sigma, 1e-12)
+
+        E_lo = float(edges[0])
+        E_hi = float(edges[-1])
+        beta0 = float(fit_vals.get("b0", 0.0))
+        beta1 = float(fit_vals.get("b1", 0.0))
+
+        densities: dict[str, np.ndarray] = {}
+        total_density = np.zeros_like(centers_arr, dtype=float)
+
+        background_model = str(fit_flags.get("background_model", "")).lower()
+        base_bkg = beta0 + beta1 * centers_arr
+        base_bkg = np.asarray(base_bkg, dtype=float)
+        if background_model == "loglin_unit":
+            shape_fn = make_linear_bkg(E_lo, E_hi)
+            amplitude = float(fit_vals.get("S_bkg", 0.0))
+            bkg_density = amplitude * shape_fn(centers_arr, beta0, beta1)
+        elif "S_bkg" in fit_vals:
+            amplitude = float(fit_vals.get("S_bkg", 0.0))
+            norm = beta0 * (E_hi - E_lo) + 0.5 * beta1 * (E_hi**2 - E_lo**2)
+            if norm > 0:
+                bkg_density = amplitude * base_bkg / norm
+            else:
+                bkg_density = base_bkg
         else:
-            y_cent += bkg_cent
-        for pk in ("Po210", "Po218", "Po214"):
-            mu_key = f"mu_{pk}"
-            amp_key = f"S_{pk}"
-            if mu_key in fit_vals and amp_key in fit_vals:
-                mu = fit_vals[mu_key]
-                amp = fit_vals[amp_key]
-                y_cent += (
-                    amp
-                    / (sigma_E * np.sqrt(2 * np.pi))
-                    * np.exp(-0.5 * ((centers - mu) / sigma_E) ** 2)
-                )
-        model_counts = y_cent * width
-        palette_name = str(config.get("palette", "default")) if config else "default"
-        palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
+            bkg_density = base_bkg
+        bkg_density = np.clip(np.asarray(bkg_density, dtype=float), 0.0, None)
+        densities["Background"] = bkg_density
+        total_density += bkg_density
+
+        for iso in ("Po210", "Po218", "Po214"):
+            mu_key = f"mu_{iso}"
+            amp_key = f"S_{iso}"
+            if mu_key not in fit_vals or amp_key not in fit_vals:
+                continue
+            mu = float(fit_vals[mu_key])
+            amp = float(fit_vals[amp_key])
+            tau_key = f"tau_{iso}"
+            tau = fit_vals.get(tau_key)
+            if tau is not None and np.isfinite(tau) and float(tau) > 0:
+                tau_val = float(tau)
+                with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+                    dens = emg_left(centers_arr, mu, sigma, tau_val)
+                dens = np.nan_to_num(dens, nan=0.0, posinf=0.0, neginf=0.0)
+            else:
+                dens = gaussian(centers_arr, mu, sigma)
+            dens = np.nan_to_num(dens, nan=0.0, posinf=0.0, neginf=0.0)
+            densities[iso] = amp * dens
+            total_density += densities[iso]
+
+        component_counts = {name: val * widths_arr for name, val in densities.items()}
+        total_counts = total_density * widths_arr
+
+        background_color = palette.get("background", palette.get("radon_activity", "#9467bd"))
         fit_color = palette.get("fit", "#ff0000")
-        ax_main.plot(centers, model_counts, color=fit_color, lw=2, label="Fit")
+        iso_colors = {
+            "Po210": palette.get("Po210", "#2ca02c"),
+            "Po218": palette.get("Po218", "#1f77b4"),
+            "Po214": palette.get("Po214", "#d62728"),
+        }
+
+        if "Background" in component_counts:
+            ax_main.plot(
+                centers,
+                component_counts["Background"],
+                color=background_color,
+                lw=1.5,
+                label="Background",
+            )
+
+        for iso in ("Po210", "Po218", "Po214"):
+            if iso in component_counts:
+                ax_main.plot(
+                    centers,
+                    component_counts[iso],
+                    color=iso_colors.get(iso, "#000000"),
+                    lw=1.5,
+                    label=iso,
+                )
+
+        ax_main.plot(centers, total_counts, color=fit_color, lw=2, label="Total")
 
         if show_res:
-            residuals = hist - model_counts
+            residuals = hist - total_counts
             ax_res.bar(
                 centers,
                 residuals,
