@@ -3,6 +3,9 @@ import sys
 from pathlib import Path
 import pytest
 
+from calibration import gaussian
+from fitting import FitResult
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from constants import PO210, RN222
 from plot_utils import (
@@ -201,6 +204,57 @@ def test_plot_spectrum_po210_xlim(tmp_path):
     cfg = {"window_po210": [5.2, 5.4]}
     ax = plot_spectrum(energies, config=cfg, out_png=str(tmp_path / "spec2.png"))
     assert ax.get_xlim() == (5.2, 5.4)
+    assert ax.get_xlabel() == "Energy [MeV]"
+
+
+def test_plot_spectrum_components_with_fit_result(tmp_path, monkeypatch):
+    edges = np.linspace(0.0, 4.0, 5)
+    widths = np.diff(edges)
+    centers = edges[:-1] + widths / 2.0
+    energies = np.concatenate([
+        np.random.default_rng(0).normal(1.0, 0.1, 200),
+        np.linspace(0.1, 3.9, 100),
+    ])
+
+    params = {
+        "sigma0": 0.1,
+        "F": 0.0,
+        "mu_Po210": 1.0,
+        "S_Po210": 80.0,
+        "b0": 2.0,
+        "b1": 0.5,
+    }
+    fit_res = FitResult(params, None, 0)
+
+    captured: dict[str, np.ndarray] = {}
+
+    def fake_plot(self, x, y, *args, **kwargs):
+        label = kwargs.get("label")
+        if label:
+            captured[label] = np.array(y)
+        return type("obj", (), {})()
+
+    import matplotlib.axes
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "plot", fake_plot)
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    plot_spectrum(
+        energies,
+        fit_vals=fit_res,
+        bin_edges=edges,
+        out_png=str(tmp_path / "spec_components.png"),
+        fit_flags={},
+    )
+
+    sigma = np.sqrt(np.clip(params["sigma0"] ** 2 + params["F"] * centers, 1e-12, None))
+    component = params["S_Po210"] * gaussian(centers, params["mu_Po210"], sigma) * widths
+    background = (params["b0"] + params["b1"] * centers) * widths
+    total = background + component
+
+    assert np.allclose(captured["Po210"], component)
+    assert np.allclose(captured["Background"], background)
+    assert np.allclose(captured["Total model"], total)
 
 
 def test_plot_spectrum_irregular_edges_residuals(tmp_path, monkeypatch):
