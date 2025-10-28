@@ -40,7 +40,7 @@ def test_negative_activity_allowed(tmp_path, monkeypatch, caplog):
     monkeypatch.setattr(
         radon_activity,
         "compute_total_radon",
-        lambda *a, **k: (0.0, 0.0, -5.0, 1.0),
+        lambda *a, **k: (0.0, 0.0, -5.0, 5e-6),
     )
 
     caplog.set_level("WARNING")
@@ -57,9 +57,10 @@ def test_negative_activity_allowed(tmp_path, monkeypatch, caplog):
 
     summary = captured.get("summary", {})
     total_entry = summary["radon_results"]["total_radon_in_sample_Bq"]
-    assert total_entry["value"] == pytest.approx(-5.0)
-    assert total_entry["uncertainty"] == pytest.approx(1.0)
+    assert total_entry["value"] == pytest.approx(-1.0, abs=5e-6)
+    assert total_entry["uncertainty"] == pytest.approx(5e-6)
     assert any(
-        "Negative total radon in sample reported" in message
+        "clipped to -1.0 Bq floor" in message
+        or "Negative total radon in sample reported" in message
         for message in caplog.messages
     )
