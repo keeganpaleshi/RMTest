@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+import math
 import numpy as np
 import pytest
 
@@ -37,16 +38,12 @@ def test_cov_entry_missing_params():
     cov = np.eye(2)
     fr = FitResult(params, cov, 0)
 
-    # One missing
-    with pytest.raises(KeyError):
-        fr.get_cov("A", "C")
-
-    # Both missing should still raise
-    with pytest.raises(KeyError):
-        fr.get_cov("C", "D")
+    # Missing entries now return NaN rather than raising
+    assert math.isnan(fr.get_cov("A", "C"))
+    assert math.isnan(fr.get_cov("C", "D"))
 
     fr_none = FitResult(params, None, 0)
-    assert fr_none.get_cov("A", "B") == 0.0
+    assert math.isnan(fr_none.get_cov("A", "B"))
 
 
 def test_cov_entry_prefix_handled():

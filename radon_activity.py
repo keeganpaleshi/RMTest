@@ -285,7 +285,7 @@ def radon_activity_curve(
     N0: float,
     dN0: float,
     half_life_s: float,
-    cov_en0: float = 0.0,
+    cov_en0: float | None = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Activity over time from fitted decay parameters.
 
@@ -303,9 +303,9 @@ def radon_activity_curve(
         Uncertainty on ``N0``.
     half_life_s : float
         Half-life used for the decay model.
-    cov_en0 : float, optional
-        Covariance between ``E`` and ``N0``. Default is ``0.0`` and disables
-        the cross term in the uncertainty propagation.
+    cov_en0 : float or None, optional
+        Covariance between ``E`` and ``N0``. ``None`` (the default) disables the
+        cross term in the uncertainty propagation.
 
     Returns
     -------
@@ -326,8 +326,12 @@ def radon_activity_curve(
     dA_dE = 1.0 - exp_term
     dA_dN0 = lam * exp_term
     variance = (dA_dE * dE) ** 2 + (dA_dN0 * dN0) ** 2
-    if cov_en0:
-        variance += 2.0 * dA_dE * dA_dN0 * cov_en0
+    try:
+        cov_term = float(cov_en0) if cov_en0 is not None else None
+    except (TypeError, ValueError):
+        cov_term = None
+    if cov_term is not None and math.isfinite(cov_term):
+        variance += 2.0 * dA_dE * dA_dN0 * cov_term
     sigma = np.sqrt(variance)
     return activity, sigma
 
@@ -340,14 +344,14 @@ def radon_delta(
     N0: float,
     dN0: float,
     half_life_s: float,
-    cov_en0: float = 0.0,
+    cov_en0: float | None = None,
 ) -> Tuple[float, float]:
     """Change in activity between two times.
 
     Parameters are identical to :func:`radon_activity_curve` with ``t_start``
     and ``t_end`` specifying the relative times in seconds. ``cov_en0`` is the
     optional covariance between ``E`` and ``N0`` used for the uncertainty
-    propagation.
+    propagation; ``None`` disables the cross term.
     """
 
     if half_life_s <= 0:
@@ -362,8 +366,12 @@ def radon_delta(
     d_delta_dE = exp1 - exp2
     d_delta_dN0 = lam * (exp2 - exp1)
     variance = (d_delta_dE * dE) ** 2 + (d_delta_dN0 * dN0) ** 2
-    if cov_en0:
-        variance += 2.0 * d_delta_dE * d_delta_dN0 * cov_en0
+    try:
+        cov_term = float(cov_en0) if cov_en0 is not None else None
+    except (TypeError, ValueError):
+        cov_term = None
+    if cov_term is not None and math.isfinite(cov_term):
+        variance += 2.0 * d_delta_dE * d_delta_dN0 * cov_term
     sigma = math.sqrt(variance)
     return delta, sigma
 
