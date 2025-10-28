@@ -277,6 +277,58 @@ def test_plot_spectrum_accepts_fitresult(tmp_path, monkeypatch):
     assert ax_res.get_ylabel() == "Residuals [counts]"
     assert ax_res.get_xlabel() == "Energy [MeV]"
 
+
+def test_plot_spectrum_component_units(tmp_path, monkeypatch):
+    energies = np.linspace(2.0, 4.0, 500)
+    edges = np.linspace(2.0, 4.0, 21)
+    fit_vals = {
+        "sigma0": 0.08,
+        "F": 0.0,
+        "mu_Po214": 3.0,
+        "S_Po214": 150.0,
+        "b0": 5.0,
+        "b1": 1.5,
+    }
+
+    captured: dict[str, np.ndarray] = {}
+
+    import matplotlib.axes
+
+    def fake_plot(self, x, y, *args, **kwargs):
+        label = kwargs.get("label")
+        if label is not None:
+            captured[label] = np.array(y)
+        return [type("obj", (), {})()]
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "plot", fake_plot)
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    plot_spectrum(
+        energies,
+        fit_vals=fit_vals,
+        bin_edges=edges,
+        out_png=str(tmp_path / "spec_units.png"),
+    )
+
+    assert {"Po214", "Background", "Total model"} <= set(captured)
+
+    widths = np.diff(edges)
+    centers = edges[:-1] + widths / 2.0
+
+    from calibration import gaussian
+
+    sigma_vals = np.sqrt(np.clip(fit_vals["sigma0"]**2 + fit_vals["F"] * centers, 1e-12, np.inf))
+    density_po214 = gaussian(centers, fit_vals["mu_Po214"], sigma_vals)
+    expected_po214 = fit_vals["S_Po214"] * density_po214 * widths
+
+    expected_background = (fit_vals["b0"] + fit_vals["b1"] * centers) * widths
+    expected_total = expected_po214 + expected_background
+
+    np.testing.assert_allclose(captured["Po214"], expected_po214)
+    np.testing.assert_allclose(captured["Background"], expected_background)
+    np.testing.assert_allclose(captured["Total model"], expected_total)
+
+
 def test_plot_spectrum_comparison_fixed_bins(tmp_path, monkeypatch):
     pre = np.linspace(0.2, 0.8, 10)
     post = pre + 0.01
