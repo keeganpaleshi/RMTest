@@ -305,9 +305,8 @@ def summarize_baseline(
     Notes
     -----
     When ``allow_negative_baseline`` is ``True`` the corrected rates are
-    preserved exactly as reported by the fit, even if they are negative.
-    When it is ``False`` negative corrected rates are clipped to ``0.0`` so
-    downstream consumers never observe negative activities without opting in.
+    preserved as-is so summaries report the actual fitted value even when
+    it is negative.
     """
 
     baseline = cfg.get("baseline", {})
@@ -326,8 +325,6 @@ def summarize_baseline(
         base = float(base_rates.get(iso, 0.0)) * float(scales.get(iso, 1.0))
         corr = float(fit.get("E_corrected", raw - base))
         raw = float(raw)
-        if not allow_negative and corr < 0.0:
-            corr = 0.0
         summary[iso] = (raw, base, corr)
 
     return summary
