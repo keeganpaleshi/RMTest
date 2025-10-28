@@ -109,8 +109,14 @@ def test_cli_baseline_range_overrides_config(tmp_path, monkeypatch):
         exp_end,
     ]
     tf_summary = summary.get("time_fit", {}).get("Po214", {})
-    assert tf_summary.get("background_mode") == "fixed_from_baseline"
+    assert tf_summary.get("background_mode") == "baseline_fixed"
     assert tf_summary.get("baseline_rate_Bq") == pytest.approx(1.0)
+    assert tf_summary.get("background_source") == "baseline_fixed"
+    assert tf_summary.get("baseline_activity_Bq") == pytest.approx(1.0)
+    assert tf_summary.get("baseline_source_range") == [
+        "1970-01-01T00:00:01+00:00",
+        "1970-01-01T00:00:02+00:00",
+    ]
 
 
 def test_time_fit_background_mode_floated(tmp_path, monkeypatch):
@@ -198,4 +204,5 @@ def test_time_fit_background_mode_floated(tmp_path, monkeypatch):
 
     tf_summary = captured.get("summary", {}).get("time_fit", {}).get("Po214", {})
     assert tf_summary.get("background_mode") == "floated"
+    assert tf_summary.get("background_source") == "floated"
     assert "baseline_rate_Bq" not in tf_summary
