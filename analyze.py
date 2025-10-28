@@ -2570,6 +2570,10 @@ def main(argv=None):
                 "Configuration error: fix_sigma0 requires fix_F when energy resolution is fixed"
             )
 
+        use_emg_cfg = spectral_cfg.get("use_emg")
+        if use_emg_cfg is not None:
+            spec_flags["use_emg"] = dict(use_emg_cfg)
+
         # Launch the spectral fit
         spec_fit_out = None
         peak_deviation = {}
