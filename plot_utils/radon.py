@@ -3,6 +3,7 @@ import numpy as np
 from pathlib import Path
 
 from ._time_utils import guard_mpl_times, setup_time_axis
+from ._errorbars import apply_error_limits
 
 
 def _save(fig, outdir: Path, name: str) -> None:
@@ -21,6 +22,7 @@ def plot_radon_activity(ts_dict, outdir: Path, out_png: str | Path | None = None
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
     setup_time_axis(ax, times_mpl)
+    apply_error_limits(ax, activity, errors)
     fig.autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)
     if out_png is not None:
@@ -49,6 +51,7 @@ def plot_radon_trend(ts_dict, outdir: Path, out_png: str | Path | None = None) -
     ax.ticklabel_format(axis="y", style="plain")
     ax.legend()
     setup_time_axis(ax, times_mpl)
+    apply_error_limits(ax, activity, None)
     fig.autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)
     if out_png is not None:

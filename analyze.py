@@ -230,6 +230,7 @@ from plot_utils import (
     plot_time_series,
     plot_equivalent_air,
     plot_radon_activity_full,
+    plot_radon_activity_elapsed_full,
     plot_total_radon_full,
     plot_radon_trend_full,
     plot_spectrum_comparison,
@@ -285,6 +286,12 @@ from config.validation import validate_baseline_window
 def plot_radon_activity(times, activity, out_png, errors=None, *, config=None):
     """Wrapper used by tests expecting output path as third argument."""
     return plot_radon_activity_full(times, activity, errors, out_png, config=config)
+
+
+def plot_radon_activity_elapsed(times_h, activity, out_png, errors=None, *, config=None):
+    """Wrapper ensuring elapsed-time plot matches legacy call signature."""
+
+    return plot_radon_activity_elapsed_full(times_h, activity, errors, out_png, config=config)
 
 
 def plot_total_radon(times, total_bq, out_png, errors=None, *, config=None):
@@ -3673,71 +3680,6 @@ def main(argv=None):
         else:
             time_grid = np.array([float(window_start)], dtype=float)
 
-        fallback_times = np.asarray(rad_ts_data.get("time", []), dtype=float)
-        fallback_activity_raw = np.asarray(
-            rad_ts_data.get("activity", []), dtype=float
-        )
-        if fallback_activity_raw.size != fallback_times.size:
-            fallback_activity_raw = None
-
-        fallback_errs_raw = rad_ts_data.get("error") if hasattr(rad_ts_data, "get") else None
-        fallback_errs_arr = (
-            np.asarray(fallback_errs_raw, dtype=float)
-            if fallback_errs_raw is not None
-            else None
-        )
-        if fallback_errs_arr is not None and fallback_errs_arr.size != fallback_times.size:
-            fallback_errs_arr = None
-
-        try:
-            fallback_val = float(rad_summary.get("Rn_activity_Bq", float("nan")))
-        except (TypeError, ValueError):
-            fallback_val = float("nan")
-
-        stat_unc_val = rad_summary.get("stat_unc_Bq") if hasattr(rad_summary, "get") else None
-        try:
-            err_val = float(stat_unc_val) if stat_unc_val is not None else float("nan")
-        except (TypeError, ValueError):
-            err_val = float("nan")
-
-        fallback_fill = fallback_val
-        if (not math.isfinite(fallback_fill)) and radon_results:
-            try:
-                fallback_fill = float(
-                    radon_results.get("radon_activity_Bq", {}).get("value", float("nan"))
-                )
-            except (TypeError, ValueError):
-                fallback_fill = float("nan")
-
-        err_fill = err_val
-        if (not math.isfinite(err_fill)) and radon_results:
-            try:
-                err_fill = float(
-                    radon_results.get("radon_activity_Bq", {}).get(
-                        "uncertainty", float("nan")
-                    )
-                )
-            except (TypeError, ValueError):
-                err_fill = float("nan")
-
-        radon_val = None
-        radon_unc = None
-        if radon_results:
-            try:
-                radon_val = float(
-                    radon_results.get("radon_activity_Bq", {}).get("value", float("nan"))
-                )
-            except (TypeError, ValueError):
-                radon_val = None
-            try:
-                radon_unc = float(
-                    radon_results.get("radon_activity_Bq", {}).get(
-                        "uncertainty", float("nan")
-                    )
-                )
-            except (TypeError, ValueError):
-                radon_unc = None
-
         valid_fits: dict[str, Mapping[str, Any]] = {}
         for iso in ("Po214", "Po218"):
             fit_obj = time_fit_results.get(iso)
@@ -3753,7 +3695,112 @@ def main(argv=None):
 
         times_dt = to_datetime_utc(time_grid, unit="s")
         t_rel = (times_dt - analysis_start).total_seconds()
-        activity_times = time_grid
+        ts_source = rad_ts_data
+        if not ts_source and isinstance(rad_summary.get("total_time_series"), Mapping):
+            ts_source = rad_summary["total_time_series"]
+
+        total_times = np.asarray(ts_source.get("time", []), dtype=float)
+        total_values = np.asarray(ts_source.get("activity", []), dtype=float)
+        if total_values.size != total_times.size:
+            total_times = np.array([], dtype=float)
+            total_values = np.array([], dtype=float)
+            total_errors = None
+        else:
+            err_raw = ts_source.get("error") if hasattr(ts_source, "get") else None
+            if err_raw is not None:
+                total_errors = np.asarray(err_raw, dtype=float)
+                if total_errors.size != total_times.size:
+                    total_errors = None
+            else:
+                total_errors = None
+
+        if total_times.size > 0:
+            finite_mask = np.isfinite(total_times) & np.isfinite(total_values)
+            total_times = total_times[finite_mask]
+            total_values = total_values[finite_mask]
+            if total_errors is not None:
+                total_errors = total_errors[finite_mask]
+
+        try:
+            fallback_val = float(rad_summary.get("Rn_activity_Bq", float("nan")))
+        except (TypeError, ValueError):
+            fallback_val = float("nan")
+
+        stat_unc_val = rad_summary.get("stat_unc_Bq") if hasattr(rad_summary, "get") else None
+        try:
+            err_val = float(stat_unc_val) if stat_unc_val is not None else float("nan")
+        except (TypeError, ValueError):
+            err_val = float("nan")
+
+        if not math.isfinite(fallback_val) and radon_results:
+            try:
+                fallback_val = float(
+                    radon_results.get("radon_activity_Bq", {}).get("value", float("nan"))
+                )
+            except (TypeError, ValueError):
+                fallback_val = float("nan")
+
+        if not math.isfinite(err_val) and radon_results:
+            try:
+                err_val = float(
+                    radon_results.get("radon_activity_Bq", {}).get(
+                        "uncertainty", float("nan")
+                    )
+                )
+            except (TypeError, ValueError):
+                err_val = float("nan")
+
+        if total_times.size == 0 and math.isfinite(fallback_val):
+            total_times = time_grid
+            total_values = np.full_like(time_grid, fallback_val, dtype=float)
+            total_errors = (
+                None
+                if not math.isfinite(err_val)
+                else np.full_like(time_grid, err_val, dtype=float)
+            )
+
+        activity_times = total_times
+        total_errors_arr = None if total_errors is None else np.asarray(total_errors, dtype=float)
+
+        if activity_times.size > 0:
+            concentration = total_values.copy()
+            concentration_err = None if total_errors_arr is None else total_errors_arr.copy()
+            if sample_vol > 0:
+                concentration = total_values / float(sample_vol)
+                if concentration_err is not None:
+                    concentration_err = concentration_err / float(sample_vol)
+            else:
+                concentration = total_values.copy()
+                concentration_err = None if total_errors_arr is None else total_errors_arr.copy()
+
+            plot_cfg = cfg.get("plotting", {})
+            plot_radon_activity(
+                activity_times,
+                concentration,
+                Path(out_dir) / "radon_activity.png",
+                concentration_err,
+                config=plot_cfg,
+            )
+            elapsed_hours = (activity_times - float(window_start)) / 3600.0
+            plot_radon_activity_elapsed(
+                elapsed_hours,
+                concentration,
+                Path(out_dir) / "radon_activity_elapsed.png",
+                concentration_err,
+                config=plot_cfg,
+            )
+            plot_total_radon(
+                activity_times,
+                total_values,
+                Path(out_dir) / "total_radon.png",
+                total_errors_arr,
+                config=plot_cfg,
+            )
+
+            activity_arr = concentration
+            err_arr = concentration_err
+        else:
+            activity_arr = err_arr = None
 
         if radon_combined_info is not None:
             try:
@@ -3768,6 +3815,7 @@ def main(argv=None):
                 logger.warning("Could not create radon combined plot -> %s", e)
 
         A214 = dA214 = None
+        A214_conc = dA214_conc = None
         if "Po214" in valid_fits:
             fit_result = time_fit_results["Po214"]
             fit = valid_fits["Po214"]
@@ -3780,11 +3828,17 @@ def main(argv=None):
             A214, dA214 = radon_activity_curve(
                 t_rel, E, dE, N0, dN0, hl, cov
             )
+            if sample_vol > 0:
+                A214_conc = A214 / float(sample_vol)
+                dA214_conc = dA214 / float(sample_vol)
+            else:
+                A214_conc = A214
+                dA214_conc = dA214
             plot_radon_activity(
                 time_grid,
-                A214,
+                A214_conc,
                 Path(out_dir) / "radon_activity_po214.png",
-                dA214,
+                dA214_conc,
                 config=cfg.get("plotting", {}),
             )
 
@@ -3802,83 +3856,9 @@ def main(argv=None):
                 t_rel, E, dE, N0, dN0, hl, cov
             )
 
-        activity_arr = err_arr = None
-        if A214 is None and A218 is None:
-            activity_arr = _regrid_series(
-                fallback_times,
-                fallback_activity_raw,
-                activity_times,
-                fallback_fill,
-            )
-            err_arr = _regrid_series(
-                fallback_times,
-                fallback_errs_arr,
-                activity_times,
-                err_fill,
-            )
-        else:
-            activity_arr = np.zeros_like(time_grid, dtype=float)
-            err_arr = np.zeros_like(time_grid, dtype=float)
-            for i in range(time_grid.size):
-                r214 = err214_i = None
-                if A214 is not None:
-                    r214 = A214[i]
-                    err214_i = dA214[i]
-                r218 = err218_i = None
-                if A218 is not None:
-                    r218 = A218[i]
-                    err218_i = dA218[i]
-                A, s = compute_radon_activity(
-                    r218,
-                    err218_i,
-                    1.0,
-                    r214,
-                    err214_i,
-                    1.0,
-                )
-                activity_arr[i] = A
-                err_arr[i] = s
-
-            if radon_val is not None and (
-                not np.isfinite(activity_arr).any() or np.all(activity_arr == 0)
-            ):
-                activity_arr.fill(radon_val)
-            if radon_unc is not None and (
-                not np.isfinite(err_arr).any() or np.all(err_arr == 0)
-            ):
-                err_arr.fill(radon_unc)
-
-        if A214 is None and A218 is None:
-            if radon_val is not None and (
-                not np.isfinite(activity_arr).any() or np.all(activity_arr == 0)
-            ):
-                activity_arr.fill(radon_val)
-            if radon_unc is not None and (
-                not np.isfinite(err_arr).any() or np.all(err_arr == 0)
-            ):
-                err_arr.fill(radon_unc)
-
-        if activity_arr is not None and err_arr is not None:
-            plot_radon_activity(
-                activity_times,
-                activity_arr,
-                Path(out_dir) / "radon_activity.png",
-                err_arr,
-                config=cfg.get("plotting", {}),
-            )
-            total_vals, total_errs = _total_radon_series(
-                activity_arr,
-                err_arr,
-                monitor_vol,
-                sample_vol,
-            )
-            plot_total_radon(
-                activity_times,
-                total_vals,
-                Path(out_dir) / "total_radon.png",
-                total_errs,
-                config=cfg.get("plotting", {}),
-            )
+        if activity_arr is None:
+            activity_arr = np.array([], dtype=float)
+            err_arr = None
 
         if radon_interval is not None:
             times_trend = np.linspace(
@@ -3931,19 +3911,28 @@ def main(argv=None):
                 )
 
         ambient = cfg.get("analysis", {}).get("ambient_concentration")
-        ambient_interp = None
+        ambient_interp_activity = None
+        ambient_interp_grid = None
         if args.ambient_file:
             try:
                 dat = np.loadtxt(args.ambient_file, usecols=(0, 1))
-                ambient_interp = np.interp(activity_times, dat[:, 0], dat[:, 1])
+                if activity_times.size > 0:
+                    ambient_interp_activity = np.interp(activity_times, dat[:, 0], dat[:, 1])
+                if time_grid.size > 0:
+                    ambient_interp_grid = np.interp(time_grid, dat[:, 0], dat[:, 1])
             except Exception as e:
                 logger.warning(
                     "Could not read ambient file '%s': %s", args.ambient_file, e
                 )
 
-        if ambient_interp is not None:
-            vol_arr = activity_arr / ambient_interp
-            vol_err = err_arr / ambient_interp
+        if (
+            ambient_interp_activity is not None
+            and activity_arr.size > 0
+        ):
+            vol_arr = activity_arr / ambient_interp_activity
+            vol_err = (
+                err_arr / ambient_interp_activity if err_arr is not None else np.zeros_like(vol_arr)
+            )
             plot_equivalent_air(
                 activity_times,
                 vol_arr,
@@ -3952,32 +3941,49 @@ def main(argv=None):
                 Path(out_dir) / "equivalent_air.png",
                 config=cfg.get("plotting", {}),
             )
-            if A214 is not None:
+            if A214_conc is not None and ambient_interp_grid is not None:
+                po214_err = (
+                    dA214_conc / ambient_interp_grid
+                    if dA214_conc is not None
+                    else np.zeros_like(A214_conc)
+                )
                 plot_equivalent_air(
                     time_grid,
-                    A214 / ambient_interp,
-                    dA214 / ambient_interp,
+                    A214_conc / ambient_interp_grid,
+                    po214_err,
                     None,
                     Path(out_dir) / "equivalent_air_po214.png",
                     config=cfg.get("plotting", {}),
                 )
         elif ambient:
-            vol_arr = activity_arr / float(ambient)
-            vol_err = err_arr / float(ambient)
-            plot_equivalent_air(
-                activity_times,
-                vol_arr,
-                vol_err,
-                float(ambient),
-                Path(out_dir) / "equivalent_air.png",
-                config=cfg.get("plotting", {}),
-            )
-            if A214 is not None:
+            try:
+                ambient_val = float(ambient)
+            except (TypeError, ValueError):
+                ambient_val = None
+            if ambient_val and activity_arr.size > 0:
+                vol_arr = activity_arr / ambient_val
+                vol_err = (
+                    err_arr / ambient_val if err_arr is not None else np.zeros_like(vol_arr)
+                )
+                plot_equivalent_air(
+                    activity_times,
+                    vol_arr,
+                    vol_err,
+                    ambient_val,
+                    Path(out_dir) / "equivalent_air.png",
+                    config=cfg.get("plotting", {}),
+                )
+            if ambient_val and A214_conc is not None:
+                po214_err = (
+                    dA214_conc / ambient_val
+                    if dA214_conc is not None
+                    else np.zeros_like(A214_conc)
+                )
                 plot_equivalent_air(
                     time_grid,
-                    A214 / float(ambient),
-                    dA214 / float(ambient),
-                    float(ambient),
+                    A214_conc / ambient_val,
+                    po214_err,
+                    ambient_val,
                     Path(out_dir) / "equivalent_air_po214.png",
                     config=cfg.get("plotting", {}),
                 )
