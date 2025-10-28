@@ -67,8 +67,21 @@ def two_pass_time_fit(
             if eff_val is not None:
                 fixed_val = float(fixed_val) * eff_val
 
+    def _annotate(result: FitResult, strategy: str, baseline_val: float | None = None):
+        try:
+            meta = result.metadata
+        except AttributeError:
+            result.metadata = {}
+            meta = result.metadata
+        meta["background_strategy"] = strategy
+        if baseline_val is not None:
+            try:
+                meta["baseline_rate_Bq"] = float(baseline_val)
+            except (TypeError, ValueError):
+                pass
+
     if not fix_first or fixed_val is None or not iso:
-        return fit_func(
+        res = fit_func(
             times_dict,
             t_start,
             t_end,
@@ -76,6 +89,8 @@ def two_pass_time_fit(
             weights=weights,
             strict=strict,
         )
+        _annotate(res, "floated")
+        return res
 
     cfg_first = dict(config)
     cfg_first["fit_background"] = False
@@ -109,5 +124,10 @@ def two_pass_time_fit(
     valid2 = bool(res2.params.get("fit_valid", True))
 
     if valid2 and (not valid1 or _aic(res1) - _aic(res2) >= 0.5):
+        _annotate(res2, "floated")
         return res2
+
+    strategy = "baseline_fixed" if baseline_rate is not None else "fixed"
+    baseline_val = float(baseline_rate) if baseline_rate is not None else None
+    _annotate(res1, strategy, baseline_val)
     return res1
