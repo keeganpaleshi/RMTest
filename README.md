@@ -460,16 +460,14 @@ fit.  Important keys include:
   isotope).  When an explicit `tau_{iso}` prior is supplied the tail is
   automatically enabled even if the mapping omits the isotope, ensuring
   priors always take effect.
-- `mu_bounds` – optional lower/upper limits for each peak centroid.
-  Set for example `{"Po218": [5.9, 6.2]}` to keep the Po‑218 fit from
-
-  drifting into the Po‑210 region.  Centroid guesses found during peak
-  search are clamped to this range before the fit starts.
+- `mu_bounds` – optional dict mapping isotopes to `[lo, hi]` centroid
+  limits.  Set for example `{"Po218": [5.9, 6.1]}` to keep the Po‑218 fit
+  from drifting into the Po‑210 region.  Initial centroid guesses found
+  during peak search are clamped to this window before the fit starts.
 - `mu_bounds_units` – interpret the numbers supplied in `mu_bounds` as
-  either `"mev"` (default) or raw `"adc"` channels.  Bounds expressed
-  in ADC are converted to MeV with the current calibration before the
-  spectral fitter runs so that physical parameters (notably the peak
-  amplitudes) remain unconstrained by unit mismatches.
+  either `"mev"` (default) or raw `"adc"` channels.  ADC bounds are
+  converted to MeV with the current calibration before fitting so the
+  user’s ADC intuition never conflicts with the fitter’s MeV model.
 
 - `sigma_E_prior_source` – one-sigma width of the prior on the common
   energy resolution parameter. When omitted the uncertainty from the
