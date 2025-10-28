@@ -264,6 +264,7 @@ def plot_time_series(
 
         counts_segments = []
         counts_plot_segments = []
+        errors_plot_segments = []
         for seg in segments:
             mask_iso = (
                 (all_energies >= emin)
@@ -278,6 +279,7 @@ def plot_time_series(
                 counts_run, _ = np.histogram(times_iso, bins=seg["edges"])
                 counts_run = counts_run.astype(float)
             counts_segments.append(counts_run)
+            errors_run = np.sqrt(counts_run)
             if normalise_rate:
                 with np.errstate(divide="ignore", invalid="ignore"):
                     counts_plot = np.divide(
@@ -286,27 +288,40 @@ def plot_time_series(
                         out=np.zeros_like(counts_run, dtype=float),
                         where=seg["widths"] > 0,
                     )
+                    errors_plot = np.divide(
+                        errors_run,
+                        seg["widths"],
+                        out=np.zeros_like(errors_run, dtype=float),
+                        where=seg["widths"] > 0,
+                    )
+                counts_plot = np.nan_to_num(counts_plot, nan=0.0, posinf=0.0, neginf=0.0)
+                errors_plot = np.nan_to_num(errors_plot, nan=0.0, posinf=0.0, neginf=0.0)
             else:
                 counts_plot = counts_run
+                errors_plot = errors_run
             counts_plot_segments.append(counts_plot)
+            errors_plot_segments.append(errors_plot)
 
         counts_concat = (
             np.concatenate(counts_segments) if counts_segments else np.array([], dtype=float)
         )
         counts_for_json[iso] = counts_concat
 
-        for idx, (counts_plot, seg) in enumerate(zip(counts_plot_segments, segments)):
+        for idx, (counts_plot, errors_plot, seg) in enumerate(
+            zip(counts_plot_segments, errors_plot_segments, segments)
+        ):
             if counts_plot.size == 0:
                 continue
             label = f"Data {iso}" if idx == 0 else None
             if style == "lines":
-                plt.plot(
+                plt.errorbar(
                     seg["centers_mpl"],
                     counts_plot,
-                    marker="o",
-                    linestyle="-",
+                    yerr=errors_plot,
+                    fmt="o-",
                     color=colors[iso],
                     label=label,
+                    capsize=3,
                 )
             else:
                 plt.step(
@@ -315,6 +330,15 @@ def plot_time_series(
                     where="mid",
                     color=colors[iso],
                     label=label,
+                )
+                plt.errorbar(
+                    seg["centers_mpl"],
+                    counts_plot,
+                    yerr=errors_plot,
+                    fmt="none",
+                    ecolor=colors[iso],
+                    elinewidth=1.0,
+                    capsize=3,
                 )
 
         # Overlay the continuous model curve (scaled to counts/bin)
