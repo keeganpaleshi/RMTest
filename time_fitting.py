@@ -58,6 +58,40 @@ def two_pass_time_fit(
     iso_list = list(times_dict.keys())
     iso = iso_list[0] if iso_list else ""
 
+    baseline_rate_value = float(baseline_rate) if baseline_rate is not None else None
+
+    def _annotate(res_obj, strategy: str, baseline_val: float | None = None):
+        """Attach background-handling metadata to ``res_obj``."""
+
+        baseline_numeric = (
+            float(baseline_val) if baseline_val is not None else None
+        )
+        params = getattr(res_obj, "params", None)
+
+        if isinstance(params, Mapping):
+            try:
+                params["background_strategy"] = strategy
+                if baseline_numeric is not None:
+                    params["baseline_rate_used_Bq"] = baseline_numeric
+                else:
+                    params.pop("baseline_rate_used_Bq", None)
+            except TypeError:
+                params = dict(params)
+                params["background_strategy"] = strategy
+                if baseline_numeric is not None:
+                    params["baseline_rate_used_Bq"] = baseline_numeric
+                else:
+                    params.pop("baseline_rate_used_Bq", None)
+                res_obj.params = params  # type: ignore[attr-defined]
+        elif isinstance(res_obj, dict):
+            res_obj["background_strategy"] = strategy
+            if baseline_numeric is not None:
+                res_obj["baseline_rate_used_Bq"] = baseline_numeric
+            else:
+                res_obj.pop("baseline_rate_used_Bq", None)
+
+        return res_obj
+
     fix_first = bool(config.get("fix_background_b_first_pass", True))
     fixed_val = config.get("background_b_fixed_value")
     if fixed_val is None:
@@ -68,13 +102,25 @@ def two_pass_time_fit(
                 fixed_val = float(fixed_val) * eff_val
 
     if not fix_first or fixed_val is None or not iso:
-        return fit_func(
+        result = fit_func(
             times_dict,
             t_start,
             t_end,
             config,
             weights=weights,
             strict=strict,
+        )
+        if bool(config.get("fit_background", True)):
+            return _annotate(result, "floated")
+        strategy = (
+            "fixed_from_baseline"
+            if baseline_rate_value is not None
+            else "fixed"
+        )
+        return _annotate(
+            result,
+            strategy,
+            baseline_rate_value if strategy == "fixed_from_baseline" else None,
         )
 
     cfg_first = dict(config)
@@ -109,5 +155,13 @@ def two_pass_time_fit(
     valid2 = bool(res2.params.get("fit_valid", True))
 
     if valid2 and (not valid1 or _aic(res1) - _aic(res2) >= 0.5):
-        return res2
-    return res1
+        return _annotate(res2, "floated")
+
+    strategy_first = (
+        "fixed_from_baseline" if baseline_rate_value is not None else "fixed"
+    )
+    return _annotate(
+        res1,
+        strategy_first,
+        baseline_rate_value if strategy_first == "fixed_from_baseline" else None,
+    )

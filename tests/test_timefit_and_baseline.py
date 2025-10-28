@@ -53,3 +53,66 @@ def test_two_pass_time_fit_rejects_invalid_second_pass():
 
     assert out is first
 
+
+def test_two_pass_time_fit_metadata_fixed_from_baseline():
+    baseline_rate = 0.42
+    first = FitResult(
+        FitParams({"E_Po214": 1.0, "nll": 10.0, "fit_valid": True}),
+        None,
+        0,
+    )
+    second = FitResult(
+        FitParams({"E_Po214": 1.5, "nll": 9.0, "fit_valid": False}),
+        None,
+        0,
+    )
+
+    calls = iter([first, second])
+
+    def fake_fit(*args, **kwargs):
+        return next(calls)
+
+    out = two_pass_time_fit(
+        {"Po214": [0.0, 1.0]},
+        0.0,
+        10.0,
+        {"fix_background_b_first_pass": True},
+        baseline_rate=baseline_rate,
+        fit_func=fake_fit,
+    )
+
+    assert out is first
+    assert out.params["background_strategy"] == "fixed_from_baseline"
+    assert out.params["baseline_rate_used_Bq"] == baseline_rate
+
+
+def test_two_pass_time_fit_metadata_floated_background():
+    first = FitResult(
+        FitParams({"E_Po214": 1.0, "nll": 12.0, "fit_valid": True}),
+        None,
+        0,
+    )
+    second = FitResult(
+        FitParams({"E_Po214": 1.5, "nll": 9.0, "fit_valid": True}),
+        None,
+        0,
+    )
+
+    calls = iter([first, second])
+
+    def fake_fit(*args, **kwargs):
+        return next(calls)
+
+    out = two_pass_time_fit(
+        {"Po214": [0.0, 1.0]},
+        0.0,
+        10.0,
+        {"fix_background_b_first_pass": True},
+        baseline_rate=0.5,
+        fit_func=fake_fit,
+    )
+
+    assert out is second
+    assert out.params["background_strategy"] == "floated"
+    assert "baseline_rate_used_Bq" not in out.params
+
