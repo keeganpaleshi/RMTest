@@ -65,6 +65,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 from dateutil.tz import UTC, gettz
+import radon_activity
 
 from hierarchical import fit_hierarchical_runs
 
@@ -118,6 +119,58 @@ def _hl_value(cfg: Mapping[str, Any], iso: str) -> float:
         consts = cfg.get("nuclide_constants", {})
         val = consts.get(iso, NUCLIDES[iso]).half_life_s
     return float(val)
+
+
+def _radon_background_mode(
+    cfg: Mapping[str, Any],
+    time_fit_results: Mapping[str, Any],
+) -> str | None:
+    """Infer the background treatment used by the time-series fit."""
+
+    tf_cfg = cfg.get("time_fit")
+    if not isinstance(tf_cfg, Mapping):
+        tf_cfg = {}
+
+    flags = tf_cfg.get("flags")
+    if not isinstance(flags, Mapping):
+        flags = {}
+
+    if flags.get("fix_background_b"):
+        return "fixed_from_baseline"
+
+    iso_candidates = ("Po214", "Po218")
+    for iso in iso_candidates:
+        fit_obj = time_fit_results.get(iso)
+        if fit_obj is None:
+            continue
+
+        param_index = None
+        params: Mapping[str, Any] | None = None
+
+        if isinstance(fit_obj, FitResult):
+            param_index = getattr(fit_obj, "param_index", None)
+            params = getattr(fit_obj, "params", None)
+        elif isinstance(fit_obj, Mapping):
+            param_index = fit_obj.get("param_index")
+            params = fit_obj
+
+        key = f"B_{iso}"
+        if isinstance(param_index, Mapping) and key in param_index:
+            return "floated"
+
+        if isinstance(params, Mapping):
+            err_key = f"d{key}"
+            val = params.get(err_key)
+            if val is not None:
+                try:
+                    if not np.isclose(float(val), 0.0):
+                        return "floated"
+                except (TypeError, ValueError):
+                    return "floated"
+            if key in params:
+                return "fixed_from_baseline"
+
+    return "floated"
 
 
 def _eff_prior(eff_cfg: Any) -> tuple[float, float]:
@@ -361,15 +414,48 @@ from time_fitting import two_pass_time_fit
 from config.validation import validate_baseline_window
 
 
-def plot_radon_activity(times, activity, out_png, errors=None, *, config=None):
+def plot_radon_activity(
+    times,
+    activity,
+    out_png,
+    errors=None,
+    *,
+    config=None,
+    sample_volume_l=None,
+    background_mode=None,
+):
     """Wrapper used by tests expecting output path as third argument."""
-    return plot_radon_activity_full(times, activity, errors, out_png, config=config)
+
+    return plot_radon_activity_full(
+        times,
+        activity,
+        errors,
+        out_png,
+        config=config,
+        sample_volume_l=sample_volume_l,
+        background_mode=background_mode,
+    )
 
 
-def plot_total_radon(times, total_bq, out_png, errors=None, *, config=None):
+def plot_total_radon(
+    times,
+    total_bq,
+    out_png,
+    errors=None,
+    *,
+    config=None,
+    background_mode=None,
+):
     """Wrapper used by tests expecting output path as third argument."""
 
-    return plot_total_radon_full(times, total_bq, errors, out_png, config=config)
+    return plot_total_radon_full(
+        times,
+        total_bq,
+        errors,
+        out_png,
+        config=config,
+        background_mode=background_mode,
+    )
 
 
 def plot_radon_trend(times, activity, out_png, *, config=None, fit_valid=True):
@@ -383,8 +469,26 @@ def _total_radon_series(activity, errors, monitor_volume, sample_volume):
     activity_arr = np.asarray(activity, dtype=float)
     err_arr = None if errors is None else np.asarray(errors, dtype=float)
 
-    total = activity_arr.copy()
-    total_err = None if err_arr is None else err_arr.copy()
+    total = np.empty_like(activity_arr, dtype=float)
+    total_err = None if err_arr is None else np.empty_like(err_arr, dtype=float)
+
+    for idx, value in enumerate(activity_arr):
+        err_val = 0.0 if err_arr is None else float(err_arr[idx])
+        try:
+            _, _, total_bq, sigma_total = radon_activity.compute_total_radon(
+                float(value),
+                float(err_val),
+                float(monitor_volume),
+                float(sample_volume),
+                allow_negative_activity=True,
+            )
+        except Exception:
+            total_bq = float(value)
+            sigma_total = float(err_val)
+
+        total[idx] = total_bq
+        if total_err is not None:
+            total_err[idx] = sigma_total
 
     return total, total_err
 
@@ -3433,7 +3537,7 @@ def main(argv=None):
     # ────────────────────────────────────────────────────────────
     # Radon activity extrapolation
     # ────────────────────────────────────────────────────────────
-    from radon_activity import compute_radon_activity, compute_total_radon
+    from radon_activity import compute_radon_activity
 
     radon_results = {}
     radon_combined_info = None
@@ -3535,7 +3639,7 @@ def main(argv=None):
     # and retain the total amount of radon inferred from the sample without
     # diluting by the chamber volume.
     try:
-        conc, dconc, total_bq, dtotal_bq = compute_total_radon(
+        conc, dconc, total_bq, dtotal_bq = radon_activity.compute_total_radon(
             A_radon,
             dA_radon,
             monitor_vol,
@@ -3857,6 +3961,7 @@ def main(argv=None):
             Path(out_dir) / "radon_activity.png",
             rad_ts.get("error"),
             config=cfg.get("plotting", {}),
+            sample_volume_l=sample_vol,
         )
         total_vals, total_errs = _total_radon_series(
             rad_ts["activity"],
@@ -4130,6 +4235,7 @@ def main(argv=None):
         times_dt = to_datetime_utc(time_grid, unit="s")
         t_rel = (times_dt - analysis_start).total_seconds()
         activity_times = time_grid
+        background_mode = _radon_background_mode(cfg, time_fit_results)
 
         if radon_combined_info is not None:
             try:
@@ -4139,6 +4245,8 @@ def main(argv=None):
                     Path(out_dir) / "radon_activity_combined.png",
                     [radon_combined_info["unc_Bq"]] * 2,
                     config=cfg.get("plotting", {}),
+                    sample_volume_l=sample_vol,
+                    background_mode=background_mode,
                 )
             except Exception as e:
                 logger.warning("Could not create radon combined plot -> %s", e)
@@ -4162,6 +4270,8 @@ def main(argv=None):
                 Path(out_dir) / "radon_activity_po214.png",
                 dA214,
                 config=cfg.get("plotting", {}),
+                sample_volume_l=sample_vol,
+                background_mode=background_mode,
             )
 
         A218 = dA218 = None
@@ -4235,18 +4345,62 @@ def main(argv=None):
                 err_arr.fill(radon_unc)
 
         if activity_arr is not None and err_arr is not None:
+            times_list = [float(t) for t in np.asarray(activity_times, dtype=float)]
+            plot_series = {
+                "time": times_list,
+                "activity": np.asarray(activity_arr, dtype=float).tolist(),
+                "error": np.asarray(err_arr, dtype=float).tolist(),
+            }
+            if sample_vol is not None:
+                try:
+                    plot_series["sample_volume_l"] = float(sample_vol)
+                except (TypeError, ValueError):
+                    pass
+
+            if background_mode is not None:
+                plot_series["background_mode"] = background_mode
+
+            total_vals, total_errs = _total_radon_series(
+                activity_arr,
+                err_arr,
+                monitor_vol,
+                sample_vol,
+            )
+            total_series = {
+                "time": list(times_list),
+                "activity": total_vals.tolist(),
+            }
+            if total_errs is not None:
+                total_series["error"] = total_errs.tolist()
+            if background_mode is not None:
+                total_series["background_mode"] = background_mode
+
+            summary_radon = summary.get("radon") if hasattr(summary, "get") else None
+            if not isinstance(summary_radon, Mapping):
+                summary_radon = {}
+            else:
+                summary_radon = dict(summary_radon)
+
+            plot_payload = summary_radon.get("plot_series")
+            if isinstance(plot_payload, Mapping):
+                plot_payload = dict(plot_payload)
+            else:
+                plot_payload = {}
+            plot_payload["time_series"] = plot_series
+            plot_payload["total_time_series"] = total_series
+            if background_mode is not None:
+                plot_payload["background_mode"] = background_mode
+            summary_radon["plot_series"] = plot_payload
+            summary["radon"] = summary_radon
+
             plot_radon_activity(
                 activity_times,
                 activity_arr,
                 Path(out_dir) / "radon_activity.png",
                 err_arr,
                 config=cfg.get("plotting", {}),
-            )
-            total_vals, total_errs = _total_radon_series(
-                activity_arr,
-                err_arr,
-                monitor_vol,
-                sample_vol,
+                sample_volume_l=sample_vol,
+                background_mode=background_mode,
             )
             plot_total_radon(
                 activity_times,
@@ -4254,6 +4408,7 @@ def main(argv=None):
                 Path(out_dir) / "total_radon.png",
                 total_errs,
                 config=cfg.get("plotting", {}),
+                background_mode=background_mode,
             )
 
         if radon_interval is not None:

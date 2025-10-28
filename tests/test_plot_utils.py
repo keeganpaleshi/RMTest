@@ -662,6 +662,41 @@ def test_plot_radon_activity_output(tmp_path):
     assert out_png.exists()
 
 
+def test_plot_radon_activity_background_annotation(tmp_path, monkeypatch):
+    times = [0.0, 1.0, 2.0]
+    activity = [1.0, 2.0, 3.0]
+    errors = [0.1, 0.2, 0.3]
+    out_png = tmp_path / "radon_bg.png"
+
+    captured = {}
+
+    from matplotlib.figure import Figure
+
+    orig_savefig = Figure.savefig
+
+    def fake_savefig(self, *args, **kwargs):
+        captured.setdefault("fig", self)
+        return orig_savefig(self, *args, **kwargs)
+
+    monkeypatch.setattr("matplotlib.figure.Figure.savefig", fake_savefig)
+    monkeypatch.setattr("matplotlib.pyplot.close", lambda *a, **k: None)
+
+    from plot_utils import plot_radon_activity_full
+
+    plot_radon_activity_full(
+        times,
+        activity,
+        errors,
+        str(out_png),
+        background_mode="fixed_from_baseline",
+    )
+
+    assert "fig" in captured
+    suptitle = captured["fig"]._suptitle
+    assert suptitle is not None
+    assert "fixed_from_baseline" in suptitle.get_text()
+
+
 def test_plot_total_radon_output(tmp_path):
     times = [0.0, 1.0, 2.0]
     total = [5.0, 6.0, 7.0]
@@ -1056,29 +1091,19 @@ def test_plot_radon_activity_axis_labels(tmp_path, monkeypatch):
     out_png = tmp_path / "radon_lbl.png"
 
     import matplotlib.pyplot as plt
-    import matplotlib.axes
 
     monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
     monkeypatch.setattr("plot_utils.plt.close", lambda *a, **k: None)
-
-    captured = {}
-    orig_sec = matplotlib.axes.Axes.secondary_xaxis
-
-    def wrapper(self, *args, **kwargs):
-        sec = orig_sec(self, *args, **kwargs)
-        captured["axis"] = sec
-        return sec
-
-    monkeypatch.setattr(matplotlib.axes.Axes, "secondary_xaxis", wrapper)
 
     from plot_utils import plot_radon_activity_full
 
     plot_radon_activity_full(times, activity, errors, str(out_png))
 
-    ax = plt.gca()
-    assert ax.get_xlabel() == "Time (UTC)"
-    assert "axis" in captured
-    assert captured["axis"].get_xlabel() == "Elapsed Time (h)"
+    axes = plt.gcf().get_axes()
+    assert len(axes) >= 2
+    ax_time, ax_elapsed = axes[:2]
+    assert ax_time.get_xlabel() == "Time (UTC)"
+    assert ax_elapsed.get_xlabel() == "Elapsed Time (h)"
 
 
 def test_plot_radon_activity_no_offset(tmp_path, monkeypatch):
@@ -1087,26 +1112,16 @@ def test_plot_radon_activity_no_offset(tmp_path, monkeypatch):
     errors = [0.1, 0.2, 0.3]
 
     import matplotlib.pyplot as plt
-    import matplotlib.axes
     monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
     monkeypatch.setattr("plot_utils.plt.close", lambda *a, **k: None)
 
-    captured = {}
-    orig_sec = matplotlib.axes.Axes.secondary_xaxis
-
-    def wrapper(self, *args, **kwargs):
-        sec = orig_sec(self, *args, **kwargs)
-        captured["axis"] = sec
-        return sec
-
-    monkeypatch.setattr(matplotlib.axes.Axes, "secondary_xaxis", wrapper)
-
     plot_radon_activity({"time": times, "activity": activity, "error": errors}, str(tmp_path))
 
-    ax = plt.gca()
-    assert not ax.xaxis.get_offset_text().get_visible()
-    assert not ax.yaxis.get_offset_text().get_visible()
-    assert not captured["axis"].xaxis.get_offset_text().get_visible()
+    axes = plt.gcf().get_axes()
+    assert len(axes) >= 2
+    for axis in axes[:2]:
+        assert not axis.xaxis.get_offset_text().get_visible()
+        assert not axis.yaxis.get_offset_text().get_visible()
 
 
 def test_plot_radon_activity_full_no_offset(tmp_path, monkeypatch):
@@ -1116,27 +1131,16 @@ def test_plot_radon_activity_full_no_offset(tmp_path, monkeypatch):
     out_png = tmp_path / "radon_full_offset.png"
 
     import matplotlib.pyplot as plt
-    import matplotlib.axes
-
     monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
     monkeypatch.setattr("plot_utils.plt.close", lambda *a, **k: None)
 
-    captured = {}
-    orig_sec = matplotlib.axes.Axes.secondary_xaxis
-
-    def wrapper(self, *args, **kwargs):
-        sec = orig_sec(self, *args, **kwargs)
-        captured["axis"] = sec
-        return sec
-
-    monkeypatch.setattr(matplotlib.axes.Axes, "secondary_xaxis", wrapper)
-
     plot_radon_activity_full(times, activity, errors, str(out_png))
 
-    ax = plt.gca()
-    assert not ax.xaxis.get_offset_text().get_visible()
-    assert not ax.yaxis.get_offset_text().get_visible()
-    assert not captured["axis"].xaxis.get_offset_text().get_visible()
+    axes = plt.gcf().get_axes()
+    assert len(axes) >= 2
+    for axis in axes[:2]:
+        assert not axis.xaxis.get_offset_text().get_visible()
+        assert not axis.yaxis.get_offset_text().get_visible()
 
 
 def test_plot_time_series_uncertainty_band(tmp_path, monkeypatch):

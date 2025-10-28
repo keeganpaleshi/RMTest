@@ -11,6 +11,7 @@ import matplotlib as _mpl
 
 _mpl.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from datetime import datetime
 from pathlib import Path
 from color_schemes import COLOR_SCHEMES
@@ -635,6 +636,53 @@ def plot_spectrum(
     return ax_main
 
 
+def _elapsed_hours(times_mpl: np.ndarray) -> np.ndarray:
+    epoch = mdates.date2num(datetime(1970, 1, 1))
+    seconds = (times_mpl - epoch) * 86400.0
+    if seconds.size == 0:
+        return seconds
+    return (seconds - seconds[0]) / 3600.0
+
+
+def _apply_time_format(ax, times_mpl: np.ndarray) -> None:
+    locator = mdates.AutoDateLocator()
+    try:
+        formatter = mdates.ConciseDateFormatter(locator)
+    except AttributeError:  # pragma: no cover
+        formatter = mdates.AutoDateFormatter(locator)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(formatter)
+    ax.xaxis.get_offset_text().set_visible(False)
+
+
+def _compute_ylim(values: np.ndarray, errors: np.ndarray | None) -> tuple[float, float]:
+    if values.size == 0:
+        return -0.5, 0.5
+    if errors is not None:
+        lo_arr = values - errors
+        hi_arr = values + errors
+    else:
+        lo_arr = hi_arr = values
+
+    finite_lo = np.isfinite(lo_arr)
+    finite_hi = np.isfinite(hi_arr)
+
+    lower = np.nan
+    upper = np.nan
+    if finite_lo.any():
+        lower = float(np.min(lo_arr[finite_lo]))
+    if finite_hi.any():
+        upper = float(np.max(hi_arr[finite_hi]))
+
+    if not np.isfinite(lower) or not np.isfinite(upper):
+        return -0.5, 0.5
+    if lower == upper:
+        delta = abs(lower) * 0.1 if lower != 0 else 0.5
+        return lower - delta, upper + delta
+    pad = 0.05 * (upper - lower)
+    return lower - pad, upper + pad
+
+
 def plot_radon_activity_full(
     times,
     activity,
@@ -643,76 +691,141 @@ def plot_radon_activity_full(
     config=None,
     *,
     po214_activity=None,
+    sample_volume_l=None,
+    background_mode=None,
 ):
-    """Plot radon activity versus time with uncertainties.
+    """Plot radon activity versus time with uncertainties."""
 
-    When ``po214_activity`` is given it is overlaid for quality control
-    on a secondary axis explicitly labelled as Po-214 activity.
-    """
     times_mpl = guard_mpl_times(times=times)
-    activity = np.asarray(activity, dtype=float)
-    errors = np.asarray(errors, dtype=float)
+    elapsed_hours = _elapsed_hours(times_mpl)
 
-    fig, ax = plt.subplots(figsize=(8, 4))
+    activity = np.asarray(activity, dtype=float)
+    errors_arr = None if errors is None else np.asarray(errors, dtype=float)
+
+    volume = None
+    if sample_volume_l is not None:
+        try:
+            volume = float(sample_volume_l)
+        except (TypeError, ValueError):
+            volume = None
+    label_units = "Rn-222 Activity (Bq)"
+    if volume is not None and np.isfinite(volume) and volume > 0:
+        conc = activity / volume
+        conc_err = None if errors_arr is None else errors_arr / volume
+        label_units = "Rn-222 Concentration (Bq/L)"
+    else:
+        conc = activity
+        conc_err = errors_arr
+
+    fig, (ax_abs, ax_rel) = plt.subplots(1, 2, figsize=(12, 4), sharey=True)
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("radon_activity", "#9467bd")
-    label = None if po214_activity is None else "Rn-222 Concentration"
-    ax.errorbar(times_mpl, activity, yerr=errors, fmt="o", color=color, label=label)
-    ax.set_xlabel("Time (UTC)")
-    ax.set_ylabel("Rn-222 Concentration (Bq/L)")
-    ax.set_title("Extrapolated Radon Concentration vs. Time")
-    ax.ticklabel_format(axis="y", style="plain")
-    setup_time_axis(ax, times_mpl)
+
+    label = None if po214_activity is None else "Rn-222"
+    ax_abs.errorbar(times_mpl, conc, yerr=conc_err, fmt="o", color=color, label=label)
+    _apply_time_format(ax_abs, times_mpl)
+    ax_abs.set_xlabel("Time (UTC)")
+    ax_abs.set_ylabel(label_units)
+    ax_abs.set_title("Radon Concentration vs. Time")
+    ax_abs.ticklabel_format(axis="y", style="plain")
+
+    ax_rel.errorbar(elapsed_hours, conc, yerr=conc_err, fmt="o", color=color)
+    ax_rel.set_xlabel("Elapsed Time (h)")
+    ax_rel.set_title("Radon Concentration vs. Elapsed Hours")
+    ax_rel.ticklabel_format(axis="y", style="plain")
+    ax_rel.xaxis.get_offset_text().set_visible(False)
 
     if po214_activity is not None:
-        po214_activity = np.asarray(po214_activity, dtype=float)
+        po214_arr = np.asarray(po214_activity, dtype=float)
+        if volume is not None and np.isfinite(volume) and volume > 0:
+            po214_arr = po214_arr / volume
+            po214_label = "Po-214 Concentration (QC)"
+        else:
+            po214_label = "Po-214 Activity (QC)"
         color214 = palette.get("Po214", "#d62728")
-        ax2 = ax.twinx()
-        ax2.plot(
-            times_mpl,
-            po214_activity,
-            "--",
-            color=color214,
-            label="Po-214 Concentration (QC)",
-        )
-        ax2.set_ylabel("Po-214 Concentration (Bq/L)")
+        ax2 = ax_abs.twinx()
+        ax2.plot(times_mpl, po214_arr, "--", color=color214, label=po214_label)
+        ax2.set_ylabel(po214_label)
         ax2.ticklabel_format(axis="y", style="plain")
         ax2.yaxis.get_offset_text().set_visible(False)
-        lines1, labels1 = ax.get_legend_handles_labels()
+        lines1, labels1 = ax_abs.get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
-        ax.legend(lines1 + lines2, labels1 + labels2, loc="best")
+        ax_abs.legend(lines1 + lines2, labels1 + labels2, loc="best")
 
-    plt.gcf().autofmt_xdate()
-    ax.yaxis.get_offset_text().set_visible(False)
-    plt.tight_layout()
+    ylim_low, ylim_high = _compute_ylim(np.asarray(conc, dtype=float), conc_err)
+    ax_abs.set_ylim(ylim_low, ylim_high)
+    ax_rel.set_ylim(ylim_low, ylim_high)
+
+    ax_abs.yaxis.get_offset_text().set_visible(False)
+    ax_rel.yaxis.get_offset_text().set_visible(False)
+    fig.autofmt_xdate()
+    layout_rect = None
+    if background_mode:
+        subtitle = f"Background mode: {background_mode}"
+        fig.suptitle(subtitle, fontsize=10)
+        layout_rect = (0.0, 0.0, 1.0, 0.94)
+
+    if layout_rect is not None:
+        plt.tight_layout(rect=layout_rect)
+    else:
+        plt.tight_layout()
     targets = get_targets(config, out_png)
     for p in targets.values():
         fig.savefig(p, dpi=300)
     plt.close(fig)
 
 
-def plot_total_radon_full(times, total_bq, errors, out_png, config=None):
+def plot_total_radon_full(
+    times,
+    total_bq,
+    errors,
+    out_png,
+    config=None,
+    *,
+    background_mode=None,
+):
     """Plot total radon present in the sample versus time."""
 
     times_mpl = guard_mpl_times(times=times)
+    elapsed_hours = _elapsed_hours(times_mpl)
     total_bq = np.asarray(total_bq, dtype=float)
     errors_arr = None if errors is None else np.asarray(errors, dtype=float)
 
-    fig, ax = plt.subplots(figsize=(8, 4))
+    fig, (ax_abs, ax_rel) = plt.subplots(1, 2, figsize=(12, 4), sharey=True)
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("total_radon", palette.get("radon_activity", "#9467bd"))
-    ax.errorbar(times_mpl, total_bq, yerr=errors_arr, fmt="o", color=color)
-    ax.set_xlabel("Time (UTC)")
-    ax.set_ylabel("Total Radon in Sample (Bq)")
-    ax.set_title("Total Radon vs. Time")
-    ax.ticklabel_format(axis="y", style="plain")
-    setup_time_axis(ax, times_mpl)
 
-    plt.gcf().autofmt_xdate()
-    ax.yaxis.get_offset_text().set_visible(False)
-    plt.tight_layout()
+    ax_abs.errorbar(times_mpl, total_bq, yerr=errors_arr, fmt="o", color=color)
+    _apply_time_format(ax_abs, times_mpl)
+    ax_abs.set_xlabel("Time (UTC)")
+    ax_abs.set_ylabel("Total Radon in Sample (Bq)")
+    ax_abs.set_title("Total Radon vs. Time")
+    ax_abs.ticklabel_format(axis="y", style="plain")
+
+    ax_rel.errorbar(elapsed_hours, total_bq, yerr=errors_arr, fmt="o", color=color)
+    ax_rel.set_xlabel("Elapsed Time (h)")
+    ax_rel.set_title("Total Radon vs. Elapsed Hours")
+    ax_rel.ticklabel_format(axis="y", style="plain")
+    ax_rel.xaxis.get_offset_text().set_visible(False)
+
+    ylim_low, ylim_high = _compute_ylim(total_bq, errors_arr)
+    ax_abs.set_ylim(ylim_low, ylim_high)
+    ax_rel.set_ylim(ylim_low, ylim_high)
+
+    ax_abs.yaxis.get_offset_text().set_visible(False)
+    ax_rel.yaxis.get_offset_text().set_visible(False)
+    fig.autofmt_xdate()
+    layout_rect = None
+    if background_mode:
+        fig.suptitle(f"Background mode: {background_mode}", fontsize=10)
+        layout_rect = (0.0, 0.0, 1.0, 0.94)
+
+    if layout_rect is not None:
+        plt.tight_layout(rect=layout_rect)
+    else:
+        plt.tight_layout()
 
     targets = get_targets(config, out_png)
     for p in targets.values():
@@ -838,43 +951,28 @@ def plot_radon_trend_full(times, activity, out_png, config=None, *, fit_valid=Tr
 def plot_radon_activity(ts_dict, outdir):
     """Simple wrapper to plot radon activity time series."""
     outdir = Path(outdir)
-    times_mpl = guard_mpl_times(times=ts_dict["time"])
-    y = np.asarray(ts_dict["activity"], dtype=float)
-    e = np.asarray(ts_dict["error"], dtype=float)
-
-    fig, ax = plt.subplots()
-    ax.errorbar(times_mpl, y, yerr=e, fmt="o")
-    ax.set_ylabel("Radon concentration [Bq/L]")
-    ax.set_xlabel("Time (UTC)")
-    ax.ticklabel_format(axis="y", style="plain")
-    setup_time_axis(ax, times_mpl)
-    fig.autofmt_xdate()
-    ax.yaxis.get_offset_text().set_visible(False)
-    plt.tight_layout()
-    fig.savefig(outdir / "radon_activity.png", dpi=300)
-    plt.close(fig)
+    sample_vol = ts_dict.get("sample_volume_l")
+    plot_radon_activity_full(
+        ts_dict["time"],
+        ts_dict["activity"],
+        ts_dict.get("error"),
+        outdir / "radon_activity.png",
+        sample_volume_l=sample_vol,
+        background_mode=ts_dict.get("background_mode"),
+    )
 
 
 def plot_total_radon(ts_dict, outdir):
     """Simple wrapper to plot total radon present in the sample."""
 
     outdir = Path(outdir)
-    times_mpl = guard_mpl_times(times=ts_dict["time"])
-    total = np.asarray(ts_dict["activity"], dtype=float)
-    errors = ts_dict.get("error")
-    errors_arr = None if errors is None else np.asarray(errors, dtype=float)
-
-    fig, ax = plt.subplots()
-    ax.errorbar(times_mpl, total, yerr=errors_arr, fmt="o")
-    ax.set_ylabel("Total radon in sample [Bq]")
-    ax.set_xlabel("Time (UTC)")
-    ax.ticklabel_format(axis="y", style="plain")
-    setup_time_axis(ax, times_mpl)
-    fig.autofmt_xdate()
-    ax.yaxis.get_offset_text().set_visible(False)
-    plt.tight_layout()
-    fig.savefig(outdir / "total_radon.png", dpi=300)
-    plt.close(fig)
+    plot_total_radon_full(
+        ts_dict["time"],
+        ts_dict["activity"],
+        ts_dict.get("error"),
+        outdir / "total_radon.png",
+        background_mode=ts_dict.get("background_mode"),
+    )
 
 
 def plot_radon_trend(ts_dict, outdir):
