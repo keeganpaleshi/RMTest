@@ -71,8 +71,8 @@ calibration:
     Po214: 7.687
 spectral_fit:
   do_spectral_fit: true
-  spectral_binning_mode: adc
-  adc_bin_width: 2
+  spectral_binning_mode: energy
+  energy_bin_width: 0.02
   fd_hist_bins: 400
   mu_sigma: 0.02
   amp_prior_scale: 5.0
@@ -118,11 +118,11 @@ spectral_fit:
       - 5.28
       - 5.33
     Po218:
-    - 5.95
-    - 6.05
+      - 5.95
+      - 6.05
     Po214:
-    - 7.66
-    - 7.71
+      - 7.66
+      - 7.71
 time_fit:
   do_time_fit: true
   window_po214:
