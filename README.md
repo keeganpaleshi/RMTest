@@ -640,6 +640,14 @@ configuration when provided. When you specify this option the
 configuration's interval is ignored in favour of the CLI value.
 The `--baseline-mode` option selects the background removal strategy.
 Valid modes are `none`, `electronics`, `radon` and `all` (default).
+When results are written the metadata also records the
+`background_mode` applied to the time-series fit.  The value
+`fixed_from_baseline` indicates that the monitor background was measured
+in a standalone baseline run and then held fixed while analysing the
+assay.  This is appropriate even when the baseline data were collected
+months before or after the assay because the radon emanation from the
+stainless-steel walls is intrinsic to the monitor hardware rather than
+to the sample plumbing.
 
 Baseline subtraction for each isotope is handled by
 ``radon.baseline.subtract_baseline_rate`` which combines the fitted rate
@@ -717,6 +725,18 @@ includes contributions from both count sets.
   baseline rates from the fit.
 - ``corrected_rate_Bq`` and ``corrected_sigma_Bq`` – baseline-subtracted
   rates from the time-series fit and their uncertainties.
+- ``background_mode`` – whether the background was floated or fixed.
+  The value ``fixed_from_baseline`` signals that a dedicated baseline
+  interval (which may come from a different run) supplied the fixed
+  subtraction.  The baseline period does not need to overlap the assay;
+  long standalone baselines can be re-used for later samples.
+
+Set ``allow_negative_baseline`` to ``true`` in the top-level
+configuration (or pass ``--allow-negative-baseline``) to allow small
+negative baseline-corrected activities.  The analysis still clips the
+values to a floor of ``-5`` Bq to avoid unphysical results when
+statistical fluctuations overshoot.  With the default ``false`` setting
+any negative value is clipped to zero instead.
 
 ### Baseline Noise Cut
 
