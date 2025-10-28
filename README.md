@@ -424,10 +424,15 @@ Bayesian combination across runs and `--debug` to increase log verbosity.
 The half-lives used in the decay fit can also be changed with
 `--hl-po214` and `--hl-po218`.
 
+The spectrum can be binned directly in energy by setting
+`"spectral_binning_mode": "energy"`.  In this mode the histogram is formed after
+applying the run calibration so the fit and the visualisation both use MeV
+throughout.  Configure the bin width with `energy_bin_width` (MeV).
+
 When the spectrum is binned in raw ADC channels (`"spectral_binning_mode": "adc"`),
 the bin edges are internally converted to energy using the calibration
-`slope_MeV_per_ch` (MeV per channel) and intercept before plotting.  This ensures `spectrum.png`
-reflects the calibrated energy scale regardless of binning mode.
+`slope_MeV_per_ch` (MeV per channel) and intercept before plotting.  This ensures
+`spectrum.png` reflects the calibrated energy scale regardless of binning mode.
 
 Custom `bin_edges` arrays may be supplied when calling the spectral fitting or
 plotting routines. The edges can have variable widths but must be strictly
@@ -437,6 +442,7 @@ The `spectral_fit` section provides priors for the unbinned likelihood
 fit.  Important keys include:
 
 - `fd_hist_bins` – number of histogram bins to use when the automatic [Freedman–Diaconis rule](https://en.wikipedia.org/wiki/Freedman%E2%80%93Diaconis_rule) fails.
+- `energy_bin_width` – width (MeV) of each histogram bin when `spectral_binning_mode` is `"energy"`.
 - `mu_sigma` – uncertainty applied to peak centroids.
 - `amp_prior_scale` – scales the width of the peak amplitude priors.
 - `bkg_mode` – `"auto"` estimates the linear continuum from the spectrum
@@ -453,6 +459,7 @@ fit.  Important keys include:
   `true` while Po‑218 and Po‑214 default to `false`.
 - `mu_bounds` – optional lower/upper limits for each peak centroid.
   Set for example `{"Po218": [5.9, 6.2]}` to keep the Po‑218 fit from
+
   drifting into the Po‑210 region.  Centroid guesses found during peak
   search are clamped to this range before the fit starts.
 - `mu_bounds_units` – interpret the numbers supplied in `mu_bounds` as
@@ -460,6 +467,7 @@ fit.  Important keys include:
   in ADC are converted to MeV with the current calibration before the
   spectral fitter runs so that physical parameters (notably the peak
   amplitudes) remain unconstrained by unit mismatches.
+
 - `sigma_E_prior_source` – one-sigma width of the prior on the common
   energy resolution parameter. When omitted the uncertainty from the
   calibration step is used.

@@ -2144,6 +2144,30 @@ def main(argv=None):
 
             bins = nbins
             bin_edges = None
+        elif method == "energy":
+            width = 0.02
+            if bin_cfg is not None:
+                width = bin_cfg.get("energy_bin_width", width)
+            else:
+                width = cfg["spectral_fit"].get("energy_bin_width", width)
+            width = float(width)
+            if width <= 0:
+                raise ValueError("energy_bin_width must be positive")
+            E_all = df_analysis["energy_MeV"].values
+            if E_all.size == 0:
+                bins = 1
+                bin_edges = np.array([0.0, width], dtype=float)
+            else:
+                e_min = float(np.min(E_all))
+                e_max = float(np.max(E_all))
+                # Guard against a single-point spectrum
+                if np.isclose(e_min, e_max):
+                    e_max = e_min + width
+                n_steps = int(np.ceil((e_max - e_min) / width))
+                # np.arange is exclusive of the stop value -> pad by one step
+                stop = e_min + (n_steps + 1) * width
+                bin_edges = np.arange(e_min, stop + 0.5 * width, width, dtype=float)
+                bins = bin_edges.size - 1
         else:
             # "ADC" binning mode -> fixed width in raw channels
             width = 1
@@ -2404,6 +2428,7 @@ def main(argv=None):
     # 6. Time‐series decay fits for Po‐218 and Po‐214
     # ────────────────────────────────────────────────────────────
     time_fit_results = {}
+    time_fit_background_meta: dict[str, dict[str, Any]] = {}
     priors_time_all = {}
     time_plot_data = {}
     iso_live_time = {}
@@ -2684,6 +2709,28 @@ def main(argv=None):
         except Exception as e:
             logging.warning("Decay-curve fit for %s failed -> %s", iso, e)
             time_fit_results[iso] = {}
+
+        # Record how the background parameter was treated
+        background_mode = "floated"
+        baseline_rate_meta: float | None = None
+        if isinstance(decay_out, FitResult):
+            param_index = decay_out.param_index or {}
+            has_background_param = f"B_{iso}" in param_index
+            background_mode = "floated" if has_background_param else "fixed"
+        elif isinstance(decay_out, Mapping):
+            has_background_param = f"B_{iso}" in decay_out
+            background_mode = "floated" if has_background_param else "fixed"
+        else:
+            background_mode = "floated" if fit_cfg.get("fit_background") else "fixed"
+
+        if background_mode == "fixed" and baseline_rate_iso is not None:
+            baseline_rate_meta = float(baseline_rate_iso)
+            background_mode = "fixed_from_baseline"
+
+        meta_entry: dict[str, Any] = {"mode": background_mode}
+        if baseline_rate_meta is not None:
+            meta_entry["baseline_rate_Bq"] = baseline_rate_meta
+        time_fit_background_meta[iso] = meta_entry
 
         # Store inputs for plotting later
         time_plot_data[iso] = {
@@ -3421,6 +3468,12 @@ def main(argv=None):
             d = fit
         else:
             d = {}
+        meta = time_fit_background_meta.get(iso)
+        if meta:
+            d = dict(d)
+            d["background_mode"] = meta.get("mode")
+            if meta.get("baseline_rate_Bq") is not None:
+                d["baseline_rate_Bq"] = meta["baseline_rate_Bq"]
         time_fit_serializable[iso] = d
 
     if isinstance(cal_params, dict):
