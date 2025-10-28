@@ -2433,21 +2433,40 @@ def main(argv=None):
         # Build priors for the unbinned spectrum fit:
         priors_spec = {}
         # Resolution prior: map calibrated sigma_E -> sigma0 parameter
-        sigma_E_prior = spectral_cfg.get("sigma_E_prior_source", sigE_sigma)
-        float_sigma_E = spectral_cfg.get("float_sigma_E", True)
-        if float_sigma_E:
-            priors_spec["sigma0"] = (sigE_mean, sigma_E_prior)
-            priors_spec["F"] = (
-                0.0,
-                spectral_cfg.get("F_prior_sigma", 0.01),
-            )
+        sigma_prior_source = spectral_cfg.get("sigma_E_prior_source")
+        sigma_prior_sigma = spectral_cfg.get("sigma_E_prior_sigma", sigE_sigma)
+
+        def _coerce_sigma(val):
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                return float("nan")
+
+        if sigma_prior_source in (None, "calibration"):
+            sigma_E_prior = float(sigE_sigma)
+        elif sigma_prior_source == "config":
+            sigma_E_prior = _coerce_sigma(sigma_prior_sigma)
+        else:
+            sigma_E_prior = _coerce_sigma(sigma_prior_source)
+
+        if not np.isfinite(sigma_E_prior) or sigma_E_prior <= 0.0:
+            sigma_E_prior = _coerce_sigma(sigma_prior_sigma)
+        if not np.isfinite(sigma_E_prior) or sigma_E_prior <= 0.0:
+            sigma_E_prior = max(float(sigE_sigma), 1e-6)
+
+        float_sigma_E = bool(spectral_cfg.get("float_sigma_E", True))
 
         priors_spec["sigma_E"] = (sigE_mean, sigma_E_prior)
         # Fit_spectrum expects separate ``sigma0`` and ``F`` resolution terms.
-        # Initialise sigma0 from the calibration-derived resolution and
-        # constrain the energy-dependence slope ``F`` to zero.
-        priors_spec["sigma0"] = (sigE_mean, sigma_E_prior)
-        priors_spec["F"] = (0.0, 0.0)
+        # Initialise sigma0 from the calibration-derived resolution.  Allow it
+        # to float within the calibration uncertainty when requested while
+        # keeping the Fano term fixed by default.
+        if float_sigma_E:
+            priors_spec["sigma0"] = (sigE_mean, sigma_E_prior)
+            priors_spec["F"] = (0.0, float(spectral_cfg.get("F_prior_sigma", 0.01)))
+        else:
+            priors_spec["sigma0"] = (sigE_mean, 0.0)
+            priors_spec["F"] = (0.0, 0.0)
 
 
         mu_bounds_units = spectral_cfg.get("mu_bounds_units", "mev")
