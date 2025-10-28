@@ -4006,6 +4006,18 @@ def main(argv=None):
     out_dir = Path(write_summary(results_dir, summary))
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    radon_background_mode = locals().get("background_mode")
+    if (
+        iso_mode == "radon"
+        and radon_background_mode is None
+        and hasattr(summary, "get")
+    ):
+        summary_radon = summary.get("radon")
+        if isinstance(summary_radon, Mapping):
+            plot_payload = summary_radon.get("plot_series")
+            if isinstance(plot_payload, Mapping):
+                radon_background_mode = plot_payload.get("background_mode")
+
     if iso_mode == "radon" and "radon" in summary:
         rad_ts = summary["radon"]["time_series"]
 
@@ -4016,6 +4028,7 @@ def main(argv=None):
             rad_ts.get("error"),
             config=cfg.get("plotting", {}),
             sample_volume_l=sample_vol,
+            background_mode=radon_background_mode,
         )
         total_vals, total_errs = _total_radon_series(
             rad_ts["activity"],
@@ -4029,6 +4042,7 @@ def main(argv=None):
             Path(out_dir) / "total_radon.png",
             total_errs,
             config=cfg.get("plotting", {}),
+            background_mode=radon_background_mode,
         )
         plot_radon_trend(
             rad_ts["time"],
