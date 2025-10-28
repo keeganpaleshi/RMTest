@@ -2322,6 +2322,8 @@ def main(argv=None):
         spec_plot_data = {
             "energies": df_analysis["energy_MeV"].values,
             "fit_vals": fit_vals,
+            "fit_result": spec_fit_out if isinstance(spec_fit_out, FitResult) else None,
+            "fit_flags": spec_flags.copy(),
             "bins": bins,
             "bin_edges": bin_edges,
         }
@@ -3543,6 +3545,8 @@ def main(argv=None):
             _ = plot_spectrum(
                 energies=spec_plot_data["energies"],
                 fit_vals=spec_plot_data["fit_vals"],
+                fit_result=spec_plot_data.get("fit_result"),
+                fit_flags=spec_plot_data.get("fit_flags"),
                 out_png=Path(out_dir) / "spectrum.png",
                 bins=spec_plot_data["bins"],
                 bin_edges=spec_plot_data["bin_edges"],
