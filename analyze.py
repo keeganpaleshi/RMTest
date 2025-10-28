@@ -238,6 +238,7 @@ from plot_utils import (
 
 from plot_utils.radon import (
     plot_radon_activity as _plot_radon_activity,
+    plot_radon_activity_elapsed as _plot_radon_activity_elapsed,
     plot_radon_trend as _plot_radon_trend,
 )
 
@@ -298,11 +299,40 @@ def plot_radon_trend(times, activity, out_png, *, config=None, fit_valid=True):
     return plot_radon_trend_full(times, activity, out_png, config=config, fit_valid=fit_valid)
 
 
+def _radon_concentration_series(activity, errors, monitor_volume, sample_volume):
+    """Return radon concentration per liter with propagated uncertainties."""
+
+    activity_arr = np.asarray(activity, dtype=float)
+    err_arr = None if errors is None else np.asarray(errors, dtype=float)
+    if err_arr is not None and err_arr.size != activity_arr.size:
+        err_arr = None
+
+    conc = activity_arr.copy()
+    conc_err = None if err_arr is None else err_arr.copy()
+    if activity_arr.size == 0:
+        return conc, conc_err
+
+    volume = float(sample_volume)
+    if volume <= 0:
+        volume = float(monitor_volume) + max(float(sample_volume), 0.0)
+
+    if volume <= 0:
+        return conc, conc_err
+
+    conc = activity_arr / volume
+    if conc_err is not None:
+        conc_err = conc_err / volume
+
+    return conc, conc_err
+
+
 def _total_radon_series(activity, errors, monitor_volume, sample_volume):
     """Return total radon Bq and uncertainties for a time series."""
 
     activity_arr = np.asarray(activity, dtype=float)
     err_arr = None if errors is None else np.asarray(errors, dtype=float)
+    if err_arr is not None and err_arr.size != activity_arr.size:
+        err_arr = None
 
     total = activity_arr.copy()
     total_err = None if err_arr is None else err_arr.copy()
@@ -3508,34 +3538,54 @@ def main(argv=None):
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if iso_mode == "radon" and "radon" in summary:
-        rad_ts = summary["radon"]["time_series"]
-
-        plot_radon_activity(
-            rad_ts["time"],
-            rad_ts["activity"],
-            Path(out_dir) / "radon_activity.png",
-            rad_ts.get("error"),
-            config=cfg.get("plotting", {}),
-        )
-        total_vals, total_errs = _total_radon_series(
-            rad_ts["activity"],
+        rad_section = summary["radon"]
+        rad_ts = rad_section.get("time_series", {})
+        times_raw = rad_ts.get("time", [])
+        conc_vals, conc_errs = _radon_concentration_series(
+            rad_ts.get("activity", []),
             rad_ts.get("error"),
             monitor_vol,
             sample_vol,
         )
-        plot_total_radon(
-            rad_ts["time"],
-            total_vals,
-            Path(out_dir) / "total_radon.png",
-            total_errs,
-            config=cfg.get("plotting", {}),
+
+        if conc_vals.size and len(times_raw):
+            plot_radon_activity(
+                times_raw,
+                conc_vals,
+                Path(out_dir) / "radon_activity.png",
+                conc_errs,
+                config=cfg.get("plotting", {}),
+            )
+            _plot_radon_activity_elapsed(
+                times_raw,
+                conc_vals,
+                Path(out_dir),
+                Path(out_dir) / "radon_activity_elapsed.png",
+                errors=conc_errs,
+            )
+            plot_radon_trend(
+                times_raw,
+                conc_vals,
+                Path(out_dir) / "radon_trend.png",
+                config=cfg.get("plotting", {}),
+            )
+
+        total_ts = rad_section.get("total_time_series", {})
+        total_times = total_ts.get("time", times_raw)
+        total_vals_arr = np.asarray(total_ts.get("activity", []), dtype=float)
+        total_errs_raw = total_ts.get("error")
+        total_errs_arr = (
+            None if total_errs_raw is None else np.asarray(total_errs_raw, dtype=float)
         )
-        plot_radon_trend(
-            rad_ts["time"],
-            rad_ts["activity"],
-            Path(out_dir) / "radon_trend.png",
-            config=cfg.get("plotting", {}),
-        )
+
+        if total_vals_arr.size and len(total_times):
+            plot_total_radon(
+                total_times,
+                total_vals_arr,
+                Path(out_dir) / "total_radon.png",
+                total_errs_arr,
+                config=cfg.get("plotting", {}),
+            )
 
     # Generate plots now that the output directory exists
     if spec_plot_data:
@@ -3858,13 +3908,26 @@ def main(argv=None):
             ):
                 err_arr.fill(radon_unc)
 
-        if activity_arr is not None and err_arr is not None:
+        if activity_arr is not None:
+            conc_vals, conc_errs = _radon_concentration_series(
+                activity_arr,
+                err_arr,
+                monitor_vol,
+                sample_vol,
+            )
             plot_radon_activity(
                 activity_times,
-                activity_arr,
+                conc_vals,
                 Path(out_dir) / "radon_activity.png",
-                err_arr,
+                conc_errs,
                 config=cfg.get("plotting", {}),
+            )
+            _plot_radon_activity_elapsed(
+                activity_times,
+                conc_vals,
+                Path(out_dir),
+                Path(out_dir) / "radon_activity_elapsed.png",
+                errors=conc_errs,
             )
             total_vals, total_errs = _total_radon_series(
                 activity_arr,
@@ -3923,9 +3986,15 @@ def main(argv=None):
                     r218 = A218_tr[i] if A218_tr is not None else None
                     A, _ = compute_radon_activity(r218, None, 1.0, r214, None, 1.0)
                     trend[i] = A
+                conc_trend, _ = _radon_concentration_series(
+                    trend,
+                    None,
+                    monitor_vol,
+                    sample_vol,
+                )
                 plot_radon_trend(
                     times_trend,
-                    trend,
+                    conc_trend,
                     Path(out_dir) / "radon_trend.png",
                     config=cfg.get("plotting", {}),
                 )
