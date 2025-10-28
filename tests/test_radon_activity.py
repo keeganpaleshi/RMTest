@@ -12,6 +12,7 @@ from radon_activity import (
     radon_delta,
     print_activity_breakdown,
 )
+from constants import NEGATIVE_ACTIVITY_FLOOR_BQ
 import math
 import numpy as np
 
@@ -257,6 +258,18 @@ def test_compute_total_radon_negative_activity_allowed(caplog):
     assert dconc == pytest.approx(0.5 / sample_volume)
     assert tot == pytest.approx(-1.0)
     assert dtot == pytest.approx(0.5)
+
+
+def test_compute_total_radon_negative_activity_floor(caplog):
+    caplog.set_level("WARNING")
+    conc, dconc, tot, dtot = compute_total_radon(
+        -5.0, 0.5, 10.0, 1.0, allow_negative_activity=True
+    )
+    assert conc == pytest.approx(NEGATIVE_ACTIVITY_FLOOR_BQ)
+    assert dconc == pytest.approx(0.5)
+    assert tot == pytest.approx(NEGATIVE_ACTIVITY_FLOOR_BQ)
+    assert dtot == pytest.approx(0.5)
+    assert any("Clamped negative activity" in rec.message for rec in caplog.records)
 
 
 def test_radon_activity_curve():

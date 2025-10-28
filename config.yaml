@@ -2,6 +2,8 @@ allow_fallback: true
 
 analysis_isotope: radon
 
+# Allow small negative baseline-corrected activities down to -1.0 Bq
+# (more negative values are clipped to that floor).
 allow_negative_baseline: false
 
 pipeline:

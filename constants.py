@@ -16,6 +16,11 @@ EXP_OVERFLOW_DOUBLE = 700.0
 DEFAULT_NOISE_CUTOFF = 400
 # Iteration cap for ``scipy.optimize.curve_fit``
 CURVE_FIT_MAX_EVALS = 10000
+# Floor applied when negative activities are allowed.  Values below this
+# threshold are clipped to prevent unphysical excursions.
+NEGATIVE_ACTIVITY_FLOOR_BQ = -1.0
+# Minimum uncertainty reported when the negative-activity floor is applied.
+NEGATIVE_ACTIVITY_SIGMA_BQ = 5e-6
 
 # Clip exponents to ``+/-EXP_OVERFLOW_DOUBLE`` to avoid floating-point overflow
 # when evaluating functions with large tails (e.g. EMG).
@@ -134,6 +139,8 @@ __all__ = [
     "EXP_OVERFLOW_DOUBLE",
     "DEFAULT_NOISE_CUTOFF",
     "CURVE_FIT_MAX_EVALS",
+    "NEGATIVE_ACTIVITY_FLOOR_BQ",
+    "NEGATIVE_ACTIVITY_SIGMA_BQ",
     "DEFAULT_NOMINAL_ADC",
     "DEFAULT_ADC_CENTROIDS",
     "DEFAULT_KNOWN_ENERGIES",

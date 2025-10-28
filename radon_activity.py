@@ -5,6 +5,8 @@ import math
 import numpy as np
 from typing import Optional, Tuple, cast
 
+from constants import NEGATIVE_ACTIVITY_FLOOR_BQ, NEGATIVE_ACTIVITY_SIGMA_BQ
+
 __all__ = [
     "clamp_non_negative",
     "compute_radon_activity",
@@ -254,7 +256,14 @@ def compute_total_radon(
 
     if activity_bq < 0:
         if allow_negative_activity:
-            pass
+            if activity_bq < NEGATIVE_ACTIVITY_FLOOR_BQ:
+                logging.warning(
+                    "Clamped negative activity (value = %.2f Bq → %.1f Bq floor)",
+                    activity_bq,
+                    NEGATIVE_ACTIVITY_FLOOR_BQ,
+                )
+                activity_bq = NEGATIVE_ACTIVITY_FLOOR_BQ
+                err_bq = max(err_bq, NEGATIVE_ACTIVITY_SIGMA_BQ)
         else:
             clamp_non_negative(activity_bq, err_bq)
             raise RuntimeError(

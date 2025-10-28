@@ -96,6 +96,8 @@ from constants import (
     RN222,
     DEFAULT_ADC_CENTROIDS,
     DEFAULT_KNOWN_ENERGIES,
+    NEGATIVE_ACTIVITY_FLOOR_BQ,
+    NEGATIVE_ACTIVITY_SIGMA_BQ,
 )
 
 NUCLIDES = {
@@ -1704,6 +1706,8 @@ def main(argv=None):
     if args.allow_negative_baseline:
         cfg["allow_negative_baseline"] = True
 
+    allow_negative_baseline_cfg = bool(cfg.get("allow_negative_baseline"))
+
     if args.debug:
         cfg.setdefault("pipeline", {})["log_level"] = "DEBUG"
 
@@ -2841,6 +2845,10 @@ def main(argv=None):
                 else:
                     c_rate = 0.0
                     c_sigma = 0.0
+            if allow_negative_baseline_cfg and c_rate < NEGATIVE_ACTIVITY_FLOOR_BQ:
+                c_rate = NEGATIVE_ACTIVITY_FLOOR_BQ
+                if not math.isfinite(c_sigma) or c_sigma < NEGATIVE_ACTIVITY_SIGMA_BQ:
+                    c_sigma = NEGATIVE_ACTIVITY_SIGMA_BQ
             baseline_info.setdefault("corrected_activity", {})[iso] = {
                 "value": c_rate,
                 "uncertainty": c_sigma,
@@ -2870,6 +2878,10 @@ def main(argv=None):
             else:
                 c_rate = 0.0
                 c_sigma = 0.0
+            if allow_negative_baseline_cfg and c_rate < NEGATIVE_ACTIVITY_FLOOR_BQ:
+                c_rate = NEGATIVE_ACTIVITY_FLOOR_BQ
+                if not math.isfinite(c_sigma) or c_sigma < NEGATIVE_ACTIVITY_SIGMA_BQ:
+                    c_sigma = NEGATIVE_ACTIVITY_SIGMA_BQ
             baseline_info.setdefault("corrected_activity", {})[iso] = {
                 "value": c_rate,
                 "uncertainty": c_sigma,
@@ -3506,6 +3518,17 @@ def main(argv=None):
             base_rate = 0.0
             base_sigma = 0.0
 
+        if allow_negative_baseline_cfg and math.isfinite(corr_rate) and corr_rate < NEGATIVE_ACTIVITY_FLOOR_BQ:
+            logger.warning(
+                "Corrected %s activity %.3f Bq clipped to %.1f Bq floor because allow_negative_baseline is set",
+                iso,
+                corr_rate,
+                NEGATIVE_ACTIVITY_FLOOR_BQ,
+            )
+            corr_rate = NEGATIVE_ACTIVITY_FLOOR_BQ
+            if not math.isfinite(corr_sigma) or corr_sigma < NEGATIVE_ACTIVITY_SIGMA_BQ:
+                corr_sigma = NEGATIVE_ACTIVITY_SIGMA_BQ
+
         params["E_corrected"] = corr_rate
         params["dE_corrected"] = corr_sigma
         baseline_rates[iso] = base_rate
@@ -3677,10 +3700,20 @@ def main(argv=None):
     total_bq_display = total_bq
     if total_bq_display < 0:
         if args.allow_negative_activity:
-            logger.warning(
-                "Negative total radon in sample reported (%.3f Bq) because --allow-negative-activity was requested",
-                total_bq_display,
-            )
+            if total_bq_display < NEGATIVE_ACTIVITY_FLOOR_BQ:
+                logger.warning(
+                    "Negative total radon in sample (%.3f Bq) clipped to %.1f Bq floor because --allow-negative-activity was requested",
+                    total_bq_display,
+                    NEGATIVE_ACTIVITY_FLOOR_BQ,
+                )
+                total_bq_display = NEGATIVE_ACTIVITY_FLOOR_BQ
+                if not math.isfinite(dtotal_bq) or dtotal_bq < NEGATIVE_ACTIVITY_SIGMA_BQ:
+                    dtotal_bq = NEGATIVE_ACTIVITY_SIGMA_BQ
+            else:
+                logger.warning(
+                    "Negative total radon in sample reported (%.3f Bq) because --allow-negative-activity was requested",
+                    total_bq_display,
+                )
         else:
             total_bq_display = 0.0
 
