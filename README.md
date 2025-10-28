@@ -752,11 +752,9 @@ includes contributions from both count sets.
 
 Set ``allow_negative_baseline`` to ``true`` in the top-level
 configuration (or pass ``--allow-negative-baseline``) to allow small
-negative baseline-corrected activities. Extremely negative outliers are
-still clipped to ``-1.0`` Bq so the summary never reports wildly
-unphysical numbers, but values between ``-1.0`` Bq and ``0.0`` Bq are
-preserved instead of being forced to zero. With the default ``false``
-setting any negative value is clipped to zero instead.
+negative baseline-corrected activities. When enabled, the summary records
+the fitted negative value verbatim instead of applying a floor. With the
+default ``false`` setting any negative value is clipped to zero instead.
 
 ### Baseline Noise Cut
 
