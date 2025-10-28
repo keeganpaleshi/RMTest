@@ -366,6 +366,7 @@ from plot_utils import (
     plot_spectrum_comparison,
     plot_activity_grid,
 )
+from plot_utils._time_utils import build_time_series_segments
 
 from plot_utils.radon import (
     plot_radon_activity as _plot_radon_activity,
@@ -1031,44 +1032,21 @@ def prepare_analysis_df(
     )
 
 
-def _ts_bin_centers_widths(times, cfg, t_start, t_end):
+def _ts_bin_centers_widths(times, cfg, t_start, t_end, run_periods=None):
     """Return bin centers and widths matching :func:`plot_time_series`."""
-    arr = np.asarray(times)
-    if np.issubdtype(arr.dtype, "datetime64"):
-        arr = arr.astype("int64") / 1e9
-    times_rel = arr - float(t_start)
-    bin_mode = str(
-        cfg.get("plot_time_binning_mode", cfg.get("time_bin_mode", "fixed"))
-    ).lower()
-    if bin_mode in ("fd", "auto"):
-        data = times_rel[(times_rel >= 0) & (times_rel <= (t_end - t_start))]
-        if len(data) < 2:
-            n_bins = 1
-        else:
-            q25, q75 = np.percentile(data, [25, 75])
-            iqr = q75 - q25
-            if iqr <= 0:
-                n_bins = int(cfg.get("time_bins_fallback", 1))
-            else:
-                bin_width = 2 * iqr / (len(data) ** (1.0 / 3.0))
-                if isinstance(bin_width, np.timedelta64):
-                    bin_width = bin_width / np.timedelta64(1, "s")
-                    data_range = (data.max() - data.min()) / np.timedelta64(1, "s")
-                else:
-                    data_range = data.max() - data.min()
-                n_bins = max(1, int(np.ceil(data_range / float(bin_width))))
+    _, segments = build_time_series_segments(
+        times,
+        t_start,
+        t_end,
+        cfg,
+        run_periods=run_periods,
+    )
+    if segments:
+        centers = np.concatenate([seg["centers_rel"] for seg in segments])
+        widths = np.concatenate([seg["widths"] for seg in segments])
     else:
-        dt = int(cfg.get("plot_time_bin_width_s", cfg.get("time_bin_s", 3600)))
-        n_bins = int(np.floor((t_end - t_start) / dt))
-        if n_bins < 1:
-            n_bins = 1
-
-    if bin_mode not in ("fd", "auto"):
-        edges = np.arange(0, (n_bins + 1) * dt, dt, dtype=float)
-    else:
-        edges = np.linspace(0, (t_end - t_start), n_bins + 1)
-    centers = 0.5 * (edges[:-1] + edges[1:])
-    widths = np.diff(edges)
+        centers = np.array([], dtype=float)
+        widths = np.array([], dtype=float)
     return centers, widths
 
 
@@ -4077,8 +4055,13 @@ def main(argv=None):
                     if obj:
                         fit_dict.update(_fit_params(obj))
 
+            run_periods_cfg = cfg.get("analysis", {}).get("run_periods")
             centers, widths = _ts_bin_centers_widths(
-                ts_times, plot_cfg, t0_global.timestamp(), t_end_global_ts
+                ts_times,
+                plot_cfg,
+                t0_global.timestamp(),
+                t_end_global_ts,
+                run_periods=run_periods_cfg,
             )
             normalise = bool(plot_cfg.get("plot_time_normalise_rate", False))
             model_errs = {}
@@ -4107,6 +4090,7 @@ def main(argv=None):
                 config=plot_cfg,
                 out_png=Path(out_dir) / f"time_series_{iso}.png",
                 model_errors=model_errs,
+                run_periods=run_periods_cfg,
             )
         except Exception as e:
             logger.warning("Could not create time-series plot for %s -> %s", iso, e)

@@ -2,12 +2,216 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime, timezone
-from typing import Iterable
 
 import matplotlib.dates as mdates
 import matplotlib.ticker as mticker
 import numpy as np
+
+
+def _coerce_epoch_seconds(value):
+    """Convert assorted time representations to epoch seconds."""
+
+    if value is None:
+        return None
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        return float(value)
+    if isinstance(value, np.datetime64):
+        return float(value.astype("datetime64[s]").astype(np.int64))
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        else:
+            value = value.astimezone(timezone.utc)
+        return float(value.timestamp())
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        try:
+            dt = datetime.fromisoformat(text)
+        except ValueError:
+            try:
+                dt64 = np.datetime64(value)
+            except ValueError:
+                return None
+            return float(dt64.astype("datetime64[s]").astype(np.int64))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return float(dt.timestamp())
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def normalize_run_periods(
+    periods: Sequence | None, t_start: float, t_end: float
+) -> list[tuple[float, float]]:
+    """Clamp and order run periods within ``[t_start, t_end]``."""
+
+    if periods is None:
+        periods = []
+
+    normalized: list[tuple[float, float]] = []
+    for item in periods:
+        if not item:
+            continue
+        if isinstance(item, Mapping):
+            start_raw = item.get("start")
+            end_raw = item.get("end")
+        else:
+            try:
+                start_raw, end_raw = item
+            except (TypeError, ValueError):
+                continue
+        start = _coerce_epoch_seconds(start_raw)
+        end = _coerce_epoch_seconds(end_raw)
+        if start is None or end is None:
+            continue
+        start = max(float(t_start), float(start))
+        end = min(float(t_end), float(end))
+        if end <= start:
+            continue
+        normalized.append((start, end))
+
+    if not normalized:
+        normalized = [(float(t_start), float(t_end))]
+
+    normalized.sort(key=lambda pair: pair[0])
+    return normalized
+
+
+def _cfg_lookup(cfg: Mapping | None, *keys, default=None):
+    if not isinstance(cfg, Mapping):
+        return default
+    for key in keys:
+        if key in cfg:
+            return cfg[key]
+    return default
+
+
+def build_time_series_segments(
+    times: Iterable,
+    t_start: float,
+    t_end: float,
+    cfg: Mapping | None = None,
+    *,
+    run_periods: Sequence | None = None,
+):
+    """Return bin definitions for time-series plots respecting run windows."""
+
+    raw = np.asarray(times)
+    if np.issubdtype(raw.dtype, np.datetime64):
+        arr = raw.astype("datetime64[s]").astype(np.int64).astype(float)
+    elif raw.dtype == object:
+        arr = np.array([_coerce_epoch_seconds(val) for val in raw], dtype=float)
+    else:
+        arr = raw.astype(float)
+    run_cfg = run_periods
+    if run_cfg is None and isinstance(cfg, Mapping):
+        run_cfg = _cfg_lookup(cfg, "analysis_run_periods")
+    if run_cfg is None and isinstance(cfg, Mapping):
+        run_cfg = _cfg_lookup(cfg, "run_periods")
+    windows = normalize_run_periods(run_cfg, t_start, t_end)
+
+    mask = np.zeros(arr.shape, dtype=bool)
+    for start, end in windows:
+        mask |= (arr >= start) & (arr <= end)
+
+    bin_mode = str(
+        _cfg_lookup(cfg, "plot_time_binning_mode", default=None)
+        or _cfg_lookup(cfg, "time_bin_mode", default="fixed")
+    ).lower()
+    n_bins_fallback = int(_cfg_lookup(cfg, "time_bins_fallback", default=1) or 1)
+    if n_bins_fallback < 1:
+        n_bins_fallback = 1
+
+    segments: list[dict[str, np.ndarray]] = []
+
+    if bin_mode in ("fd", "auto"):
+        data_rel = arr[mask] - float(t_start)
+        bin_width = None
+        if data_rel.size >= 2:
+            q25, q75 = np.percentile(data_rel, [25, 75])
+            iqr = q75 - q25
+            if isinstance(iqr, np.timedelta64):
+                iqr = float(iqr / np.timedelta64(1, "s"))
+            iqr = float(iqr)
+            if iqr > 0:
+                width = 2 * iqr / (data_rel.size ** (1.0 / 3.0))
+                if isinstance(width, np.timedelta64):
+                    width = float(width / np.timedelta64(1, "s"))
+                width = float(width)
+                if np.isfinite(width) and width > 0:
+                    bin_width = width
+
+        for start, end in windows:
+            if end <= start:
+                continue
+            if bin_width is not None:
+                n_bins_run = max(1, int(np.ceil((end - start) / bin_width)))
+            else:
+                n_bins_run = n_bins_fallback
+            edges_abs = np.linspace(float(start), float(end), n_bins_run + 1)
+            centers_abs = 0.5 * (edges_abs[:-1] + edges_abs[1:])
+            widths = np.diff(edges_abs)
+            segments.append(
+                {
+                    "start": float(start),
+                    "end": float(end),
+                    "edges": edges_abs,
+                    "centers_abs": centers_abs,
+                    "centers_rel": centers_abs - float(t_start),
+                    "widths": widths,
+                }
+            )
+    else:
+        dt = float(_cfg_lookup(cfg, "plot_time_bin_width_s", default=None) or _cfg_lookup(cfg, "time_bin_s", default=3600))
+        if dt <= 0:
+            dt = 1.0
+        for start, end in windows:
+            if end <= start:
+                continue
+            run_range = end - start
+            n_bins_run = int(np.floor(run_range / dt))
+            if n_bins_run < 1:
+                n_bins_run = 1
+            edges_abs = float(start) + np.arange(0, (n_bins_run + 1) * dt, dt, dtype=float)
+            centers_abs = 0.5 * (edges_abs[:-1] + edges_abs[1:])
+            widths = np.diff(edges_abs)
+            segments.append(
+                {
+                    "start": float(start),
+                    "end": float(end),
+                    "edges": edges_abs,
+                    "centers_abs": centers_abs,
+                    "centers_rel": centers_abs - float(t_start),
+                    "widths": widths,
+                }
+            )
+
+    if not segments:
+        edges_abs = np.array([float(t_start), float(t_end)], dtype=float)
+        centers_abs = np.array([0.5 * (edges_abs[0] + edges_abs[1])], dtype=float)
+        widths = np.diff(edges_abs)
+        segments.append(
+            {
+                "start": float(t_start),
+                "end": float(t_end),
+                "edges": edges_abs,
+                "centers_abs": centers_abs,
+                "centers_rel": centers_abs - float(t_start),
+                "widths": widths,
+            }
+        )
+
+    return windows, segments
 
 
 def to_mpl_times(times: Iterable) -> np.ndarray:

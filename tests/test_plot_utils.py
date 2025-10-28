@@ -1,3 +1,4 @@
+import json
 import numpy as np
 import sys
 from pathlib import Path
@@ -137,7 +138,6 @@ def test_plot_time_series_auto_fd(tmp_path):
     js = out_png.with_name("ts_auto_ts.json")
     assert out_png.exists() and js.exists()
 
-    import json
     with open(js) as f:
         data = json.load(f)
 
@@ -155,6 +155,35 @@ def test_plot_time_series_auto_fd(tmp_path):
         expected = max(1, int(np.ceil((arr.max() - arr.min()) / bw)))
 
     assert len(centers) == expected
+
+
+def test_plot_time_series_respects_run_periods(tmp_path):
+    times = np.array([1.0, 2.0, 3.0, 101.0, 102.0, 103.0])
+    energies = np.full(times.shape, 7.7)
+    cfg = {
+        "window_po214": (7.5, 8.0),
+        "plot_time_bin_width_s": 10,
+        "dump_time_series_json": True,
+    }
+    out_png = tmp_path / "ts.png"
+    plot_time_series(
+        times,
+        energies,
+        {},
+        0.0,
+        200.0,
+        cfg,
+        str(out_png),
+        run_periods=[(0.0, 10.0), (100.0, 110.0)],
+    )
+    json_path = tmp_path / "ts_ts.json"
+    with open(json_path, "r") as fh:
+        summary = json.load(fh)
+
+    counts = summary["counts_Po214"]
+    assert len(counts) == 2
+    assert counts[0] == 3
+    assert counts[1] == 3
 
 
 def test_plot_time_series_defaults_to_rn_half_life(tmp_path, monkeypatch):
