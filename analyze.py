@@ -558,17 +558,28 @@ def _spectral_fit_with_check(
             has_sigma0 = "sigma0" in param_index
             has_F = "F" in param_index
 
+            def _safe_get_cov(name1: str, name2: str) -> float:
+                try:
+                    return result.get_cov(name1, name2)
+                except KeyError:
+                    logging.warning(
+                        "spectral fit covariance missing entry for %s/%s; treating as 0",
+                        name1,
+                        name2,
+                    )
+                    return 0.0
+
             var = 0.0
             if has_sigma0:
-                var += (sigma0 / sigma_E_val) ** 2 * result.get_cov("sigma0", "sigma0")
+                var += (sigma0 / sigma_E_val) ** 2 * _safe_get_cov("sigma0", "sigma0")
             if has_F:
-                var += (0.5 * e_ref / sigma_E_val) ** 2 * result.get_cov("F", "F")
+                var += (0.5 * e_ref / sigma_E_val) ** 2 * _safe_get_cov("F", "F")
             if has_sigma0 and has_F:
                 var += (
                     2
                     * (sigma0 / sigma_E_val)
                     * (0.5 * e_ref / sigma_E_val)
-                    * result.get_cov("sigma0", "F")
+                    * _safe_get_cov("sigma0", "F")
                 )
 
             if has_sigma0 or has_F:
@@ -2324,6 +2335,7 @@ def main(argv=None):
             "fit_vals": fit_vals,
             "bins": bins,
             "bin_edges": bin_edges,
+            "fit_flags": dict(spec_flags or {}),
         }
 
     # ────────────────────────────────────────────────────────────
@@ -3547,6 +3559,7 @@ def main(argv=None):
                 bins=spec_plot_data["bins"],
                 bin_edges=spec_plot_data["bin_edges"],
                 config=cfg.get("plotting", {}),
+                fit_flags=spec_plot_data.get("fit_flags"),
             )
         except Exception as e:
             logger.warning("Could not create spectrum plot: %s", e)
