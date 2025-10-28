@@ -14,6 +14,7 @@ from color_schemes import COLOR_SCHEMES
 from constants import PO214, PO218, PO210, RN222
 from .paths import get_targets
 from ._time_utils import guard_mpl_times, setup_time_axis
+from ._errorbars import apply_error_limits
 
 # Half-life constants used for the time-series overlay [seconds]
 PO214_HALF_LIFE_S = PO214.half_life_s
@@ -26,6 +27,7 @@ __all__ = [
     "plot_equivalent_air",
     "plot_modeled_radon_activity",
     "plot_radon_activity",
+    "plot_radon_activity_elapsed_full",
     "plot_total_radon",
     "plot_radon_trend",
     "plot_radon_activity_full",
@@ -548,19 +550,20 @@ def plot_radon_activity_full(
     """
     times_mpl = guard_mpl_times(times=times)
     activity = np.asarray(activity, dtype=float)
-    errors = np.asarray(errors, dtype=float)
+    errors_arr = None if errors is None else np.asarray(errors, dtype=float)
 
     fig, ax = plt.subplots(figsize=(8, 4))
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("radon_activity", "#9467bd")
     label = None if po214_activity is None else "Rn-222 Concentration"
-    ax.errorbar(times_mpl, activity, yerr=errors, fmt="o", color=color, label=label)
+    ax.errorbar(times_mpl, activity, yerr=errors_arr, fmt="o", color=color, label=label)
     ax.set_xlabel("Time (UTC)")
     ax.set_ylabel("Rn-222 Concentration (Bq/L)")
     ax.set_title("Extrapolated Radon Concentration vs. Time")
     ax.ticklabel_format(axis="y", style="plain")
     setup_time_axis(ax, times_mpl)
+    apply_error_limits(ax, activity, errors_arr)
 
     if po214_activity is not None:
         po214_activity = np.asarray(po214_activity, dtype=float)
@@ -606,11 +609,37 @@ def plot_total_radon_full(times, total_bq, errors, out_png, config=None):
     ax.set_title("Total Radon vs. Time")
     ax.ticklabel_format(axis="y", style="plain")
     setup_time_axis(ax, times_mpl)
+    apply_error_limits(ax, total_bq, errors_arr)
 
     plt.gcf().autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)
     plt.tight_layout()
 
+    targets = get_targets(config, out_png)
+    for p in targets.values():
+        fig.savefig(p, dpi=300)
+    plt.close(fig)
+
+
+def plot_radon_activity_elapsed_full(times_h, activity, errors, out_png, config=None):
+    """Plot radon concentration against elapsed hours from interval start."""
+
+    times_h = np.asarray(times_h, dtype=float)
+    activity = np.asarray(activity, dtype=float)
+    errors_arr = None if errors is None else np.asarray(errors, dtype=float)
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    palette_name = str(config.get("palette", "default")) if config else "default"
+    palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
+    color = palette.get("radon_activity", "#9467bd")
+    ax.errorbar(times_h, activity, yerr=errors_arr, fmt="o", color=color)
+    ax.set_xlabel("Elapsed Time from Interval Start (h)")
+    ax.set_ylabel("Rn-222 Concentration (Bq/L)")
+    ax.set_title("Extrapolated Radon Concentration vs. Elapsed Time")
+    ax.ticklabel_format(axis="y", style="plain")
+    apply_error_limits(ax, activity, errors_arr)
+
+    plt.tight_layout()
     targets = get_targets(config, out_png)
     for p in targets.values():
         fig.savefig(p, dpi=300)
