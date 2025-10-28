@@ -365,6 +365,8 @@ from plot_utils import (
     plot_radon_trend_full,
     plot_spectrum_comparison,
     plot_activity_grid,
+    _resolve_run_periods,
+    _build_time_segments,
 )
 
 from plot_utils.radon import (
@@ -1036,39 +1038,57 @@ def _ts_bin_centers_widths(times, cfg, t_start, t_end):
     arr = np.asarray(times)
     if np.issubdtype(arr.dtype, "datetime64"):
         arr = arr.astype("int64") / 1e9
-    times_rel = arr - float(t_start)
+    elif np.issubdtype(arr.dtype, np.object_):
+        if arr.size > 0 and isinstance(arr.flat[0], datetime):
+            arr = np.array([dt.timestamp() for dt in arr], dtype=float)
+        else:
+            arr = arr.astype(float)
+    else:
+        arr = arr.astype(float)
+
+    if isinstance(t_start, datetime):
+        t_start = t_start.timestamp()
+    elif isinstance(t_start, np.datetime64):
+        t_start = float(t_start.astype("int64") / 1e9)
+    if isinstance(t_end, datetime):
+        t_end = t_end.timestamp()
+    elif isinstance(t_end, np.datetime64):
+        t_end = float(t_end.astype("int64") / 1e9)
+
     bin_mode = str(
         cfg.get("plot_time_binning_mode", cfg.get("time_bin_mode", "fixed"))
     ).lower()
-    if bin_mode in ("fd", "auto"):
-        data = times_rel[(times_rel >= 0) & (times_rel <= (t_end - t_start))]
-        if len(data) < 2:
-            n_bins = 1
-        else:
-            q25, q75 = np.percentile(data, [25, 75])
-            iqr = q75 - q25
-            if iqr <= 0:
-                n_bins = int(cfg.get("time_bins_fallback", 1))
-            else:
-                bin_width = 2 * iqr / (len(data) ** (1.0 / 3.0))
-                if isinstance(bin_width, np.timedelta64):
-                    bin_width = bin_width / np.timedelta64(1, "s")
-                    data_range = (data.max() - data.min()) / np.timedelta64(1, "s")
-                else:
-                    data_range = data.max() - data.min()
-                n_bins = max(1, int(np.ceil(data_range / float(bin_width))))
-    else:
-        dt = int(cfg.get("plot_time_bin_width_s", cfg.get("time_bin_s", 3600)))
-        n_bins = int(np.floor((t_end - t_start) / dt))
-        if n_bins < 1:
-            n_bins = 1
+    bin_width_s = float(cfg.get("plot_time_bin_width_s", cfg.get("time_bin_s", 3600.0)))
+    time_bins_fallback = int(cfg.get("time_bins_fallback", 1))
 
-    if bin_mode not in ("fd", "auto"):
-        edges = np.arange(0, (n_bins + 1) * dt, dt, dtype=float)
-    else:
-        edges = np.linspace(0, (t_end - t_start), n_bins + 1)
-    centers = 0.5 * (edges[:-1] + edges[1:])
-    widths = np.diff(edges)
+    periods = _resolve_run_periods(cfg, t_start, t_end)
+    segments = _build_time_segments(
+        arr,
+        periods=periods,
+        bin_mode=bin_mode,
+        bin_width_s=bin_width_s,
+        time_bins_fallback=time_bins_fallback,
+        t_start=t_start,
+    )
+    if not segments:
+        segments = _build_time_segments(
+            arr,
+            periods=[(float(t_start), float(t_end))],
+            bin_mode=bin_mode,
+            bin_width_s=bin_width_s,
+            time_bins_fallback=time_bins_fallback,
+            t_start=t_start,
+        )
+
+    centers_lists = [
+        seg["centers_rel_global"] for seg in segments if seg["centers_rel_global"].size
+    ]
+    width_lists = [seg["bin_widths"] for seg in segments if seg["bin_widths"].size]
+
+    centers = (
+        np.concatenate(centers_lists) if centers_lists else np.array([], dtype=float)
+    )
+    widths = np.concatenate(width_lists) if width_lists else np.array([], dtype=float)
     return centers, widths
 
 
@@ -4079,6 +4099,8 @@ def main(argv=None):
         try:
             plot_cfg = dict(cfg.get("time_fit", {}))
             plot_cfg.update(cfg.get("plotting", {}))
+            if run_periods_cfg:
+                plot_cfg["run_periods"] = run_periods_cfg
             if not overlay:
                 for other_iso in ("Po214", "Po218", "Po210"):
                     if other_iso != iso:
