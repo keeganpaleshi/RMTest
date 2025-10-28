@@ -559,20 +559,35 @@ def _spectral_fit_with_check(
             has_F = "F" in param_index
 
             var = 0.0
+            missing_covariance = False
             if has_sigma0:
-                var += (sigma0 / sigma_E_val) ** 2 * result.get_cov("sigma0", "sigma0")
+                try:
+                    var += (sigma0 / sigma_E_val) ** 2 * result.get_cov("sigma0", "sigma0")
+                except KeyError:
+                    missing_covariance = True
             if has_F:
-                var += (0.5 * e_ref / sigma_E_val) ** 2 * result.get_cov("F", "F")
+                try:
+                    var += (0.5 * e_ref / sigma_E_val) ** 2 * result.get_cov("F", "F")
+                except KeyError:
+                    missing_covariance = True
             if has_sigma0 and has_F:
-                var += (
-                    2
-                    * (sigma0 / sigma_E_val)
-                    * (0.5 * e_ref / sigma_E_val)
-                    * result.get_cov("sigma0", "F")
-                )
+                try:
+                    cross_cov = result.get_cov("sigma0", "F")
+                except KeyError:
+                    missing_covariance = True
+                else:
+                    var += (
+                        2
+                        * (sigma0 / sigma_E_val)
+                        * (0.5 * e_ref / sigma_E_val)
+                        * cross_cov
+                    )
 
             if has_sigma0 or has_F:
-                result.params["dsigma_E"] = float(np.sqrt(max(var, 0.0)))
+                if missing_covariance:
+                    result.params["dsigma_E"] = float("nan")
+                else:
+                    result.params["dsigma_E"] = float(np.sqrt(max(var, 0.0)))
     tol = cfg.get("spectral_fit", {}).get("spectral_peak_tolerance_mev", 0.2)
     dev = _centroid_deviation(params, known)
 
@@ -3328,7 +3343,11 @@ def main(argv=None):
     spec_dict = {}
     if isinstance(spectrum_results, FitResult):
         spec_dict = dict(spectrum_results.params)
-        spec_dict["cov"] = spectrum_results.cov.tolist()
+        spec_dict["cov"] = (
+            spectrum_results.cov.tolist()
+            if getattr(spectrum_results, "cov", None) is not None
+            else None
+        )
         spec_dict["ndf"] = spectrum_results.ndf
         spec_dict["likelihood_path"] = spectrum_results.params.get("likelihood_path")
     elif isinstance(spectrum_results, dict):
@@ -3341,7 +3360,7 @@ def main(argv=None):
     for iso, fit in time_fit_results.items():
         if isinstance(fit, FitResult):
             d = dict(fit.params)
-            d["cov"] = fit.cov.tolist()
+            d["cov"] = fit.cov.tolist() if getattr(fit, "cov", None) is not None else None
             d["ndf"] = fit.ndf
         elif isinstance(fit, dict):
             d = fit
