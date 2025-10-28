@@ -133,23 +133,23 @@ the file:
 
 ## Output
 
-The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--job-id` is given the folder `<output_dir>/<job-id>/` is used instead. If `--output_dir` is omitted it defaults to `results`. If the folder already exists run with `--overwrite` to replace it. The directory includes:
+The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--job-id` is given the folder `<output_dir>/<job-id>/` is used instead. If `--output_dir` is omitted it defaults to `results`. If the folder already exists run with `--overwrite` to replace it.
 
-- `summary.json` – calibration and fit summary with run diagnostics.
-- `config_used.json` – copy of the configuration used.
-  Any timestamps overridden on the command line are written
-  back to this file as ISO timestamps.
-- `spectrum.png` – spectrum plot with fitted peaks.
-- `time_series_Po214.png` and `time_series_Po218.png` – decay time-series plots.
-- `time_series_Po210.png` when `window_po210` is set.
-- Optional `*_ts.json` files containing binned time series when enabled.
+### Outputs
+
+Running `analyze.py` produces a consistent set of artifacts next to `summary.json`; these filenames are stable and validated by the smoke tests:
+
+- `summary.json` – structured calibration, per-isotope fit results, radon activity/concentration time series, baseline metadata, the concatenated per-bin counts used for plotting, and other high-level diagnostics.
+- `spectrum.png` – spectrum, best-fit model components, and residuals in a three-panel layout that always ships with the report.
+- `spectrum_pre_post.png` – diagnostic spectrum overlay comparing pre/post cut spectra to highlight the impact of filtering.
+- Radon time-series plots – `radon_activity.png` (UTC and elapsed-hour views) is always written using the configured `background_mode` and statistical error bars.
+- Isotope time-series plots – `isotope_time_series.png` overlays Po-210 / Po-218 / Po-214 within the configured `run_periods`, and the per-isotope `time_series_Po214.png`, `time_series_Po218.png`, and (when `window_po210` is enabled) `time_series_Po210.png` provide the same data for single-isotope diagnostics.
+- `config_used.json` – copy of the configuration used. Any timestamps overridden on the command line are written back to this file as ISO timestamps.
+- Optional `*_ts.json` files – binned time series when explicit dumps are enabled.
 - `efficiency.png` – bar chart of individual efficiencies and the BLUE result.
 - `eff_cov.png` – heatmap of the efficiency covariance matrix.
-- `radon_activity.png` – extrapolated radon concentration (Bq/L) over time.
-- `total_radon.png` – total radon present in the sampled air after scaling the
-  fitted activity by the combined counting volume `(monitor + sample)` (Bq).
- - `equivalent_air.png` – equivalent air volume plot when `--ambient-file` or
-   `--ambient-concentration` is provided.
+- `total_radon.png` – total radon present in the sampled air after scaling the fitted activity by the combined counting volume `(monitor + sample)` (Bq).
+- `equivalent_air.png` – equivalent air volume plot when `--ambient-file` or `--ambient-concentration` is provided.
 
 The `time_fit` routine still fits only Po‑214 and Po‑218.
 When `window_po210` is provided the Po‑210 events are extracted and a
@@ -490,6 +490,24 @@ fit.  Important keys include:
   `np.nan_to_num` for stability so that NaN or infinite values never
   reach `curve_fit`.
 
+#### Energy resolution and priors
+
+- `float_sigma_E` – when `true`, allow the common detector energy
+  resolution parameter `sigma_E` to float instead of freezing it to the
+  calibration result.
+- `sigma_E_prior_source` – either `"calibration"` or a numeric
+  two-tuple.  `"calibration"` applies the calibration value and its
+  one-sigma uncertainty as a Gaussian prior so the spectrum fit can
+  respond to the data without drifting toward unphysical widths unless
+  strongly supported.  A numeric tuple supplies `[mean, sigma]`
+  directly.  Letting `sigma_E` float against the calibration prior keeps
+  the model overlay visually consistent with the measured spectrum, so
+  the residual panel no longer shows the mismatched widths seen in the
+  older fixed-σ plots.
+
+This fixes the old behavior where the model curve didn't sit on top of
+the data peak.
+
 Example snippet:
 
 ```yaml
@@ -640,6 +658,14 @@ configuration when provided. When you specify this option the
 configuration's interval is ignored in favour of the CLI value.
 The `--baseline-mode` option selects the background removal strategy.
 Valid modes are `none`, `electronics`, `radon` and `all` (default).
+When results are written the metadata also records the
+`background_mode` applied to the time-series fit.  The value
+`fixed_from_baseline` indicates that the monitor background was measured
+in a standalone baseline run and then held fixed while analysing the
+assay.  This is appropriate even when the baseline data were collected
+months before or after the assay because the radon emanation from the
+stainless-steel walls is intrinsic to the monitor hardware rather than
+to the sample plumbing.
 
 Baseline subtraction for each isotope is handled by
 ``radon.baseline.subtract_baseline_rate`` which combines the fitted rate
@@ -717,6 +743,19 @@ includes contributions from both count sets.
   baseline rates from the fit.
 - ``corrected_rate_Bq`` and ``corrected_sigma_Bq`` – baseline-subtracted
   rates from the time-series fit and their uncertainties.
+- ``background_mode`` – whether the background was floated or fixed.
+  The value ``fixed_from_baseline`` signals that a dedicated baseline
+  interval (which may come from a different run) supplied the fixed
+  subtraction.  The baseline period does not need to overlap the assay
+  or the configured ``run_periods``; long monitor-only baselines taken
+  months before or after the sample remain valid for this mode.
+
+Set ``allow_negative_baseline`` to ``true`` in the top-level
+configuration (or pass ``--allow-negative-baseline``) to allow small
+negative baseline-corrected activities.  The analysis still clips the
+values to a floor of ``-5`` Bq to avoid unphysical results when
+statistical fluctuations overshoot.  With the default ``false`` setting
+any negative value is clipped to zero instead.
 
 ### Baseline Noise Cut
 

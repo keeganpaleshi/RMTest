@@ -27,6 +27,8 @@ def _run(tmp_path: Path, monkeypatch, unbinned: bool = False):
         spec_cfg["unbinned_likelihood"] = True
     else:
         spec_cfg.pop("unbinned_likelihood", None)
+    plotting_cfg = cfg.setdefault("plotting", {})
+    plotting_cfg["plot_save_formats"] = ["pdf"]
     cfg_path = tmp_path / ("cfg_unbinned.yaml" if unbinned else "cfg.yaml")
     with open(cfg_path, "w", encoding="utf-8") as f:
         json.dump(cfg, f)
@@ -46,8 +48,8 @@ def _run(tmp_path: Path, monkeypatch, unbinned: bool = False):
     monkeypatch.setattr(analyze, "fit_spectrum", fake_fit_spectrum)
     monkeypatch.setattr(
         analyze,
-        "plot_spectrum",
-        lambda energies, fit_vals=None, out_png="spectrum.png", bins=400, bin_edges=None, config=None: Path(out_png).touch(),
+        "_save_stub_spectrum_plot",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("stub spectrum plot should not be used")),
     )
     monkeypatch.setattr(
         analyze,
