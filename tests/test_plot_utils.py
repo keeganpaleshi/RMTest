@@ -186,6 +186,37 @@ def test_plot_time_series_respects_run_periods(tmp_path):
     assert counts[1] == 3
 
 
+def test_plot_time_series_fd_per_run_period(tmp_path):
+    run1 = np.linspace(0.0, 9.0, 10)
+    run2 = np.linspace(100.0, 109.0, 10)
+    times = np.concatenate([run1, run2])
+    energies = np.full(times.shape, 7.7)
+    cfg = {
+        "window_po214": (7.5, 8.0),
+        "plot_time_binning_mode": "auto",
+        "time_bins_fallback": 1,
+        "dump_time_series_json": True,
+    }
+    out_png = tmp_path / "ts_fd.png"
+    plot_time_series(
+        times,
+        energies,
+        {},
+        0.0,
+        200.0,
+        cfg,
+        str(out_png),
+        run_periods=[(0.0, 10.0), (100.0, 110.0)],
+    )
+
+    json_path = tmp_path / "ts_fd_ts.json"
+    with open(json_path, "r", encoding="utf-8") as fh:
+        summary = json.load(fh)
+
+    centers = summary["centers_s"]
+    assert len(centers) == 6
+
+
 def test_plot_time_series_defaults_to_rn_half_life(tmp_path, monkeypatch):
     times = np.array([1000.1, 1001.1])
     energies = np.array([7.6, 7.7])

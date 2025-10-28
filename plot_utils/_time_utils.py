@@ -136,7 +136,7 @@ def build_time_series_segments(
 
     if bin_mode in ("fd", "auto"):
         data_rel = arr[mask] - float(t_start)
-        bin_width = None
+        global_width = None
         if data_rel.size >= 2:
             q25, q75 = np.percentile(data_rel, [25, 75])
             iqr = q75 - q25
@@ -149,13 +149,34 @@ def build_time_series_segments(
                     width = float(width / np.timedelta64(1, "s"))
                 width = float(width)
                 if np.isfinite(width) and width > 0:
-                    bin_width = width
+                    global_width = width
 
         for start, end in windows:
             if end <= start:
                 continue
-            if bin_width is not None:
-                n_bins_run = max(1, int(np.ceil((end - start) / bin_width)))
+            run_width = None
+            run_mask = (arr >= start) & (arr <= end)
+            run_data = arr[run_mask]
+            if run_data.size >= 2:
+                run_rel = run_data - float(start)
+                q25, q75 = np.percentile(run_rel, [25, 75])
+                iqr = q75 - q25
+                if isinstance(iqr, np.timedelta64):
+                    iqr = float(iqr / np.timedelta64(1, "s"))
+                iqr = float(iqr)
+                if iqr > 0:
+                    width = 2 * iqr / (run_data.size ** (1.0 / 3.0))
+                    if isinstance(width, np.timedelta64):
+                        width = float(width / np.timedelta64(1, "s"))
+                    width = float(width)
+                    if np.isfinite(width) and width > 0:
+                        run_width = width
+
+            if run_width is None:
+                run_width = global_width
+
+            if run_width is not None and run_width > 0:
+                n_bins_run = max(1, int(np.ceil((end - start) / run_width)))
             else:
                 n_bins_run = n_bins_fallback
             edges_abs = np.linspace(float(start), float(end), n_bins_run + 1)
