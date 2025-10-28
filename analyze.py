@@ -232,6 +232,7 @@ from plot_utils import (
     plot_radon_activity_full,
     plot_total_radon_full,
     plot_radon_trend_full,
+    plot_radon_activity_elapsed as plot_radon_activity_elapsed_full,
     plot_spectrum_comparison,
     plot_activity_grid,
 )
@@ -301,13 +302,65 @@ def plot_radon_trend(times, activity, out_png, *, config=None, fit_valid=True):
 def _total_radon_series(activity, errors, monitor_volume, sample_volume):
     """Return total radon Bq and uncertainties for a time series."""
 
+    from radon_activity import compute_total_radon
+
     activity_arr = np.asarray(activity, dtype=float)
-    err_arr = None if errors is None else np.asarray(errors, dtype=float)
+    if errors is None:
+        err_arr = np.full_like(activity_arr, float("nan"), dtype=float)
+    else:
+        err_arr = np.asarray(errors, dtype=float)
 
-    total = activity_arr.copy()
-    total_err = None if err_arr is None else err_arr.copy()
+    total = np.full_like(activity_arr, float("nan"), dtype=float)
+    total_err = np.full_like(activity_arr, float("nan"), dtype=float)
 
-    return total, total_err
+    for idx, value in enumerate(activity_arr):
+        err_val = err_arr[idx]
+        try:
+            _, _, total_val, sigma_total = compute_total_radon(
+                float(value),
+                float(abs(err_val)) if math.isfinite(err_val) else 0.0,
+                float(monitor_volume),
+                float(sample_volume),
+                allow_negative_activity=True,
+            )
+        except Exception:
+            continue
+        total[idx] = total_val
+        total_err[idx] = sigma_total if math.isfinite(err_val) else float("nan")
+
+    return total, total_err if errors is not None else None
+
+
+def _radon_concentration_series(activity, errors, monitor_volume, sample_volume):
+    """Return radon concentration (Bq/L) and uncertainties for a time series."""
+
+    from radon_activity import compute_total_radon
+
+    activity_arr = np.asarray(activity, dtype=float)
+    if errors is None:
+        err_arr = np.full_like(activity_arr, float("nan"), dtype=float)
+    else:
+        err_arr = np.asarray(errors, dtype=float)
+
+    conc = np.full_like(activity_arr, float("nan"), dtype=float)
+    conc_err = np.full_like(activity_arr, float("nan"), dtype=float)
+
+    for idx, value in enumerate(activity_arr):
+        err_val = err_arr[idx]
+        try:
+            conc_val, sigma_conc, _, _ = compute_total_radon(
+                float(value),
+                float(abs(err_val)) if math.isfinite(err_val) else 0.0,
+                float(monitor_volume),
+                float(sample_volume),
+                allow_negative_activity=True,
+            )
+        except Exception:
+            continue
+        conc[idx] = conc_val
+        conc_err[idx] = sigma_conc if math.isfinite(err_val) else float("nan")
+
+    return conc, conc_err if errors is not None else np.full_like(conc, float("nan"))
 
 
 def _as_timestamp(value: Any) -> float:
@@ -3508,34 +3561,84 @@ def main(argv=None):
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if iso_mode == "radon" and "radon" in summary:
-        rad_ts = summary["radon"]["time_series"]
+        rad_summary = summary["radon"]
+        rad_ts = rad_summary.get("time_series", {})
+        plot_cfg = cfg.get("plotting", {})
 
-        plot_radon_activity(
-            rad_ts["time"],
-            rad_ts["activity"],
-            Path(out_dir) / "radon_activity.png",
-            rad_ts.get("error"),
-            config=cfg.get("plotting", {}),
+        times_raw = rad_ts.get("time", [])
+        activity_raw = rad_ts.get("activity", [])
+        errors_raw = rad_ts.get("error")
+
+        times_arr = np.asarray(times_raw, dtype=float)
+        activity_arr = np.asarray(activity_raw, dtype=float)
+        errors_arr = (
+            np.asarray(errors_raw, dtype=float)
+            if errors_raw is not None
+            else np.full_like(activity_arr, float("nan"), dtype=float)
         )
-        total_vals, total_errs = _total_radon_series(
-            rad_ts["activity"],
-            rad_ts.get("error"),
-            monitor_vol,
-            sample_vol,
-        )
-        plot_total_radon(
-            rad_ts["time"],
-            total_vals,
-            Path(out_dir) / "total_radon.png",
-            total_errs,
-            config=cfg.get("plotting", {}),
-        )
-        plot_radon_trend(
-            rad_ts["time"],
-            rad_ts["activity"],
-            Path(out_dir) / "radon_trend.png",
-            config=cfg.get("plotting", {}),
-        )
+
+        if times_arr.size and times_arr.size == activity_arr.size:
+            conc_vals, conc_errs = _radon_concentration_series(
+                activity_arr,
+                errors_arr,
+                monitor_vol,
+                sample_vol,
+            )
+            plot_radon_activity(
+                times_arr,
+                conc_vals,
+                Path(out_dir) / "radon_activity.png",
+                conc_errs,
+                config=plot_cfg,
+            )
+            plot_radon_activity_elapsed_full(
+                times_arr,
+                conc_vals,
+                conc_errs,
+                Path(out_dir) / "radon_activity_elapsed.png",
+                config=plot_cfg,
+            )
+            plot_radon_trend(
+                times_arr,
+                conc_vals,
+                Path(out_dir) / "radon_trend.png",
+                config=plot_cfg,
+            )
+        else:
+            logger.warning("Radon time-series data unavailable for plotting")
+
+        total_ts = rad_summary.get("total_time_series", {})
+        total_times = np.asarray(total_ts.get("time", times_raw), dtype=float)
+        total_activity = np.asarray(total_ts.get("activity", []), dtype=float)
+        total_errors_raw = total_ts.get("error")
+        if total_activity.size == total_times.size and total_activity.size:
+            total_errors = (
+                None
+                if total_errors_raw is None
+                else np.asarray(total_errors_raw, dtype=float)
+            )
+        elif times_arr.size:
+            total_vals, total_errs = _total_radon_series(
+                activity_arr,
+                errors_arr,
+                monitor_vol,
+                sample_vol,
+            )
+            total_times = times_arr
+            total_activity = total_vals
+            total_errors = total_errs
+        else:
+            total_activity = np.asarray([], dtype=float)
+            total_errors = None
+
+        if total_activity.size and total_activity.size == total_times.size:
+            plot_total_radon(
+                total_times,
+                total_activity,
+                Path(out_dir) / "total_radon.png",
+                total_errors,
+                config=plot_cfg,
+            )
 
     # Generate plots now that the output directory exists
     if spec_plot_data:
