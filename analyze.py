@@ -3554,6 +3554,45 @@ def main(argv=None):
             else None
         )
 
+        total_volume = monitor_vol + sample_vol
+
+        def _to_float(value: Any) -> float:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                return float("nan")
+
+        activity_info = radon_results.get("radon_activity_Bq") if radon_results else {}
+        conc_info = (
+            radon_results.get("radon_concentration_Bq_per_L")
+            if radon_results
+            else {}
+        )
+
+        fallback_activity_val = _to_float(radon.get("Rn_activity_Bq"))
+        if not math.isfinite(fallback_activity_val):
+            fallback_activity_val = _to_float(activity_info.get("value"))
+
+        fallback_activity_unc = _to_float(radon.get("stat_unc_Bq"))
+        if (not math.isfinite(fallback_activity_unc)) or fallback_activity_unc < 0:
+            fallback_activity_unc = _to_float(activity_info.get("uncertainty"))
+        if fallback_activity_unc < 0:
+            fallback_activity_unc = float("nan")
+
+        volume_scale = (1.0 / total_volume) if total_volume > 0 else float("nan")
+
+        fallback_conc_val = _to_float(conc_info.get("value"))
+        if not math.isfinite(fallback_conc_val):
+            if math.isfinite(fallback_activity_val) and math.isfinite(volume_scale):
+                fallback_conc_val = fallback_activity_val * volume_scale
+
+        fallback_conc_unc = _to_float(conc_info.get("uncertainty"))
+        if (not math.isfinite(fallback_conc_unc)) or fallback_conc_unc < 0:
+            if math.isfinite(fallback_activity_unc) and math.isfinite(volume_scale):
+                fallback_conc_unc = fallback_activity_unc * volume_scale
+        if fallback_conc_unc < 0:
+            fallback_conc_unc = float("nan")
+
         if fallback_times.size == 0:
             fallback_times = np.array(
                 [window_start, window_end] if has_window_end else [window_start],
@@ -3563,17 +3602,19 @@ def main(argv=None):
         if fallback_activity.size != fallback_times.size:
             fallback_activity = np.full(
                 fallback_times.shape,
-                float(radon.get("Rn_activity_Bq", float("nan"))),
+                fallback_activity_val,
                 dtype=float,
             )
 
         if fallback_errs is None or fallback_errs.size != fallback_times.size:
-            stat_unc_val = radon.get("stat_unc_Bq")
-            try:
-                err_val = float(stat_unc_val) if stat_unc_val is not None else float("nan")
-            except (TypeError, ValueError):
-                err_val = float("nan")
-            fallback_errs = np.full(fallback_times.shape, err_val, dtype=float)
+            fallback_errs = np.full(
+                fallback_times.shape, fallback_activity_unc, dtype=float
+            )
+
+        fallback_conc = np.full(fallback_times.shape, fallback_conc_val, dtype=float)
+        fallback_conc_err = np.full(
+            fallback_times.shape, fallback_conc_unc, dtype=float
+        )
 
         valid_fits: dict[str, Mapping[str, Any]] = {}
         for iso in ("Po214", "Po218"):
@@ -3597,11 +3638,23 @@ def main(argv=None):
 
         if radon_combined_info is not None:
             try:
+                comb_val_raw = radon_combined_info.get("activity_Bq")
+                comb_unc_raw = radon_combined_info.get("unc_Bq")
+                if math.isfinite(volume_scale):
+                    comb_val = comb_val_raw * volume_scale if comb_val_raw is not None else float("nan")
+                    comb_unc = (
+                        comb_unc_raw * volume_scale
+                        if comb_unc_raw is not None
+                        else float("nan")
+                    )
+                else:
+                    comb_val = comb_val_raw if comb_val_raw is not None else float("nan")
+                    comb_unc = comb_unc_raw if comb_unc_raw is not None else float("nan")
                 _ = plot_radon_activity(
                     [t0_global.timestamp(), t_end_global_ts],
-                    [radon_combined_info["activity_Bq"]] * 2,
+                    [comb_val] * 2,
                     Path(out_dir) / "radon_activity_combined.png",
-                    [radon_combined_info["unc_Bq"]] * 2,
+                    [comb_unc] * 2,
                     config=cfg.get("plotting", {}),
                 )
             except Exception as e:
@@ -3618,11 +3671,17 @@ def main(argv=None):
             hl = _hl_value(cfg, "Po214")
             cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
             A214, dA214 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
+            if math.isfinite(volume_scale):
+                plot_A214 = A214 * volume_scale
+                plot_dA214 = dA214 * volume_scale
+            else:
+                plot_A214 = A214
+                plot_dA214 = dA214
             plot_radon_activity(
                 time_grid,
-                A214,
+                plot_A214,
                 Path(out_dir) / "radon_activity_po214.png",
-                dA214,
+                plot_dA214,
                 config=cfg.get("plotting", {}),
             )
 
@@ -3639,13 +3698,18 @@ def main(argv=None):
             A218, dA218 = radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
 
         activity_arr = err_arr = None
+        conc_arr = conc_err = None
         if A214 is None and A218 is None:
             activity_arr = fallback_activity.astype(float, copy=True)
             err_arr = fallback_errs.astype(float, copy=True)
+            conc_arr = fallback_conc.astype(float, copy=True)
+            conc_err = fallback_conc_err.astype(float, copy=True)
             activity_times = fallback_times
         else:
             activity_arr = np.zeros_like(time_grid, dtype=float)
             err_arr = np.zeros_like(time_grid, dtype=float)
+            conc_arr = np.zeros_like(time_grid, dtype=float)
+            conc_err = np.zeros_like(time_grid, dtype=float)
             for i in range(time_grid.size):
                 r214 = err214_i = None
                 if A214 is not None:
@@ -3664,18 +3728,33 @@ def main(argv=None):
                     1.0,
                 )
                 activity_arr[i] = A
-                err_arr[i] = s
+                err_arr[i] = s if s is not None else float("nan")
+                if math.isfinite(volume_scale):
+                    conc_arr[i] = A * volume_scale
+                    conc_err[i] = (
+                        (s * volume_scale)
+                        if (s is not None and math.isfinite(s))
+                        else float("nan")
+                    )
+                else:
+                    conc_arr[i] = float("nan")
+                    conc_err[i] = float("nan")
 
-            if np.all(activity_arr == 0) and radon_results:
-                activity_arr.fill(radon_results["radon_activity_Bq"]["value"])
-                err_arr.fill(radon_results["radon_activity_Bq"]["uncertainty"])
+            if np.all(activity_arr == 0) and math.isfinite(fallback_activity_val):
+                activity_arr.fill(fallback_activity_val)
+            if np.all(err_arr == 0) and math.isfinite(fallback_activity_unc):
+                err_arr.fill(fallback_activity_unc)
+            if conc_arr.size and np.all(conc_arr == 0) and math.isfinite(fallback_conc_val):
+                conc_arr.fill(fallback_conc_val)
+            if conc_err.size and np.all(conc_err == 0) and math.isfinite(fallback_conc_unc):
+                conc_err.fill(fallback_conc_unc)
 
         if activity_arr is not None and err_arr is not None:
             plot_radon_activity(
                 activity_times,
-                activity_arr,
+                conc_arr if conc_arr is not None else activity_arr,
                 Path(out_dir) / "radon_activity.png",
-                err_arr,
+                conc_err if conc_err is not None else err_arr,
                 config=cfg.get("plotting", {}),
             )
             total_vals, total_errs = _total_radon_series(
@@ -3734,7 +3813,10 @@ def main(argv=None):
                     r214 = A214_tr[i] if A214_tr is not None else None
                     r218 = A218_tr[i] if A218_tr is not None else None
                     A, _ = compute_radon_activity(r218, None, 1.0, r214, None, 1.0)
-                    trend[i] = A
+                    if math.isfinite(volume_scale):
+                        trend[i] = A * volume_scale
+                    else:
+                        trend[i] = A
                 plot_radon_trend(
                     times_trend,
                     trend,
