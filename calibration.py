@@ -16,6 +16,58 @@ from constants import (
 )
 
 
+_DEFAULT_TAU_BOUNDS = {
+    "default": (_TAU_MIN, 50.0),
+    "Po218": (_TAU_MIN, 8.0),
+}
+
+
+def _coerce_tau_bounds(bounds, iso):
+    """Return validated ``(lo, hi)`` tau bounds for ``iso``."""
+
+    if isinstance(bounds, str) or not isinstance(bounds, Sequence):
+        raise TypeError(
+            f"Tau bounds for {iso} must be a length-2 sequence, got {type(bounds)!r}"
+        )
+
+    if len(bounds) != 2:
+        raise ValueError(
+            f"Tau bounds for {iso} must contain exactly two values, got {bounds!r}"
+        )
+
+    lo, hi = float(bounds[0]), float(bounds[1])
+
+    if not np.isfinite(lo) or not np.isfinite(hi):
+        raise ValueError(f"Tau bounds for {iso} must be finite, got {bounds!r}")
+
+    lo = max(lo, _TAU_MIN)
+    if hi <= lo:
+        raise ValueError(
+            f"Upper tau bound must exceed lower bound for {iso}, got {bounds!r}"
+        )
+
+    return lo, hi
+
+
+def _resolve_tau_bounds(cal_cfg: Mapping[str, object], iso: str) -> tuple[float, float]:
+    """Determine the tau bounds for ``iso`` using defaults and config overrides."""
+
+    tau_cfg = cal_cfg.get("tau_bounds_adc") if isinstance(cal_cfg, Mapping) else None
+
+    if tau_cfg is None:
+        return _DEFAULT_TAU_BOUNDS.get(iso, _DEFAULT_TAU_BOUNDS["default"])
+
+    if isinstance(tau_cfg, Mapping):
+        bounds = tau_cfg.get(iso, tau_cfg.get("default"))
+        if bounds is None:
+            return _DEFAULT_TAU_BOUNDS.get(iso, _DEFAULT_TAU_BOUNDS["default"])
+    else:
+        bounds = tau_cfg
+
+    lo, hi = _coerce_tau_bounds(bounds, iso)
+    return lo, hi
+
+
 @dataclass(init=False)
 class CalibrationResult:
     """Polynomial calibration coefficients and covariance.
@@ -454,9 +506,10 @@ def calibrate_run(adc_values, config, hist_bins=None):
                 return A * emg_left(x, mu, sigma, tau)
 
             p0 = [amp0, mu0, sigma0, tau0]
+            tau_lo, tau_hi = _resolve_tau_bounds(config["calibration"], iso)
             bounds = (
-                [0, mu0 - window, 1e-3, _TAU_MIN],  # lower bounds
-                [np.inf, mu0 + window, 50.0, 200.0],  # upper bounds (tunable)
+                [0, mu0 - window, 1e-3, tau_lo],  # lower bounds
+                [np.inf, mu0 + window, 50.0, tau_hi],  # upper bounds (tunable)
             )
             popt, pcov = curve_fit(model_emg, x_slice, y_slice, p0=p0, bounds=bounds)
             A_fit, mu_fit, sigma_fit, tau_fit = popt
