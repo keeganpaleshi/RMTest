@@ -3677,10 +3677,19 @@ def main(argv=None):
     total_bq_display = total_bq
     if total_bq_display < 0:
         if args.allow_negative_activity:
-            logger.warning(
-                "Negative total radon in sample reported (%.3f Bq) because --allow-negative-activity was requested",
-                total_bq_display,
-            )
+            floor = radon_activity.NEGATIVE_ACTIVITY_FLOOR_BQ
+            if total_bq_display < floor:
+                logger.warning(
+                    "Negative total radon in sample reported (%.3f Bq) and clamped to %.1f Bq because --allow-negative-activity was requested",
+                    total_bq_display,
+                    floor,
+                )
+                total_bq_display = floor
+            else:
+                logger.warning(
+                    "Negative total radon in sample reported (%.3f Bq) because --allow-negative-activity was requested",
+                    total_bq_display,
+                )
         else:
             total_bq_display = 0.0
 
