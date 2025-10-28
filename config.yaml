@@ -8,8 +8,8 @@ pipeline:
   log_level: INFO
   random_seed: null
 analysis:
-  analysis_start_time: '2023-07-31T00:00:00Z'
-  analysis_end_time: '2024-02-01T06:00:00Z'
+  analysis_start_time: '2023-06-14T00:00:00Z'
+  analysis_end_time: '2025-02-23T23:59:59Z'
   spike_end_time: '2023-07-31T00:10:00Z'
   spike_periods:
   - - '2023-11-12T00:00:00Z'
