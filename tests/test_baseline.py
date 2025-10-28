@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 import numpy as np
+import math
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import types
@@ -14,6 +15,12 @@ from dataclasses import asdict
 from calibration import CalibrationResult
 import baseline
 import baseline_utils
+from baseline_handling import (
+    BaselineRecord,
+    get_fixed_background_for_time_fit,
+    check_baseline_drift,
+    annotate_time_fit_provenance,
+)
 from baseline_utils import subtract_baseline_counts
 from radon.baseline import subtract_baseline_counts
 import radon_joint_estimator
@@ -932,6 +939,73 @@ def test_invalid_dilution_factor_respects_fallback(tmp_path, monkeypatch):
     assert base_info.get("dilution_factor") == pytest.approx(1.0)
     warnings_list = base_info.get("warnings", [])
     assert any("invalid baseline volumes" in w for w in warnings_list)
+
+
+def test_get_fixed_background_for_time_fit_scales():
+    record = BaselineRecord.from_summary_dict(
+        {
+            "live_time": 100.0,
+            "counts": {"Po214": 200.0},
+            "scales": {"Po214": 0.5},
+        }
+    )
+    cfg = {"time_fit": {"eff_po214": [2.0]}}
+    result = get_fixed_background_for_time_fit(record, "Po214", cfg)
+    assert result is not None
+    rate, unc, mode = result
+    assert mode == "baseline_fixed"
+    assert rate == pytest.approx(0.5)
+    expected_unc = math.sqrt(200.0) / (100.0 * 2.0)
+    assert unc == pytest.approx(expected_unc * 0.5)
+
+
+def test_check_baseline_drift_flags_warning():
+    record = BaselineRecord(
+        timestamp_range=("2024-01-01T00:00:00Z", "2024-01-02T00:00:00Z"),
+        live_time_s=3600.0,
+        dilution_factor=0.5,
+        rates_Bq={"Po214": 1.0},
+        rate_unc_Bq={"Po214": 0.1},
+        counts={"Po214": 100.0},
+        scales={"Po214": 0.5},
+        po214_energy_stats={"centroid_MeV": 7.8, "sigma_MeV": 0.2},
+    )
+    warn, message = check_baseline_drift(
+        record,
+        {"centroid_MeV": 7.9, "sigma_MeV": 0.1},
+        energy_tol_MeV=0.05,
+        sigma_tol_fraction=0.2,
+    )
+    assert warn is True
+    assert "baseline spectral shape drifted" in (message or "")
+
+
+def test_annotate_time_fit_provenance_roundtrip():
+    entry = {"background_mode": "fixed"}
+    record = BaselineRecord.from_summary_dict(
+        {
+            "timestamp_range": ["2024-01-01T00:00:00Z", "2024-01-02T00:00:00Z"],
+            "live_time": 7200.0,
+            "dilution_factor": 0.5,
+            "rate_Bq": {"Po214": 1.0},
+            "rate_unc_Bq": {"Po214": 0.1},
+        }
+    )
+    annotated = annotate_time_fit_provenance(
+        entry,
+        {
+            "record": record.as_dict(),
+            "rate_Bq": 0.4,
+            "unc_Bq": 0.05,
+            "mode": "baseline_fixed",
+        },
+    )
+    assert annotated["baseline_activity_Bq"] == pytest.approx(0.4)
+    assert annotated["background_source"] == "baseline_fixed"
+    assert annotated["baseline_source_range"] == [
+        "2024-01-01T00:00:00Z",
+        "2024-01-02T00:00:00Z",
+    ]
 
 
 def test_rate_histogram_single_event():

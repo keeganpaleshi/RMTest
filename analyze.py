@@ -148,6 +148,27 @@ def _roi_diff(pre: np.ndarray, post: np.ndarray, cfg: Mapping[str, Any]) -> dict
     return diff
 
 
+def _window_energy_stats(events: pd.DataFrame, window) -> dict[str, float]:
+    """Return mean and sigma of energies within ``window`` (inclusive)."""
+
+    if window is None or events.empty:
+        return {}
+    try:
+        lo, hi = window
+    except (TypeError, ValueError):
+        return {}
+    if "energy_MeV" not in events:
+        return {}
+    energies = events["energy_MeV"]
+    mask = (energies >= lo) & (energies <= hi)
+    values = energies[mask].to_numpy(dtype=float)
+    if values.size == 0:
+        return {}
+    mean_val = float(values.mean())
+    sigma_val = float(values.std(ddof=1)) if values.size > 1 else 0.0
+    return {"centroid_MeV": mean_val, "sigma_MeV": sigma_val}
+
+
 def _burst_sensitivity_scan(
     events: pd.DataFrame, cfg: Mapping[str, Any], cal_result
 ) -> tuple[dict, tuple[int, int]]:
@@ -276,6 +297,12 @@ from baseline_utils import (
     compute_dilution_factor,
     summarize_baseline,
     BaselineError,
+)
+from baseline_handling import (
+    BaselineRecord,
+    annotate_time_fit_provenance,
+    check_baseline_drift,
+    get_fixed_background_for_time_fit,
 )
 import baseline
 from time_fitting import two_pass_time_fit
@@ -1916,6 +1943,9 @@ def main(argv=None):
         raise ValueError("baseline volumes must be numeric") from exc
     base_events = pd.DataFrame()
     baseline_live_time = 0.0
+    baseline_po214_stats: dict[str, float] = {}
+    baseline_drift_flag = False
+    baseline_drift_message: str | None = None
     mask_base = None
 
     if baseline_range:
@@ -1955,6 +1985,18 @@ def main(argv=None):
             "n_events": len(base_events),
             "live_time": baseline_live_time,
         }
+        ts0 = to_utc_datetime(t_start_base)
+        ts1 = to_utc_datetime(t_end_base)
+        baseline_info["timestamp_range"] = [
+            ts0.isoformat().replace("+00:00", "Z"),
+            ts1.isoformat().replace("+00:00", "Z"),
+        ]
+
+        po214_window = cfg.get("time_fit", {}).get("window_po214")
+        stats = _window_energy_stats(base_events, po214_window)
+        if stats:
+            baseline_po214_stats = stats
+            baseline_info["po214_energy_stats"] = stats
 
         # Estimate electronic noise level from ADC values below Po-210
         noise_level = None
@@ -1988,6 +2030,38 @@ def main(argv=None):
         # Record noise counts in ``baseline_counts``
         if "mask_noise" in locals():
             baseline_counts["noise"] = int(np.sum(mask_noise))
+
+    try:
+        dilution_factor = compute_dilution_factor(monitor_vol, sample_vol)
+    except ValueError as exc:
+        msg = (
+            "invalid baseline volumes: "
+            f"monitor_volume_l={monitor_vol!r}, sample_volume_l={sample_vol!r}"
+        )
+        if cfg.get("allow_fallback"):
+            monitor_safe = max(monitor_vol, 0.0)
+            sample_safe = max(sample_vol, 0.0)
+            total_safe = monitor_safe + sample_safe
+            if monitor_safe <= 0 or total_safe <= 0:
+                raise ValueError(msg) from exc
+            logger.warning("%s – clamping to non-negative values", msg)
+            monitor_vol = monitor_safe
+            sample_vol = sample_safe
+            dilution_factor = monitor_safe / total_safe
+            warnings_list = baseline_info.setdefault("warnings", [])
+            warnings_list.append(msg)
+            baseline_info["dilution_factor_fallback"] = True
+        else:
+            raise ValueError(msg) from exc
+
+    scales = {
+        "Po214": dilution_factor,
+        "Po218": dilution_factor,
+        "Po210": 1.0,
+        "noise": 1.0,
+    }
+    baseline_info["scales"] = scales
+    baseline_info["dilution_factor"] = dilution_factor
 
     _ensure_events(df_analysis, "baseline subtraction")
 
@@ -2364,6 +2438,7 @@ def main(argv=None):
     radon_estimate_info = None
     po214_estimate_info = None
     po218_estimate_info = None
+    analysis_po214_stats: dict[str, float] | None = None
     if cfg.get("time_fit", {}).get("do_time_fit", False):
         for iso in ("Po218", "Po214"):
             win_key = f"window_{iso.lower()}"
@@ -2464,6 +2539,7 @@ def main(argv=None):
             n0_count = float(np.sum(probs_base))
             if iso in isotopes_to_subtract:
                 baseline_counts[iso] = n0_count
+                baseline_info.setdefault("counts", {})[iso] = n0_count
 
             eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
             if isinstance(eff_cfg, list):
@@ -2552,6 +2628,10 @@ def main(argv=None):
             t0_dt = to_utc_datetime(t0_global)
             cut = t0_dt + timedelta(seconds=float(args.settle_s))
             iso_events = iso_events[iso_events["timestamp"] >= cut]
+        if iso == "Po214":
+            stats_run = _window_energy_stats(iso_events, (lo, hi))
+            if stats_run:
+                analysis_po214_stats = stats_run
         ts_vals = iso_events["timestamp"].map(to_epoch_seconds).to_numpy()
         times_dict = {iso: ts_vals}
         weights_map = {iso: iso_events["weight"].values}
@@ -2600,16 +2680,20 @@ def main(argv=None):
 
         # Determine baseline rate for fixed-background first pass
         baseline_rate_iso = None
-        if baseline_live_time > 0:
-            eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
-            if isinstance(eff_cfg, list):
-                eff_rate = eff_cfg[0]
-            else:
-                eff_rate = eff_cfg if eff_cfg is not None else 1.0
-            if eff_rate > 0:
-                baseline_rate_iso = baseline_counts.get(iso, 0.0) / (
-                    baseline_live_time * eff_rate
-                )
+        baseline_unc_iso = None
+        baseline_source_mode = None
+        baseline_detail_entry: dict[str, Any] | None = None
+        if baseline_live_time > 0 and iso in isotopes_to_subtract:
+            record_for_iso = BaselineRecord.from_summary_dict(baseline_info)
+            bg_result = get_fixed_background_for_time_fit(record_for_iso, iso, cfg)
+            if bg_result is not None:
+                baseline_rate_iso, baseline_unc_iso, baseline_source_mode = bg_result
+                baseline_detail_entry = {
+                    "record": record_for_iso.as_dict(),
+                    "rate_Bq": baseline_rate_iso,
+                    "unc_Bq": baseline_unc_iso,
+                    "mode": baseline_source_mode,
+                }
 
         # Run time-series fit (two-pass)
         decay_out = None  # fresh variable each iteration
@@ -2656,6 +2740,10 @@ def main(argv=None):
         meta_entry: dict[str, Any] = {"mode": background_mode}
         if baseline_rate_meta is not None:
             meta_entry["baseline_rate_Bq"] = baseline_rate_meta
+        if baseline_unc_iso is not None:
+            meta_entry["baseline_unc_Bq"] = float(baseline_unc_iso)
+        if baseline_detail_entry is not None:
+            meta_entry["baseline_details"] = baseline_detail_entry
         time_fit_background_meta[iso] = meta_entry
 
         # Store inputs for plotting later
@@ -3030,35 +3118,6 @@ def main(argv=None):
                 baseline_rates[iso] = 0.0
                 baseline_unc[iso] = 0.0
 
-    try:
-        dilution_factor = compute_dilution_factor(monitor_vol, sample_vol)
-    except ValueError as exc:
-        msg = (
-            "invalid baseline volumes: "
-            f"monitor_volume_l={monitor_vol!r}, sample_volume_l={sample_vol!r}"
-        )
-        if cfg.get("allow_fallback"):
-            monitor_safe = max(monitor_vol, 0.0)
-            sample_safe = max(sample_vol, 0.0)
-            total_safe = monitor_safe + sample_safe
-            if monitor_safe <= 0 or total_safe <= 0:
-                raise ValueError(msg) from exc
-            logger.warning("%s – clamping to non-negative values", msg)
-            monitor_vol = monitor_safe
-            sample_vol = sample_safe
-            dilution_factor = monitor_safe / total_safe
-            warnings_list = baseline_info.setdefault("warnings", [])
-            warnings_list.append(msg)
-            baseline_info["dilution_factor_fallback"] = True
-        else:
-            raise ValueError(msg) from exc
-    scales = {
-        "Po214": dilution_factor,
-        "Po218": dilution_factor,
-        "Po210": 1.0,
-        "noise": 1.0,
-    }
-    baseline_info["scales"] = scales
     baseline_info["analysis_counts"] = iso_counts_raw
 
     corrected_rates = {}
@@ -3146,6 +3205,16 @@ def main(argv=None):
             iso: vals["uncertainty"]
             for iso, vals in baseline_info["corrected_activity"].items()
         }
+
+    baseline_record = BaselineRecord.from_summary_dict(baseline_info)
+    baseline_info["record"] = baseline_record.as_dict()
+    drift_flag, drift_message = check_baseline_drift(
+        baseline_record,
+        analysis_po214_stats,
+    )
+    if drift_flag:
+        baseline_drift_flag = True
+        baseline_drift_message = drift_message
 
     try:
         _ = summarize_baseline(
@@ -3400,6 +3469,10 @@ def main(argv=None):
             d["background_mode"] = meta.get("mode")
             if meta.get("baseline_rate_Bq") is not None:
                 d["baseline_rate_Bq"] = meta["baseline_rate_Bq"]
+            if meta.get("baseline_unc_Bq") is not None:
+                d["baseline_unc_Bq"] = meta["baseline_unc_Bq"]
+            if meta.get("baseline_details"):
+                d = annotate_time_fit_provenance(d, meta["baseline_details"])
         time_fit_serializable[iso] = d
 
     if isinstance(cal_params, dict):
@@ -3548,6 +3621,13 @@ def main(argv=None):
     summary.diagnostics = build_diagnostics(
         summary, spectrum_results, time_fit_results, df_analysis, cfg
     )
+    if baseline_drift_flag:
+        diag = summary.diagnostics or {}
+        diag = dict(diag)
+        diag["baseline_compat_warning"] = True
+        if baseline_drift_message:
+            diag["baseline_compat_message"] = baseline_drift_message
+        summary.diagnostics = diag
 
     results_dir = Path(args.output_dir) / (args.job_id or now_str)
     if results_dir.exists():
