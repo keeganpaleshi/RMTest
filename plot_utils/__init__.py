@@ -40,6 +40,17 @@ __all__ = [
 ]
 
 
+def _counts_per_bin(density, widths):
+    """Convert a spectral density into expected counts per bin."""
+
+    density_arr = np.asarray(density, dtype=float)
+    widths_arr = np.asarray(widths, dtype=float)
+    counts = np.multiply(density_arr, widths_arr)
+    if counts.shape != density_arr.shape:
+        raise ValueError("density and widths must share the same shape")
+    return counts
+
+
 def extract_time_series(timestamps, energies, window, t_start, t_end, bin_width_s=1.0):
     """Return histogram counts for events within an energy window.
 
@@ -519,7 +530,7 @@ def plot_spectrum(
             else:
                 density = gaussian(centers_arr, float(mu), sigma_vals)
             density = np.nan_to_num(density, nan=0.0, posinf=0.0, neginf=0.0)
-            comps[iso] = float(amp) * density * widths
+            comps[iso] = _counts_per_bin(float(amp) * density, widths)
             total += comps[iso]
 
         # Background contribution
@@ -545,7 +556,7 @@ def plot_spectrum(
             background_density = np.nan_to_num(
                 background_density, nan=0.0, posinf=0.0, neginf=0.0
             )
-            background = background_density * widths
+            background = _counts_per_bin(background_density, widths)
             total += background
 
         if background is not None:

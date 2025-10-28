@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from calibration import gaussian
 from constants import PO210, RN222
 from plot_utils import (
     plot_time_series,
@@ -12,7 +13,7 @@ from plot_utils import (
     plot_radon_activity,
     plot_radon_activity_full,
 )
-from fitting import FitResult
+from fitting import FitResult, make_linear_bkg
 import plot_utils
 
 
@@ -239,6 +240,51 @@ def test_plot_spectrum_irregular_edges_residuals(tmp_path, monkeypatch):
 
     assert len(captured) >= 2
     np.testing.assert_allclose(captured[1], expected)
+
+
+def test_plot_spectrum_components_counts_per_bin(tmp_path, monkeypatch):
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    edges = np.array([0.0, 1.0, 2.0, 3.5])
+    energies = np.array([0.2, 0.4, 0.7, 1.2, 1.6, 2.1, 2.8, 3.2])
+
+    fit_vals = {
+        "sigma0": 0.12,
+        "F": 0.0,
+        "mu_Po210": 1.1,
+        "S_Po210": 120.0,
+        "b0": 0.4,
+        "b1": -0.05,
+        "S_bkg": 30.0,
+    }
+
+    ax = plot_spectrum(
+        energies,
+        fit_vals=fit_vals,
+        bin_edges=edges,
+        fit_flags={"background_model": "loglin_unit"},
+        out_png=str(tmp_path / "spec_components.png"),
+    )
+
+    centers = edges[:-1] + np.diff(edges) / 2.0
+    widths = np.diff(edges)
+
+    sigma = np.sqrt(fit_vals["sigma0"] ** 2 + fit_vals["F"] * centers)
+    expected_po210 = (
+        fit_vals["S_Po210"] * gaussian(centers, fit_vals["mu_Po210"], sigma) * widths
+    )
+
+    shape = make_linear_bkg(float(edges[0]), float(edges[-1]))
+    background_density = fit_vals["S_bkg"] * shape(centers, fit_vals["b0"], fit_vals["b1"])
+    expected_background = background_density * widths
+
+    line_map = {line.get_label(): line.get_ydata() for line in ax.get_lines()}
+
+    np.testing.assert_allclose(line_map["Po210"], expected_po210)
+    np.testing.assert_allclose(line_map["Background"], expected_background)
+    np.testing.assert_allclose(
+        line_map["Total model"], expected_po210 + expected_background
+    )
 
 
 def test_plot_spectrum_accepts_fitresult(tmp_path, monkeypatch):
