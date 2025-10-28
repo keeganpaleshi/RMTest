@@ -554,24 +554,41 @@ def _spectral_fit_with_check(
         sigma_E_val = math.sqrt(max(sigma0**2 + F_val * e_ref, 0.0))
         result.params["sigma_E"] = sigma_E_val
         if result.cov is not None and sigma_E_val > 0.0:
-            param_index = getattr(result, "param_index", None) or {}
-            has_sigma0 = "sigma0" in param_index
-            has_F = "F" in param_index
+            missing_cov = False
+            try:
+                cov_sigma0 = float(result.get_cov("sigma0", "sigma0"))
+            except KeyError:
+                cov_sigma0 = float("nan")
+                missing_cov = True
+            try:
+                cov_F = float(result.get_cov("F", "F"))
+            except KeyError:
+                cov_F = float("nan")
+                missing_cov = True
+            try:
+                cov_sigma0_F = float(result.get_cov("sigma0", "F"))
+            except KeyError:
+                cov_sigma0_F = float("nan")
+                missing_cov = True
 
-            var = 0.0
-            if has_sigma0:
-                var += (sigma0 / sigma_E_val) ** 2 * result.get_cov("sigma0", "sigma0")
-            if has_F:
-                var += (0.5 * e_ref / sigma_E_val) ** 2 * result.get_cov("F", "F")
-            if has_sigma0 and has_F:
+            if missing_cov or not all(
+                math.isfinite(val) for val in (cov_sigma0, cov_F, cov_sigma0_F)
+            ):
+                logger.warning(
+                    "Missing covariance entry when propagating sigma_E uncertainty; "
+                    "recording NaN uncertainty"
+                )
+                result.params["dsigma_E"] = float("nan")
+            else:
+                var = 0.0
+                var += (sigma0 / sigma_E_val) ** 2 * cov_sigma0
+                var += (0.5 * e_ref / sigma_E_val) ** 2 * cov_F
                 var += (
                     2
                     * (sigma0 / sigma_E_val)
                     * (0.5 * e_ref / sigma_E_val)
-                    * result.get_cov("sigma0", "F")
+                    * cov_sigma0_F
                 )
-
-            if has_sigma0 or has_F:
                 result.params["dsigma_E"] = float(np.sqrt(max(var, 0.0)))
     tol = cfg.get("spectral_fit", {}).get("spectral_peak_tolerance_mev", 0.2)
     dev = _centroid_deviation(params, known)
