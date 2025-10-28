@@ -468,10 +468,6 @@ fit.  Important keys include:
   spectral fitter runs so that physical parameters (notably the peak
   amplitudes) remain unconstrained by unit mismatches.
 
-- `sigma_E_prior_source` – one-sigma width of the prior on the common
-  energy resolution parameter. When omitted the uncertainty from the
-  calibration step is used.
-
 - `expected_peaks` – approximate ADC centroids used to locate the
   Po‑210, Po‑218 and Po‑214 peaks before fitting. The default is
   `{"Po210": 1250, "Po218": 1400, "Po214": 1800}`.
@@ -486,6 +482,21 @@ fit.  Important keys include:
 - `emg_left` evaluations are wrapped in `np.errstate` and passed through
   `np.nan_to_num` for stability so that NaN or infinite values never
   reach `curve_fit`.
+
+#### Energy resolution and priors
+
+- `float_sigma_E` – when `true`, allow the common detector energy
+  resolution parameter `sigma_E` to float instead of freezing it to the
+  calibration result.
+- `sigma_E_prior_source` – either `"calibration"` or a numeric
+  two-tuple.  `"calibration"` applies the calibration value and its
+  one-sigma uncertainty as a Gaussian prior so the spectrum fit can
+  respond to the data without drifting toward unphysical widths unless
+  strongly supported.  A numeric tuple supplies `[mean, sigma]`
+  directly.
+
+This fixes the old behavior where the model curve didn't sit on top of
+the data peak.
 
 Example snippet:
 
