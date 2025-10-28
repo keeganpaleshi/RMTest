@@ -20,6 +20,7 @@ from calibration import gaussian, emg_left
 from fitting import make_linear_bkg
 from .paths import get_targets
 from ._time_utils import guard_mpl_times, setup_time_axis
+from utils.time_utils import to_epoch_seconds
 
 # Half-life constants used for the time-series overlay [seconds]
 PO214_HALF_LIFE_S = PO214.half_life_s
@@ -276,6 +277,66 @@ def plot_time_series(
     # Optional normalisation to counts / s (set in config)
     normalise_rate = bool(config.get("plot_time_normalise_rate", False))
 
+    def _resolve_run_periods(cfg):
+        if not isinstance(cfg, Mapping):
+            return []
+
+        run_periods_cfg = cfg.get("run_periods")
+        if not run_periods_cfg and isinstance(cfg.get("analysis"), Mapping):
+            run_periods_cfg = cfg.get("analysis", {}).get("run_periods")
+
+        periods = []
+        if not run_periods_cfg:
+            return periods
+
+        for period in run_periods_cfg:
+            try:
+                start, end = period
+            except (TypeError, ValueError):
+                continue
+
+            try:
+                start_ts = to_epoch_seconds(start)
+                end_ts = to_epoch_seconds(end)
+            except Exception:
+                continue
+
+            if not np.isfinite(start_ts) or not np.isfinite(end_ts):
+                continue
+            if end_ts <= start_ts:
+                continue
+
+            periods.append((float(start_ts), float(end_ts)))
+
+        return periods
+
+    run_periods = _resolve_run_periods(config)
+    edges_abs_start = float(t_start) + edges[:-1]
+    edges_abs_end = float(t_start) + edges[1:]
+    include_mask = None
+    if run_periods:
+        mask = np.zeros_like(edges_abs_start, dtype=bool)
+        for start_ts, end_ts in run_periods:
+            mask |= (edges_abs_start < end_ts) & (edges_abs_end > start_ts)
+        if np.any(mask):
+            include_mask = mask
+
+    centers_rel = centers if include_mask is None else centers[include_mask]
+    centers_abs = centers_abs if include_mask is None else centers_abs[include_mask]
+    centers_mpl = centers_mpl if include_mask is None else centers_mpl[include_mask]
+    bin_widths = bin_widths if include_mask is None else bin_widths[include_mask]
+
+    # Filter model uncertainty arrays to match the selected bins.
+    filtered_model_errors = {}
+    bin_count = len(edges) - 1
+    if model_errors:
+        for key, arr in model_errors.items():
+            err_arr = np.asarray(arr, dtype=float)
+            if include_mask is not None and err_arr.size == bin_count:
+                err_arr = err_arr[include_mask]
+            filtered_model_errors[key] = err_arr
+    model_errors = filtered_model_errors
+
     # 2) Plot each isotope s histogram + overlay the model:
     plt.figure(figsize=(8, 6))
     palette_name = str(config.get("palette", "default"))
@@ -285,6 +346,8 @@ def plot_time_series(
         "Po218": palette.get("Po218", "#1f77b4"),
         "Po210": palette.get("Po210", "#2ca02c"),
     }
+
+    ts_counts_raw: dict[str, list[int]] = {}
 
     for iso in iso_list:
         emin, emax = iso_params[iso]["window"]
@@ -297,15 +360,20 @@ def plot_time_series(
         t_iso_rel = times_rel[mask_iso]
 
         # Histogram of observed counts:
-        counts_iso, _ = np.histogram(t_iso_rel, bins=edges)
+        counts_iso_all, _ = np.histogram(t_iso_rel, bins=edges)
+        counts_iso = (
+            counts_iso_all if include_mask is None else counts_iso_all[include_mask]
+        )
+        ts_counts_raw[iso] = counts_iso.astype(int).tolist()
+        counts_plot = counts_iso.astype(float)
         if normalise_rate:
-            counts_iso = counts_iso / bin_widths
+            counts_plot = counts_plot / bin_widths
 
         style = str(config.get("plot_time_style", "steps")).lower()
         if style == "lines":
             plt.plot(
                 centers_mpl,
-                counts_iso,
+                counts_plot,
                 marker="o",
                 linestyle="-",
                 color=colors[iso],
@@ -314,7 +382,7 @@ def plot_time_series(
         else:
             plt.step(
                 centers_mpl,
-                counts_iso,
+                counts_plot,
                 where="mid",
                 color=colors[iso],
                 label=f"Data {iso}",
@@ -341,8 +409,8 @@ def plot_time_series(
             r_rel = (
                 eff
                 * (
-                    E_iso * (1.0 - np.exp(-lam * centers))
-                    + lam * N0_iso * np.exp(-lam * centers)
+                    E_iso * (1.0 - np.exp(-lam * centers_rel))
+                    + lam * N0_iso * np.exp(-lam * centers_rel)
                 )
                 + B_iso
             )
@@ -395,18 +463,9 @@ def plot_time_series(
     if config.get("dump_time_series_json", False):
         import json
 
-        ts_summary = {"centers_s": centers.tolist(), "widths_s": bin_widths.tolist()}
+        ts_summary = {"centers_s": centers_rel.tolist(), "widths_s": bin_widths.tolist()}
         for iso in iso_list:
-            emin, emax = iso_params[iso]["window"]
-            ts_summary[f"counts_{iso}"] = np.histogram(
-                times_rel[
-                    (all_energies >= emin)
-                    & (all_energies <= emax)
-                    & (all_timestamps >= t_start)
-                    & (all_timestamps <= t_end)
-                ],
-                bins=edges,
-            )[0].tolist()
+            ts_summary[f"counts_{iso}"] = ts_counts_raw.get(iso, [])
             ts_summary[f"live_time_{iso}_s"] = bin_widths.tolist()
             ts_summary[f"eff_{iso}"] = [iso_params[iso]["eff"]] * len(bin_widths)
         base = Path(out_png).with_suffix("")

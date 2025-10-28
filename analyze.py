@@ -1069,6 +1069,41 @@ def _ts_bin_centers_widths(times, cfg, t_start, t_end):
         edges = np.linspace(0, (t_end - t_start), n_bins + 1)
     centers = 0.5 * (edges[:-1] + edges[1:])
     widths = np.diff(edges)
+
+    run_periods_cfg = None
+    if isinstance(cfg, Mapping):
+        run_periods_cfg = cfg.get("run_periods")
+        if not run_periods_cfg and isinstance(cfg.get("analysis"), Mapping):
+            run_periods_cfg = cfg.get("analysis", {}).get("run_periods")
+
+    if run_periods_cfg:
+        periods = []
+        for period in run_periods_cfg:
+            try:
+                start, end = period
+            except (TypeError, ValueError):
+                continue
+            try:
+                start_ts = to_epoch_seconds(start)
+                end_ts = to_epoch_seconds(end)
+            except Exception:
+                continue
+            if not np.isfinite(start_ts) or not np.isfinite(end_ts):
+                continue
+            if end_ts <= start_ts:
+                continue
+            periods.append((float(start_ts), float(end_ts)))
+
+        if periods:
+            edges_abs_start = float(t_start) + edges[:-1]
+            edges_abs_end = float(t_start) + edges[1:]
+            mask = np.zeros_like(edges_abs_start, dtype=bool)
+            for start_ts, end_ts in periods:
+                mask |= (edges_abs_start < end_ts) & (edges_abs_end > start_ts)
+            if np.any(mask):
+                centers = centers[mask]
+                widths = widths[mask]
+
     return centers, widths
 
 
@@ -4060,6 +4095,9 @@ def main(argv=None):
         try:
             plot_cfg = dict(cfg.get("time_fit", {}))
             plot_cfg.update(cfg.get("plotting", {}))
+            run_periods_cfg = cfg.get("analysis", {}).get("run_periods")
+            if run_periods_cfg:
+                plot_cfg["run_periods"] = run_periods_cfg
             if not overlay:
                 for other_iso in ("Po214", "Po218", "Po210"):
                     if other_iso != iso:
