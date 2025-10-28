@@ -15,6 +15,48 @@ from constants import PO214, PO218, PO210, RN222
 from .paths import get_targets
 from ._time_utils import guard_mpl_times, setup_time_axis
 
+
+def _autoscale_with_errors(ax, values, errors):
+    """Expand axis limits to include error bars with a margin."""
+
+    arr = np.asarray(values, dtype=float)
+    if arr.size == 0:
+        return
+
+    finite = np.isfinite(arr)
+    if not finite.any():
+        return
+
+    lower = arr[finite].min()
+    upper = arr[finite].max()
+
+    if errors is not None:
+        err_arr = np.asarray(errors, dtype=float)
+        if err_arr.size == arr.size:
+            lower_vals = arr - err_arr
+            upper_vals = arr + err_arr
+            finite_lower = np.isfinite(lower_vals)
+            if finite_lower.any():
+                lower = min(lower, lower_vals[finite_lower].min())
+            finite_upper = np.isfinite(upper_vals)
+            if finite_upper.any():
+                upper = max(upper, upper_vals[finite_upper].max())
+
+    if not np.isfinite(lower) or not np.isfinite(upper):
+        return
+
+    if lower == upper:
+        scale = abs(lower) if lower != 0 else 1.0
+        margin = 0.05 * scale
+        lower -= margin
+        upper += margin
+    else:
+        margin = 0.05 * (upper - lower)
+        lower -= margin
+        upper += margin
+
+    ax.set_ylim(lower, upper)
+
 # Half-life constants used for the time-series overlay [seconds]
 PO214_HALF_LIFE_S = PO214.half_life_s
 PO218_HALF_LIFE_S = PO218.half_life_s
@@ -548,19 +590,20 @@ def plot_radon_activity_full(
     """
     times_mpl = guard_mpl_times(times=times)
     activity = np.asarray(activity, dtype=float)
-    errors = np.asarray(errors, dtype=float)
+    errors_arr = None if errors is None else np.asarray(errors, dtype=float)
 
     fig, ax = plt.subplots(figsize=(8, 4))
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("radon_activity", "#9467bd")
     label = None if po214_activity is None else "Rn-222 Concentration"
-    ax.errorbar(times_mpl, activity, yerr=errors, fmt="o", color=color, label=label)
+    ax.errorbar(times_mpl, activity, yerr=errors_arr, fmt="o", color=color, label=label)
     ax.set_xlabel("Time (UTC)")
     ax.set_ylabel("Rn-222 Concentration (Bq/L)")
     ax.set_title("Extrapolated Radon Concentration vs. Time")
     ax.ticklabel_format(axis="y", style="plain")
     setup_time_axis(ax, times_mpl)
+    _autoscale_with_errors(ax, activity, errors_arr)
 
     if po214_activity is not None:
         po214_activity = np.asarray(po214_activity, dtype=float)
@@ -606,6 +649,7 @@ def plot_total_radon_full(times, total_bq, errors, out_png, config=None):
     ax.set_title("Total Radon vs. Time")
     ax.ticklabel_format(axis="y", style="plain")
     setup_time_axis(ax, times_mpl)
+    _autoscale_with_errors(ax, total_bq, errors_arr)
 
     plt.gcf().autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)
@@ -737,7 +781,8 @@ def plot_radon_activity(ts_dict, outdir):
     outdir = Path(outdir)
     times_mpl = guard_mpl_times(times=ts_dict["time"])
     y = np.asarray(ts_dict["activity"], dtype=float)
-    e = np.asarray(ts_dict["error"], dtype=float)
+    e_raw = ts_dict.get("error")
+    e = None if e_raw is None else np.asarray(e_raw, dtype=float)
 
     fig, ax = plt.subplots()
     ax.errorbar(times_mpl, y, yerr=e, fmt="o")
@@ -747,6 +792,7 @@ def plot_radon_activity(ts_dict, outdir):
     setup_time_axis(ax, times_mpl)
     fig.autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)
+    _autoscale_with_errors(ax, y, e)
     plt.tight_layout()
     fig.savefig(outdir / "radon_activity.png", dpi=300)
     plt.close(fig)
@@ -769,6 +815,7 @@ def plot_total_radon(ts_dict, outdir):
     setup_time_axis(ax, times_mpl)
     fig.autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)
+    _autoscale_with_errors(ax, total, errors_arr)
     plt.tight_layout()
     fig.savefig(outdir / "total_radon.png", dpi=300)
     plt.close(fig)
