@@ -5,6 +5,15 @@ from pathlib import Path
 from ._time_utils import guard_mpl_times, setup_time_axis
 
 
+_ERRORBAR_STYLE = {
+    "fmt": "o",
+    "capsize": 3,
+    "capthick": 1,
+    "elinewidth": 1,
+    "barsabove": True,
+}
+
+
 def _save(fig, outdir: Path, name: str) -> None:
     for ext in ("png", "pdf"):
         fig.savefig(outdir / f"{name}.{ext}", dpi=300)
@@ -16,7 +25,7 @@ def plot_radon_activity(ts_dict, outdir: Path, out_png: str | Path | None = None
     activity = np.asarray(ts_dict["activity"], dtype=float)
     errors = np.asarray(ts_dict["error"], dtype=float)
     fig, ax = plt.subplots()
-    ax.errorbar(times_mpl, activity, yerr=errors, fmt="o")
+    ax.errorbar(times_mpl, activity, yerr=errors, **_ERRORBAR_STYLE)
     ax.set_ylabel("Rn-222 concentration [Bq/L]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
