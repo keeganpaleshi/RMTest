@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -52,4 +53,70 @@ def test_two_pass_time_fit_rejects_invalid_second_pass():
     )
 
     assert out is first
+
+
+def test_two_pass_time_fit_marks_baseline_fixed():
+    first = FitResult(
+        FitParams({"E_Po214": 1.0, "nll": 10.0, "fit_valid": True}),
+        None,
+        0,
+    )
+    second = FitResult(
+        FitParams({"E_Po214": 1.5, "nll": 9.0, "fit_valid": False}),
+        None,
+        0,
+    )
+
+    calls = iter([first, second])
+
+    def fake_fit(*args, **kwargs):
+        return next(calls)
+
+    baseline_rate = 0.25
+    out = two_pass_time_fit(
+        {"Po214": [0.0, 1.0]},
+        0.0,
+        10.0,
+        {"fix_background_b_first_pass": True},
+        baseline_rate=baseline_rate,
+        fit_func=fake_fit,
+    )
+
+    assert out.params.get("background_fixed_from_baseline") is True
+    assert out.params.get("background_baseline_rate_Bq") == pytest.approx(baseline_rate)
+    assert out.background_metadata["background_fixed_from_baseline"] is True
+    assert out.background_metadata["background_baseline_rate_Bq"] == pytest.approx(
+        baseline_rate
+    )
+
+
+def test_two_pass_time_fit_marks_background_floating():
+    first = FitResult(
+        FitParams({"E_Po214": 1.0, "nll": 10.0, "fit_valid": True}),
+        None,
+        0,
+    )
+    second = FitResult(
+        FitParams({"E_Po214": 1.5, "nll": 5.0, "fit_valid": True}),
+        None,
+        0,
+    )
+
+    calls = iter([first, second])
+
+    def fake_fit(*args, **kwargs):
+        return next(calls)
+
+    out = two_pass_time_fit(
+        {"Po214": [0.0, 1.0]},
+        0.0,
+        10.0,
+        {"fix_background_b_first_pass": True},
+        baseline_rate=0.4,
+        fit_func=fake_fit,
+    )
+
+    assert out.params.get("background_fixed_from_baseline") is False
+    assert "background_baseline_rate_Bq" not in out.params
+    assert out.background_metadata["background_fixed_from_baseline"] is False
 
