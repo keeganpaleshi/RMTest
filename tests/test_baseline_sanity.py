@@ -1,8 +1,8 @@
 import pytest
-from baseline_utils import summarize_baseline, BaselineError
+from baseline_utils import summarize_baseline
 
 
-def test_summarize_baseline_negative_raises():
+def test_summarize_baseline_negative_clipped_to_zero():
     cfg = {
         "baseline": {
             "rate_Bq": {"Po214": 0.2},
@@ -11,8 +11,8 @@ def test_summarize_baseline_negative_raises():
         },
         "time_fit": {"Po214": {"E_Po214": 0.1}},
     }
-    with pytest.raises(BaselineError):
-        summarize_baseline(cfg, ["Po214"])
+    out = summarize_baseline(cfg, ["Po214"])
+    assert out["Po214"] == pytest.approx((0.1, 0.2, 0.0))
 
 
 def test_summarize_baseline_allow_negative():

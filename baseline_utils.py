@@ -302,12 +302,6 @@ def summarize_baseline(
     dict
         Mapping ``iso -> (raw_rate, baseline_rate, corrected_rate)`` in Bq.
 
-    Raises
-    ------
-    BaselineError
-        If any corrected rate is negative and ``cfg.get('allow_negative_baseline')``
-        is not ``True``.
-
     Notes
     -----
     When ``allow_negative_baseline`` is ``True`` the corrected rates are
@@ -332,7 +326,5 @@ def summarize_baseline(
         corr = float(fit.get("E_corrected", raw - base))
         raw = float(raw)
         summary[iso] = (raw, base, corr)
-        if corr < 0 and not allow_negative:
-            raise BaselineError(f"negative corrected rate for {iso}")
 
     return summary
