@@ -148,6 +148,52 @@ def _roi_diff(pre: np.ndarray, post: np.ndarray, cfg: Mapping[str, Any]) -> dict
     return diff
 
 
+def _mu_bounds_to_mev(
+    bounds_cfg: Mapping[str, Sequence[float | int | None]] | None,
+    slope: float,
+    intercept: float,
+    quadratic_coeff: float = 0.0,
+    *,
+    adc_threshold: float = 50.0,
+) -> dict[str, tuple[float, float]]:
+    """Normalise ``mu_bounds`` from configuration into MeV for fitting.
+
+    The spectral fit is always performed in energy (MeV) even when histogram
+    binning is expressed in ADC channels.  To guard against accidental unit
+    mismatches we accept bounds specified either directly in MeV or in raw ADC
+    channels.  When values look like ADC counts (greater than
+    ``adc_threshold``) they are converted to MeV using the supplied calibration
+    coefficients.  Bounds are validated to ensure ``lower < upper`` after the
+    conversion.
+    """
+
+    if not bounds_cfg:
+        return {}
+
+    bounds_mev: dict[str, tuple[float, float]] = {}
+    for iso, raw in bounds_cfg.items():
+        if raw is None:
+            continue
+        if not isinstance(raw, Sequence) or len(raw) != 2:
+            raise ValueError(f"mu_bounds for {iso} must be a 2-element sequence")
+        lo_raw, hi_raw = raw
+        lo = float(lo_raw)
+        hi = float(hi_raw)
+        if not lo < hi:
+            raise ValueError(f"mu_bounds for {iso} require lower < upper")
+
+        if max(abs(lo), abs(hi)) > adc_threshold:
+            # Treat as ADC channel bounds and convert to MeV for the fit.
+            elo = apply_calibration(lo, slope, intercept, quadratic_coeff=quadratic_coeff)
+            ehi = apply_calibration(hi, slope, intercept, quadratic_coeff=quadratic_coeff)
+            lo, hi = (min(elo, ehi), max(elo, ehi))
+            logger.info("Converted mu_bounds for %s from ADC to MeV for fitting", iso)
+
+        bounds_mev[iso] = (lo, hi)
+
+    return bounds_mev
+
+
 def _burst_sensitivity_scan(
     events: pd.DataFrame, cfg: Mapping[str, Any], cal_result
 ) -> tuple[dict, tuple[int, int]]:
@@ -2109,6 +2155,8 @@ def main(argv=None):
 
         # Build priors for the unbinned spectrum fit:
         priors_spec = {}
+        bounds_cfg = cfg["spectral_fit"].get("mu_bounds")
+        mu_bounds_mev = _mu_bounds_to_mev(bounds_cfg, a, c, quadratic_coeff=a2)
         # Resolution prior: map calibrated sigma_E -> sigma0 parameter
         sigma_E_prior = cfg["spectral_fit"].get("sigma_E_prior_source", sigE_sigma)
         float_sigma_E = cfg["spectral_fit"].get("float_sigma_E", True)
@@ -2129,12 +2177,9 @@ def main(argv=None):
 
         for peak, centroid_adc in adc_peaks.items():
             mu = apply_calibration(centroid_adc, a, c, quadratic_coeff=a2)
-            bounds_cfg = cfg["spectral_fit"].get("mu_bounds", {})
-            bounds = bounds_cfg.get(peak)
+            bounds = mu_bounds_mev.get(peak)
             if bounds is not None:
                 lo, hi = bounds
-                if not lo < hi:
-                    raise ValueError(f"mu_bounds for {peak} require lower < upper")
                 if not (lo <= mu <= hi):
                     mu = np.clip(mu, lo, hi)
             priors_spec[f"mu_{peak}"] = (mu, cfg["spectral_fit"].get("mu_sigma"))
@@ -2237,10 +2282,9 @@ def main(argv=None):
                 fit_kwargs["unbinned"] = True
             if args.strict_covariance:
                 fit_kwargs["strict"] = True
-            bounds_cfg = cfg["spectral_fit"].get("mu_bounds", {})
-            if bounds_cfg:
+            if mu_bounds_mev:
                 bounds_map = {}
-                for iso, bnd in bounds_cfg.items():
+                for iso, bnd in mu_bounds_mev.items():
                     if bnd is not None:
                         bounds_map[f"mu_{iso}"] = tuple(bnd)
                 if bounds_map:
