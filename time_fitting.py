@@ -60,21 +60,54 @@ def two_pass_time_fit(
 
     fix_first = bool(config.get("fix_background_b_first_pass", True))
     fixed_val = config.get("background_b_fixed_value")
+    baseline_fixed = False
     if fixed_val is None:
         fixed_val = baseline_rate
+        baseline_fixed = baseline_rate is not None
         if fixed_val is not None and iso:
             eff_val = _prior_efficiency(config, iso)
             if eff_val is not None:
                 fixed_val = float(fixed_val) * eff_val
 
+    def _attach_background_metadata(result: FitResult, fixed_from_baseline: bool) -> FitResult:
+        metadata = {
+            "background_fixed_from_baseline": bool(fixed_from_baseline),
+            "background_baseline_rate_Bq": None,
+        }
+        if fixed_from_baseline and baseline_rate is not None:
+            try:
+                metadata["background_baseline_rate_Bq"] = float(baseline_rate)
+            except (TypeError, ValueError):
+                metadata["background_baseline_rate_Bq"] = None
+
+        result.background_metadata = metadata  # type: ignore[attr-defined]
+
+        if isinstance(result.params, dict):
+            result.params["background_fixed_from_baseline"] = metadata[
+                "background_fixed_from_baseline"
+            ]
+            if metadata["background_fixed_from_baseline"] and metadata[
+                "background_baseline_rate_Bq"
+            ] is not None:
+                result.params["background_baseline_rate_Bq"] = metadata[
+                    "background_baseline_rate_Bq"
+                ]
+            else:
+                result.params.pop("background_baseline_rate_Bq", None)
+
+        return result
+
     if not fix_first or fixed_val is None or not iso:
-        return fit_func(
-            times_dict,
-            t_start,
-            t_end,
-            config,
-            weights=weights,
-            strict=strict,
+        return _attach_background_metadata(
+            fit_func(
+                times_dict,
+                t_start,
+                t_end,
+                config,
+                weights=weights,
+                strict=strict,
+            ),
+            False,
         )
 
     cfg_first = dict(config)
@@ -109,5 +142,5 @@ def two_pass_time_fit(
     valid2 = bool(res2.params.get("fit_valid", True))
 
     if valid2 and (not valid1 or _aic(res1) - _aic(res2) >= 0.5):
-        return res2
-    return res1
+        return _attach_background_metadata(res2, False)
+    return _attach_background_metadata(res1, baseline_fixed)

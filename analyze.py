@@ -3344,9 +3344,36 @@ def main(argv=None):
             d["cov"] = fit.cov.tolist()
             d["ndf"] = fit.ndf
         elif isinstance(fit, dict):
-            d = fit
+            d = dict(fit)
         else:
             d = {}
+
+        metadata = getattr(fit, "background_metadata", None)
+        if metadata and isinstance(metadata, Mapping):
+            d.setdefault(
+                "background_fixed_from_baseline",
+                bool(metadata.get("background_fixed_from_baseline")),
+            )
+            if d.get("background_fixed_from_baseline") and metadata.get(
+                "background_baseline_rate_Bq"
+            ) is not None:
+                d.setdefault(
+                    "background_baseline_rate_Bq",
+                    metadata.get("background_baseline_rate_Bq"),
+                )
+
+        if d.get("background_fixed_from_baseline"):
+            try:
+                d["background_baseline_rate_Bq"] = float(
+                    d["background_baseline_rate_Bq"]
+                )
+            except (TypeError, ValueError, KeyError):
+                d.pop("background_baseline_rate_Bq", None)
+            d["background_fixed_from_baseline"] = True
+        else:
+            d["background_fixed_from_baseline"] = False
+            d.pop("background_baseline_rate_Bq", None)
+
         time_fit_serializable[iso] = d
 
     if isinstance(cal_params, dict):
