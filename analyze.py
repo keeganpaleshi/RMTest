@@ -280,11 +280,28 @@ from baseline_utils import (
 import baseline
 from time_fitting import two_pass_time_fit
 from config.validation import validate_baseline_window
+from radon_activity import compute_total_radon
 
 
-def plot_radon_activity(times, activity, out_png, errors=None, *, config=None):
+def plot_radon_activity(
+    times,
+    activity,
+    out_png,
+    errors=None,
+    *,
+    config=None,
+    sample_volume_l=None,
+):
     """Wrapper used by tests expecting output path as third argument."""
-    return plot_radon_activity_full(times, activity, errors, out_png, config=config)
+
+    return plot_radon_activity_full(
+        times,
+        activity,
+        errors,
+        out_png,
+        config=config,
+        sample_volume_l=sample_volume_l,
+    )
 
 
 def plot_total_radon(times, total_bq, out_png, errors=None, *, config=None):
@@ -304,8 +321,26 @@ def _total_radon_series(activity, errors, monitor_volume, sample_volume):
     activity_arr = np.asarray(activity, dtype=float)
     err_arr = None if errors is None else np.asarray(errors, dtype=float)
 
-    total = activity_arr.copy()
-    total_err = None if err_arr is None else err_arr.copy()
+    total = np.empty_like(activity_arr, dtype=float)
+    total_err = None if err_arr is None else np.empty_like(err_arr, dtype=float)
+
+    for idx, value in enumerate(activity_arr):
+        err_val = 0.0 if err_arr is None else float(err_arr[idx])
+        try:
+            _, _, total_bq, sigma_total = compute_total_radon(
+                float(value),
+                float(err_val),
+                float(monitor_volume),
+                float(sample_volume),
+                allow_negative_activity=True,
+            )
+        except Exception:
+            total_bq = float(value)
+            sigma_total = float(err_val)
+
+        total[idx] = total_bq
+        if total_err is not None:
+            total_err[idx] = sigma_total
 
     return total, total_err
 
@@ -3119,7 +3154,7 @@ def main(argv=None):
     # ────────────────────────────────────────────────────────────
     # Radon activity extrapolation
     # ────────────────────────────────────────────────────────────
-    from radon_activity import compute_radon_activity, compute_total_radon
+    from radon_activity import compute_radon_activity
 
     radon_results = {}
     radon_combined_info = None
@@ -3516,6 +3551,7 @@ def main(argv=None):
             Path(out_dir) / "radon_activity.png",
             rad_ts.get("error"),
             config=cfg.get("plotting", {}),
+            sample_volume_l=sample_vol,
         )
         total_vals, total_errs = _total_radon_series(
             rad_ts["activity"],
@@ -3763,6 +3799,7 @@ def main(argv=None):
                     Path(out_dir) / "radon_activity_combined.png",
                     [radon_combined_info["unc_Bq"]] * 2,
                     config=cfg.get("plotting", {}),
+                    sample_volume_l=sample_vol,
                 )
             except Exception as e:
                 logger.warning("Could not create radon combined plot -> %s", e)
@@ -3786,6 +3823,7 @@ def main(argv=None):
                 Path(out_dir) / "radon_activity_po214.png",
                 dA214,
                 config=cfg.get("plotting", {}),
+                sample_volume_l=sample_vol,
             )
 
         A218 = dA218 = None
@@ -3859,18 +3897,38 @@ def main(argv=None):
                 err_arr.fill(radon_unc)
 
         if activity_arr is not None and err_arr is not None:
+            times_list = [float(t) for t in np.asarray(activity_times, dtype=float)]
+            radon_series = {
+                "time": times_list,
+                "activity": np.asarray(activity_arr, dtype=float).tolist(),
+                "error": np.asarray(err_arr, dtype=float).tolist(),
+                "sample_volume_l": float(sample_vol),
+            }
+            summary_radon = summary.get("radon") if hasattr(summary, "get") else None
+            if isinstance(summary_radon, Mapping):
+                summary_radon = dict(summary_radon)
+            if summary_radon is None:
+                summary_radon = {}
+            summary_radon["time_series"] = radon_series
+            total_vals, total_errs = _total_radon_series(
+                activity_arr,
+                err_arr,
+                monitor_vol,
+                sample_vol,
+            )
+            total_series = {"time": list(times_list), "activity": total_vals.tolist()}
+            if total_errs is not None:
+                total_series["error"] = total_errs.tolist()
+            summary_radon["total_time_series"] = total_series
+            summary["radon"] = summary_radon
+
             plot_radon_activity(
                 activity_times,
                 activity_arr,
                 Path(out_dir) / "radon_activity.png",
                 err_arr,
                 config=cfg.get("plotting", {}),
-            )
-            total_vals, total_errs = _total_radon_series(
-                activity_arr,
-                err_arr,
-                monitor_vol,
-                sample_vol,
+                sample_volume_l=sample_vol,
             )
             plot_total_radon(
                 activity_times,
