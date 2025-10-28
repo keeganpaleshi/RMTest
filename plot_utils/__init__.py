@@ -196,18 +196,16 @@ def _build_time_segments(
             width = float(bin_width_s)
             if not np.isfinite(width) or width <= 0:
                 width = 1.0
-            edges = [float(start)]
-            current = float(start)
-            while current < float(end) - 1e-9:
-                next_edge = current + width
-                if next_edge > float(end):
-                    next_edge = float(end)
-                edges.append(next_edge)
-                if next_edge == current:
-                    break
-                current = next_edge
-            if len(edges) == 1:
-                edges.append(float(end))
+
+            duration = float(end) - float(start)
+            n_bins = max(1, int(np.floor(duration / width)))
+            edges = float(start) + width * np.arange(n_bins + 1, dtype=float)
+            if edges.size < 2:
+                continue
+            # Always terminate the final edge at the run end.  This preserves the
+            # configured number of whole-width bins while allowing the trailing
+            # bin to absorb any fractional remainder inside the run period.
+            edges[-1] = float(end)
             edges = np.asarray(edges, dtype=float)
         if bin_mode in ("fd", "auto"):
             edges = np.linspace(float(start), float(end), int(n_bins) + 1)
