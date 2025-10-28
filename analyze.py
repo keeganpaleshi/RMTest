@@ -225,6 +225,84 @@ def _burst_sensitivity_scan(
     return results, best
 
 
+def _save_stub_spectrum_plot(
+    energies: Sequence[float] | np.ndarray,
+    out_png: Path,
+    *,
+    bins: int | None = None,
+    bin_edges: Sequence[float] | np.ndarray | None = None,
+    config: Mapping[str, Any] | None = None,
+) -> Path:
+    """Write a fallback spectrum plot when the spectral fit is unavailable."""
+
+    try:
+        import matplotlib.pyplot as plt
+    except Exception as exc:  # pragma: no cover - matplotlib import guard
+        raise RuntimeError("matplotlib is required to save spectrum plots") from exc
+
+    energies_arr = np.asarray(energies, dtype=float)
+    if energies_arr.size == 0:
+        # ``np.histogram`` handles empty arrays but benefits from a finite range.
+        energies_arr = np.asarray([0.0], dtype=float)
+
+    if bin_edges is not None:
+        hist, edges = np.histogram(energies_arr, bins=np.asarray(bin_edges, dtype=float))
+    else:
+        hist, edges = np.histogram(
+            energies_arr,
+            bins=bins if bins is not None else 400,
+        )
+
+    width = np.diff(edges)
+    centers = edges[:-1] + width / 2.0
+
+    hist_color = "#808080"
+    if isinstance(config, Mapping):
+        from color_schemes import COLOR_SCHEMES
+
+        palette_name = str(config.get("palette", "default"))
+        palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
+        hist_color = palette.get("hist", hist_color)
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    if hist.size:
+        draw_width = width if width.size else 1.0
+        ax.bar(
+            centers,
+            hist,
+            width=draw_width,
+            color=hist_color,
+            alpha=0.7,
+            label="Data",
+        )
+
+    ax.set_title("Energy Spectrum")
+    ax.set_xlabel("Energy [MeV]")
+    ax.set_ylabel("Counts per bin")
+    ax.text(
+        0.5,
+        0.85,
+        "Spectral fit unavailable",
+        transform=ax.transAxes,
+        ha="center",
+        va="center",
+        fontsize=14,
+        fontweight="bold",
+        color="#aa0000",
+        bbox={"facecolor": "white", "alpha": 0.85, "edgecolor": "#aa0000"},
+    )
+
+    fig.tight_layout()
+
+    out_path = Path(out_png)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=300)
+
+    plt.close(fig)
+
+    return out_path
+
+
 from plot_utils import (
     plot_spectrum,
     plot_time_series,
@@ -2462,7 +2540,7 @@ def main(argv=None):
         # Store plotting inputs (bin_edges now in energy units)
         fit_vals = None
         if isinstance(spec_fit_out, FitResult):
-            fit_vals = spec_fit_out.params
+            fit_vals = spec_fit_out
         elif isinstance(spec_fit_out, dict):
             fit_vals = spec_fit_out
         spec_plot_data = {
@@ -2470,6 +2548,7 @@ def main(argv=None):
             "fit_vals": fit_vals,
             "bins": bins,
             "bin_edges": bin_edges,
+            "flags": dict(spec_flags),
         }
 
     # ────────────────────────────────────────────────────────────
@@ -3800,18 +3879,53 @@ def main(argv=None):
         )
 
     # Generate plots now that the output directory exists
+    spectrum_png = Path(out_dir) / "spectrum.png"
     if spec_plot_data:
         try:
             _ = plot_spectrum(
                 energies=spec_plot_data["energies"],
                 fit_vals=spec_plot_data["fit_vals"],
-                out_png=Path(out_dir) / "spectrum.png",
+                out_png=spectrum_png,
                 bins=spec_plot_data["bins"],
                 bin_edges=spec_plot_data["bin_edges"],
                 config=cfg.get("plotting", {}),
+                fit_flags=spec_plot_data.get("flags"),
             )
         except Exception as e:
             logger.warning("Could not create spectrum plot: %s", e)
+
+    if not spectrum_png.exists():
+        try:
+            stub_bins = spec_plot_data["bins"] if spec_plot_data else None
+            stub_edges = spec_plot_data.get("bin_edges") if spec_plot_data else None
+        except Exception:
+            stub_bins = None
+            stub_edges = None
+        try:
+            energies_stub = (
+                spec_plot_data.get("energies")
+                if spec_plot_data and isinstance(spec_plot_data, dict)
+                else df_analysis.get("energy_MeV", pd.Series(dtype=float)).to_numpy()
+            )
+        except Exception:
+            energies_stub = (
+                df_analysis.get("energy_MeV", pd.Series(dtype=float)).to_numpy()
+                if isinstance(df_analysis, pd.DataFrame)
+                else np.asarray([], dtype=float)
+            )
+        try:
+            _save_stub_spectrum_plot(
+                energies_stub,
+                spectrum_png,
+                bins=stub_bins,
+                bin_edges=stub_edges,
+                config=cfg.get("plotting", {}),
+            )
+            logger.info(
+                "Saved fallback spectrum plot after unavailable fit to %s", spectrum_png
+            )
+        except Exception as e:
+            logger.warning("Could not create fallback spectrum plot: %s", e)
 
     try:
         _ = plot_spectrum_comparison(

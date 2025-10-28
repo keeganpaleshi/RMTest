@@ -12,6 +12,7 @@ from plot_utils import (
     plot_radon_activity,
     plot_radon_activity_full,
 )
+from fitting import FitResult
 import plot_utils
 
 
@@ -239,6 +240,42 @@ def test_plot_spectrum_irregular_edges_residuals(tmp_path, monkeypatch):
     assert len(captured) >= 2
     np.testing.assert_allclose(captured[1], expected)
 
+
+def test_plot_spectrum_accepts_fitresult(tmp_path, monkeypatch):
+    energies = np.linspace(5.0, 7.0, 200)
+    params = {
+        "sigma0": 0.05,
+        "F": 0.0,
+        "mu_Po210": 5.5,
+        "S_Po210": 150.0,
+        "b0": 2.0,
+        "b1": 0.0,
+    }
+    fit_res = FitResult(params, cov=None, ndf=0)
+
+    captured_labels = []
+
+    def fake_plot(self, x, y, *args, **kwargs):
+        captured_labels.append(kwargs.get("label"))
+        return type("obj", (), {})()
+
+    import matplotlib.axes
+
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+    monkeypatch.setattr(matplotlib.axes.Axes, "plot", fake_plot)
+
+    ax = plot_spectrum(
+        energies,
+        fit_vals=fit_res,
+        out_png=str(tmp_path / "spec_fitresult.png"),
+    )
+
+    assert "Po210" in captured_labels
+    assert "Total model" in captured_labels
+
+    ax_res = ax.figure.axes[1]
+    assert ax_res.get_ylabel() == "Residuals [counts]"
+    assert ax_res.get_xlabel() == "Energy [MeV]"
 
 def test_plot_spectrum_comparison_fixed_bins(tmp_path, monkeypatch):
     pre = np.linspace(0.2, 0.8, 10)
