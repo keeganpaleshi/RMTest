@@ -12,7 +12,7 @@ import matplotlib as _mpl
 _mpl.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from color_schemes import COLOR_SCHEMES
 from constants import PO214, PO218, PO210, RN222
@@ -68,6 +68,182 @@ def _counts_per_bin(density, widths):
     if counts.shape != density_arr.shape:
         raise ValueError("density and widths must share the same shape")
     return counts
+
+
+def _coerce_timestamp_seconds(value):
+    """Return ``value`` as UNIX seconds or ``None`` if conversion fails."""
+
+    if value is None:
+        return None
+
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    if isinstance(value, np.generic):
+        if np.issubdtype(type(value), np.integer) or np.issubdtype(
+            type(value), np.floating
+        ):
+            return float(value)
+        if np.issubdtype(type(value), np.datetime64):
+            return float(value.astype("int64") / 1e9)
+
+    if isinstance(value, np.datetime64):
+        return float(value.astype("int64") / 1e9)
+
+    if isinstance(value, datetime):
+        return float(value.timestamp())
+
+    if hasattr(value, "to_pydatetime"):
+        try:
+            return float(value.to_pydatetime().timestamp())
+        except Exception:
+            pass
+
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return float(parsed.timestamp())
+        except ValueError:
+            try:
+                parsed_np = np.datetime64(value)
+            except ValueError:
+                try:
+                    return float(value)
+                except ValueError:
+                    return None
+            return float(parsed_np.astype("int64") / 1e9)
+
+    return None
+
+
+def _resolve_run_periods(config, default_start, default_end):
+    """Return sorted run periods clipped to ``[default_start, default_end]``."""
+
+    periods = None
+    if isinstance(config, Mapping):
+        periods = config.get("run_periods")
+        if not periods:
+            analysis_cfg = config.get("analysis")
+            if isinstance(analysis_cfg, Mapping):
+                periods = analysis_cfg.get("run_periods")
+
+    if not periods:
+        return [(float(default_start), float(default_end))]
+
+    resolved = []
+    for entry in periods:
+        if not isinstance(entry, (list, tuple)) or len(entry) != 2:
+            continue
+        start_val = _coerce_timestamp_seconds(entry[0])
+        end_val = _coerce_timestamp_seconds(entry[1])
+        if start_val is None or end_val is None:
+            continue
+        start = max(float(start_val), float(default_start))
+        end = min(float(end_val), float(default_end))
+        if not np.isfinite(start) or not np.isfinite(end):
+            continue
+        if end <= start:
+            continue
+        resolved.append((start, end))
+
+    if not resolved:
+        return [(float(default_start), float(default_end))]
+
+    resolved.sort(key=lambda pair: pair[0])
+    return resolved
+
+
+def _build_time_segments(
+    timestamps,
+    *,
+    periods,
+    bin_mode,
+    bin_width_s,
+    time_bins_fallback,
+    t_start,
+):
+    """Return per-run binning metadata for the time-series plots."""
+
+    segments = []
+    timestamps = np.asarray(timestamps, dtype=float)
+    fallback_bins = max(1, int(time_bins_fallback))
+
+    for start, end in periods:
+        duration = float(end) - float(start)
+        if duration <= 0:
+            continue
+
+        if bin_mode in ("fd", "auto"):
+            mask = (timestamps >= float(start)) & (timestamps <= float(end))
+            data = timestamps[mask]
+            if data.size < 2:
+                n_bins = 1
+            else:
+                rel = data - float(start)
+                q25, q75 = np.percentile(rel, [25, 75])
+                iqr = q75 - q25
+                if iqr <= 0:
+                    n_bins = fallback_bins
+                else:
+                    bin_width = 2 * iqr / (rel.size ** (1.0 / 3.0))
+                    bin_width = float(bin_width)
+                    data_range = float(rel.max() - rel.min())
+                    if not np.isfinite(bin_width) or bin_width <= 0:
+                        n_bins = fallback_bins
+                    else:
+                        n_bins = max(1, int(np.ceil(data_range / bin_width)))
+        else:
+            width = float(bin_width_s)
+            if not np.isfinite(width) or width <= 0:
+                width = 1.0
+
+            duration = float(end) - float(start)
+            n_bins = max(1, int(np.floor(duration / width)))
+            edges = float(start) + width * np.arange(n_bins + 1, dtype=float)
+            if edges.size < 2:
+                continue
+            # Always terminate the final edge at the run end.  This preserves the
+            # configured number of whole-width bins while allowing the trailing
+            # bin to absorb any fractional remainder inside the run period.
+            edges[-1] = float(end)
+            edges = np.asarray(edges, dtype=float)
+        if bin_mode in ("fd", "auto"):
+            edges = np.linspace(float(start), float(end), int(n_bins) + 1)
+
+        edges = np.asarray(edges, dtype=float)
+        if edges.size < 2:
+            continue
+        bin_widths = np.diff(edges)
+        if np.any(bin_widths <= 0):
+            continue
+        centers_abs = edges[:-1] + bin_widths / 2.0
+        centers_rel_global = centers_abs - float(t_start)
+        centers_rel_segment = centers_abs - float(edges[0])
+        centers_mpl = guard_mpl_times(times=centers_abs)
+
+        segments.append(
+            {
+                "start": float(edges[0]),
+                "end": float(edges[-1]),
+                "edges_abs": edges,
+                "bin_widths": bin_widths,
+                "centers_abs": centers_abs,
+                "centers_rel_global": centers_rel_global,
+                "centers_rel_segment": centers_rel_segment,
+                "centers_mpl": centers_mpl,
+                "centers_elapsed_hours": centers_rel_segment / 3600.0,
+                "counts": {},
+            }
+        )
+
+    return segments
+
+
+def _isoformat_utc(seconds):
+    """Return an ISO-8601 representation with a ``Z`` suffix."""
+
+    dt = datetime.fromtimestamp(float(seconds), tz=timezone.utc)
+    return dt.isoformat().replace("+00:00", "Z")
 
 
 def extract_time_series(timestamps, energies, window, t_start, t_end, bin_width_s=1.0):
@@ -247,140 +423,91 @@ def plot_time_series(
         },
     }
     iso_list = [iso for iso, p in iso_params.items() if p["window"] is not None]
-    # Time since t_start:
-    times_rel = all_timestamps - t_start
 
-    # 1) Choose binning:
-    # Newer config files may store plot options under keys prefixed with
-    # "plot_".  Fall back to the old names for backwards compatibility.
     bin_mode = str(
         config.get(
             "plot_time_binning_mode",
             config.get("time_bin_mode", "fixed"),
         )
     ).lower()
-    if bin_mode in ("fd", "auto"):
-        # Freedman Diaconis rule on the entire time range:
-        data = times_rel[(times_rel >= 0) & (times_rel <= (t_end - t_start))]
-        if len(data) < 2:
-            n_bins = 1
-        else:
-            q25, q75 = np.percentile(data, [25, 75])
-            iqr = q75 - q25
-            if iqr <= 0:
-                n_bins = int(config.get("time_bins_fallback", 1))
-            else:
-                bin_width = 2 * iqr / (len(data) ** (1.0 / 3.0))
-                if isinstance(bin_width, np.timedelta64):
-                    bin_width = bin_width / np.timedelta64(1, "s")
-                    data_range = (data.max() - data.min()) / np.timedelta64(1, "s")
-                else:
-                    data_range = data.max() - data.min()
-                n_bins = max(1, int(np.ceil(data_range / float(bin_width))))
-    else:
-        # fixed-width bins (integer-second data) – use floor so the
-        # very last partial bin is dropped and every remaining bin has
-        # exactly the same width.
-        dt = int(
-            config.get(
-                "plot_time_bin_width_s",
-                config.get("time_bin_s", 3600),
-            )
+    bin_width_s = float(
+        config.get("plot_time_bin_width_s", config.get("time_bin_s", 3600.0))
+    )
+    time_bins_fallback = int(config.get("time_bins_fallback", 1))
+
+    periods = _resolve_run_periods(config, t_start, t_end)
+    segments = _build_time_segments(
+        all_timestamps,
+        periods=periods,
+        bin_mode=bin_mode,
+        bin_width_s=bin_width_s,
+        time_bins_fallback=time_bins_fallback,
+        t_start=t_start,
+    )
+    if not segments:
+        segments = _build_time_segments(
+            all_timestamps,
+            periods=[(float(t_start), float(t_end))],
+            bin_mode=bin_mode,
+            bin_width_s=bin_width_s,
+            time_bins_fallback=time_bins_fallback,
+            t_start=t_start,
         )
-        n_bins = int(np.floor((t_end - t_start) / dt))
-        if n_bins < 1:
-            n_bins = 1
 
-    # ------------------------------------------------------------------
-    # Build equally-spaced edges so delta t is identical for each bin
-    # ------------------------------------------------------------------
-    if bin_mode not in ("fd", "auto"):
-        edges = np.arange(0, (n_bins + 1) * dt, dt, dtype=float)
-    else:
-        edges = np.linspace(0, (t_end - t_start), n_bins + 1)
-    centers = 0.5 * (edges[:-1] + edges[1:])
-    centers_abs = t_start + centers
-    centers_mpl = guard_mpl_times(times=centers_abs)
-    bin_widths = np.diff(edges)
-
-    # Optional normalisation to counts / s (set in config)
     normalise_rate = bool(config.get("plot_time_normalise_rate", False))
+    style = str(config.get("plot_time_style", "steps")).lower()
 
-    # 2) Plot each isotope s histogram + overlay the model:
     plt.figure(figsize=(8, 6))
     palette_name = str(config.get("palette", "default"))
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
-    colors = {
-        "Po214": palette.get("Po214", "#d62728"),
-        "Po218": palette.get("Po218", "#1f77b4"),
-        "Po210": palette.get("Po210", "#2ca02c"),
-    }
+    colors = {}
+    for iso_key, default in (
+        ("Po214", "#d62728"),
+        ("Po218", "#1f77b4"),
+        ("Po210", "#2ca02c"),
+    ):
+        if iso_key in iso_list:
+            colors[iso_key] = palette.get(iso_key, default)
+
+    width_lists = [seg["bin_widths"] for seg in segments if seg["bin_widths"].size]
+    widths_all = (
+        np.concatenate(width_lists) if width_lists else np.array([], dtype=float)
+    )
+    centers_rel_lists = [
+        seg["centers_rel_global"] for seg in segments if seg["centers_rel_global"].size
+    ]
+    centers_rel_all = (
+        np.concatenate(centers_rel_lists)
+        if centers_rel_lists
+        else np.array([], dtype=float)
+    )
+    centers_mpl_lists = [
+        np.asarray(seg["centers_mpl"]) for seg in segments if np.asarray(seg["centers_mpl"]).size
+    ]
+    if centers_mpl_lists:
+        centers_mpl_all = np.concatenate(centers_mpl_lists)
+    else:
+        if segments:
+            centers_mpl_all = guard_mpl_times(
+                times=[segments[0]["start"], segments[-1]["end"]]
+            )
+        else:
+            centers_mpl_all = guard_mpl_times(times=[t_start, t_end])
+
+    ts_counts_raw_arrays: dict[str, np.ndarray] = {}
+    counts_for_json_lists: dict[str, list[int]] = {}
 
     for iso in iso_list:
         emin, emax = iso_params[iso]["window"]
-        mask_iso = (
-            (all_energies >= emin)
-            & (all_energies <= emax)
-            & (all_timestamps >= t_start)
-            & (all_timestamps <= t_end)
-        )
-        t_iso_rel = times_rel[mask_iso]
+        label_used = False
+        model_label_used = False
+        raw_segment_counts: list[np.ndarray] = []
 
-        # Histogram of observed counts:
-        counts_iso, _ = np.histogram(t_iso_rel, bins=edges)
-        counts_iso = counts_iso.astype(float)
-        errors_iso = np.sqrt(counts_iso)
+        model_err_arr = None
+        model_err_idx = 0
+        if model_errors and iso in model_errors:
+            model_err_arr = np.asarray(model_errors[iso], dtype=float)
 
-        if normalise_rate:
-            with np.errstate(divide="ignore", invalid="ignore"):
-                counts_iso = np.divide(
-                    counts_iso,
-                    bin_widths,
-                    out=np.zeros_like(counts_iso, dtype=float),
-                    where=bin_widths > 0,
-                )
-                errors_iso = np.divide(
-                    errors_iso,
-                    bin_widths,
-                    out=np.zeros_like(errors_iso, dtype=float),
-                    where=bin_widths > 0,
-                )
-            counts_iso = np.nan_to_num(counts_iso, nan=0.0, posinf=0.0, neginf=0.0)
-            errors_iso = np.nan_to_num(errors_iso, nan=0.0, posinf=0.0, neginf=0.0)
-
-        style = str(config.get("plot_time_style", "steps")).lower()
-        if style == "lines":
-            plt.errorbar(
-                centers_mpl,
-                counts_iso,
-                yerr=errors_iso,
-                fmt="o-",
-                color=colors[iso],
-                label=f"Data {iso}",
-                capsize=3,
-            )
-        else:
-            plt.step(
-                centers_mpl,
-                counts_iso,
-                where="mid",
-                color=colors[iso],
-                label=f"Data {iso}",
-            )
-            plt.errorbar(
-                centers_mpl,
-                counts_iso,
-                yerr=errors_iso,
-                fmt="none",
-                ecolor=colors[iso],
-                elinewidth=1.0,
-                capsize=3,
-            )
-
-        # Overlay the continuous model curve (scaled to counts/bin)
-        # only when fit results are provided for this isotope and the fit
-        # itself is considered valid.  Invalid fits often yield unphysical
-        # parameters which would lead to wildly incorrect model curves.
         has_fit = any(k in fit_results for k in (f"E_{iso}", "E"))
         fit_ok = bool(
             fit_results.get("fit_valid", True)
@@ -393,41 +520,147 @@ def plot_time_series(
             E_iso = fit_results.get(f"E_{iso}", fit_results.get("E", 0.0))
             B_iso = fit_results.get(f"B_{iso}", fit_results.get("B", 0.0))
             N0_iso = fit_results.get(f"N0_{iso}", fit_results.get("N0", 0.0))
+        else:
+            lam = eff = E_iso = B_iso = N0_iso = None
 
-            # r_iso(t_rel) = eff * [E*(1 - exp(-lam*t_rel)) + lam*N0*exp(-lam*t_rel)] + B
-            r_rel = (
-                eff
-                * (
-                    E_iso * (1.0 - np.exp(-lam * centers))
-                    + lam * N0_iso * np.exp(-lam * centers)
-                )
-                + B_iso
-            )
+        for seg_idx, seg in enumerate(segments):
+            centers_mpl = np.asarray(seg["centers_mpl"])
+            bin_widths_seg = seg["bin_widths"]
+            edges_abs = seg["edges_abs"]
+            if centers_mpl.size == 0 or bin_widths_seg.size == 0:
+                continue
 
-            # Convert rate (counts/s) to expected counts per bin if not normalising
-            model_counts = r_rel if normalise_rate else r_rel * bin_widths
-            plt.plot(
-                centers_mpl,
-                model_counts,
-                color=colors[iso],
-                lw=2,
-                ls="--",
-                label=f"Model {iso}",
+            mask_seg = (
+                (all_energies >= emin)
+                & (all_energies <= emax)
+                & (all_timestamps >= seg["start"])
+                & (all_timestamps <= seg["end"])
             )
-            if model_errors and iso in model_errors:
-                err = np.asarray(model_errors[iso], dtype=float)
-                if err.size == model_counts.size:
-                    kw = {"step": "mid"} if style != "lines" else {}
-                    plt.fill_between(
-                        centers_mpl,
-                        model_counts - err,
-                        model_counts + err,
-                        color=colors[iso],
-                        alpha=0.3,
-                        **kw,
+            times_seg = all_timestamps[mask_seg]
+            counts_hist = np.histogram(times_seg, bins=edges_abs)[0].astype(float)
+            seg["counts"].setdefault(iso, counts_hist.astype(int))
+            raw_segment_counts.append(counts_hist.astype(float))
+
+            errors_seg = np.sqrt(counts_hist)
+            counts_plot = counts_hist.copy()
+            errors_plot = errors_seg.copy()
+
+            if normalise_rate:
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    counts_plot = np.divide(
+                        counts_plot,
+                        bin_widths_seg,
+                        out=np.zeros_like(counts_plot, dtype=float),
+                        where=bin_widths_seg > 0,
                     )
-                else:
-                    raise ValueError("model_errors array length mismatch")
+                    errors_plot = np.divide(
+                        errors_plot,
+                        bin_widths_seg,
+                        out=np.zeros_like(errors_plot, dtype=float),
+                        where=bin_widths_seg > 0,
+                    )
+                counts_plot = np.nan_to_num(
+                    counts_plot, nan=0.0, posinf=0.0, neginf=0.0
+                )
+                errors_plot = np.nan_to_num(
+                    errors_plot, nan=0.0, posinf=0.0, neginf=0.0
+                )
+
+            if counts_plot.size == 0:
+                if model_err_arr is not None:
+                    model_err_idx += counts_hist.size
+                continue
+
+            label = f"Data {iso}" if not label_used else None
+            color = colors.get(iso, palette.get("hist", "#1f77b4"))
+
+            if style == "lines":
+                err_kwargs = {
+                    "fmt": "o-",
+                    "color": color,
+                    "capsize": 3,
+                    "elinewidth": 1,
+                    "capthick": 1,
+                    "barsabove": True,
+                }
+                if label is not None:
+                    err_kwargs["label"] = label
+                plt.errorbar(
+                    centers_mpl,
+                    counts_plot,
+                    yerr=errors_plot,
+                    **err_kwargs,
+                )
+            else:
+                step_kwargs = {"where": "mid", "color": color}
+                if label is not None:
+                    step_kwargs["label"] = label
+                plt.step(centers_mpl, counts_plot, **step_kwargs)
+                plt.errorbar(
+                    centers_mpl,
+                    counts_plot,
+                    yerr=errors_plot,
+                    fmt="none",
+                    ecolor=color,
+                    elinewidth=1.0,
+                    capsize=3,
+                )
+
+            label_used = label_used or label is not None
+
+            if has_fit and fit_ok:
+                centers_rel = seg["centers_rel_global"]
+                r_rel = (
+                    eff
+                    * (
+                        E_iso * (1.0 - np.exp(-lam * centers_rel))
+                        + lam * N0_iso * np.exp(-lam * centers_rel)
+                    )
+                    + B_iso
+                )
+                model_counts_seg = (
+                    r_rel if normalise_rate else r_rel * bin_widths_seg
+                )
+                model_label = f"Model {iso}" if not model_label_used else None
+                plt.plot(
+                    centers_mpl,
+                    model_counts_seg,
+                    color=color,
+                    lw=2,
+                    ls="--",
+                    label=model_label,
+                )
+                if model_label is not None:
+                    model_label_used = True
+
+                if model_err_arr is not None:
+                    end_idx = model_err_idx + counts_hist.size
+                    if end_idx <= model_err_arr.size:
+                        err_seg = model_err_arr[model_err_idx:end_idx]
+                        kw = {"step": "mid"} if style != "lines" else {}
+                        plt.fill_between(
+                            centers_mpl,
+                            model_counts_seg - err_seg,
+                            model_counts_seg + err_seg,
+                            color=color,
+                            alpha=0.3,
+                            **kw,
+                        )
+                    else:
+                        raise ValueError("model_errors array length mismatch")
+
+            if model_err_arr is not None:
+                model_err_idx += counts_hist.size
+
+        if model_err_arr is not None and model_err_idx != model_err_arr.size:
+            raise ValueError("model_errors array length mismatch")
+
+        if raw_segment_counts:
+            flat_counts = np.concatenate(raw_segment_counts).astype(int)
+        else:
+            flat_counts = np.array([], dtype=int)
+        ts_counts_raw_arrays[iso] = flat_counts
+        counts_for_json_lists[iso] = [int(v) for v in flat_counts.tolist()]
 
     plt.xlabel("Time (UTC)")
     plt.ylabel("Counts / s" if normalise_rate else "Counts per bin")
@@ -438,7 +671,7 @@ def plot_time_series(
         plt.legend(fontsize="small")
 
     ax = plt.gca()
-    setup_time_axis(ax, centers_mpl)
+    setup_time_axis(ax, centers_mpl_all)
     plt.gcf().autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)
     ax.ticklabel_format(axis="y", style="plain")
@@ -448,28 +681,61 @@ def plot_time_series(
         plt.savefig(p, dpi=300)
     plt.close()
 
-    # (Optionally) also write a small JSON of the binned values:
+    segments_payload = []
     if config.get("dump_time_series_json", False):
         import json
 
-        ts_summary = {"centers_s": centers.tolist(), "widths_s": bin_widths.tolist()}
-        for iso in iso_list:
-            emin, emax = iso_params[iso]["window"]
-            ts_summary[f"counts_{iso}"] = np.histogram(
-                times_rel[
-                    (all_energies >= emin)
-                    & (all_energies <= emax)
-                    & (all_timestamps >= t_start)
-                    & (all_timestamps <= t_end)
+        for seg in segments:
+            payload = {
+                "start_utc": _isoformat_utc(seg["start"]),
+                "end_utc": _isoformat_utc(seg["end"]),
+                "bin_edges_unix_s": seg["edges_abs"].tolist(),
+                "bin_edges_utc": [
+                    _isoformat_utc(val) for val in seg["edges_abs"]
                 ],
-                bins=edges,
-            )[0].tolist()
-            ts_summary[f"live_time_{iso}_s"] = bin_widths.tolist()
-            ts_summary[f"eff_{iso}"] = [iso_params[iso]["eff"]] * len(bin_widths)
+                "bin_widths_s": seg["bin_widths"].tolist(),
+                "bin_centers_unix_s": seg["centers_abs"].tolist(),
+                "bin_centers_utc": [
+                    _isoformat_utc(val) for val in seg["centers_abs"]
+                ],
+                "bin_centers_elapsed_hours": seg[
+                    "centers_elapsed_hours"
+                ].tolist(),
+            }
+            for iso in iso_list:
+                counts_arr = seg["counts"].get(iso)
+                if counts_arr is not None:
+                    payload[f"counts_{iso}"] = [
+                        int(v) for v in np.asarray(counts_arr, dtype=float)
+                    ]
+            segments_payload.append(payload)
+
+        ts_summary = {
+            "centers_s": centers_rel_all.tolist(),
+            "widths_s": widths_all.tolist(),
+            "segments": segments_payload,
+            "ts_counts_raw": {
+                iso: [int(v) for v in arr.tolist()]
+                for iso, arr in ts_counts_raw_arrays.items()
+            },
+            "counts_for_json": counts_for_json_lists,
+        }
+        for iso in iso_list:
+            counts_flat = counts_for_json_lists.get(iso, [])
+            ts_summary[f"counts_{iso}"] = counts_flat
+            ts_summary[f"live_time_{iso}_s"] = widths_all.tolist()
+            ts_summary[f"eff_{iso}"] = [iso_params[iso]["eff"]] * len(widths_all)
         base = Path(out_png).with_suffix("")
         json_path = base.with_name(base.name + "_ts.json")
         with open(json_path, "w") as jf:
             json.dump(ts_summary, jf, indent=2)
+
+    return {
+        "segments": segments,
+        "segments_serialized": segments_payload,
+        "ts_counts_raw": ts_counts_raw_arrays,
+        "counts_for_json": counts_for_json_lists,
+    }
 
 
 def plot_spectrum(
