@@ -407,6 +407,7 @@ from baseline_utils import (
     compute_dilution_factor,
     summarize_baseline,
     BaselineError,
+    NEGATIVE_BASELINE_FLOOR_BQ,
 )
 import baseline
 import baseline_handling
@@ -3677,10 +3678,18 @@ def main(argv=None):
     total_bq_display = total_bq
     if total_bq_display < 0:
         if args.allow_negative_activity:
-            logger.warning(
-                "Negative total radon in sample reported (%.3f Bq) because --allow-negative-activity was requested",
-                total_bq_display,
-            )
+            if total_bq_display < NEGATIVE_BASELINE_FLOOR_BQ:
+                logger.warning(
+                    "Negative total radon in sample reported (%.3f Bq) – clipping to %.1f Bq floor",
+                    total_bq_display,
+                    NEGATIVE_BASELINE_FLOOR_BQ,
+                )
+                total_bq_display = NEGATIVE_BASELINE_FLOOR_BQ
+            else:
+                logger.warning(
+                    "Negative total radon in sample reported (%.3f Bq) because --allow-negative-activity was requested",
+                    total_bq_display,
+                )
         else:
             total_bq_display = 0.0
 
