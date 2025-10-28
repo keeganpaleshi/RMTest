@@ -25,6 +25,25 @@ from ._time_utils import guard_mpl_times, setup_time_axis
 PO214_HALF_LIFE_S = PO214.half_life_s
 PO218_HALF_LIFE_S = PO218.half_life_s
 
+
+def _errorbar_kwargs(color=None, *, label=None):
+    """Return styling options for visible error bars."""
+
+    kwargs = {
+        "fmt": "o",
+        "capsize": 3,
+        "capthick": 1,
+        "elinewidth": 1,
+        "barsabove": True,
+    }
+    if color is not None:
+        kwargs["color"] = color
+        kwargs["markerfacecolor"] = color
+        kwargs["markeredgecolor"] = color
+    if label is not None:
+        kwargs["label"] = label
+    return kwargs
+
 __all__ = [
     "extract_time_series",
     "plot_time_series",
@@ -761,14 +780,24 @@ def plot_radon_activity_full(
     color = palette.get("radon_activity", "#9467bd")
 
     label = None if po214_activity is None else "Rn-222"
-    ax_abs.errorbar(times_mpl, conc, yerr=conc_err, fmt="o", color=color, label=label)
+    ax_abs.errorbar(
+        times_mpl,
+        conc,
+        yerr=conc_err,
+        **_errorbar_kwargs(color, label=label),
+    )
     _apply_time_format(ax_abs, times_mpl)
     ax_abs.set_xlabel("Time (UTC)")
     ax_abs.set_ylabel(label_units)
     ax_abs.set_title("Radon Concentration vs. Time")
     ax_abs.ticklabel_format(axis="y", style="plain")
 
-    ax_rel.errorbar(elapsed_hours, conc, yerr=conc_err, fmt="o", color=color)
+    ax_rel.errorbar(
+        elapsed_hours,
+        conc,
+        yerr=conc_err,
+        **_errorbar_kwargs(color),
+    )
     ax_rel.set_xlabel("Elapsed Time (h)")
     ax_rel.set_title("Radon Concentration vs. Elapsed Hours")
     ax_rel.ticklabel_format(axis="y", style="plain")
@@ -835,14 +864,24 @@ def plot_total_radon_full(
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("total_radon", palette.get("radon_activity", "#9467bd"))
 
-    ax_abs.errorbar(times_mpl, total_bq, yerr=errors_arr, fmt="o", color=color)
+    ax_abs.errorbar(
+        times_mpl,
+        total_bq,
+        yerr=errors_arr,
+        **_errorbar_kwargs(color),
+    )
     _apply_time_format(ax_abs, times_mpl)
     ax_abs.set_xlabel("Time (UTC)")
     ax_abs.set_ylabel("Total Radon in Sample (Bq)")
     ax_abs.set_title("Total Radon vs. Time")
     ax_abs.ticklabel_format(axis="y", style="plain")
 
-    ax_rel.errorbar(elapsed_hours, total_bq, yerr=errors_arr, fmt="o", color=color)
+    ax_rel.errorbar(
+        elapsed_hours,
+        total_bq,
+        yerr=errors_arr,
+        **_errorbar_kwargs(color),
+    )
     ax_rel.set_xlabel("Elapsed Time (h)")
     ax_rel.set_title("Total Radon vs. Elapsed Hours")
     ax_rel.ticklabel_format(axis="y", style="plain")
@@ -888,7 +927,12 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("equivalent_air", "#2ca02c")
-    ax.errorbar(times_mpl, volumes, yerr=errors, fmt="o", color=color)
+    ax.errorbar(
+        times_mpl,
+        volumes,
+        yerr=errors,
+        **_errorbar_kwargs(color),
+    )
     ax.set_xlabel("Time (UTC)")
     ax.set_ylabel("Equivalent Air Volume")
     if conc is None:

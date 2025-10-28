@@ -5,6 +5,15 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from plot_utils._time_utils import guard_mpl_times, setup_time_axis
 
+
+_ERRORBAR_STYLE = {
+    "fmt": "o",
+    "capsize": 3,
+    "capthick": 1,
+    "elinewidth": 1,
+    "barsabove": True,
+}
+
 __all__ = ["plot_radon_activity", "plot_total_radon", "plot_radon_trend"]
 
 
@@ -26,7 +35,12 @@ def plot_radon_activity(ts, outdir):
         return
     fig, ax = plt.subplots()
     times_mpl = guard_mpl_times(times=times)
-    ax.errorbar(times_mpl, activity, yerr=getattr(ts, "error", None), fmt="o")
+    ax.errorbar(
+        times_mpl,
+        activity,
+        yerr=getattr(ts, "error", None),
+        **_ERRORBAR_STYLE,
+    )
     ax.set_ylabel("Radon activity [Bq]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
@@ -72,7 +86,12 @@ def plot_total_radon(ts, outdir):
 
     fig, ax = plt.subplots()
     times_mpl = guard_mpl_times(times=times)
-    ax.errorbar(times_mpl, total, yerr=getattr(ts, "error", None), fmt="o")
+    ax.errorbar(
+        times_mpl,
+        total,
+        yerr=getattr(ts, "error", None),
+        **_ERRORBAR_STYLE,
+    )
     ax.set_ylabel("Total radon in sample [Bq]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
