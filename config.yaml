@@ -2,8 +2,8 @@ allow_fallback: true
 
 analysis_isotope: radon
 
-# Allow negative baseline-corrected rates down to -1.0 Bq.  When enabled,
-# values below that floor are clipped to -1.0 Bq instead of zeroed.
+# Allow negative baseline-corrected rates to be reported directly.  When this
+# is disabled (the default) negative values are clamped to 0.0 Bq.
 allow_negative_baseline: false
 
 pipeline:
