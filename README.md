@@ -133,23 +133,25 @@ the file:
 
 ## Output
 
-The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--job-id` is given the folder `<output_dir>/<job-id>/` is used instead. If `--output_dir` is omitted it defaults to `results`. If the folder already exists run with `--overwrite` to replace it. The directory includes:
+The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--job-id` is given the folder `<output_dir>/<job-id>/` is used instead. If `--output_dir` is omitted it defaults to `results`. If the folder already exists run with `--overwrite` to replace it.
 
-- `summary.json` – calibration and fit summary with run diagnostics.
-- `config_used.json` – copy of the configuration used.
-  Any timestamps overridden on the command line are written
-  back to this file as ISO timestamps.
-- `spectrum.png` – spectrum plot with fitted peaks.
+### Outputs
+
+Running `analyze.py` produces a consistent set of artifacts next to `summary.json`; these filenames are stable and validated by the smoke tests:
+
+- `summary.json` – structured calibration, per-isotope fit results, radon activity/concentration time series, baseline metadata and other high-level diagnostics.
+- `spectrum.png` – energy spectrum with model components and residuals.
+- `spectrum_pre_post.png` – optional diagnostic overlay comparing pre/post cut spectra (written when the diagnostic is enabled).
+- `radon_activity.png` – radon activity/concentration versus UTC time and elapsed hours (uses the configured `background_mode` and includes statistical error bars).
+- `isotope_time_series.png` – Po-210 / Po-218 / Po-214 time series versus UTC time and elapsed hours, restricted to configured `run_periods` and plotted with statistical uncertainties.
+- `config_used.json` – copy of the configuration used. Any timestamps overridden on the command line are written back to this file as ISO timestamps.
 - `time_series_Po214.png` and `time_series_Po218.png` – decay time-series plots.
-- `time_series_Po210.png` when `window_po210` is set.
-- Optional `*_ts.json` files containing binned time series when enabled.
+- `time_series_Po210.png` – emitted when `window_po210` is set.
+- Optional `*_ts.json` files – binned time series when explicit dumps are enabled.
 - `efficiency.png` – bar chart of individual efficiencies and the BLUE result.
 - `eff_cov.png` – heatmap of the efficiency covariance matrix.
-- `radon_activity.png` – extrapolated radon concentration (Bq/L) over time.
-- `total_radon.png` – total radon present in the sampled air after scaling the
-  fitted activity by the combined counting volume `(monitor + sample)` (Bq).
- - `equivalent_air.png` – equivalent air volume plot when `--ambient-file` or
-   `--ambient-concentration` is provided.
+- `total_radon.png` – total radon present in the sampled air after scaling the fitted activity by the combined counting volume `(monitor + sample)` (Bq).
+- `equivalent_air.png` – equivalent air volume plot when `--ambient-file` or `--ambient-concentration` is provided.
 
 The `time_fit` routine still fits only Po‑214 and Po‑218.
 When `window_po210` is provided the Po‑210 events are extracted and a
