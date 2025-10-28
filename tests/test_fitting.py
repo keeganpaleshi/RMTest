@@ -192,6 +192,36 @@ def test_fit_spectrum_use_emg_flag():
     assert "tau_Po218" in out_emg.params
 
 
+def test_fit_spectrum_use_emg_config_map():
+    """Configuration use_emg map should enable EMG tails without explicit priors."""
+
+    rng = np.random.default_rng(1)
+    energies = np.concatenate([
+        rng.normal(5.3, 0.05, 200),
+        rng.normal(6.0, 0.05, 200),
+        rng.normal(7.7, 0.05, 200),
+    ])
+
+    priors = {
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (200, 20),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (200, 20),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (200, 20),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+
+    flags = {"use_emg": {"Po210": True, "Po218": False, "Po214": False}}
+    result = fit_spectrum(energies, priors, flags=flags)
+
+    assert "tau_Po210" in result.params
+    assert result.params["tau_Po210"] >= _TAU_MIN
+
+
 def test_loglin_unit_bootstraps_background():
     rng = np.random.default_rng(0)
     energies = np.concatenate([

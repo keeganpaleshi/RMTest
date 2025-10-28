@@ -3,9 +3,10 @@
 # -----------------------------------------------------
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import TypedDict, NotRequired
 from types import SimpleNamespace
+from typing import NotRequired, TypedDict
 
 import numpy as np
 import pandas as pd
@@ -418,12 +419,26 @@ def fit_spectrum(
     def p(name, default):
         return priors.get(name, (default, 1.0))
 
-    # Determine which peaks should include an EMG tail based on provided priors
-    use_emg = {
-        "Po210": "tau_Po210" in priors,
-        "Po218": "tau_Po218" in priors,
-        "Po214": "tau_Po214" in priors,
-    }
+    # Determine which peaks should include an EMG tail based on configuration
+    # flags and provided priors.  When a configuration mapping is supplied via
+    # ``flags['use_emg']`` it takes precedence, otherwise we default to enabling
+    # tails only when an explicit tau prior is given.
+    iso_list = ["Po210", "Po218", "Po214"]
+    use_emg_flag = flags.get("use_emg") if isinstance(flags, Mapping) else None
+    use_emg = {iso: False for iso in iso_list}
+
+    if isinstance(use_emg_flag, Mapping):
+        for iso, enabled in use_emg_flag.items():
+            if iso in use_emg:
+                use_emg[iso] = bool(enabled)
+    elif use_emg_flag is not None:
+        # Allow a scalar truthy flag to toggle EMG tails for all peaks
+        enabled = bool(use_emg_flag)
+        use_emg = {iso: enabled for iso in iso_list}
+
+    for iso in iso_list:
+        if f"tau_{iso}" in priors:
+            use_emg[iso] = use_emg.get(iso, False) or True
 
     # Track which resolution parameters are fixed
     fix_sigma0 = flags.get("fix_sigma0", False)
@@ -443,7 +458,7 @@ def fit_spectrum(
     if not fix_F:
         param_index["F"] = len(param_order)
         param_order.append("F")
-    for iso in ("Po210", "Po218", "Po214"):
+    for iso in iso_list:
         param_index[f"mu_{iso}"] = len(param_order)
         param_order.append(f"mu_{iso}")
         param_index[f"S_{iso}"] = len(param_order)
@@ -511,7 +526,6 @@ def fit_spectrum(
         bounds_lo.append(lo)
         bounds_hi.append(hi)
 
-    iso_list = ["Po210", "Po218", "Po214"]
     area_keys = [f"S_{iso}" for iso in iso_list]
     if background_model == "loglin_unit" or "S_bkg" in priors:
         area_keys = area_keys + ["S_bkg"]
