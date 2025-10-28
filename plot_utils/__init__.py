@@ -555,7 +555,7 @@ def plot_radon_activity_full(
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("radon_activity", "#9467bd")
     label = None if po214_activity is None else "Rn-222 Concentration"
-    ax.errorbar(times_mpl, activity, yerr=errors, fmt="o-", color=color, label=label)
+    ax.errorbar(times_mpl, activity, yerr=errors, fmt="o", color=color, label=label)
     ax.set_xlabel("Time (UTC)")
     ax.set_ylabel("Rn-222 Concentration (Bq/L)")
     ax.set_title("Extrapolated Radon Concentration vs. Time")
@@ -600,7 +600,7 @@ def plot_total_radon_full(times, total_bq, errors, out_png, config=None):
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("total_radon", palette.get("radon_activity", "#9467bd"))
-    ax.errorbar(times_mpl, total_bq, yerr=errors_arr, fmt="o-", color=color)
+    ax.errorbar(times_mpl, total_bq, yerr=errors_arr, fmt="o", color=color)
     ax.set_xlabel("Time (UTC)")
     ax.set_ylabel("Total Radon in Sample (Bq)")
     ax.set_title("Total Radon vs. Time")
@@ -634,7 +634,7 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("equivalent_air", "#2ca02c")
-    ax.errorbar(times_mpl, volumes, yerr=errors, fmt="o-", color=color)
+    ax.errorbar(times_mpl, volumes, yerr=errors, fmt="o", color=color)
     ax.set_xlabel("Time (UTC)")
     ax.set_ylabel("Equivalent Air Volume")
     if conc is None:
