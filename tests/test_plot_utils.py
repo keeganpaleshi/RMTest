@@ -768,6 +768,139 @@ def test_plot_total_radon_no_errors(tmp_path):
     assert out_png.exists()
 
 
+def test_compute_short_timescale_ylim_flat_data():
+    from plot_utils import _compute_short_timescale_ylim
+
+    values = np.full(5, 10.0)
+    result = _compute_short_timescale_ylim(values)
+
+    assert result is not None
+    assert np.allclose(result, (9.0, 11.0))
+
+
+def test_compute_short_timescale_ylim_scalar_error():
+    from plot_utils import _compute_short_timescale_ylim
+
+    values = [0.0, 0.0, 0.0]
+    result = _compute_short_timescale_ylim(values, 0.2)
+
+    assert result is not None
+    assert np.allclose(result, (-0.2, 0.2))
+
+
+def test_compute_short_timescale_ylim_empty_inputs():
+    from plot_utils import _compute_short_timescale_ylim
+
+    assert _compute_short_timescale_ylim([]) is None
+    assert _compute_short_timescale_ylim([np.nan, np.nan], None) is None
+
+
+def test_plot_total_radon_short_timescale_ylim(tmp_path, monkeypatch):
+    import plot_utils as plot_utils_mod
+
+    times = [0.0, 1.0, 2.0]
+    total = [5.0, 5.0, 5.0]
+    out_png = tmp_path / "total_short.png"
+
+    captured = {}
+
+    orig_subplots = plot_utils_mod.plt.subplots
+
+    def tracking_subplots(*args, **kwargs):
+        fig, axes = orig_subplots(*args, **kwargs)
+        captured["fig"] = fig
+        captured["axes"] = axes
+        return fig, axes
+
+    monkeypatch.setattr(plot_utils_mod.plt, "subplots", tracking_subplots)
+    monkeypatch.setattr(plot_utils_mod.plt, "close", lambda *a, **k: None)
+
+    helper_calls = {}
+    orig_helper = plot_utils_mod._compute_short_timescale_ylim
+
+    def tracking_helper(values, errors=None):
+        helper_calls["result"] = orig_helper(values, errors)
+        return helper_calls["result"]
+
+    monkeypatch.setattr(plot_utils_mod, "_compute_short_timescale_ylim", tracking_helper)
+
+    plot_utils_mod.plot_total_radon_full(times, total, None, str(out_png))
+
+    assert "axes" in captured and "result" in helper_calls
+    ax_abs, ax_rel = captured["axes"]
+    base_ylim = plot_utils_mod._compute_ylim(np.asarray(total, dtype=float), None)
+    assert np.allclose(ax_abs.get_ylim(), base_ylim)
+    assert np.allclose(ax_rel.get_ylim(), helper_calls["result"])
+
+
+def test_plot_radon_activity_short_timescale_ylim(tmp_path, monkeypatch):
+    import plot_utils as plot_utils_mod
+
+    times = np.array([0.0, 1.0, 2.0])
+    activity = np.array([2.0, 2.0, 2.0])
+    errors = np.array([0.1, 0.1, 0.1])
+    out_png = tmp_path / "radon_short.png"
+
+    captured = {}
+
+    orig_subplots = plot_utils_mod.plt.subplots
+
+    def tracking_subplots(*args, **kwargs):
+        fig, axes = orig_subplots(*args, **kwargs)
+        captured["fig"] = fig
+        captured["axes"] = axes
+        return fig, axes
+
+    monkeypatch.setattr(plot_utils_mod.plt, "subplots", tracking_subplots)
+    monkeypatch.setattr(plot_utils_mod.plt, "close", lambda *a, **k: None)
+
+    helper_calls = {}
+    orig_helper = plot_utils_mod._compute_short_timescale_ylim
+
+    def tracking_helper(values, errors=None):
+        helper_calls["result"] = orig_helper(values, errors)
+        return helper_calls["result"]
+
+    monkeypatch.setattr(plot_utils_mod, "_compute_short_timescale_ylim", tracking_helper)
+
+    plot_utils_mod.plot_radon_activity_full(times, activity, errors, str(out_png))
+
+    assert "axes" in captured and "result" in helper_calls
+    ax_abs, ax_rel = captured["axes"]
+    assert np.allclose(ax_abs.get_ylim(), helper_calls["result"])
+    assert np.allclose(ax_rel.get_ylim(), helper_calls["result"])
+
+
+def test_plot_total_radon_short_timescale_ylim_fallback(tmp_path, monkeypatch):
+    import plot_utils as plot_utils_mod
+
+    times = [0.0, 1.0, 2.0]
+    total = [0.0, 0.0, 0.0]
+    out_png = tmp_path / "total_short_fallback.png"
+
+    captured = {}
+
+    orig_subplots = plot_utils_mod.plt.subplots
+
+    def tracking_subplots(*args, **kwargs):
+        fig, axes = orig_subplots(*args, **kwargs)
+        captured["axes"] = axes
+        return fig, axes
+
+    monkeypatch.setattr(plot_utils_mod.plt, "subplots", tracking_subplots)
+    monkeypatch.setattr(plot_utils_mod.plt, "close", lambda *a, **k: None)
+
+    base_expected = plot_utils_mod._compute_ylim(np.asarray(total, dtype=float), None)
+    monkeypatch.setattr(plot_utils_mod, "_compute_short_timescale_ylim", lambda *a, **k: None)
+
+    plot_utils_mod.plot_total_radon_full(times, total, None, str(out_png))
+
+    assert "axes" in captured
+    ax_abs, ax_rel = captured["axes"]
+    assert np.allclose(ax_abs.get_ylim(), base_expected)
+    assert np.allclose(ax_rel.get_ylim(), base_expected)
+
+
 def test_plot_equivalent_air_output(tmp_path):
     times = [0.0, 1.0, 2.0]
     volumes = [0.1, 0.2, 0.3]
