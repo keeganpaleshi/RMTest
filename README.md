@@ -139,14 +139,12 @@ The analysis writes results to `<output_dir>/<timestamp>/` by default. When `--j
 
 Running `analyze.py` produces a consistent set of artifacts next to `summary.json`; these filenames are stable and validated by the smoke tests:
 
-- `summary.json` – structured calibration, per-isotope fit results, radon activity/concentration time series, baseline metadata and other high-level diagnostics.
-- `spectrum.png` – energy spectrum with model components and residuals.
-- `spectrum_pre_post.png` – optional diagnostic overlay comparing pre/post cut spectra (written when the diagnostic is enabled).
-- `radon_activity.png` – radon activity/concentration versus UTC time and elapsed hours (uses the configured `background_mode` and includes statistical error bars).
-- `isotope_time_series.png` – Po-210 / Po-218 / Po-214 time series versus UTC time and elapsed hours, restricted to configured `run_periods` and plotted with statistical uncertainties.
+- `summary.json` – structured calibration, per-isotope fit results, radon activity/concentration time series, baseline metadata, the concatenated per-bin counts used for plotting, and other high-level diagnostics.
+- `spectrum.png` – spectrum, best-fit model components, and residuals in a three-panel layout that always ships with the report.
+- `spectrum_pre_post.png` – diagnostic spectrum overlay comparing pre/post cut spectra to highlight the impact of filtering.
+- Radon time-series plots – `radon_activity.png` (UTC and elapsed-hour views) is always written using the configured `background_mode` and statistical error bars.
+- Isotope time-series plots – `isotope_time_series.png` overlays Po-210 / Po-218 / Po-214 within the configured `run_periods`, and the per-isotope `time_series_Po214.png`, `time_series_Po218.png`, and (when `window_po210` is enabled) `time_series_Po210.png` provide the same data for single-isotope diagnostics.
 - `config_used.json` – copy of the configuration used. Any timestamps overridden on the command line are written back to this file as ISO timestamps.
-- `time_series_Po214.png` and `time_series_Po218.png` – decay time-series plots.
-- `time_series_Po210.png` – emitted when `window_po210` is set.
 - Optional `*_ts.json` files – binned time series when explicit dumps are enabled.
 - `efficiency.png` – bar chart of individual efficiencies and the BLUE result.
 - `eff_cov.png` – heatmap of the efficiency covariance matrix.
@@ -496,7 +494,10 @@ fit.  Important keys include:
   one-sigma uncertainty as a Gaussian prior so the spectrum fit can
   respond to the data without drifting toward unphysical widths unless
   strongly supported.  A numeric tuple supplies `[mean, sigma]`
-  directly.
+  directly.  Letting `sigma_E` float against the calibration prior keeps
+  the model overlay visually consistent with the measured spectrum, so
+  the residual panel no longer shows the mismatched widths seen in the
+  older fixed-σ plots.
 
 This fixes the old behavior where the model curve didn't sit on top of
 the data peak.
@@ -730,8 +731,9 @@ includes contributions from both count sets.
 - ``background_mode`` – whether the background was floated or fixed.
   The value ``fixed_from_baseline`` signals that a dedicated baseline
   interval (which may come from a different run) supplied the fixed
-  subtraction.  The baseline period does not need to overlap the assay;
-  long standalone baselines can be re-used for later samples.
+  subtraction.  The baseline period does not need to overlap the assay
+  or the configured ``run_periods``; long monitor-only baselines taken
+  months before or after the sample remain valid for this mode.
 
 Set ``allow_negative_baseline`` to ``true`` in the top-level
 configuration (or pass ``--allow-negative-baseline``) to allow small
