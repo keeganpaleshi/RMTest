@@ -19,6 +19,9 @@ from constants import _TAU_MIN, safe_exp as _safe_exp
 from math_utils import log_expm1_stable
 
 
+_TAU_BOUND_EXPANSION = 10.0
+
+
 def softplus(x: np.ndarray | float) -> np.ndarray | float:
     """Stable softplus implementation for positive parameters."""
     x = np.asarray(x, dtype=float)
@@ -467,14 +470,28 @@ def fit_spectrum(
         # Enforce a strictly positive initial tau to avoid singular EMG tails
         if name.startswith("tau_"):
             mean = max(mean, _TAU_MIN)
-        if flags.get(f"fix_{name}", False) or sig == 0:
+        is_fixed = flags.get(f"fix_{name}", False) or sig == 0
+        if is_fixed:
             # Optimiser requires lower < upper; use a tiny width around fixed values
             lo = mean - eps
             hi = mean + eps
         else:
-            delta = 5 * sig if np.isfinite(sig) else np.inf
+            sig_val = float(sig)
+            if not np.isfinite(sig_val):
+                delta = np.inf
+            else:
+                delta = 5 * abs(sig_val)
             lo = mean - delta
             hi = mean + delta
+            if name.startswith("tau_"):
+                if np.isfinite(delta):
+                    tau_scale = max(abs(mean), abs(sig_val), delta / 5, _TAU_MIN)
+                    if np.isfinite(tau_scale) and tau_scale > 0:
+                        extra = _TAU_BOUND_EXPANSION * tau_scale
+                        lo = min(lo, mean - extra)
+                        hi = max(hi, mean + extra)
+                if not np.isfinite(delta):
+                    hi = np.inf
         if bounds and name in bounds:
             user_lo, user_hi = bounds[name]
             if user_lo is not None:

@@ -478,6 +478,39 @@ def test_fit_spectrum_tau_lower_bound():
     assert result.params["tau_Po218"] >= _TAU_MIN
 
 
+def test_fit_spectrum_tau_not_clamped():
+    """High-statistics tails should be able to float beyond the prior mean."""
+
+    rng = np.random.default_rng(11)
+    mu_true = 5.305
+    sigma_true = 0.12
+    tau_true = 0.18
+    n_events = 4000
+
+    base = rng.normal(0.0, sigma_true, n_events)
+    tail = rng.exponential(tau_true, n_events)
+    energies = mu_true + base - tail
+
+    priors = {
+        "sigma0": (sigma_true, 0.0),
+        "F": (0.0, 0.0),
+        "mu_Po210": (mu_true, 0.05),
+        "S_Po210": (float(n_events), np.sqrt(n_events)),
+        "tau_Po210": (0.025, 0.010),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (5.0, 5.0),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (5.0, 5.0),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+
+    flags = {"fix_sigma0": True, "fix_F": True}
+    result = fit_spectrum(energies, priors, flags=flags)
+
+    assert result.params["tau_Po210"] > priors["tau_Po210"][0] + 0.02
+
+
 def test_fit_spectrum_unbinned_runs():
     rng = np.random.default_rng(7)
     energies = np.concatenate([
