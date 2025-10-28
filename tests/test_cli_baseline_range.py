@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
 from dataclasses import asdict
 import baseline_noise
+import baseline_handling
 from fitting import FitResult, FitParams
 
 
@@ -62,6 +63,21 @@ def test_cli_baseline_range_overrides_config(tmp_path, monkeypatch):
     monkeypatch.setattr(analyze, "apply_burst_filter", lambda df, cfg, mode="rate": (df, 0))
     monkeypatch.setattr(baseline_noise, "estimate_baseline_noise", lambda *a, **k: (None, {}))
 
+    orig_fixed_background = baseline_handling.get_fixed_background_for_time_fit
+
+    def fake_fixed_background(record, isotope, config):
+        result = orig_fixed_background(record, isotope, config)
+        if result:
+            result = dict(result)
+            result["mode"] = "baselineFixed"
+        return result
+
+    monkeypatch.setattr(
+        baseline_handling,
+        "get_fixed_background_for_time_fit",
+        fake_fixed_background,
+    )
+
     captured = {}
 
     orig_load_config = analyze.load_config
@@ -111,6 +127,12 @@ def test_cli_baseline_range_overrides_config(tmp_path, monkeypatch):
     tf_summary = summary.get("time_fit", {}).get("Po214", {})
     assert tf_summary.get("background_mode") == "fixed_from_baseline"
     assert tf_summary.get("baseline_rate_Bq") == pytest.approx(1.0)
+    assert tf_summary.get("background_source") == "fixed_from_baseline"
+
+    radon_summary = summary.get("radon", {})
+    plot_payload = radon_summary.get("plot_series", {})
+    if plot_payload:
+        assert plot_payload.get("background_mode") == "fixed_from_baseline"
 
 
 def test_time_fit_background_mode_floated(tmp_path, monkeypatch):

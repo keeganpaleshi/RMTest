@@ -3023,12 +3023,20 @@ def main(argv=None):
                 baseline_rate_meta = float(
                     baseline_fixed_info.get("background_rate_Bq", baseline_rate_iso or 0.0)
                 )
-                background_mode = baseline_fixed_info.get(
-                    "mode", "fixed_from_baseline"
-                )
+                norm_mode = baseline_handling.normalize_background_mode(
+                    baseline_fixed_info.get("mode")
+                ) or "fixed_from_baseline"
+                baseline_fixed_info = dict(baseline_fixed_info)
+                baseline_fixed_info["mode"] = norm_mode
+                background_mode = norm_mode
                 baseline_background_provenance[iso] = dict(baseline_fixed_info)
             elif baseline_rate_iso is not None:
                 baseline_rate_meta = float(baseline_rate_iso)
+                background_mode = baseline_handling.normalize_background_mode(
+                    "fixed_from_baseline"
+                ) or "fixed_from_baseline"
+
+        background_mode = baseline_handling.normalize_background_mode(background_mode)
 
         meta_entry: dict[str, Any] = {"mode": background_mode}
         if baseline_rate_meta is not None:
@@ -4306,6 +4314,7 @@ def main(argv=None):
         t_rel = (times_dt - analysis_start).total_seconds()
         activity_times = time_grid
         background_mode = _radon_background_mode(cfg, time_fit_results)
+        background_mode = baseline_handling.normalize_background_mode(background_mode)
 
         if radon_combined_info is not None:
             try:
