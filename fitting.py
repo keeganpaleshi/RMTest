@@ -177,29 +177,32 @@ class FitResult:
                     )
 
     def get_cov(self, name1: str, name2: str) -> float:
-        """Return covariance entry for two parameters."""
+        """Return covariance entry for two parameters.
+
+        Missing parameters are no longer treated as fatal errors; the
+        function now returns ``nan`` when the requested entry cannot be
+        resolved.  Callers may convert the result to ``None`` before JSON
+        serialisation if desired.
+        """
+
         if self.cov is None or self.param_index is None:
-            return 0.0
+            return float("nan")
         if self._cov_df is not None:
             try:
                 return float(self._cov_df.loc[name1, name2])
-            except KeyError as exc:
-                raise KeyError(
-                    f"Parameter(s) missing in covariance: {name1}, {name2}"
-                ) from exc
+            except KeyError:
+                return float("nan")
 
         try:
             i1 = self.param_index[name1]
             i2 = self.param_index[name2]
-        except KeyError as exc:
-            raise KeyError(
-                f"Parameter(s) missing in covariance: {name1}, {name2}"
-            ) from exc
+        except KeyError:
+            return float("nan")
 
         if self.cov.ndim >= 2 and i1 < self.cov.shape[0] and i2 < self.cov.shape[1]:
             return float(self.cov[i1, i2])
 
-        raise KeyError(f"Parameter(s) missing in covariance: {name1}, {name2}")
+        return float("nan")
 
     @property
     def cov_df(self) -> pd.DataFrame:
