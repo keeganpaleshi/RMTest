@@ -736,9 +736,10 @@ includes contributions from both count sets.
 Set ``allow_negative_baseline`` to ``true`` in the top-level
 configuration (or pass ``--allow-negative-baseline``) to allow small
 negative baseline-corrected activities.  The analysis still clips the
-values to a floor of ``-5`` Bq to avoid unphysical results when
-statistical fluctuations overshoot.  With the default ``false`` setting
-any negative value is clipped to zero instead.
+values to a floor of ``-1`` Bq to avoid obviously unphysical results
+from large downward fluctuations, but does **not** force everything to
+``0`` Bq.  With the default ``false`` setting any negative value is
+clipped to zero instead.
 
 ### Baseline Noise Cut
 

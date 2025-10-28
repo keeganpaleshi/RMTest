@@ -11,6 +11,11 @@ from radon.baseline import (
     subtract_baseline_rate,
 )
 
+# Negative activities are allowed when ``allow_negative_baseline`` is set, but
+# extremely large fluctuations are clipped at this floor to avoid obviously
+# unphysical summaries.
+NEGATIVE_ACTIVITY_FLOOR = -1.0
+
 
 class BaselineError(RuntimeError):
     """Raised when baseline subtraction diagnostics fail."""
@@ -29,6 +34,7 @@ __all__ = [
     "subtract",
     "summarize_baseline",
     "baseline_period_before_data",
+    "NEGATIVE_ACTIVITY_FLOOR",
 ]
 
 
@@ -325,8 +331,10 @@ def summarize_baseline(
         base = float(base_rates.get(iso, 0.0)) * float(scales.get(iso, 1.0))
         corr = float(fit.get("E_corrected", raw - base))
         raw = float(raw)
+        if corr < 0:
+            if not allow_negative:
+                raise BaselineError(f"negative corrected rate for {iso}")
+            corr = max(corr, NEGATIVE_ACTIVITY_FLOOR)
         summary[iso] = (raw, base, corr)
-        if corr < 0 and not allow_negative:
-            raise BaselineError(f"negative corrected rate for {iso}")
 
     return summary

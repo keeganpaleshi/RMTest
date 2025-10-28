@@ -407,6 +407,7 @@ from baseline_utils import (
     compute_dilution_factor,
     summarize_baseline,
     BaselineError,
+    NEGATIVE_ACTIVITY_FLOOR,
 )
 import baseline
 import baseline_handling
@@ -3648,6 +3649,16 @@ def main(argv=None):
         eff_po214,
     )
 
+    allow_negative_baseline_cfg = bool(cfg.get("allow_negative_baseline"))
+    allow_negative_outputs = args.allow_negative_activity or allow_negative_baseline_cfg
+    if allow_negative_outputs and A_radon < NEGATIVE_ACTIVITY_FLOOR:
+        logger.warning(
+            "Negative radon activity clipped from %.3f Bq to %.3f Bq per allow-negative-baseline policy",
+            A_radon,
+            NEGATIVE_ACTIVITY_FLOOR,
+        )
+        A_radon = NEGATIVE_ACTIVITY_FLOOR
+
     if iso_mode == "radon":
         radon_combined_info = {
             "activity_Bq": A_radon,
@@ -3669,21 +3680,35 @@ def main(argv=None):
         logger.error("%s", e)
         sys.exit(1)
 
+    total_volume = sample_vol if sample_vol > 0 else monitor_vol + sample_vol
+
     radon_results["radon_activity_Bq"] = {"value": A_radon, "uncertainty": dA_radon}
-    radon_results["radon_concentration_Bq_per_L"] = {
-        "value": conc,
-        "uncertainty": dconc,
-    }
+    conc_display = conc
     total_bq_display = total_bq
     if total_bq_display < 0:
         if args.allow_negative_activity:
-            logger.warning(
-                "Negative total radon in sample reported (%.3f Bq) because --allow-negative-activity was requested",
-                total_bq_display,
-            )
+            if total_bq_display < NEGATIVE_ACTIVITY_FLOOR:
+                logger.warning(
+                    "Negative total radon in sample clipped from %.3f Bq to %.3f Bq because --allow-negative-activity was requested",
+                    total_bq,
+                    NEGATIVE_ACTIVITY_FLOOR,
+                )
+                total_bq_display = NEGATIVE_ACTIVITY_FLOOR
+            else:
+                logger.warning(
+                    "Negative total radon in sample reported (%.3f Bq) because --allow-negative-activity was requested",
+                    total_bq_display,
+                )
         else:
             total_bq_display = 0.0
-
+    if allow_negative_outputs and total_bq_display < NEGATIVE_ACTIVITY_FLOOR:
+        total_bq_display = NEGATIVE_ACTIVITY_FLOOR
+    if np.isfinite(total_volume) and total_volume > 0:
+        conc_display = total_bq_display / total_volume
+    radon_results["radon_concentration_Bq_per_L"] = {
+        "value": conc_display,
+        "uncertainty": dconc,
+    }
     radon_results["total_radon_in_sample_Bq"] = {
         "value": total_bq_display,
         "uncertainty": dtotal_bq,
