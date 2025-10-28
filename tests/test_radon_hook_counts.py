@@ -178,3 +178,124 @@ def test_radon_stat_uncertainty_fallback(tmp_path, monkeypatch):
     assert summary["radon"]["stat_unc_Bq"] == pytest.approx(2.0)
     assert summary["radon"]["time_series"]["error"][0] == pytest.approx(2.0)
     assert captured["err214"] == pytest.approx(2.0)
+
+
+def test_time_fit_counts_fallback(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "baseline": {"monitor_volume_l": 10.0, "sample_volume_l": 5.0},
+        "calibration": {},
+        "time_fit": {
+            "do_time_fit": True,
+            "window_po214": [7.0, 9.0],
+            "hl_po214": [1.0, 0.0],
+            "eff_po214": [1.0, 0.0],
+            "flags": {},
+        },
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+        "allow_fallback": True,
+    }
+
+    cfg_path = tmp_path / "cfg.yaml"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    timestamps = pd.date_range(
+        "2021-01-01T00:00:00Z", periods=25, freq="1s", tz="UTC"
+    )
+    df = pd.DataFrame(
+        {
+            "fUniqueID": np.arange(len(timestamps)),
+            "fBits": np.zeros(len(timestamps), dtype=int),
+            "timestamp": timestamps,
+            "adc": np.full(len(timestamps), 8.0),
+            "fchannel": np.ones(len(timestamps), dtype=int),
+        }
+    )
+    data_path = tmp_path / "d.csv"
+    df.to_csv(data_path, index=False)
+
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0],
+        cov=np.zeros((2, 2)),
+        peaks={"Po214": {"centroid_adc": 8}},
+        sigma_E=0.0,
+        sigma_E_error=0.0,
+    )
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
+    monkeypatch.setattr(
+        analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock
+    )
+
+    fit_params = FitParams(
+        {
+            "E_Po214": 1234.0,
+            "dE_Po214": 999.0,
+            "eff": 1.0,
+            "fit_valid": False,
+        }
+    )
+    fit_cov = np.array([[1.0]])
+
+    def fake_two_pass(times_dict, *a, **k):
+        iso = next(iter(times_dict)) if times_dict else ""
+        if iso == "Po214":
+            return FitResult(fit_params.copy(), fit_cov.copy(), 0, param_index={"E_Po214": 0}, counts=25)
+        return FitResult({"fit_valid": False}, None, 0, counts=0)
+
+    monkeypatch.setattr(analyze, "two_pass_time_fit", fake_two_pass)
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(
+        analyze, "plot_time_series", lambda *a, **k: Path(k["out_png"]).touch()
+    )
+    monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
+
+    captured = {}
+
+    def fake_estimate(*args, **kwargs):
+        captured["rate214"] = kwargs.get("rate214")
+        captured["err214"] = kwargs.get("err214")
+        return {
+            "Rn_activity_Bq": kwargs.get("rate214"),
+            "stat_unc_Bq": kwargs.get("err214"),
+            "isotope_mode": kwargs.get("analysis_isotope", "radon"),
+        }
+
+    monkeypatch.setattr(radon_joint_estimator, "estimate_radon_activity", fake_estimate)
+
+    def fake_write(out_dir, summary, timestamp=None):
+        captured["summary"] = asdict(summary)
+        d = Path(out_dir) / (timestamp or "x")
+        d.mkdir(parents=True, exist_ok=True)
+        return str(d)
+
+    monkeypatch.setattr(analyze, "write_summary", fake_write)
+    monkeypatch.setattr(analyze, "copy_config", lambda *a, **k: None)
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+
+    analyze.main()
+
+    summary = captured.get("summary", {})
+    live_time = (timestamps[-1] - timestamps[0]).total_seconds()
+    expected_rate = len(timestamps) / live_time
+    expected_sigma = math.sqrt(len(timestamps)) / live_time
+
+    tf_summary = summary.get("time_fit", {}).get("Po214", {})
+    assert tf_summary.get("counts_fallback") is True
+    assert summary["radon"]["Rn_activity_Bq"] == pytest.approx(expected_rate)
+    assert summary["radon"]["stat_unc_Bq"] == pytest.approx(expected_sigma)
+    assert captured["rate214"] == pytest.approx(expected_rate)
+    assert captured["err214"] == pytest.approx(expected_sigma)
