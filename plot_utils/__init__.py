@@ -978,6 +978,47 @@ def _apply_time_format(ax, times_mpl: np.ndarray) -> None:
     ax.xaxis.get_offset_text().set_visible(False)
 
 
+def _compute_short_timescale_ylim(
+    values: np.ndarray | list[float] | tuple[float, ...],
+    errors: np.ndarray | list[float] | tuple[float, ...] | float | None = None,
+) -> tuple[float, float] | None:
+    values_arr = np.asarray(values, dtype=float).ravel()
+    if values_arr.size == 0:
+        return None
+
+    finite_mask = np.isfinite(values_arr)
+    if not finite_mask.any():
+        return None
+
+    finite_values = values_arr[finite_mask]
+    y_mid = float(np.mean(finite_values))
+    sigma = float(np.std(finite_values))
+
+    err_max = 0.0
+    if errors is not None:
+        err_arr = np.asarray(errors, dtype=float)
+        err_arr = np.abs(err_arr).ravel()
+        if err_arr.size:
+            finite_errs = err_arr[np.isfinite(err_arr)]
+            if finite_errs.size:
+                err_max = float(np.max(finite_errs))
+
+    span_candidate = max(5.0 * sigma, 0.1 * abs(y_mid))
+    if not np.isfinite(span_candidate):
+        span_candidate = 0.0
+
+    total_span = err_max + span_candidate
+    if not np.isfinite(total_span) or total_span <= 0.0:
+        return None
+
+    ymin = y_mid - total_span
+    ymax = y_mid + total_span
+    if not (np.isfinite(ymin) and np.isfinite(ymax)):
+        return None
+
+    return float(ymin), float(ymax)
+
+
 def _compute_ylim(values: np.ndarray, errors: np.ndarray | None) -> tuple[float, float]:
     if values.size == 0:
         return -0.5, 0.5
@@ -1040,6 +1081,8 @@ def plot_radon_activity_full(
         conc = activity
         conc_err = errors_arr
 
+    conc_arr = np.asarray(conc, dtype=float)
+
     fig, (ax_abs, ax_rel) = plt.subplots(1, 2, figsize=(12, 4), sharey=True)
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
@@ -1048,7 +1091,7 @@ def plot_radon_activity_full(
     label = None if po214_activity is None else "Rn-222"
     ax_abs.errorbar(
         times_mpl,
-        conc,
+        conc_arr,
         yerr=conc_err,
         **_errorbar_kwargs(color, label=label),
     )
@@ -1060,7 +1103,7 @@ def plot_radon_activity_full(
 
     ax_rel.errorbar(
         elapsed_hours,
-        conc,
+        conc_arr,
         yerr=conc_err,
         **_errorbar_kwargs(color),
     )
@@ -1087,9 +1130,13 @@ def plot_radon_activity_full(
         lines2, labels2 = ax2.get_legend_handles_labels()
         ax_abs.legend(lines1 + lines2, labels1 + labels2, loc="best")
 
-    ylim_low, ylim_high = _compute_ylim(np.asarray(conc, dtype=float), conc_err)
+    ylim_low, ylim_high = _compute_ylim(conc_arr, conc_err)
     ax_abs.set_ylim(ylim_low, ylim_high)
-    ax_rel.set_ylim(ylim_low, ylim_high)
+    short_ylim = _compute_short_timescale_ylim(conc_arr, conc_err)
+    if short_ylim is not None:
+        ax_rel.set_ylim(*short_ylim)
+    else:
+        ax_rel.set_ylim(ylim_low, ylim_high)
 
     ax_abs.yaxis.get_offset_text().set_visible(False)
     ax_rel.yaxis.get_offset_text().set_visible(False)
@@ -1157,7 +1204,11 @@ def plot_total_radon_full(
 
     ylim_low, ylim_high = _compute_ylim(total_bq, errors_arr)
     ax_abs.set_ylim(ylim_low, ylim_high)
-    ax_rel.set_ylim(ylim_low, ylim_high)
+    short_ylim = _compute_short_timescale_ylim(total_bq, errors_arr)
+    if short_ylim is not None:
+        ax_rel.set_ylim(*short_ylim)
+    else:
+        ax_rel.set_ylim(ylim_low, ylim_high)
 
     ax_abs.yaxis.get_offset_text().set_visible(False)
     ax_rel.yaxis.get_offset_text().set_visible(False)
