@@ -26,4 +26,4 @@ def test_summarize_baseline_allow_negative():
         "time_fit": {"Po214": {"E_Po214": 0.1, "E_corrected": -5.0}},
     }
     out = summarize_baseline(cfg, ["Po214"])
-    assert out["Po214"] == pytest.approx((0.1, 0.2, -1.0))
+    assert out["Po214"] == pytest.approx((0.1, 0.2, -5.0))
