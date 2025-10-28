@@ -158,6 +158,44 @@ def test_plot_time_series_auto_fd(tmp_path):
     assert len(centers) == expected
 
 
+def test_plot_time_series_run_boundary_counted_once(tmp_path):
+    cfg = basic_config()
+    cfg.update(
+        {
+            "run_periods": [
+                [1000.0, 1005.0],
+                [1005.0, 1010.0],
+            ],
+            "time_bin_s": 1.0,
+        }
+    )
+
+    times = np.array([1001.0, 1005.0, 1007.0])
+    energies = np.array([7.6, 7.7, 7.8])
+    out_png = tmp_path / "boundary.png"
+
+    result = plot_time_series(
+        times,
+        energies,
+        {"E": 0.1, "B": 0.0, "N0": 0.0},
+        1000.0,
+        1010.0,
+        cfg,
+        str(out_png),
+    )
+
+    assert out_png.exists()
+    segments = result["segments"]
+    assert len(segments) == 2
+
+    first_counts = segments[0]["counts"]["Po214"]
+    second_counts = segments[1]["counts"]["Po214"]
+
+    assert first_counts.sum() == 1
+    assert second_counts.sum() == 2
+    assert first_counts.sum() + second_counts.sum() == times.size
+
+
 def test_plot_time_series_defaults_to_rn_half_life(tmp_path, monkeypatch):
     times = np.array([1000.1, 1001.1])
     energies = np.array([7.6, 7.7])
