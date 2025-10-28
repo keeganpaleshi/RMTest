@@ -31,7 +31,46 @@ __all__ = [
     "plot_radon_activity_full",
     "plot_total_radon_full",
     "plot_radon_trend_full",
+    "plot_radon_activity_elapsed",
 ]
+
+
+def _auto_ylim(values, errors=None):
+    """Return y-limits that include the error bars with a small margin."""
+
+    vals = np.asarray(values, dtype=float)
+    if vals.size == 0:
+        return None
+
+    if errors is None:
+        lower = upper = vals
+    else:
+        err_arr = np.asarray(errors, dtype=float)
+        if err_arr.shape != vals.shape:
+            try:
+                err_arr = np.broadcast_to(err_arr, vals.shape)
+            except ValueError:
+                err_arr = np.zeros_like(vals)
+        lower = vals - err_arr
+        upper = vals + err_arr
+
+    mask = np.isfinite(lower) & np.isfinite(upper)
+    if not np.any(mask):
+        return None
+
+    min_val = float(np.min(lower[mask]))
+    max_val = float(np.max(upper[mask]))
+
+    if not np.isfinite(min_val) or not np.isfinite(max_val):
+        return None
+
+    if min_val == max_val:
+        pad = 0.05 * abs(min_val) if min_val != 0 else 1.0
+        return min_val - pad, max_val + pad
+
+    span = max_val - min_val
+    pad = 0.05 * span if span > 0 else 0.1
+    return min_val - pad, max_val + pad
 
 
 def extract_time_series(timestamps, energies, window, t_start, t_end, bin_width_s=1.0):
@@ -548,7 +587,10 @@ def plot_radon_activity_full(
     """
     times_mpl = guard_mpl_times(times=times)
     activity = np.asarray(activity, dtype=float)
-    errors = np.asarray(errors, dtype=float)
+    if errors is None:
+        errors = np.full_like(activity, float("nan"), dtype=float)
+    else:
+        errors = np.asarray(errors, dtype=float)
 
     fig, ax = plt.subplots(figsize=(8, 4))
     palette_name = str(config.get("palette", "default")) if config else "default"
@@ -582,6 +624,11 @@ def plot_radon_activity_full(
 
     plt.gcf().autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)
+
+    ylims = _auto_ylim(activity, errors)
+    if ylims is not None:
+        ax.set_ylim(ylims)
+
     plt.tight_layout()
     targets = get_targets(config, out_png)
     for p in targets.values():
@@ -594,7 +641,10 @@ def plot_total_radon_full(times, total_bq, errors, out_png, config=None):
 
     times_mpl = guard_mpl_times(times=times)
     total_bq = np.asarray(total_bq, dtype=float)
-    errors_arr = None if errors is None else np.asarray(errors, dtype=float)
+    if errors is None:
+        errors_arr = np.full_like(total_bq, float("nan"), dtype=float)
+    else:
+        errors_arr = np.asarray(errors, dtype=float)
 
     fig, ax = plt.subplots(figsize=(8, 4))
     palette_name = str(config.get("palette", "default")) if config else "default"
@@ -609,12 +659,58 @@ def plot_total_radon_full(times, total_bq, errors, out_png, config=None):
 
     plt.gcf().autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)
+
+    ylims = _auto_ylim(total_bq, errors_arr)
+    if ylims is not None:
+        ax.set_ylim(ylims)
+
     plt.tight_layout()
 
     targets = get_targets(config, out_png)
     for p in targets.values():
         fig.savefig(p, dpi=300)
     plt.close(fig)
+
+
+def plot_radon_activity_elapsed(times, activity, errors, out_png, config=None):
+    """Plot radon concentration versus elapsed hours."""
+
+    times = np.asarray(times, dtype=float)
+    if times.size == 0:
+        return None
+
+    activity = np.asarray(activity, dtype=float)
+    if errors is None:
+        errors_arr = np.full_like(activity, float("nan"), dtype=float)
+    else:
+        errors_arr = np.asarray(errors, dtype=float)
+
+    hours = (times - times[0]) / 3600.0
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    palette_name = str(config.get("palette", "default")) if config else "default"
+    palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
+    color = palette.get("radon_activity", "#9467bd")
+    ax.errorbar(hours, activity, yerr=errors_arr, fmt="o", color=color)
+    ax.set_xlabel("Elapsed Time (h)")
+    ax.set_ylabel("Rn-222 Concentration (Bq/L)")
+    ax.set_title("Radon Concentration vs. Elapsed Time")
+    ax.ticklabel_format(axis="y", style="plain")
+
+    ax.yaxis.get_offset_text().set_visible(False)
+
+    ylims = _auto_ylim(activity, errors_arr)
+    if ylims is not None:
+        ax.set_ylim(ylims)
+
+    plt.tight_layout()
+
+    targets = get_targets(config, out_png)
+    for p in targets.values():
+        fig.savefig(p, dpi=300)
+    plt.close(fig)
+
+    return ax
 
 
 def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
