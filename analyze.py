@@ -277,6 +277,13 @@ from baseline_utils import (
     summarize_baseline,
     BaselineError,
 )
+from baseline_handling import (
+    ingest_baseline_record,
+    get_fixed_background_for_time_fit,
+    annotate_time_fit_with_baseline,
+    evaluate_baseline_drift,
+    apply_baseline_drift_warning,
+)
 import baseline
 from time_fitting import two_pass_time_fit
 from config.validation import validate_baseline_window
@@ -1874,6 +1881,7 @@ def main(argv=None):
     # ────────────────────────────────────────────────────────────
     baseline_info = {}
     baseline_counts = {}
+    baseline_record_data: dict[str, Any] | None = None
     baseline_cfg = cfg.get("baseline", {})
     isotopes_to_subtract = baseline_cfg.get("isotopes_to_subtract", ["Po214", "Po218"])
     baseline_range = None
@@ -1955,6 +1963,23 @@ def main(argv=None):
             "n_events": len(base_events),
             "live_time": baseline_live_time,
         }
+        baseline_record_data = {
+            "time_range": [t_start_base, t_end_base],
+            "live_time_s": baseline_live_time,
+            "rates_Bq": {},
+            "rate_unc_Bq": {},
+        }
+        if getattr(cal_result, "peaks", None) or getattr(cal_result, "sigma_E", None):
+            cal_snapshot = {
+                "po214_centroid_mev": (
+                    cal_result.peaks.get("Po214", {}).get("centroid_mev")
+                    if getattr(cal_result, "peaks", None)
+                    else None
+                ),
+                "sigma_E": getattr(cal_result, "sigma_E", None),
+            }
+            baseline_info["calibration_snapshot"] = cal_snapshot
+            baseline_record_data["calibration_snapshot"] = cal_snapshot
 
         # Estimate electronic noise level from ADC values below Po-210
         noise_level = None
@@ -2354,6 +2379,7 @@ def main(argv=None):
     # 6. Time‐series decay fits for Po‐218 and Po‐214
     # ────────────────────────────────────────────────────────────
     time_fit_results = {}
+    baseline_provenance: dict[str, dict[str, Any]] = {}
     time_fit_background_meta: dict[str, dict[str, Any]] = {}
     priors_time_all = {}
     time_plot_data = {}
@@ -2470,12 +2496,17 @@ def main(argv=None):
                 eff = eff_cfg[0]
             else:
                 eff = eff_cfg if eff_cfg is not None else 1.0
+            intrinsic_rate = 0.0
+            intrinsic_unc = 0.0
             if baseline_live_time > 0 and eff > 0:
-                n0_activity = n0_count / (baseline_live_time * eff)
-                n0_sigma = np.sqrt(n0_count) / (baseline_live_time * eff)
-            else:
-                n0_activity = 0.0
-                n0_sigma = 1.0
+                intrinsic_rate = n0_count / (baseline_live_time * eff)
+                intrinsic_unc = np.sqrt(n0_count) / (baseline_live_time * eff)
+            n0_activity = intrinsic_rate
+            n0_sigma = intrinsic_unc if intrinsic_unc > 0 else 1.0
+
+            if baseline_record_data is not None:
+                baseline_record_data.setdefault("rates_Bq", {})[iso] = intrinsic_rate
+                baseline_record_data.setdefault("rate_unc_Bq", {})[iso] = intrinsic_unc
 
             priors_time["N0"] = (
                 n0_activity,
@@ -2600,7 +2631,13 @@ def main(argv=None):
 
         # Determine baseline rate for fixed-background first pass
         baseline_rate_iso = None
-        if baseline_live_time > 0:
+        baseline_fixed_info: dict[str, Any] | None = None
+        if baseline_record_data is not None:
+            rates_map = baseline_record_data.get("rates_Bq", {})
+            if isinstance(rates_map, Mapping) and iso in rates_map:
+                baseline_rate_iso = float(rates_map[iso])
+
+        if baseline_rate_iso is None and baseline_live_time > 0:
             eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
             if isinstance(eff_cfg, list):
                 eff_rate = eff_cfg[0]
@@ -2610,6 +2647,19 @@ def main(argv=None):
                 baseline_rate_iso = baseline_counts.get(iso, 0.0) / (
                     baseline_live_time * eff_rate
                 )
+
+        if cfg["time_fit"]["flags"].get("fix_background_b", False):
+            record_obj = ingest_baseline_record(baseline_record_data)
+            baseline_fixed_info = get_fixed_background_for_time_fit(
+                record_obj,
+                iso,
+                cfg,
+            )
+            if baseline_fixed_info is not None:
+                baseline_rate_iso = baseline_fixed_info.get("intrinsic_rate_Bq")
+                if baseline_rate_iso is not None:
+                    baseline_rate_iso = float(baseline_rate_iso)
+                baseline_provenance[iso] = baseline_fixed_info
 
         # Run time-series fit (two-pass)
         decay_out = None  # fresh variable each iteration
@@ -2649,13 +2699,23 @@ def main(argv=None):
         else:
             background_mode = "floated" if fit_cfg.get("fit_background") else "fixed"
 
-        if background_mode == "fixed" and baseline_rate_iso is not None:
+        if baseline_fixed_info is not None:
+            baseline_rate_meta = baseline_fixed_info.get("background_rate_Bq")
+            if baseline_rate_meta is not None:
+                baseline_rate_meta = float(baseline_rate_meta)
+            background_mode = baseline_fixed_info.get("mode", "baseline_fixed")
+        elif background_mode == "fixed" and baseline_rate_iso is not None:
             baseline_rate_meta = float(baseline_rate_iso)
             background_mode = "fixed_from_baseline"
 
         meta_entry: dict[str, Any] = {"mode": background_mode}
         if baseline_rate_meta is not None:
             meta_entry["baseline_rate_Bq"] = baseline_rate_meta
+        if baseline_fixed_info is not None:
+            unc_val = baseline_fixed_info.get("background_unc_Bq")
+            if unc_val is not None:
+                meta_entry["baseline_unc_Bq"] = float(unc_val)
+            meta_entry["baseline_scale_factor"] = baseline_fixed_info.get("scale_factor")
         time_fit_background_meta[iso] = meta_entry
 
         # Store inputs for plotting later
@@ -3052,6 +3112,11 @@ def main(argv=None):
             baseline_info["dilution_factor_fallback"] = True
         else:
             raise ValueError(msg) from exc
+    if baseline_record_data is not None:
+        baseline_record_data["dilution_factor"] = dilution_factor
+        baseline_record_data.setdefault("rates_Bq", {}).update(baseline_rates)
+        baseline_record_data.setdefault("rate_unc_Bq", {}).update(baseline_unc)
+
     scales = {
         "Po214": dilution_factor,
         "Po218": dilution_factor,
@@ -3402,6 +3467,10 @@ def main(argv=None):
                 d["baseline_rate_Bq"] = meta["baseline_rate_Bq"]
         time_fit_serializable[iso] = d
 
+    baseline_record_obj = ingest_baseline_record(baseline_record_data)
+    if baseline_record_obj is not None:
+        baseline_info.setdefault("record", baseline_record_obj.as_dict())
+
     if isinstance(cal_params, dict):
         cal_summary = cal_params
     else:
@@ -3412,6 +3481,14 @@ def main(argv=None):
             "sigma_E_error": cal_params.sigma_E_error,
             "peaks": cal_params.peaks,
         }
+
+    drift_flag = False
+    drift_message = None
+    if baseline_record_obj is not None and cal_summary is not None:
+        drift_flag, drift_message = evaluate_baseline_drift(
+            baseline_record_obj,
+            cal_summary,
+        )
 
     summary = Summary(
         timestamp=now_str,
@@ -3462,6 +3539,8 @@ def main(argv=None):
             "settle_s": cfg.get("analysis", {}).get("settle_s"),
         },
     )
+
+    annotate_time_fit_with_baseline(summary, baseline_record_obj, baseline_provenance)
 
     if radon_combined_info is not None:
         summary.radon_combined = radon_combined_info
@@ -3548,6 +3627,7 @@ def main(argv=None):
     summary.diagnostics = build_diagnostics(
         summary, spectrum_results, time_fit_results, df_analysis, cfg
     )
+    apply_baseline_drift_warning(summary, drift_flag, drift_message)
 
     results_dir = Path(args.output_dir) / (args.job_id or now_str)
     if results_dir.exists():
