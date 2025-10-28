@@ -2622,6 +2622,49 @@ def main(argv=None):
             "events_energy": iso_events["energy_MeV"].values,
         }
 
+    def _counts_corrected_rate(
+        iso: str, params: Mapping[str, Any]
+    ) -> tuple[float, float] | None:
+        """Return a baseline-corrected rate from raw counts when fits fail."""
+
+        counts_val = iso_counts_raw.get(iso)
+        if counts_val is None:
+            return None
+
+        live_time_iso = iso_live_time.get(iso)
+        if live_time_iso is None or live_time_iso <= 0:
+            return None
+
+        eff_val = _resolved_efficiency(cfg, iso, params)
+        if eff_val is None or eff_val <= 0:
+            eff_val = _config_efficiency(cfg, iso)
+        if eff_val is None or eff_val <= 0:
+            return None
+
+        if (
+            args.baseline_mode != "none"
+            and iso in isotopes_to_subtract
+            and baseline_live_time > 0
+        ):
+            base_counts = baseline_counts.get(iso, 0.0)
+            try:
+                rate, sigma = subtract_baseline_counts(
+                    float(counts_val),
+                    float(eff_val),
+                    float(live_time_iso),
+                    float(base_counts),
+                    float(baseline_live_time),
+                )
+            except ValueError:
+                return None
+            return float(rate), float(sigma)
+
+        rate = float(counts_val) / (float(live_time_iso) * float(eff_val))
+        sigma = math.sqrt(abs(float(counts_val))) / (
+            float(live_time_iso) * float(eff_val)
+        )
+        return rate, sigma
+
     # --- Radon combination ---
     from radon_joint_estimator import estimate_radon_activity
     from types import SimpleNamespace
@@ -2640,6 +2683,18 @@ def main(argv=None):
         p = _fit_params(fit214_obj)
         rate_val = _coerce_float(p.get("E_corrected", p.get("E_Po214")))
         err_val = _coerce_float(p.get("dE_corrected", p.get("dE_Po214")))
+        fallback_needed = False
+        if rate_val is None or not math.isfinite(rate_val):
+            fallback_needed = True
+        if not bool(p.get("fit_valid", True)):
+            fallback_needed = True
+        if fallback_needed:
+            fallback_res = _counts_corrected_rate("Po214", p)
+            if fallback_res is not None:
+                rate_val, err_val = fallback_res
+                p["E_corrected"] = rate_val
+                p["dE_corrected"] = err_val
+                p["counts_fallback"] = True
         if err_val is None or not math.isfinite(err_val) or err_val < 0:
             err_val = _fallback_uncertainty(rate_val, fit214_obj, "E_Po214")
         fit214 = SimpleNamespace(
@@ -2652,6 +2707,18 @@ def main(argv=None):
         p = _fit_params(fit218_obj)
         rate_val = _coerce_float(p.get("E_corrected", p.get("E_Po218")))
         err_val = _coerce_float(p.get("dE_corrected", p.get("dE_Po218")))
+        fallback_needed = False
+        if rate_val is None or not math.isfinite(rate_val):
+            fallback_needed = True
+        if not bool(p.get("fit_valid", True)):
+            fallback_needed = True
+        if fallback_needed:
+            fallback_res = _counts_corrected_rate("Po218", p)
+            if fallback_res is not None:
+                rate_val, err_val = fallback_res
+                p["E_corrected"] = rate_val
+                p["dE_corrected"] = err_val
+                p["counts_fallback"] = True
         if err_val is None or not math.isfinite(err_val) or err_val < 0:
             err_val = _fallback_uncertainty(rate_val, fit218_obj, "E_Po218")
         fit218 = SimpleNamespace(
@@ -2961,7 +3028,21 @@ def main(argv=None):
         if not params or f"E_{iso}" not in params:
             continue
 
-        if iso not in isotopes_to_subtract or baseline_live_time <= 0:
+        fallback_used = False
+        if not bool(params.get("fit_valid", True)):
+            fallback_res = _counts_corrected_rate(iso, params)
+            if fallback_res is not None:
+                corr_rate, corr_sigma = fallback_res
+                params["E_corrected"] = corr_rate
+                params["dE_corrected"] = corr_sigma
+                params["counts_fallback"] = True
+                corrected_rates[iso] = corr_rate
+                corrected_unc[iso] = corr_sigma
+                fallback_used = True
+            else:
+                params["counts_fallback"] = True
+
+        if fallback_used or iso not in isotopes_to_subtract or baseline_live_time <= 0:
             continue
 
         err_fit = params.get(f"dE_{iso}", 0.0)
