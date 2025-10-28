@@ -57,6 +57,51 @@ def test_negative_activity_allowed(tmp_path, monkeypatch, caplog):
 
     summary = captured.get("summary", {})
     total_entry = summary["radon_results"]["total_radon_in_sample_Bq"]
-    assert total_entry["value"] == pytest.approx(-1.0, abs=5e-06)
+    assert total_entry["value"] == pytest.approx(-5.0, abs=5e-06)
     assert total_entry["uncertainty"] == pytest.approx(5e-06)
-    assert any("clipped to -1.0 Bq" in message for message in caplog.messages)
+    assert any(
+        "Negative total radon in sample reported" in message for message in caplog.messages
+    )
+
+
+def test_negative_activity_clamped(tmp_path, monkeypatch, caplog):
+    csv, cfg = _setup(monkeypatch)
+    captured = {}
+
+    def fake_write(out_dir, summary, timestamp=None):
+        captured["summary"] = asdict(summary)
+        d = Path(out_dir) / (timestamp or "x")
+        d.mkdir(parents=True, exist_ok=True)
+        return str(d)
+
+    monkeypatch.setattr(analyze, "write_summary", fake_write)
+    monkeypatch.setattr(analyze, "copy_config", lambda *a, **k: None)
+    monkeypatch.setattr(
+        radon_activity,
+        "compute_radon_activity",
+        lambda *a, **k: (0.5, 0.1),
+    )
+    monkeypatch.setattr(
+        radon_activity,
+        "compute_total_radon",
+        lambda *a, **k: (0.0, 0.0, -0.5, 0.1),
+    )
+
+    caplog.set_level("WARNING")
+
+    analyze.main([
+        "-i",
+        str(csv),
+        "-c",
+        str(cfg),
+        "-o",
+        str(tmp_path),
+    ])
+
+    summary = captured.get("summary", {})
+    total_entry = summary["radon_results"]["total_radon_in_sample_Bq"]
+    assert total_entry["value"] == pytest.approx(0.0, abs=1e-12)
+    assert total_entry["uncertainty"] == pytest.approx(0.1)
+    assert any(
+        "clamped to 0.0 Bq" in message for message in caplog.messages
+    )
