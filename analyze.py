@@ -2057,6 +2057,11 @@ def main(argv=None):
             ).lower()
             default_bins = cfg["spectral_fit"].get("fd_hist_bins")
 
+        plot_bins = None
+        plot_bin_edges = None
+        fit_bins = None
+        fit_bin_edges = None
+
         if method == "fd":
             E_all = df_analysis["energy_MeV"].values
             # Freedman‐Diaconis on energy array
@@ -2073,8 +2078,8 @@ def main(argv=None):
             else:
                 nbins = default_bins
 
-            bins = nbins
-            bin_edges = None
+            plot_bins = nbins
+            plot_bin_edges = None
         else:
             # "ADC" binning mode -> fixed width in raw channels
             width = 1
@@ -2084,11 +2089,24 @@ def main(argv=None):
                 width = cfg["spectral_fit"].get("adc_bin_width", 1)
             adc_min = df_analysis["adc"].min()
             adc_max = df_analysis["adc"].max()
-            bins = int(np.ceil((adc_max - adc_min + 1) / width))
+            plot_bins = int(np.ceil((adc_max - adc_min + 1) / width))
 
             # Build edges in ADC units then convert to energy for plotting
-            bin_edges_adc = np.arange(adc_min, adc_min + bins * width + 1, width)
-            bin_edges = apply_calibration(bin_edges_adc, a, c, quadratic_coeff=a2)
+            bin_edges_adc = np.arange(
+                adc_min, adc_min + plot_bins * width + 1, width
+            )
+            plot_bin_edges = apply_calibration(
+                bin_edges_adc, a, c, quadratic_coeff=a2
+            )
+
+        if cfg["spectral_fit"].get("use_plot_bins_for_fit", False):
+            if method == "fd":
+                fit_bins = plot_bins
+                fit_bin_edges = plot_bin_edges
+            else:
+                # When the plot uses ADC binning we still fit in MeV units.
+                fit_bins = None
+                fit_bin_edges = None
 
         # Find approximate ADC centroids for Po‐210, Po‐218, Po‐214
 
@@ -2132,7 +2150,7 @@ def main(argv=None):
             bounds_cfg = cfg["spectral_fit"].get("mu_bounds", {})
             bounds = bounds_cfg.get(peak)
             if bounds is not None:
-                lo, hi = bounds
+                lo, hi = map(float, bounds)
                 if not lo < hi:
                     raise ValueError(f"mu_bounds for {peak} require lower < upper")
                 if not (lo <= mu <= hi):
@@ -2232,7 +2250,7 @@ def main(argv=None):
                 "flags": spec_flags,
             }
             if cfg["spectral_fit"].get("use_plot_bins_for_fit", False):
-                fit_kwargs.update({"bins": bins, "bin_edges": bin_edges})
+                fit_kwargs.update({"bins": fit_bins, "bin_edges": fit_bin_edges})
             if cfg["spectral_fit"].get("unbinned_likelihood", False):
                 fit_kwargs["unbinned"] = True
             if args.strict_covariance:
@@ -2242,7 +2260,11 @@ def main(argv=None):
                 bounds_map = {}
                 for iso, bnd in bounds_cfg.items():
                     if bnd is not None:
-                        bounds_map[f"mu_{iso}"] = tuple(bnd)
+                        lo, hi = bnd
+                        bounds_map[f"mu_{iso}"] = (
+                            float(lo) if lo is not None else None,
+                            float(hi) if hi is not None else None,
+                        )
                 if bounds_map:
                     fit_kwargs["bounds"] = bounds_map
 
@@ -2322,8 +2344,8 @@ def main(argv=None):
         spec_plot_data = {
             "energies": df_analysis["energy_MeV"].values,
             "fit_vals": fit_vals,
-            "bins": bins,
-            "bin_edges": bin_edges,
+            "bins": plot_bins,
+            "bin_edges": plot_bin_edges,
         }
 
     # ────────────────────────────────────────────────────────────
