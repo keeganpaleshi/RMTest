@@ -589,6 +589,7 @@ def plot_radon_activity_full(
     *,
     po214_activity=None,
     sample_volume_l=None,
+    background_mode=None,
 ):
     """Plot radon activity versus time with uncertainties."""
 
@@ -656,14 +657,31 @@ def plot_radon_activity_full(
     ax_abs.yaxis.get_offset_text().set_visible(False)
     ax_rel.yaxis.get_offset_text().set_visible(False)
     fig.autofmt_xdate()
-    plt.tight_layout()
+    layout_rect = None
+    if background_mode:
+        subtitle = f"Background mode: {background_mode}"
+        fig.suptitle(subtitle, fontsize=10)
+        layout_rect = (0.0, 0.0, 1.0, 0.94)
+
+    if layout_rect is not None:
+        plt.tight_layout(rect=layout_rect)
+    else:
+        plt.tight_layout()
     targets = get_targets(config, out_png)
     for p in targets.values():
         fig.savefig(p, dpi=300)
     plt.close(fig)
 
 
-def plot_total_radon_full(times, total_bq, errors, out_png, config=None):
+def plot_total_radon_full(
+    times,
+    total_bq,
+    errors,
+    out_png,
+    config=None,
+    *,
+    background_mode=None,
+):
     """Plot total radon present in the sample versus time."""
 
     times_mpl = guard_mpl_times(times=times)
@@ -696,7 +714,15 @@ def plot_total_radon_full(times, total_bq, errors, out_png, config=None):
     ax_abs.yaxis.get_offset_text().set_visible(False)
     ax_rel.yaxis.get_offset_text().set_visible(False)
     fig.autofmt_xdate()
-    plt.tight_layout()
+    layout_rect = None
+    if background_mode:
+        fig.suptitle(f"Background mode: {background_mode}", fontsize=10)
+        layout_rect = (0.0, 0.0, 1.0, 0.94)
+
+    if layout_rect is not None:
+        plt.tight_layout(rect=layout_rect)
+    else:
+        plt.tight_layout()
 
     targets = get_targets(config, out_png)
     for p in targets.values():
@@ -829,6 +855,7 @@ def plot_radon_activity(ts_dict, outdir):
         ts_dict.get("error"),
         outdir / "radon_activity.png",
         sample_volume_l=sample_vol,
+        background_mode=ts_dict.get("background_mode"),
     )
 
 
@@ -841,6 +868,7 @@ def plot_total_radon(ts_dict, outdir):
         ts_dict["activity"],
         ts_dict.get("error"),
         outdir / "total_radon.png",
+        background_mode=ts_dict.get("background_mode"),
     )
 
 

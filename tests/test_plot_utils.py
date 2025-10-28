@@ -625,6 +625,41 @@ def test_plot_radon_activity_output(tmp_path):
     assert out_png.exists()
 
 
+def test_plot_radon_activity_background_annotation(tmp_path, monkeypatch):
+    times = [0.0, 1.0, 2.0]
+    activity = [1.0, 2.0, 3.0]
+    errors = [0.1, 0.2, 0.3]
+    out_png = tmp_path / "radon_bg.png"
+
+    captured = {}
+
+    from matplotlib.figure import Figure
+
+    orig_savefig = Figure.savefig
+
+    def fake_savefig(self, *args, **kwargs):
+        captured.setdefault("fig", self)
+        return orig_savefig(self, *args, **kwargs)
+
+    monkeypatch.setattr("matplotlib.figure.Figure.savefig", fake_savefig)
+    monkeypatch.setattr("matplotlib.pyplot.close", lambda *a, **k: None)
+
+    from plot_utils import plot_radon_activity_full
+
+    plot_radon_activity_full(
+        times,
+        activity,
+        errors,
+        str(out_png),
+        background_mode="fixed_from_baseline",
+    )
+
+    assert "fig" in captured
+    suptitle = captured["fig"]._suptitle
+    assert suptitle is not None
+    assert "fixed_from_baseline" in suptitle.get_text()
+
+
 def test_plot_total_radon_output(tmp_path):
     times = [0.0, 1.0, 2.0]
     total = [5.0, 6.0, 7.0]

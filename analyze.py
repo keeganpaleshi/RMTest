@@ -121,6 +121,58 @@ def _hl_value(cfg: Mapping[str, Any], iso: str) -> float:
     return float(val)
 
 
+def _radon_background_mode(
+    cfg: Mapping[str, Any],
+    time_fit_results: Mapping[str, Any],
+) -> str | None:
+    """Infer the background treatment used by the time-series fit."""
+
+    tf_cfg = cfg.get("time_fit")
+    if not isinstance(tf_cfg, Mapping):
+        tf_cfg = {}
+
+    flags = tf_cfg.get("flags")
+    if not isinstance(flags, Mapping):
+        flags = {}
+
+    if flags.get("fix_background_b"):
+        return "fixed_from_baseline"
+
+    iso_candidates = ("Po214", "Po218")
+    for iso in iso_candidates:
+        fit_obj = time_fit_results.get(iso)
+        if fit_obj is None:
+            continue
+
+        param_index = None
+        params: Mapping[str, Any] | None = None
+
+        if isinstance(fit_obj, FitResult):
+            param_index = getattr(fit_obj, "param_index", None)
+            params = getattr(fit_obj, "params", None)
+        elif isinstance(fit_obj, Mapping):
+            param_index = fit_obj.get("param_index")
+            params = fit_obj
+
+        key = f"B_{iso}"
+        if isinstance(param_index, Mapping) and key in param_index:
+            return "floated"
+
+        if isinstance(params, Mapping):
+            err_key = f"d{key}"
+            val = params.get(err_key)
+            if val is not None:
+                try:
+                    if not np.isclose(float(val), 0.0):
+                        return "floated"
+                except (TypeError, ValueError):
+                    return "floated"
+            if key in params:
+                return "fixed_from_baseline"
+
+    return "floated"
+
+
 def _eff_prior(eff_cfg: Any) -> tuple[float, float]:
     """Return efficiency prior ``(mean, sigma)`` from configuration.
 
@@ -291,6 +343,7 @@ def plot_radon_activity(
     *,
     config=None,
     sample_volume_l=None,
+    background_mode=None,
 ):
     """Wrapper used by tests expecting output path as third argument."""
 
@@ -301,13 +354,29 @@ def plot_radon_activity(
         out_png,
         config=config,
         sample_volume_l=sample_volume_l,
+        background_mode=background_mode,
     )
 
 
-def plot_total_radon(times, total_bq, out_png, errors=None, *, config=None):
+def plot_total_radon(
+    times,
+    total_bq,
+    out_png,
+    errors=None,
+    *,
+    config=None,
+    background_mode=None,
+):
     """Wrapper used by tests expecting output path as third argument."""
 
-    return plot_total_radon_full(times, total_bq, errors, out_png, config=config)
+    return plot_total_radon_full(
+        times,
+        total_bq,
+        errors,
+        out_png,
+        config=config,
+        background_mode=background_mode,
+    )
 
 
 def plot_radon_trend(times, activity, out_png, *, config=None, fit_valid=True):
@@ -3790,6 +3859,7 @@ def main(argv=None):
         times_dt = to_datetime_utc(time_grid, unit="s")
         t_rel = (times_dt - analysis_start).total_seconds()
         activity_times = time_grid
+        background_mode = _radon_background_mode(cfg, time_fit_results)
 
         if radon_combined_info is not None:
             try:
@@ -3800,6 +3870,7 @@ def main(argv=None):
                     [radon_combined_info["unc_Bq"]] * 2,
                     config=cfg.get("plotting", {}),
                     sample_volume_l=sample_vol,
+                    background_mode=background_mode,
                 )
             except Exception as e:
                 logger.warning("Could not create radon combined plot -> %s", e)
@@ -3824,6 +3895,7 @@ def main(argv=None):
                 dA214,
                 config=cfg.get("plotting", {}),
                 sample_volume_l=sample_vol,
+                background_mode=background_mode,
             )
 
         A218 = dA218 = None
@@ -3909,6 +3981,9 @@ def main(argv=None):
                 except (TypeError, ValueError):
                     pass
 
+            if background_mode is not None:
+                plot_series["background_mode"] = background_mode
+
             total_vals, total_errs = _total_radon_series(
                 activity_arr,
                 err_arr,
@@ -3921,6 +3996,8 @@ def main(argv=None):
             }
             if total_errs is not None:
                 total_series["error"] = total_errs.tolist()
+            if background_mode is not None:
+                total_series["background_mode"] = background_mode
 
             summary_radon = summary.get("radon") if hasattr(summary, "get") else None
             if not isinstance(summary_radon, Mapping):
@@ -3935,6 +4012,8 @@ def main(argv=None):
                 plot_payload = {}
             plot_payload["time_series"] = plot_series
             plot_payload["total_time_series"] = total_series
+            if background_mode is not None:
+                plot_payload["background_mode"] = background_mode
             summary_radon["plot_series"] = plot_payload
             summary["radon"] = summary_radon
 
@@ -3945,6 +4024,7 @@ def main(argv=None):
                 err_arr,
                 config=cfg.get("plotting", {}),
                 sample_volume_l=sample_vol,
+                background_mode=background_mode,
             )
             plot_total_radon(
                 activity_times,
@@ -3952,6 +4032,7 @@ def main(argv=None):
                 Path(out_dir) / "total_radon.png",
                 total_errs,
                 config=cfg.get("plotting", {}),
+                background_mode=background_mode,
             )
 
         if radon_interval is not None:
