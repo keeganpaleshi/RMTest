@@ -3,6 +3,9 @@
 # -----------------------------------------------------
 
 import os
+from collections import OrderedDict
+from collections.abc import Mapping
+
 import numpy as np
 import matplotlib as _mpl
 
@@ -12,6 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from color_schemes import COLOR_SCHEMES
 from constants import PO214, PO218, PO210, RN222
+from calibration import gaussian, emg_left
+from fitting import make_linear_bkg
 from .paths import get_targets
 from ._time_utils import guard_mpl_times, setup_time_axis
 
@@ -416,6 +421,8 @@ def plot_spectrum(
     bins=400,
     bin_edges=None,
     config=None,
+    *,
+    fit_flags=None,
 ):
     """Plot energy spectrum and optional fit overlay.
 
@@ -423,9 +430,9 @@ def plot_spectrum(
     ----------
     energies : array-like
         Energy values in MeV.
-    fit_vals : dict, optional
-        Dictionary of fit parameters to overlay. If provided, a
-        residual panel is also produced.
+    fit_vals : Mapping or FitResult-like, optional
+        Fit output used to overlay the model prediction. When provided a
+        residual panel is shown beneath the spectrum.
     out_png : str, optional
         Output path (extension used if ``plot_save_formats`` not set).
     bins : int, optional
@@ -435,8 +442,30 @@ def plot_spectrum(
         are supported and override ``bins``.
     config : dict, optional
         Plotting configuration dictionary.
+    fit_flags : Mapping, optional
+        Flags passed to :func:`fit_spectrum`. These inform the background
+        model reconstruction (e.g. ``{"background_model": "loglin_unit"}``).
     """
-    show_res = bool(fit_vals)
+
+    energies = np.asarray(energies, dtype=float)
+
+    def _coerce_params(result) -> dict:
+        if result is None:
+            return {}
+        if isinstance(result, Mapping):
+            return dict(result)
+        for attr in ("best_values", "bestfit", "best_fit", "params"):
+            candidate = getattr(result, attr, None)
+            if isinstance(candidate, Mapping):
+                return dict(candidate)
+        return {}
+
+    flags = {}
+    if isinstance(fit_flags, Mapping):
+        flags = dict(fit_flags)
+    elif fit_flags is not None:
+        flags = dict(getattr(fit_flags, "__dict__", {}))
+
     if (
         bin_edges is None
         and config is not None
@@ -453,6 +482,81 @@ def plot_spectrum(
 
     width = np.diff(edges)
     centers = edges[:-1] + width / 2.0
+
+    fit_params = _coerce_params(fit_vals)
+
+    def _build_model_components():
+        if not fit_params:
+            return OrderedDict(), None
+
+        comps = OrderedDict()
+        widths = np.asarray(width, dtype=float)
+        if widths.size == 0:
+            return comps, None
+        centers_arr = np.asarray(centers, dtype=float)
+        total = np.zeros_like(widths, dtype=float)
+
+        # Peak contributions
+        sigma0 = fit_params.get("sigma0")
+        F = fit_params.get("F", 0.0)
+        if sigma0 is None:
+            sigma0 = fit_params.get("sigma_E", 0.0)
+            F = 0.0 if "F" not in fit_params else fit_params.get("F", 0.0)
+        sigma0 = float(sigma0 if sigma0 is not None else 0.0)
+        F = float(F if F is not None else 0.0)
+        sigma_sq = np.clip(sigma0**2 + F * centers_arr, 1e-12, np.inf)
+        sigma_vals = np.sqrt(sigma_sq)
+
+        for iso in ("Po210", "Po218", "Po214"):
+            mu = fit_params.get(f"mu_{iso}")
+            amp = fit_params.get(f"S_{iso}")
+            if mu is None or amp is None:
+                continue
+            tau = fit_params.get(f"tau_{iso}")
+            if tau is not None:
+                density = emg_left(centers_arr, float(mu), sigma_vals, float(tau))
+            else:
+                density = gaussian(centers_arr, float(mu), sigma_vals)
+            density = np.nan_to_num(density, nan=0.0, posinf=0.0, neginf=0.0)
+            comps[iso] = float(amp) * density * widths
+            total += comps[iso]
+
+        # Background contribution
+        b0 = fit_params.get("b0")
+        b1 = fit_params.get("b1")
+        background = None
+        if b0 is not None or b1 is not None:
+            b0 = float(0.0 if b0 is None else b0)
+            b1 = float(0.0 if b1 is None else b1)
+            if flags.get("background_model") == "loglin_unit":
+                shape = make_linear_bkg(float(edges[0]), float(edges[-1]))
+                amplitude = float(fit_params.get("S_bkg", 0.0))
+                background_density = amplitude * shape(centers_arr, b0, b1)
+            else:
+                background_density = b0 + b1 * centers_arr
+                if "S_bkg" in fit_params:
+                    amplitude = float(fit_params["S_bkg"])
+                    norm = b0 * (edges[-1] - edges[0]) + 0.5 * b1 * (
+                        edges[-1] ** 2 - edges[0] ** 2
+                    )
+                    if norm > 0:
+                        background_density = background_density * (amplitude / norm)
+            background_density = np.nan_to_num(
+                background_density, nan=0.0, posinf=0.0, neginf=0.0
+            )
+            background = background_density * widths
+            total += background
+
+        if background is not None:
+            comps["Background"] = background
+
+        if not comps:
+            return comps, None
+
+        return comps, total
+
+    model_components, model_total = _build_model_components()
+    show_res = model_total is not None
 
     if show_res:
         fig, (ax_main, ax_res) = plt.subplots(
@@ -475,36 +579,35 @@ def plot_spectrum(
         lo, hi = win_p210
         ax_main.set_xlim(lo, hi)
 
-    if fit_vals:
-        sigma_E = fit_vals.get("sigma_E", 1.0)
-        b0 = fit_vals.get("b0", 0.0)
-        b1 = fit_vals.get("b1", 0.0)
-        bkg_cent = b0 + b1 * centers
-        bkg_norm = b0 * (edges[-1] - edges[0]) + 0.5 * b1 * (edges[-1] ** 2 - edges[0] ** 2)
-        y_cent = np.zeros_like(centers)
-        if "S_bkg" in fit_vals and bkg_norm > 0:
-            y_cent += fit_vals["S_bkg"] * bkg_cent / bkg_norm
-        else:
-            y_cent += bkg_cent
-        for pk in ("Po210", "Po218", "Po214"):
-            mu_key = f"mu_{pk}"
-            amp_key = f"S_{pk}"
-            if mu_key in fit_vals and amp_key in fit_vals:
-                mu = fit_vals[mu_key]
-                amp = fit_vals[amp_key]
-                y_cent += (
-                    amp
-                    / (sigma_E * np.sqrt(2 * np.pi))
-                    * np.exp(-0.5 * ((centers - mu) / sigma_E) ** 2)
-                )
-        model_counts = y_cent * width
-        palette_name = str(config.get("palette", "default")) if config else "default"
-        palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
-        fit_color = palette.get("fit", "#ff0000")
-        ax_main.plot(centers, model_counts, color=fit_color, lw=2, label="Fit")
+    if model_total is not None:
+        component_colors = {
+            "Po210": palette.get("Po210", "#2ca02c"),
+            "Po218": palette.get("Po218", "#1f77b4"),
+            "Po214": palette.get("Po214", "#d62728"),
+            "Background": palette.get("background", "#8c564b"),
+            "Total": palette.get("fit", "#ff0000"),
+        }
 
-        if show_res:
-            residuals = hist - model_counts
+        for key in ("Po210", "Po218", "Po214", "Background"):
+            if key in model_components:
+                ax_main.plot(
+                    centers,
+                    model_components[key],
+                    color=component_colors.get(key, "#000000"),
+                    lw=1.5,
+                    label=key,
+                )
+
+        ax_main.plot(
+            centers,
+            model_total,
+            color=component_colors["Total"],
+            lw=2,
+            label="Total model",
+        )
+
+        if ax_res is not None:
+            residuals = hist.astype(float) - model_total
             ax_res.bar(
                 centers,
                 residuals,
@@ -513,16 +616,16 @@ def plot_spectrum(
                 alpha=0.7,
             )
             ax_res.axhline(0.0, color="#000000", lw=1)
-            ax_res.set_ylabel("Residuals")
+            ax_res.set_ylabel("Residuals [counts]")
 
     ax_main.set_ylabel("Counts per bin")
     ax_main.set_title("Energy Spectrum")
-    if fit_vals:
+    if model_total is not None:
         ax_main.legend(fontsize="small")
     if ax_res is not None:
-        ax_res.set_xlabel("Energy (MeV)")
+        ax_res.set_xlabel("Energy [MeV]")
     else:
-        ax_main.set_xlabel("Energy (MeV)")
+        ax_main.set_xlabel("Energy [MeV]")
     fig.tight_layout()
     targets = get_targets(config, out_png)
     for p in targets.values():

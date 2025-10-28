@@ -2316,7 +2316,7 @@ def main(argv=None):
         # Store plotting inputs (bin_edges now in energy units)
         fit_vals = None
         if isinstance(spec_fit_out, FitResult):
-            fit_vals = spec_fit_out.params
+            fit_vals = spec_fit_out
         elif isinstance(spec_fit_out, dict):
             fit_vals = spec_fit_out
         spec_plot_data = {
@@ -2324,6 +2324,7 @@ def main(argv=None):
             "fit_vals": fit_vals,
             "bins": bins,
             "bin_edges": bin_edges,
+            "flags": dict(spec_flags),
         }
 
     # ────────────────────────────────────────────────────────────
@@ -3547,6 +3548,7 @@ def main(argv=None):
                 bins=spec_plot_data["bins"],
                 bin_edges=spec_plot_data["bin_edges"],
                 config=cfg.get("plotting", {}),
+                fit_flags=spec_plot_data.get("flags"),
             )
         except Exception as e:
             logger.warning("Could not create spectrum plot: %s", e)
