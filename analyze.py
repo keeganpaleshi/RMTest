@@ -349,6 +349,39 @@ def _radon_time_window(
     return start_ts, end_ts
 
 
+def _regrid_series(
+    source_times: np.ndarray,
+    source_values: np.ndarray | None,
+    target_times: np.ndarray,
+    fill_value: float,
+) -> np.ndarray:
+    """Project ``source_values`` sampled at ``source_times`` onto ``target_times``."""
+
+    if source_values is None or source_values.size == 0 or source_times.size == 0:
+        return np.full_like(target_times, float(fill_value), dtype=float)
+
+    if source_values.size != source_times.size:
+        return np.full_like(target_times, float(fill_value), dtype=float)
+
+    times = np.asarray(source_times, dtype=float)
+    values = np.asarray(source_values, dtype=float)
+    mask = np.isfinite(times) & np.isfinite(values)
+    if not np.any(mask):
+        return np.full_like(target_times, float(fill_value), dtype=float)
+
+    times = times[mask]
+    values = values[mask]
+    if times.size == 1:
+        return np.full_like(target_times, float(values[0]), dtype=float)
+
+    order = np.argsort(times, kind="mergesort")
+    times = times[order]
+    values = values[order]
+    first = float(values[0])
+    last = float(values[-1])
+    return np.interp(target_times, times, values, left=first, right=last)
+
+
 def _fit_params(obj: FitResult | Mapping[str, float] | None) -> FitParams:
     """Return fit parameters mapping from a ``FitResult`` or dictionary."""
     if isinstance(obj, FitResult):
@@ -3547,39 +3580,76 @@ def main(argv=None):
         )
         if not math.isfinite(window_start):
             window_start = t0_global.timestamp()
-        has_window_end = math.isfinite(window_end) and window_end > window_start
+
+        if math.isfinite(window_end) and window_end > window_start:
+            time_grid = np.linspace(window_start, window_end, 100)
+        else:
+            time_grid = np.array([float(window_start)], dtype=float)
 
         fallback_times = np.asarray(rad_ts_data.get("time", []), dtype=float)
-        fallback_activity = np.asarray(
+        fallback_activity_raw = np.asarray(
             rad_ts_data.get("activity", []), dtype=float
         )
+        if fallback_activity_raw.size != fallback_times.size:
+            fallback_activity_raw = None
+
         fallback_errs_raw = rad_ts_data.get("error") if hasattr(rad_ts_data, "get") else None
-        fallback_errs = (
+        fallback_errs_arr = (
             np.asarray(fallback_errs_raw, dtype=float)
             if fallback_errs_raw is not None
             else None
         )
+        if fallback_errs_arr is not None and fallback_errs_arr.size != fallback_times.size:
+            fallback_errs_arr = None
 
-        if fallback_times.size == 0:
-            fallback_times = np.array(
-                [window_start, window_end] if has_window_end else [window_start],
-                dtype=float,
-            )
+        try:
+            fallback_val = float(rad_summary.get("Rn_activity_Bq", float("nan")))
+        except (TypeError, ValueError):
+            fallback_val = float("nan")
 
-        if fallback_activity.size != fallback_times.size:
+        stat_unc_val = rad_summary.get("stat_unc_Bq") if hasattr(rad_summary, "get") else None
+        try:
+            err_val = float(stat_unc_val) if stat_unc_val is not None else float("nan")
+        except (TypeError, ValueError):
+            err_val = float("nan")
+
+        fallback_fill = fallback_val
+        if (not math.isfinite(fallback_fill)) and radon_results:
             try:
-                fallback_val = float(rad_summary.get("Rn_activity_Bq", float("nan")))
+                fallback_fill = float(
+                    radon_results.get("radon_activity_Bq", {}).get("value", float("nan"))
+                )
             except (TypeError, ValueError):
-                fallback_val = float("nan")
-            fallback_activity = np.full(fallback_times.shape, fallback_val, dtype=float)
+                fallback_fill = float("nan")
 
-        if fallback_errs is None or fallback_errs.size != fallback_times.size:
-            stat_unc_val = rad_summary.get("stat_unc_Bq") if hasattr(rad_summary, "get") else None
+        err_fill = err_val
+        if (not math.isfinite(err_fill)) and radon_results:
             try:
-                err_val = float(stat_unc_val) if stat_unc_val is not None else float("nan")
+                err_fill = float(
+                    radon_results.get("radon_activity_Bq", {}).get(
+                        "uncertainty", float("nan")
+                    )
+                )
             except (TypeError, ValueError):
-                err_val = float("nan")
-            fallback_errs = np.full(fallback_times.shape, err_val, dtype=float)
+                err_fill = float("nan")
+
+        radon_val = None
+        radon_unc = None
+        if radon_results:
+            try:
+                radon_val = float(
+                    radon_results.get("radon_activity_Bq", {}).get("value", float("nan"))
+                )
+            except (TypeError, ValueError):
+                radon_val = None
+            try:
+                radon_unc = float(
+                    radon_results.get("radon_activity_Bq", {}).get(
+                        "uncertainty", float("nan")
+                    )
+                )
+            except (TypeError, ValueError):
+                radon_unc = None
 
         valid_fits: dict[str, Mapping[str, Any]] = {}
         for iso in ("Po214", "Po218"):
@@ -3594,17 +3664,9 @@ def main(argv=None):
             if fit_ok:
                 valid_fits[iso] = fit_params
 
-        if valid_fits:
-            if has_window_end:
-                time_grid = np.linspace(window_start, window_end, 100)
-            else:
-                time_grid = np.array([float(window_start)], dtype=float)
-        else:
-            time_grid = fallback_times
-
         times_dt = to_datetime_utc(time_grid, unit="s")
         t_rel = (times_dt - analysis_start).total_seconds()
-        activity_times = time_grid if valid_fits else fallback_times
+        activity_times = time_grid
 
         if radon_combined_info is not None:
             try:
@@ -3655,9 +3717,18 @@ def main(argv=None):
 
         activity_arr = err_arr = None
         if A214 is None and A218 is None:
-            activity_arr = fallback_activity.astype(float, copy=True)
-            err_arr = fallback_errs.astype(float, copy=True)
-            activity_times = fallback_times
+            activity_arr = _regrid_series(
+                fallback_times,
+                fallback_activity_raw,
+                activity_times,
+                fallback_fill,
+            )
+            err_arr = _regrid_series(
+                fallback_times,
+                fallback_errs_arr,
+                activity_times,
+                err_fill,
+            )
         else:
             activity_arr = np.zeros_like(time_grid, dtype=float)
             err_arr = np.zeros_like(time_grid, dtype=float)
@@ -3681,9 +3752,24 @@ def main(argv=None):
                 activity_arr[i] = A
                 err_arr[i] = s
 
-            if np.all(activity_arr == 0) and radon_results:
-                activity_arr.fill(radon_results["radon_activity_Bq"]["value"])
-                err_arr.fill(radon_results["radon_activity_Bq"]["uncertainty"])
+            if radon_val is not None and (
+                not np.isfinite(activity_arr).any() or np.all(activity_arr == 0)
+            ):
+                activity_arr.fill(radon_val)
+            if radon_unc is not None and (
+                not np.isfinite(err_arr).any() or np.all(err_arr == 0)
+            ):
+                err_arr.fill(radon_unc)
+
+        if A214 is None and A218 is None:
+            if radon_val is not None and (
+                not np.isfinite(activity_arr).any() or np.all(activity_arr == 0)
+            ):
+                activity_arr.fill(radon_val)
+            if radon_unc is not None and (
+                not np.isfinite(err_arr).any() or np.all(err_arr == 0)
+            ):
+                err_arr.fill(radon_unc)
 
         if activity_arr is not None and err_arr is not None:
             plot_radon_activity(
