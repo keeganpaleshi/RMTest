@@ -310,6 +310,21 @@ def _total_radon_series(activity, errors, monitor_volume, sample_volume):
     return total, total_err
 
 
+def _radon_concentration_series(activity, errors, sample_volume):
+    """Convert total activity series to concentration in ``Bq/L``."""
+
+    activity_arr = np.asarray(activity, dtype=float)
+    err_arr = None if errors is None else np.asarray(errors, dtype=float)
+
+    if not np.isfinite(sample_volume) or sample_volume <= 0:
+        return activity_arr, err_arr
+
+    scale = float(sample_volume)
+    conc = activity_arr / scale
+    conc_err = None if err_arr is None else err_arr / scale
+    return conc, conc_err
+
+
 def _as_timestamp(value: Any) -> float:
     """Return ``value`` as a UTC timestamp in seconds."""
 
@@ -3508,34 +3523,47 @@ def main(argv=None):
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if iso_mode == "radon" and "radon" in summary:
-        rad_ts = summary["radon"]["time_series"]
+        rad_summary = summary["radon"]
+        if isinstance(rad_summary, Mapping):
+            rad_ts = rad_summary.get("time_series", {})
+        else:
+            rad_ts = {}
 
-        plot_radon_activity(
-            rad_ts["time"],
-            rad_ts["activity"],
-            Path(out_dir) / "radon_activity.png",
-            rad_ts.get("error"),
-            config=cfg.get("plotting", {}),
-        )
-        total_vals, total_errs = _total_radon_series(
-            rad_ts["activity"],
-            rad_ts.get("error"),
-            monitor_vol,
-            sample_vol,
-        )
-        plot_total_radon(
-            rad_ts["time"],
-            total_vals,
-            Path(out_dir) / "total_radon.png",
-            total_errs,
-            config=cfg.get("plotting", {}),
-        )
-        plot_radon_trend(
-            rad_ts["time"],
-            rad_ts["activity"],
-            Path(out_dir) / "radon_trend.png",
-            config=cfg.get("plotting", {}),
-        )
+        if isinstance(rad_ts, Mapping):
+            times = rad_ts.get("time", [])
+            activity = rad_ts.get("activity", [])
+            errors = rad_ts.get("error")
+            if len(times) and len(activity) == len(times):
+                conc_vals, conc_errs = _radon_concentration_series(
+                    activity, errors, sample_vol
+                )
+                plot_radon_activity(
+                    times,
+                    conc_vals,
+                    Path(out_dir) / "radon_activity.png",
+                    conc_errs,
+                    config=cfg.get("plotting", {}),
+                )
+                total_vals, total_errs = _total_radon_series(
+                    activity,
+                    errors,
+                    monitor_vol,
+                    sample_vol,
+                )
+                plot_total_radon(
+                    times,
+                    total_vals,
+                    Path(out_dir) / "total_radon.png",
+                    total_errs,
+                    config=cfg.get("plotting", {}),
+                )
+                conc_trend, _ = _radon_concentration_series(activity, None, sample_vol)
+                plot_radon_trend(
+                    times,
+                    conc_trend,
+                    Path(out_dir) / "radon_trend.png",
+                    config=cfg.get("plotting", {}),
+                )
 
     # Generate plots now that the output directory exists
     if spec_plot_data:
@@ -3754,14 +3782,21 @@ def main(argv=None):
         times_dt = to_datetime_utc(time_grid, unit="s")
         t_rel = (times_dt - analysis_start).total_seconds()
         activity_times = time_grid
+        if fallback_activity_raw is not None and fallback_times.size > 0:
+            activity_times = fallback_times
 
         if radon_combined_info is not None:
             try:
+                conc_vals, conc_errs = _radon_concentration_series(
+                    [radon_combined_info["activity_Bq"]] * 2,
+                    [radon_combined_info["unc_Bq"]] * 2,
+                    sample_vol,
+                )
                 _ = plot_radon_activity(
                     [t0_global.timestamp(), t_end_global_ts],
-                    [radon_combined_info["activity_Bq"]] * 2,
+                    conc_vals,
                     Path(out_dir) / "radon_activity_combined.png",
-                    [radon_combined_info["unc_Bq"]] * 2,
+                    conc_errs,
                     config=cfg.get("plotting", {}),
                 )
             except Exception as e:
@@ -3803,7 +3838,13 @@ def main(argv=None):
             )
 
         activity_arr = err_arr = None
-        if A214 is None and A218 is None:
+        if fallback_activity_raw is not None and fallback_times.size > 0:
+            activity_arr = fallback_activity_raw
+            if fallback_errs_arr is not None:
+                err_arr = fallback_errs_arr
+            else:
+                err_arr = np.full_like(activity_arr, float(err_fill), dtype=float)
+        elif A214 is None and A218 is None:
             activity_arr = _regrid_series(
                 fallback_times,
                 fallback_activity_raw,
@@ -3858,12 +3899,15 @@ def main(argv=None):
             ):
                 err_arr.fill(radon_unc)
 
-        if activity_arr is not None and err_arr is not None:
+        if activity_arr is not None and activity_times.size > 0:
+            conc_vals, conc_errs = _radon_concentration_series(
+                activity_arr, err_arr, sample_vol
+            )
             plot_radon_activity(
                 activity_times,
-                activity_arr,
+                conc_vals,
                 Path(out_dir) / "radon_activity.png",
-                err_arr,
+                conc_errs,
                 config=cfg.get("plotting", {}),
             )
             total_vals, total_errs = _total_radon_series(
@@ -3923,9 +3967,24 @@ def main(argv=None):
                     r218 = A218_tr[i] if A218_tr is not None else None
                     A, _ = compute_radon_activity(r218, None, 1.0, r214, None, 1.0)
                     trend[i] = A
+                conc_trend, _ = _radon_concentration_series(trend, None, sample_vol)
                 plot_radon_trend(
                     times_trend,
-                    trend,
+                    conc_trend,
+                    Path(out_dir) / "radon_trend.png",
+                    config=cfg.get("plotting", {}),
+                )
+            elif activity_arr is not None and activity_times.size > 0:
+                trend = _regrid_series(
+                    activity_times,
+                    activity_arr,
+                    times_trend,
+                    fallback_fill,
+                )
+                conc_trend, _ = _radon_concentration_series(trend, None, sample_vol)
+                plot_radon_trend(
+                    times_trend,
+                    conc_trend,
                     Path(out_dir) / "radon_trend.png",
                     config=cfg.get("plotting", {}),
                 )
