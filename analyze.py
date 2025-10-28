@@ -3535,18 +3535,76 @@ def main(argv=None):
     try:
         from radon_activity import radon_activity_curve
 
+        rad_summary = summary.get("radon", {}) if hasattr(summary, "get") else {}
+        if not isinstance(rad_summary, Mapping):
+            rad_summary = {}
+        rad_ts_data = rad_summary.get("time_series", {}) if hasattr(rad_summary, "get") else {}
+        if not isinstance(rad_ts_data, Mapping):
+            rad_ts_data = {}
+
         window_start, window_end = _radon_time_window(
             t0_global, t_end_global_ts, radon_interval
         )
         if not math.isfinite(window_start):
             window_start = t0_global.timestamp()
-        if math.isfinite(window_end) and window_end > window_start:
-            time_grid = np.linspace(window_start, window_end, 100)
+        has_window_end = math.isfinite(window_end) and window_end > window_start
+
+        fallback_times = np.asarray(rad_ts_data.get("time", []), dtype=float)
+        fallback_activity = np.asarray(
+            rad_ts_data.get("activity", []), dtype=float
+        )
+        fallback_errs_raw = rad_ts_data.get("error") if hasattr(rad_ts_data, "get") else None
+        fallback_errs = (
+            np.asarray(fallback_errs_raw, dtype=float)
+            if fallback_errs_raw is not None
+            else None
+        )
+
+        if fallback_times.size == 0:
+            fallback_times = np.array(
+                [window_start, window_end] if has_window_end else [window_start],
+                dtype=float,
+            )
+
+        if fallback_activity.size != fallback_times.size:
+            try:
+                fallback_val = float(rad_summary.get("Rn_activity_Bq", float("nan")))
+            except (TypeError, ValueError):
+                fallback_val = float("nan")
+            fallback_activity = np.full(fallback_times.shape, fallback_val, dtype=float)
+
+        if fallback_errs is None or fallback_errs.size != fallback_times.size:
+            stat_unc_val = rad_summary.get("stat_unc_Bq") if hasattr(rad_summary, "get") else None
+            try:
+                err_val = float(stat_unc_val) if stat_unc_val is not None else float("nan")
+            except (TypeError, ValueError):
+                err_val = float("nan")
+            fallback_errs = np.full(fallback_times.shape, err_val, dtype=float)
+
+        valid_fits: dict[str, Mapping[str, Any]] = {}
+        for iso in ("Po214", "Po218"):
+            fit_obj = time_fit_results.get(iso)
+            if fit_obj is None:
+                continue
+            fit_params = _fit_params(fit_obj)
+            fit_ok = bool(fit_params.get("fit_valid", True))
+            iso_flag = f"fit_valid_{iso}"
+            if iso_flag in fit_params:
+                fit_ok = fit_ok and bool(fit_params.get(iso_flag, True))
+            if fit_ok:
+                valid_fits[iso] = fit_params
+
+        if valid_fits:
+            if has_window_end:
+                time_grid = np.linspace(window_start, window_end, 100)
+            else:
+                time_grid = np.array([float(window_start)], dtype=float)
         else:
-            time_grid = np.array([float(window_start)], dtype=float)
+            time_grid = fallback_times
+
         times_dt = to_datetime_utc(time_grid, unit="s")
         t_rel = (times_dt - analysis_start).total_seconds()
-        activity_times = time_grid
+        activity_times = time_grid if valid_fits else fallback_times
 
         if radon_combined_info is not None:
             try:
@@ -3561,59 +3619,45 @@ def main(argv=None):
                 logger.warning("Could not create radon combined plot -> %s", e)
 
         A214 = dA214 = None
-        if "Po214" in time_fit_results:
+        if "Po214" in valid_fits:
             fit_result = time_fit_results["Po214"]
-            fit = _fit_params(fit_result)
-            if fit.get("fit_valid", True) and fit.get("fit_valid_Po214", True):
-                E = fit.get("E_corrected", fit.get("E_Po214"))
-                dE = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
-                N0 = fit.get("N0_Po214", 0.0)
-                dN0 = fit.get("dN0_Po214", 0.0)
-                hl = _hl_value(cfg, "Po214")
-                cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
-                A214, dA214 = radon_activity_curve(
-                    t_rel, E, dE, N0, dN0, hl, cov
-                )
-                plot_radon_activity(
-                    time_grid,
-                    A214,
-                    Path(out_dir) / "radon_activity_po214.png",
-                    dA214,
-                    config=cfg.get("plotting", {}),
-                )
+            fit = valid_fits["Po214"]
+            E = fit.get("E_corrected", fit.get("E_Po214"))
+            dE = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
+            N0 = fit.get("N0_Po214", 0.0)
+            dN0 = fit.get("dN0_Po214", 0.0)
+            hl = _hl_value(cfg, "Po214")
+            cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
+            A214, dA214 = radon_activity_curve(
+                t_rel, E, dE, N0, dN0, hl, cov
+            )
+            plot_radon_activity(
+                time_grid,
+                A214,
+                Path(out_dir) / "radon_activity_po214.png",
+                dA214,
+                config=cfg.get("plotting", {}),
+            )
 
         A218 = dA218 = None
-        if "Po218" in time_fit_results:
+        if "Po218" in valid_fits:
             fit_result = time_fit_results["Po218"]
-            fit = _fit_params(fit_result)
-            if fit.get("fit_valid", True) and fit.get("fit_valid_Po218", True):
-                E = fit.get("E_corrected", fit.get("E_Po218"))
-                dE = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
-                N0 = fit.get("N0_Po218", 0.0)
-                dN0 = fit.get("dN0_Po218", 0.0)
-                hl = _hl_value(cfg, "Po218")
-                cov = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
-                A218, dA218 = radon_activity_curve(
-                    t_rel, E, dE, N0, dN0, hl, cov
-                )
+            fit = valid_fits["Po218"]
+            E = fit.get("E_corrected", fit.get("E_Po218"))
+            dE = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
+            N0 = fit.get("N0_Po218", 0.0)
+            dN0 = fit.get("dN0_Po218", 0.0)
+            hl = _hl_value(cfg, "Po218")
+            cov = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
+            A218, dA218 = radon_activity_curve(
+                t_rel, E, dE, N0, dN0, hl, cov
+            )
 
         activity_arr = err_arr = None
         if A214 is None and A218 is None:
-            if radon_results:
-                val = radon_results["radon_activity_Bq"].get("value")
-                unc = radon_results["radon_activity_Bq"].get("uncertainty")
-                try:
-                    activity_val = float(val)
-                except (TypeError, ValueError):
-                    activity_val = float("nan")
-                try:
-                    unc_val = float(unc) if unc is not None else float("nan")
-                except (TypeError, ValueError):
-                    unc_val = float("nan")
-                if not math.isfinite(unc_val) or unc_val < 0:
-                    unc_val = float("nan")
-                activity_arr = np.full_like(time_grid, activity_val, dtype=float)
-                err_arr = np.full_like(time_grid, unc_val, dtype=float)
+            activity_arr = fallback_activity.astype(float, copy=True)
+            err_arr = fallback_errs.astype(float, copy=True)
+            activity_times = fallback_times
         else:
             activity_arr = np.zeros_like(time_grid, dtype=float)
             err_arr = np.zeros_like(time_grid, dtype=float)
