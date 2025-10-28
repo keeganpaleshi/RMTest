@@ -105,6 +105,73 @@ NUCLIDES = {
 }
 
 
+def _convert_bounds_to_energy(bounds: Sequence[float], a: float, c: float, a2: float) -> tuple[float, float]:
+    """Return bounds converted from ADC to MeV using the current calibration."""
+
+    lo_adc, hi_adc = (float(bounds[0]), float(bounds[1]))
+    lo_mev = apply_calibration(lo_adc, a, c, quadratic_coeff=a2)
+    hi_mev = apply_calibration(hi_adc, a, c, quadratic_coeff=a2)
+    lo, hi = sorted((float(lo_mev), float(hi_mev)))
+    return lo, hi
+
+
+def _resolve_mu_bounds(
+    bounds_cfg: Mapping[str, Sequence[float] | None],
+    *,
+    unit_hint: str,
+    a: float,
+    c: float,
+    a2: float,
+) -> dict[str, tuple[float, float]]:
+    """Normalise user-provided ``mu_bounds`` to MeV for the spectral fit.
+
+    The fitter always operates on calibrated energies.  ``unit_hint`` controls
+    how the raw configuration values are interpreted:
+
+    - ``"mev"``/``"energy"`` – values are already in MeV.
+    - ``"adc"`` – convert from ADC channels to MeV using the calibration.
+    - ``"auto"`` – treat narrow values (|value| < 50) as MeV; otherwise assume
+      ADC and convert.
+    """
+
+    unit = unit_hint.lower()
+    resolved: dict[str, tuple[float, float]] = {}
+    for iso, bounds in (bounds_cfg or {}).items():
+        if bounds is None:
+            continue
+        if len(bounds) < 2:
+            raise ValueError(f"mu_bounds for {iso} require two entries; got {bounds!r}")
+
+        lo = float(bounds[0])
+        hi = float(bounds[1])
+        if not lo < hi:
+            raise ValueError(f"mu_bounds for {iso} require lower < upper; got {bounds!r}")
+
+        needs_adc_conversion = False
+        if unit == "adc":
+            needs_adc_conversion = True
+        elif unit in {"mev", "energy"}:
+            needs_adc_conversion = False
+        elif unit == "auto":
+            max_abs = max(abs(lo), abs(hi))
+            needs_adc_conversion = max_abs > 50.0
+        else:
+            logging.warning(
+                "Unknown mu_bounds_unit=%s; assuming MeV for %s", unit_hint, iso
+            )
+            needs_adc_conversion = False
+
+        if needs_adc_conversion:
+            lo, hi = _convert_bounds_to_energy(bounds, a, c, a2)
+            logging.info(
+                "Converted mu_bounds for %s from ADC to MeV: %.3f–%.3f", iso, lo, hi
+            )
+
+        resolved[iso] = (lo, hi)
+
+    return resolved
+
+
 def _hl_value(cfg: Mapping[str, Any], iso: str) -> float:
     """Return the half-life in seconds for ``iso`` using configuration ``cfg``.
 
@@ -2127,23 +2194,38 @@ def main(argv=None):
         priors_spec["F"] = (0.0, 0.0)
 
 
+        mu_bounds_cfg = cfg["spectral_fit"].get("mu_bounds", {})
+        mu_bounds_unit = str(cfg["spectral_fit"].get("mu_bounds_unit", "auto"))
+        resolved_mu_bounds = _resolve_mu_bounds(
+            mu_bounds_cfg,
+            unit_hint=mu_bounds_unit,
+            a=a,
+            c=c,
+            a2=a2,
+        )
+
         for peak, centroid_adc in adc_peaks.items():
-            mu = apply_calibration(centroid_adc, a, c, quadratic_coeff=a2)
-            bounds_cfg = cfg["spectral_fit"].get("mu_bounds", {})
-            bounds = bounds_cfg.get(peak)
+            mu_guess = apply_calibration(centroid_adc, a, c, quadratic_coeff=a2)
+            bounds = resolved_mu_bounds.get(peak)
+            mu = float(mu_guess)
             if bounds is not None:
                 lo, hi = bounds
-                if not lo < hi:
-                    raise ValueError(f"mu_bounds for {peak} require lower < upper")
-                if not (lo <= mu <= hi):
-                    mu = np.clip(mu, lo, hi)
+                if not (lo <= mu_guess <= hi):
+                    logging.warning(
+                        "Initial centroid for %s (%.3f MeV) lies outside bounds %.3f–%.3f MeV",
+                        peak,
+                        mu_guess,
+                        lo,
+                        hi,
+                    )
+                mu = float(np.clip(mu_guess, lo, hi))
             priors_spec[f"mu_{peak}"] = (mu, cfg["spectral_fit"].get("mu_sigma"))
             # Observed raw-counts around the expected energy window
             peak_tol = cfg["spectral_fit"].get("spectral_peak_tolerance_mev", 0.3)
             raw_count = float(
                 (
-                    (df_analysis["energy_MeV"] >= mu - peak_tol)
-                    & (df_analysis["energy_MeV"] <= mu + peak_tol)
+                    (df_analysis["energy_MeV"] >= mu_guess - peak_tol)
+                    & (df_analysis["energy_MeV"] <= mu_guess + peak_tol)
                 ).sum()
             )
             mu_amp = max(raw_count, 1.0)
@@ -2237,10 +2319,9 @@ def main(argv=None):
                 fit_kwargs["unbinned"] = True
             if args.strict_covariance:
                 fit_kwargs["strict"] = True
-            bounds_cfg = cfg["spectral_fit"].get("mu_bounds", {})
-            if bounds_cfg:
+            if resolved_mu_bounds:
                 bounds_map = {}
-                for iso, bnd in bounds_cfg.items():
+                for iso, bnd in resolved_mu_bounds.items():
                     if bnd is not None:
                         bounds_map[f"mu_{iso}"] = tuple(bnd)
                 if bounds_map:
