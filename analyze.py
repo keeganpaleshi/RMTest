@@ -2075,6 +2075,30 @@ def main(argv=None):
 
             bins = nbins
             bin_edges = None
+        elif method == "energy":
+            width = 0.02
+            if bin_cfg is not None:
+                width = bin_cfg.get("energy_bin_width", width)
+            else:
+                width = cfg["spectral_fit"].get("energy_bin_width", width)
+            width = float(width)
+            if width <= 0:
+                raise ValueError("energy_bin_width must be positive")
+            E_all = df_analysis["energy_MeV"].values
+            if E_all.size == 0:
+                bins = 1
+                bin_edges = np.array([0.0, width], dtype=float)
+            else:
+                e_min = float(np.min(E_all))
+                e_max = float(np.max(E_all))
+                # Guard against a single-point spectrum
+                if np.isclose(e_min, e_max):
+                    e_max = e_min + width
+                n_steps = int(np.ceil((e_max - e_min) / width))
+                # np.arange is exclusive of the stop value -> pad by one step
+                stop = e_min + (n_steps + 1) * width
+                bin_edges = np.arange(e_min, stop + 0.5 * width, width, dtype=float)
+                bins = bin_edges.size - 1
         else:
             # "ADC" binning mode -> fixed width in raw channels
             width = 1

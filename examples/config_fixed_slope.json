@@ -48,8 +48,8 @@
     },
     "spectral_fit": {
         "do_spectral_fit": true,
-        "spectral_binning_mode": "adc",
-        "adc_bin_width": 1,
+        "spectral_binning_mode": "energy",
+        "energy_bin_width": 0.02,
         "fd_hist_bins": 400,
         "mu_sigma": 0.05,
         "amp_prior_scale": 1.0,
