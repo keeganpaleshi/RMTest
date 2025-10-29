@@ -2713,6 +2713,7 @@ def main(argv=None):
     radon_estimate_info = None
     po214_estimate_info = None
     po218_estimate_info = None
+    allow_negative_baseline = bool(cfg.get("allow_negative_baseline"))
     if cfg.get("time_fit", {}).get("do_time_fit", False):
         for iso in ("Po218", "Po214"):
             win_key = f"window_{iso.lower()}"
@@ -2866,6 +2867,8 @@ def main(argv=None):
                 else:
                     c_rate = 0.0
                     c_sigma = 0.0
+            if not allow_negative_baseline and c_rate < 0.0:
+                c_rate = 0.0
             baseline_info.setdefault("corrected_activity", {})[iso] = {
                 "value": c_rate,
                 "uncertainty": c_sigma,
@@ -2895,6 +2898,8 @@ def main(argv=None):
             else:
                 c_rate = 0.0
                 c_sigma = 0.0
+            if not allow_negative_baseline and c_rate < 0.0:
+                c_rate = 0.0
             baseline_info.setdefault("corrected_activity", {})[iso] = {
                 "value": c_rate,
                 "uncertainty": c_sigma,
@@ -3087,12 +3092,17 @@ def main(argv=None):
                 )
             except ValueError:
                 return None
-            return float(rate), float(sigma)
+            rate = float(rate)
+            if not allow_negative_baseline and rate < 0.0:
+                rate = 0.0
+            return rate, float(sigma)
 
         rate = float(counts_val) / (float(live_time_iso) * float(eff_val))
         sigma = math.sqrt(abs(float(counts_val))) / (
             float(live_time_iso) * float(eff_val)
         )
+        if not allow_negative_baseline and rate < 0.0:
+            rate = 0.0
         return rate, sigma
 
     # --- Radon combination ---
@@ -3539,8 +3549,19 @@ def main(argv=None):
             base_rate = 0.0
             base_sigma = 0.0
 
+        if not allow_negative_baseline and corr_rate < 0.0:
+            corr_rate = 0.0
+
         params["E_corrected"] = corr_rate
         params["dE_corrected"] = corr_sigma
+        if allow_negative_baseline:
+            corrected_map = baseline_info.setdefault("corrected_activity", {})
+            entry = corrected_map.get(iso, {})
+            if not isinstance(entry, dict):
+                entry = {}
+            entry["value"] = corr_rate
+            entry["uncertainty"] = corr_sigma
+            corrected_map[iso] = entry
         baseline_rates[iso] = base_rate
         baseline_unc[iso] = base_sigma
         corrected_rates[iso] = corr_rate
