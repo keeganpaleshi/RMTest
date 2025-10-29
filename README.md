@@ -848,9 +848,10 @@ shows the equivalent air volume derived from this Po‑214 activity.
 
 If the combined activity of Po‑214 and Po‑218 is negative the pipeline
 aborts by default after clamping the result to zero.  Passing
-`--allow-negative-activity` preserves the negative value, including the
+`--allow-negative-activity` preserves the raw negative value, including the
 derived totals written to `summary.json`, and processing continues with a
-warning in the log.
+warning in the log. No additional floor is applied when negatives are
+allowed.
 
 ### Radon vs Progeny Mode
 
