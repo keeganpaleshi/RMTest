@@ -4082,6 +4082,7 @@ def main(argv=None):
 
     # Generate plots now that the output directory exists
     spectrum_png = Path(out_dir) / "spectrum.png"
+    spectrum_components_png = Path(out_dir) / "spectrum_components.png"
     if spec_plot_data:
         try:
             _ = plot_spectrum(
@@ -4095,6 +4096,20 @@ def main(argv=None):
             )
         except Exception as e:
             logger.warning("Could not create spectrum plot: %s", e)
+
+        try:
+            _ = plot_spectrum(
+                energies=spec_plot_data["energies"],
+                fit_vals=spec_plot_data["fit_vals"],
+                out_png=spectrum_components_png,
+                bins=spec_plot_data["bins"],
+                bin_edges=spec_plot_data["bin_edges"],
+                config=cfg.get("plotting", {}),
+                fit_flags=spec_plot_data.get("flags"),
+                show_total_model=False,
+            )
+        except Exception as e:
+            logger.warning("Could not create component spectrum plot: %s", e)
 
     if not spectrum_png.exists():
         try:
@@ -4128,6 +4143,23 @@ def main(argv=None):
             )
         except Exception as e:
             logger.warning("Could not create fallback spectrum plot: %s", e)
+
+        try:
+            _save_stub_spectrum_plot(
+                energies_stub,
+                spectrum_components_png,
+                bins=stub_bins,
+                bin_edges=stub_edges,
+                config=cfg.get("plotting", {}),
+            )
+            logger.info(
+                "Saved fallback component spectrum plot after unavailable fit to %s",
+                spectrum_components_png,
+            )
+        except Exception as e:
+            logger.warning(
+                "Could not create fallback component spectrum plot: %s", e
+            )
 
     try:
         _ = plot_spectrum_comparison(

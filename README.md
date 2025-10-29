@@ -141,6 +141,7 @@ Running `analyze.py` produces a consistent set of artifacts next to `summary.jso
 
 - `summary.json` – structured calibration, per-isotope fit results, radon activity/concentration time series, baseline metadata, the concatenated per-bin counts used for plotting, and other high-level diagnostics.
 - `spectrum.png` – spectrum, best-fit model components, and residuals in a three-panel layout that always ships with the report.
+- `spectrum_components.png` – the same spectrum view without the summed "Total model" curve so individual Po-210 / Po-218 / Po-214 components remain unobscured.
 - `spectrum_pre_post.png` – diagnostic spectrum overlay comparing pre/post cut spectra to highlight the impact of filtering.
 - Radon time-series plots – `radon_activity.png` presents total activity and concentration versus both absolute time (UTC) and elapsed hours, including statistical error bars and annotating the applied `background_mode`.
 - Isotope time-series plots – `isotope_time_series.png` overlays Po-210 / Po-218 / Po-214 restricted to the configured `run_periods`, with per-bin Poisson error bars; the per-isotope `time_series_Po214.png`, `time_series_Po218.png`, and (when `window_po210` is enabled) `time_series_Po210.png` provide the same data for single-isotope diagnostics.

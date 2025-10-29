@@ -325,6 +325,37 @@ def test_plot_spectrum_components_counts_per_bin(tmp_path, monkeypatch):
     )
 
 
+def test_plot_spectrum_hide_total_model(tmp_path, monkeypatch):
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    edges = np.array([0.0, 1.0, 2.0, 3.5])
+    energies = np.array([0.2, 0.4, 0.7, 1.2, 1.6, 2.1, 2.8, 3.2])
+
+    fit_vals = {
+        "sigma0": 0.12,
+        "F": 0.0,
+        "mu_Po210": 1.1,
+        "S_Po210": 120.0,
+        "b0": 0.4,
+        "b1": -0.05,
+        "S_bkg": 30.0,
+    }
+
+    ax = plot_spectrum(
+        energies,
+        fit_vals=fit_vals,
+        bin_edges=edges,
+        fit_flags={"background_model": "loglin_unit"},
+        out_png=str(tmp_path / "spec_components_hidden.png"),
+        show_total_model=False,
+    )
+
+    labels = {line.get_label() for line in ax.get_lines()}
+    assert "Total model" not in labels
+    assert "Po210" in labels
+    assert "Background" in labels
+
+
 def test_plot_spectrum_accepts_fitresult(tmp_path, monkeypatch):
     energies = np.linspace(5.0, 7.0, 200)
     params = {
