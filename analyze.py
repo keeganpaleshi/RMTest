@@ -1725,6 +1725,8 @@ def main(argv=None):
     if args.allow_negative_baseline:
         cfg["allow_negative_baseline"] = True
 
+    allow_negative_baseline = bool(cfg.get("allow_negative_baseline"))
+
     if args.debug:
         cfg.setdefault("pipeline", {})["log_level"] = "DEBUG"
 
@@ -2866,6 +2868,8 @@ def main(argv=None):
                 else:
                     c_rate = 0.0
                     c_sigma = 0.0
+            if not allow_negative_baseline and c_rate < 0.0:
+                c_rate = 0.0
             baseline_info.setdefault("corrected_activity", {})[iso] = {
                 "value": c_rate,
                 "uncertainty": c_sigma,
@@ -2895,6 +2899,8 @@ def main(argv=None):
             else:
                 c_rate = 0.0
                 c_sigma = 0.0
+            if not allow_negative_baseline and c_rate < 0.0:
+                c_rate = 0.0
             baseline_info.setdefault("corrected_activity", {})[iso] = {
                 "value": c_rate,
                 "uncertainty": c_sigma,
@@ -3087,12 +3093,16 @@ def main(argv=None):
                 )
             except ValueError:
                 return None
+            if not allow_negative_baseline and rate < 0.0:
+                rate = 0.0
             return float(rate), float(sigma)
 
         rate = float(counts_val) / (float(live_time_iso) * float(eff_val))
         sigma = math.sqrt(abs(float(counts_val))) / (
             float(live_time_iso) * float(eff_val)
         )
+        if not allow_negative_baseline and rate < 0.0:
+            rate = 0.0
         return rate, sigma
 
     # --- Radon combination ---
@@ -3538,6 +3548,9 @@ def main(argv=None):
             corr_sigma = err_fit
             base_rate = 0.0
             base_sigma = 0.0
+
+        if not allow_negative_baseline and corr_rate < 0.0:
+            corr_rate = 0.0
 
         params["E_corrected"] = corr_rate
         params["dE_corrected"] = corr_sigma
