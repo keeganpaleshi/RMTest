@@ -76,6 +76,7 @@ def test_cli_smoke_outputs(tmp_path, monkeypatch):
     assert "diagnostics" in summary
     assert summary.get("spectral_fit", {}).get("likelihood_path") == "binned_poisson"
     assert (out_dir / "spectrum.png").exists()
+    assert (out_dir / "spectrum_components.png").exists()
     assert len(list(out_dir.glob("time_series_*.png"))) > 0
 
     summary2, _ = _run(tmp_path, monkeypatch, unbinned=True)

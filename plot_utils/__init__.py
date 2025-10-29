@@ -747,6 +747,7 @@ def plot_spectrum(
     config=None,
     *,
     fit_flags=None,
+    show_total_model=True,
 ):
     """Plot energy spectrum and optional fit overlay.
 
@@ -769,6 +770,10 @@ def plot_spectrum(
     fit_flags : Mapping, optional
         Flags passed to :func:`fit_spectrum`. These inform the background
         model reconstruction (e.g. ``{"background_model": "loglin_unit"}``).
+    show_total_model : bool, optional
+        When ``True`` (default) the summed model prediction is drawn atop the
+        per-isotope components.  Set to ``False`` to hide the total overlay
+        while still returning the residuals panel.
     """
 
     energies = np.asarray(energies, dtype=float)
@@ -922,13 +927,14 @@ def plot_spectrum(
                     label=key,
                 )
 
-        ax_main.plot(
-            centers,
-            model_total,
-            color=component_colors["Total"],
-            lw=2,
-            label="Total model",
-        )
+        if show_total_model:
+            ax_main.plot(
+                centers,
+                model_total,
+                color=component_colors["Total"],
+                lw=2,
+                label="Total model",
+            )
 
         if ax_res is not None:
             residuals = hist.astype(float) - model_total
