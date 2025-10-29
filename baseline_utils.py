@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Mapping
 from datetime import datetime
 
 import numpy as np
@@ -314,6 +315,9 @@ def summarize_baseline(
     tf = cfg.get("time_fit", {})
     scales = baseline.get("scales", {})
     base_rates = baseline.get("rate_Bq", {})
+    corrected_rates = baseline.get("corrected_rate_Bq", {})
+    if not isinstance(corrected_rates, Mapping):
+        corrected_rates = {}
 
     allow_negative = bool(cfg.get("allow_negative_baseline"))
 
@@ -324,8 +328,20 @@ def summarize_baseline(
         if raw is None:
             continue
         base = float(base_rates.get(iso, 0.0)) * float(scales.get(iso, 1.0))
-        corr = float(fit.get("E_corrected", raw - base))
         raw = float(raw)
+
+        corr_val: float | None = None
+        for candidate in (corrected_rates.get(iso), fit.get("E_corrected")):
+            if candidate is None:
+                continue
+            try:
+                corr_val = float(candidate)
+            except (TypeError, ValueError):
+                continue
+            else:
+                break
+
+        corr = corr_val if corr_val is not None else raw - base
         if not allow_negative and corr < 0.0:
             corr = 0.0
         summary[iso] = (raw, base, corr)
