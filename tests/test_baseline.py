@@ -17,6 +17,7 @@ import baseline_utils
 from baseline_utils import subtract_baseline_counts
 from radon.baseline import subtract_baseline_counts
 import radon_joint_estimator
+import radon_activity
 from fitting import FitResult, FitParams
 
 
@@ -111,7 +112,7 @@ def test_simple_baseline_subtraction(tmp_path, monkeypatch):
         counts, eff, live_time, base_counts, summary["baseline"]["live_time"]
     )
 
-    assert corr_rate == pytest.approx(exp_rate)
+    assert corr_rate == pytest.approx(max(exp_rate, 0.0))
     assert corr_sig == pytest.approx(exp_sigma)
     assert summary["baseline"].get("noise_level") == 5.0
     times = list(captured.get("times", []))
@@ -443,7 +444,7 @@ def test_baseline_scaling_factor(tmp_path, monkeypatch):
         counts, eff, live_time, base_counts, summary["baseline"]["live_time"]
     )
 
-    assert corr_rate == pytest.approx(exp_rate)
+    assert corr_rate == pytest.approx(max(exp_rate, 0.0))
     assert corr_sig == pytest.approx(exp_sigma)
 
 
@@ -1054,6 +1055,119 @@ def test_rate_histogram_single_event():
 def test_corrected_activity_non_negative():
     baseline_info = {"corrected_activity": {"Po214": {"value": 0.1}}}
     assert baseline_info["corrected_activity"]["Po214"]["value"] >= 0
+
+
+def test_corrected_rate_clamped_without_opt_in(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "baseline": {"range": [0, 5], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {
+            "do_time_fit": True,
+            "window_po214": [0, 20],
+            "hl_po214": [1.0, 0.0],
+            "eff_po214": [1.0, 0.0],
+            "flags": {},
+        },
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+        "allow_negative_activity": True,
+    }
+
+    cfg_path = _prepare_config(tmp_path, cfg)
+    data_path = _prepare_events(tmp_path)
+    captured = {}
+    _patch_minimal_pipeline(monkeypatch, captured)
+
+    def fake_counts(*_a, **_k):
+        return -5.0, 0.5
+
+    def fake_rate(*_a, **_k):
+        return -5.0, 0.5, 0.2, 0.05
+
+    monkeypatch.setattr(analyze, "subtract_baseline_counts", fake_counts)
+    monkeypatch.setattr(analyze, "subtract_baseline_rate", fake_rate)
+    monkeypatch.setattr(radon_activity, "compute_total_radon", lambda *a, **k: (0.0, 0.0, 0.0, 0.0))
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+
+    analyze.main()
+
+    summary = captured.get("summary", {})
+    corr_activity = summary["baseline"]["corrected_activity"]["Po214"]["value"]
+    assert corr_activity == pytest.approx(0.0)
+    corr_rate = summary["baseline"]["corrected_rate_Bq"]["Po214"]
+    assert corr_rate == pytest.approx(0.0)
+    assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(0.0)
+
+
+def test_corrected_rate_preserved_with_allow_negative(tmp_path, monkeypatch):
+    cfg = {
+        "allow_negative_baseline": True,
+        "pipeline": {"log_level": "INFO"},
+        "baseline": {"range": [0, 5], "monitor_volume_l": 605.0, "sample_volume_l": 0.0},
+        "calibration": {},
+        "spectral_fit": {"do_spectral_fit": False, "expected_peaks": {"Po210": 0}},
+        "time_fit": {
+            "do_time_fit": True,
+            "window_po214": [0, 20],
+            "hl_po214": [1.0, 0.0],
+            "eff_po214": [1.0, 0.0],
+            "flags": {},
+        },
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+        "allow_negative_activity": True,
+    }
+
+    cfg_path = _prepare_config(tmp_path, cfg)
+    data_path = _prepare_events(tmp_path)
+    captured = {}
+    _patch_minimal_pipeline(monkeypatch, captured)
+
+    def fake_counts(*_a, **_k):
+        return -5.0, 0.5
+
+    def fake_rate(*_a, **_k):
+        return -5.0, 0.5, 0.2, 0.05
+
+    monkeypatch.setattr(analyze, "subtract_baseline_counts", fake_counts)
+    monkeypatch.setattr(analyze, "subtract_baseline_rate", fake_rate)
+    monkeypatch.setattr(
+        radon_activity,
+        "compute_total_radon",
+        lambda *a, **k: (0.0, 0.0, 0.0, 0.0),
+    )
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+
+    analyze.main()
+
+    summary = captured.get("summary", {})
+    corr_activity = summary["baseline"]["corrected_activity"]["Po214"]["value"]
+    assert corr_activity == pytest.approx(-5.0)
+    corr_rate = summary["baseline"]["corrected_rate_Bq"]["Po214"]
+    assert corr_rate == pytest.approx(-5.0)
+    assert summary["time_fit"]["Po214"]["E_corrected"] == pytest.approx(-5.0)
 
 
 def test_baseline_guard():
