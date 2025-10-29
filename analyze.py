@@ -2958,15 +2958,15 @@ def main(argv=None):
 
         # Determine baseline rate for fixed-background first pass
         baseline_rate_iso = None
-        baseline_fixed_info = None
+        fixed_from_baseline_info = None
         if baseline_record is not None:
-            baseline_fixed_info = baseline_handling.get_fixed_background_for_time_fit(
+            fixed_from_baseline_info = baseline_handling.get_fixed_background_for_time_fit(
                 baseline_record,
                 iso,
                 cfg.get("baseline", {}),
             )
-            if baseline_fixed_info:
-                baseline_rate_iso = baseline_fixed_info.get("background_rate_Bq")
+            if fixed_from_baseline_info:
+                baseline_rate_iso = fixed_from_baseline_info.get("background_rate_Bq")
 
         if baseline_rate_iso is None and baseline_live_time > 0:
             eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
@@ -3018,17 +3018,19 @@ def main(argv=None):
             background_mode = "floated" if fit_cfg.get("fit_background") else "fixed"
 
         if background_mode == "fixed":
-            if baseline_fixed_info:
+            if fixed_from_baseline_info:
                 baseline_rate_meta = float(
-                    baseline_fixed_info.get("background_rate_Bq", baseline_rate_iso or 0.0)
+                    fixed_from_baseline_info.get(
+                        "background_rate_Bq", baseline_rate_iso or 0.0
+                    )
                 )
                 norm_mode = baseline_handling.normalize_background_mode(
-                    baseline_fixed_info.get("mode")
+                    fixed_from_baseline_info.get("mode")
                 ) or "fixed_from_baseline"
-                baseline_fixed_info = dict(baseline_fixed_info)
-                baseline_fixed_info["mode"] = norm_mode
+                fixed_from_baseline_info = dict(fixed_from_baseline_info)
+                fixed_from_baseline_info["mode"] = norm_mode
                 background_mode = norm_mode
-                baseline_background_provenance[iso] = dict(baseline_fixed_info)
+                baseline_background_provenance[iso] = dict(fixed_from_baseline_info)
             elif baseline_rate_iso is not None:
                 baseline_rate_meta = float(baseline_rate_iso)
                 background_mode = baseline_handling.normalize_background_mode(
@@ -3040,9 +3042,12 @@ def main(argv=None):
         meta_entry: dict[str, Any] = {"mode": background_mode}
         if baseline_rate_meta is not None:
             meta_entry["baseline_rate_Bq"] = baseline_rate_meta
-        if baseline_fixed_info and baseline_fixed_info.get("background_unc_Bq") is not None:
+        if (
+            fixed_from_baseline_info
+            and fixed_from_baseline_info.get("background_unc_Bq") is not None
+        ):
             meta_entry["baseline_unc_Bq"] = float(
-                baseline_fixed_info["background_unc_Bq"]
+                fixed_from_baseline_info["background_unc_Bq"]
             )
         time_fit_background_meta[iso] = meta_entry
 
