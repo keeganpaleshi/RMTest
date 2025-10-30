@@ -19,9 +19,8 @@ from io_utils import (
 )
 from utils.time_utils import parse_timestamp
 
-
-def test_load_config(tmp_path):
-    cfg = {
+def _base_config():
+    return {
         "pipeline": {"log_level": "INFO"},
         "spectral_fit": {
             "expected_peaks": {"Po210": 1250, "Po218": 1400, "Po214": 1800}
@@ -31,6 +30,10 @@ def test_load_config(tmp_path):
         "plotting": {"plot_save_formats": ["png"]},
         "burst_filter": {"burst_mode": "rate"},
     }
+
+
+def test_load_config(tmp_path):
+    cfg = _base_config()
     p = tmp_path / "cfg.yaml"
     with open(p, "w") as f:
         json.dump(cfg, f)
@@ -40,13 +43,9 @@ def test_load_config(tmp_path):
 
 
 def test_load_config_missing_key(tmp_path):
-    cfg = {
-        "pipeline": {"log_level": "INFO"},
-        "spectral_fit": {},
-        "time_fit": {"do_time_fit": True},
-        "systematics": {"enable": False},
-        "plotting": {"plot_save_formats": ["png"]},
-    }
+    cfg = _base_config()
+    cfg["spectral_fit"] = {}
+    cfg.pop("burst_filter", None)
     p = tmp_path / "cfg.yaml"
     with open(p, "w") as f:
         json.dump(cfg, f)
@@ -83,6 +82,58 @@ def test_load_config_resolution_conflict(tmp_path):
     with open(p, "w") as f:
         json.dump(cfg, f)
     with pytest.raises(ValueError):
+        load_config(p)
+
+
+def _radon_inference_config():
+    cfg = _base_config()
+    cfg["radon_inference"] = {
+        "enabled": True,
+        "source_isotopes": ["Po214", "Po218"],
+        "source_weights": {"Po214": 0.7, "Po218": 0.3},
+        "detection_efficiency": {"Po214": 0.12, "Po218": 0.1},
+        "transport_efficiency": 1.0,
+        "retention_efficiency": 1.0,
+        "chain_correction": "none",
+        "external_rn": {
+            "mode": "constant",
+            "constant_bq_per_m3": 80.0,
+            "file_path": "mine_rn_timeseries.csv",
+            "time_column": "timestamp",
+            "value_column": "rn_bq_per_m3",
+            "tz": "America/Toronto",
+        },
+        "output": {"write_per_interval": True, "write_cumulative": True},
+    }
+    return cfg
+
+
+def test_load_config_radon_inference_valid(tmp_path):
+    cfg = _radon_inference_config()
+    p = tmp_path / "cfg.yaml"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+    loaded = load_config(p)
+    assert loaded["radon_inference"]["external_rn"]["mode"] == "constant"
+
+
+def test_load_config_radon_inference_missing_detection(tmp_path):
+    cfg = _radon_inference_config()
+    cfg["radon_inference"]["detection_efficiency"].pop("Po218")
+    p = tmp_path / "cfg.yaml"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+    with pytest.raises(ValueError, match="detection_efficiency"):
+        load_config(p)
+
+
+def test_load_config_radon_inference_invalid_constant(tmp_path):
+    cfg = _radon_inference_config()
+    cfg["radon_inference"]["external_rn"]["constant_bq_per_m3"] = -1.0
+    p = tmp_path / "cfg.yaml"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+    with pytest.raises(ValueError, match="constant_bq_per_m3"):
         load_config(p)
 
 
