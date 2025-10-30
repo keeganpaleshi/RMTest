@@ -10,8 +10,9 @@ from dataclasses import dataclass, field, asdict
 from dateutil import parser as date_parser
 import argparse
 import pandas as pd
+from pandas.api.types import is_datetime64_any_dtype
 from collections.abc import Mapping
-from typing import Any, Iterator
+from typing import Any, Iterator, Iterable
 from constants import load_nuclide_overrides
 
 import numpy as np
@@ -455,6 +456,150 @@ def load_events(csv_path, *, start=None, end=None, column_map=None):
         f"({discarded} discarded, {frac_discarded:.1%})."
     )
     return df
+
+
+DEFAULT_EXTERNAL_RN_BQ_PER_M3 = 80.0
+
+
+def _localize_external_series(series: pd.Series, timezone: str | None) -> pd.Series:
+    """Ensure timestamps are timezone-aware in UTC."""
+
+    if not is_datetime64_any_dtype(series):
+        series = pd.to_datetime(series, errors="coerce", utc=False)
+
+    if series.isna().all():
+        raise ValueError("external radon file has no parseable timestamps")
+
+    tzinfo = getattr(series.dtype, "tz", None)
+    if timezone:
+        if tzinfo is None:
+            series = series.dt.tz_localize(timezone, ambiguous="raise", nonexistent="raise")
+        else:
+            series = series.dt.tz_convert(timezone)
+    elif tzinfo is None:
+        series = series.dt.tz_localize("UTC")
+
+    return series.dt.tz_convert("UTC")
+
+
+def _coerce_external_values(series: pd.Series) -> pd.Series:
+    """Return value column coerced to floats."""
+
+    return pd.to_numeric(series, errors="coerce")
+
+
+def _resolve_external_constant(cfg_external: dict | None) -> float | None:
+    if not cfg_external:
+        return DEFAULT_EXTERNAL_RN_BQ_PER_M3
+
+    constant = cfg_external.get("constant_bq_per_m3")
+    if constant is not None:
+        return float(constant)
+
+    default = cfg_external.get("default_bq_per_m3", DEFAULT_EXTERNAL_RN_BQ_PER_M3)
+    if default is None:
+        return None
+    return float(default)
+
+
+def load_external_rn_series(cfg_external: dict | None, target_timestamps: Iterable[Any]):
+    """Return external radon series aligned with ``target_timestamps``."""
+
+    target_index = pd.to_datetime(list(target_timestamps), utc=True)
+    if len(target_index) == 0:
+        return []
+
+    cfg_external = cfg_external or {}
+    mode = cfg_external.get("mode", "constant").lower()
+    constant_value = _resolve_external_constant(cfg_external)
+
+    if mode == "constant":
+        fill_value = (
+            DEFAULT_EXTERNAL_RN_BQ_PER_M3
+            if constant_value is None
+            else float(constant_value)
+        )
+        return list(zip(target_index.to_pydatetime(), [fill_value] * len(target_index)))
+
+    if mode != "file":
+        raise ValueError(f"unsupported external radon mode: {mode!r}")
+
+    file_path = cfg_external.get("file_path")
+    if not file_path:
+        if constant_value is None:
+            raise ValueError("external radon file path missing and no constant fallback provided")
+        return list(zip(target_index.to_pydatetime(), [float(constant_value)] * len(target_index)))
+
+    try:
+        df = pd.read_csv(file_path)
+    except FileNotFoundError as exc:
+        if constant_value is None:
+            raise FileNotFoundError(
+                "external radon file not found: "
+                f"{file_path} (radon_inference.external_rn.file_path)"
+            ) from exc
+        return list(zip(target_index.to_pydatetime(), [float(constant_value)] * len(target_index)))
+    except OSError as exc:
+        if constant_value is None:
+            raise FileNotFoundError(
+                "external radon file not found: "
+                f"{file_path} (radon_inference.external_rn.file_path)"
+            ) from exc
+        return list(zip(target_index.to_pydatetime(), [float(constant_value)] * len(target_index)))
+
+    time_column = cfg_external.get("time_column", "timestamp")
+    value_column = cfg_external.get("value_column", "value")
+
+    if time_column not in df.columns:
+        raise KeyError(f"external radon file missing time column '{time_column}'")
+    if value_column not in df.columns:
+        raise KeyError(f"external radon file missing value column '{value_column}'")
+
+    timestamps = _localize_external_series(df[time_column], cfg_external.get("timezone"))
+    values = _coerce_external_values(df[value_column])
+
+    valid = ~(timestamps.isna() | values.isna())
+    timestamps = timestamps[valid]
+    values = values[valid]
+
+    if timestamps.empty:
+        if constant_value is None:
+            raise ValueError("external radon file has no usable data")
+        return list(zip(target_index.to_pydatetime(), [float(constant_value)] * len(target_index)))
+
+    series = pd.Series(values.to_numpy(dtype=float), index=timestamps)
+    series = series[~series.index.duplicated(keep="last")]  # prefer latest duplicate
+    series = series.sort_index()
+
+    interpolation = cfg_external.get("interpolation", "nearest").lower()
+    if interpolation not in {"nearest", "ffill"}:
+        raise ValueError(f"unsupported interpolation '{interpolation}'")
+
+    tolerance_seconds = cfg_external.get("allowed_skew_seconds", 300)
+    tolerance = None
+    if tolerance_seconds is not None:
+        tolerance = pd.Timedelta(seconds=float(tolerance_seconds))
+
+    reindex_kwargs: dict[str, Any] = {}
+    if interpolation in {"nearest", "ffill"}:
+        reindex_kwargs["method"] = interpolation
+    if tolerance is not None:
+        reindex_kwargs["tolerance"] = tolerance
+
+    aligned_series = series.reindex(target_index, **reindex_kwargs)
+
+    result_values: list[float] = []
+    for value in aligned_series.to_numpy():
+        if pd.isna(value):
+            if constant_value is None:
+                raise ValueError(
+                    "external radon series missing data and no constant fallback provided"
+                )
+            result_values.append(float(constant_value))
+        else:
+            result_values.append(float(value))
+
+    return list(zip(target_index.to_pydatetime(), result_values))
 
 
 def apply_burst_filter(df, cfg=None, mode="rate"):
