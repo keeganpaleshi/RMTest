@@ -16,7 +16,11 @@ from constants import load_nuclide_overrides
 
 import numpy as np
 from utils import to_native
-from utils.time_utils import parse_timestamp, to_epoch_seconds, tz_convert_utc
+from utils.time_utils import (
+    parse_timestamp,
+    to_epoch_seconds,
+    tz_convert_utc,
+)
 import jsonschema
 from reporting import DEFAULT_DIAGNOSTICS
 
@@ -57,6 +61,129 @@ def extract_time_series_events(events, cfg):
 
 
 logger = logging.getLogger(__name__)
+
+
+def load_external_rn_series(cfg_external, target_timestamps):
+    """Return external radon series aligned to ``target_timestamps``.
+
+    Parameters
+    ----------
+    cfg_external : dict
+        Configuration dictionary under ``radon_inference.external_rn``.
+    target_timestamps : Sequence
+        Iterable of timestamps that define the output sampling grid.
+
+    Returns
+    -------
+    list[tuple[pandas.Timestamp, float]]
+        Values aligned 1:1 with ``target_timestamps``.
+    """
+
+    if cfg_external is None:
+        cfg_external = {}
+
+    default_value = cfg_external.get("default_bq_per_m3", 80.0)
+    constant_value = cfg_external.get("constant_bq_per_m3", default_value)
+    if constant_value is not None:
+        constant_value = float(constant_value)
+    mode = (cfg_external.get("mode") or "constant").lower()
+
+    parsed_targets = [parse_timestamp(ts) for ts in target_timestamps]
+    target_index = pd.Index(parsed_targets)
+
+    if mode == "constant":
+        if constant_value is None:
+            raise ValueError("constant external radon value is required for mode='constant'")
+        return list(zip(parsed_targets, [constant_value] * len(parsed_targets)))
+
+    if mode != "file":
+        raise ValueError(f"unknown external radon mode: {mode!r}")
+
+    file_path = cfg_external.get("file_path")
+    if not file_path:
+        raise ValueError("external radon file path must be provided when mode='file'")
+
+    interpolation = (cfg_external.get("interpolation") or "nearest").lower()
+    allowed_skew_seconds = cfg_external.get("allowed_skew_seconds", 300)
+    allowed_skew = None
+    if allowed_skew_seconds is not None:
+        allowed_skew = pd.Timedelta(seconds=float(allowed_skew_seconds))
+    time_column = cfg_external.get("time_column", "timestamp")
+    value_column = cfg_external.get("value_column", "rn_bq_per_m3")
+    timezone_name = cfg_external.get("timezone")
+
+    try:
+        df = pd.read_csv(file_path)
+    except (FileNotFoundError, OSError) as exc:
+        if constant_value is None:
+            raise FileNotFoundError(
+                "external radon file not found; check radon_inference.external_rn.file_path"
+            ) from exc
+        logger.warning("external radon file unavailable, falling back to constant value")
+        return list(zip(parsed_targets, [constant_value] * len(parsed_targets)))
+
+    if time_column not in df.columns:
+        raise ValueError(f"external radon file missing time column {time_column!r}")
+    if value_column not in df.columns:
+        raise ValueError(f"external radon file missing value column {value_column!r}")
+
+    time_series = pd.to_datetime(df[time_column], errors="coerce")
+    if time_series.isna().any():
+        raise ValueError("failed to parse timestamps in external radon file")
+
+    tz_info = getattr(time_series.dt, "tz", None)
+    if timezone_name:
+        if tz_info is None:
+            time_series = time_series.dt.tz_localize(timezone_name)
+        else:
+            time_series = time_series.dt.tz_convert(timezone_name)
+    else:
+        if tz_info is None:
+            time_series = time_series.dt.tz_localize("UTC")
+
+    time_series = time_series.dt.tz_convert("UTC")
+
+    value_series = pd.to_numeric(df[value_column], errors="coerce")
+    if value_series.isna().all():
+        raise ValueError("external radon file contains no numeric values")
+    valid_mask = ~value_series.isna()
+    time_series = time_series[valid_mask]
+    value_series = value_series[valid_mask]
+
+    if time_series.empty:
+        if constant_value is None:
+            raise ValueError("external radon file contains no usable rows")
+        logger.warning("external radon file empty after filtering, using constant value")
+        return list(zip(parsed_targets, [constant_value] * len(parsed_targets)))
+
+    values = pd.Series(value_series.to_numpy(dtype=float), index=time_series)
+    values = values.sort_index()
+
+    if interpolation not in {"nearest", "ffill"}:
+        raise ValueError(f"invalid interpolation mode: {interpolation!r}")
+
+    if interpolation == "nearest":
+        if allowed_skew is not None:
+            aligned = values.reindex(target_index, method="nearest", tolerance=allowed_skew)
+        else:
+            aligned = values.reindex(target_index, method="nearest")
+    else:  # ffill
+        if allowed_skew is not None:
+            aligned = values.reindex(target_index, method="ffill", tolerance=allowed_skew)
+        else:
+            aligned = values.reindex(target_index, method="ffill")
+
+    if aligned.isna().any():
+        if constant_value is not None:
+            aligned = aligned.fillna(constant_value)
+        else:
+            missing = target_index[aligned.isna()].tolist()
+            raise ValueError(
+                "external radon data missing for timestamps without fallback: "
+                + ", ".join(str(ts) for ts in missing)
+            )
+
+    return list(zip(parsed_targets, aligned.to_numpy(dtype=float).tolist()))
 
 
 @dataclass
