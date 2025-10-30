@@ -74,30 +74,35 @@ calibration:
 spectral_fit:
   do_spectral_fit: true
   spectral_binning_mode: energy
-  energy_bin_width: 0.02
+  energy_bin_width: 0.0130
   fd_hist_bins: 400
-  mu_sigma: 0.02
+  mu_sigma: 0.005
   amp_prior_scale: 5.0
-  bkg_mode: auto
+  bkg_mode: "loglin_unit"
   b0_prior:
     - 0.0
-    - 5.0
+    - 2.0
   b1_prior:
     - 0.0
-    - 0.02
-  tau_Po210_prior_mean: 0.025
-  tau_Po210_prior_sigma: 0.010
-  tau_Po218_prior_mean: 0.015
-  tau_Po218_prior_sigma: 0.007
+    - 2.0
+  S_bkg_prior:
+    - 0.0
+    - 5.0
+  tau_Po210_prior_mean: 0.010
+  tau_Po210_prior_sigma: 0.006
+  tau_Po218_prior_mean: 0.030
+  tau_Po218_prior_sigma: 0.020
   tau_Po214_prior_mean: 0.010
   tau_Po214_prior_sigma: 0.005
   spectral_peak_tolerance_mev: 0.2
   sigma_E_prior_source: "calibration"
-  sigma_E_prior_sigma: 0.02
+  sigma_E_prior_sigma: 0.015
+  sigma_E_prior_mean: 0.055
   use_emg:
     Po210: true
     Po218: true
     Po214: true
+  max_tau_ratio: 0.75
   float_sigma_E: true
   peak_search_prominence: 30
   peak_search_width_adc: 3
@@ -117,13 +122,13 @@ spectral_fit:
       - 0.01
   mu_bounds:
     Po210:
-      - 5.28
-      - 5.33
+      - 5.20
+      - 5.30
     Po218:
       - 5.95
       - 6.05
     Po214:
-      - 7.66
+      - 7.60
       - 7.71
 time_fit:
   do_time_fit: true
