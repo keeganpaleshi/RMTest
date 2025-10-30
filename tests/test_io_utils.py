@@ -20,17 +20,22 @@ from io_utils import (
 from utils.time_utils import parse_timestamp
 
 
-def test_load_config(tmp_path):
-    cfg = {
+def _base_config() -> dict:
+    return {
         "pipeline": {"log_level": "INFO"},
-        "spectral_fit": {
-            "expected_peaks": {"Po210": 1250, "Po218": 1400, "Po214": 1800}
-        },
+        "spectral_fit": {},
         "time_fit": {"do_time_fit": True},
         "systematics": {"enable": False},
         "plotting": {"plot_save_formats": ["png"]},
-        "burst_filter": {"burst_mode": "rate"},
     }
+
+
+def test_load_config(tmp_path):
+    cfg = _base_config()
+    cfg["spectral_fit"] = {
+        "expected_peaks": {"Po210": 1250, "Po218": 1400, "Po214": 1800}
+    }
+    cfg["burst_filter"] = {"burst_mode": "rate"}
     p = tmp_path / "cfg.yaml"
     with open(p, "w") as f:
         json.dump(cfg, f)
@@ -40,13 +45,7 @@ def test_load_config(tmp_path):
 
 
 def test_load_config_missing_key(tmp_path):
-    cfg = {
-        "pipeline": {"log_level": "INFO"},
-        "spectral_fit": {},
-        "time_fit": {"do_time_fit": True},
-        "systematics": {"enable": False},
-        "plotting": {"plot_save_formats": ["png"]},
-    }
+    cfg = _base_config()
     p = tmp_path / "cfg.yaml"
     with open(p, "w") as f:
         json.dump(cfg, f)
@@ -69,21 +68,79 @@ def test_load_config_missing_section(tmp_path):
 
 
 def test_load_config_resolution_conflict(tmp_path):
-    cfg = {
-        "pipeline": {"log_level": "INFO"},
-        "spectral_fit": {
-            "float_sigma_E": True,
-            "flags": {"fix_sigma0": True},
-        },
-        "time_fit": {"do_time_fit": True},
-        "systematics": {"enable": False},
-        "plotting": {"plot_save_formats": ["png"]},
+    cfg = _base_config()
+    cfg["spectral_fit"] = {
+        "float_sigma_E": True,
+        "flags": {"fix_sigma0": True},
     }
     p = tmp_path / "cfg.yaml"
     with open(p, "w") as f:
         json.dump(cfg, f)
     with pytest.raises(ValueError):
         load_config(p)
+
+
+def test_load_config_with_radon_inference(tmp_path):
+    cfg = _base_config()
+    cfg["radon_inference"] = {
+        "enabled": True,
+        "source_isotopes": ["Po214", "Po218"],
+        "source_weights": {"Po214": 0.7, "Po218": 0.3},
+        "detection_efficiency": {"Po214": 0.12, "Po218": 0.1},
+        "transport_efficiency": 1.0,
+        "retention_efficiency": 1.0,
+        "chain_correction": "none",
+        "external_rn": {
+            "mode": "constant",
+            "constant_bq_per_m3": 80.0,
+            "file_path": "mine_rn_timeseries.csv",
+            "time_column": "timestamp",
+            "value_column": "rn_bq_per_m3",
+            "tz": "America/Toronto",
+        },
+        "output": {"write_per_interval": True, "write_cumulative": True},
+    }
+    p = tmp_path / "cfg.yaml"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+
+    loaded = load_config(p)
+    assert loaded["radon_inference"]["enabled"] is True
+    assert loaded["radon_inference"]["external_rn"]["mode"] == "constant"
+
+
+def test_radon_inference_requires_detection(tmp_path):
+    cfg = _base_config()
+    cfg["radon_inference"] = {
+        "enabled": True,
+        "source_isotopes": ["Po214", "Po218"],
+        "detection_efficiency": {"Po214": 0.12},
+        "external_rn": {"mode": "constant", "constant_bq_per_m3": 80.0},
+    }
+    p = tmp_path / "cfg.yaml"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+
+    with pytest.raises(ValueError) as exc:
+        load_config(p)
+    assert "detection_efficiency" in str(exc.value)
+
+
+def test_radon_inference_external_rn_file_requires_path(tmp_path):
+    cfg = _base_config()
+    cfg["radon_inference"] = {
+        "enabled": True,
+        "source_isotopes": ["Po214"],
+        "detection_efficiency": {"Po214": 0.12},
+        "external_rn": {"mode": "file", "file_path": ""},
+    }
+    p = tmp_path / "cfg.yaml"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+
+    with pytest.raises(ValueError) as exc:
+        load_config(p)
+    assert "file_path" in str(exc.value)
 
 
 def test_load_events(tmp_path, caplog):

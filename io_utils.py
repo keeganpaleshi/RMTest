@@ -13,6 +13,7 @@ import pandas as pd
 from collections.abc import Mapping
 from typing import Any, Iterator
 from constants import load_nuclide_overrides
+from config.validation import validate_radon_inference
 
 import numpy as np
 from utils import to_native
@@ -266,6 +267,61 @@ CONFIG_SCHEMA = {
             },
         },
         "efficiency": {"type": "object"},
+        "radon_inference": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "enabled": {"type": "boolean"},
+                "source_isotopes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": ["Po214", "Po218"],
+                    },
+                    "minItems": 1,
+                    "uniqueItems": True,
+                },
+                "source_weights": {
+                    "type": "object",
+                    "additionalProperties": {"type": "number"},
+                },
+                "detection_efficiency": {
+                    "type": "object",
+                    "additionalProperties": {"type": "number"},
+                },
+                "transport_efficiency": {"type": ["number", "null"]},
+                "retention_efficiency": {"type": ["number", "null"]},
+                "chain_correction": {
+                    "type": "string",
+                    "enum": ["none", "assume_equilibrium", "forward_model"],
+                },
+                "external_rn": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "mode": {
+                            "type": "string",
+                            "enum": ["constant", "file"],
+                        },
+                        "constant_bq_per_m3": {"type": ["number", "null"]},
+                        "file_path": {"type": ["string", "null"]},
+                        "time_column": {"type": ["string", "null"]},
+                        "value_column": {"type": ["string", "null"]},
+                        "tz": {"type": ["string", "null"]},
+                    },
+                    "required": ["mode"],
+                },
+                "output": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "write_per_interval": {"type": "boolean"},
+                        "write_cumulative": {"type": "boolean"},
+                    },
+                },
+            },
+            "required": ["enabled"],
+        },
     },
     "required": [
         "pipeline",
@@ -339,6 +395,8 @@ def load_config(config_path):
         raise
 
     cfg["nuclide_constants"] = load_nuclide_overrides(cfg)
+
+    validate_radon_inference(cfg)
 
     if "analysis_isotope" not in cfg:
         cfg["analysis_isotope"] = "radon"
