@@ -4,3 +4,8 @@ time_fit:
 plotting:
   plot_time_binning_mode: fixed
   plot_time_bin_width_s: 3600
+radon_inference:
+  external_rn:
+    interpolation: nearest
+    allowed_skew_seconds: 300
+    default_bq_per_m3: 80.0
