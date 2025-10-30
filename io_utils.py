@@ -266,6 +266,72 @@ CONFIG_SCHEMA = {
             },
         },
         "efficiency": {"type": "object"},
+        "radon_inference": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "enabled": {"type": "boolean"},
+                "source_isotopes": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["Po214", "Po218"]},
+                    "minItems": 1,
+                },
+                "source_weights": {
+                    "type": "object",
+                    "propertyNames": {"enum": ["Po214", "Po218"]},
+                    "additionalProperties": {"type": "number"},
+                },
+                "detection_efficiency": {
+                    "type": "object",
+                    "propertyNames": {"enum": ["Po214", "Po218"]},
+                    "additionalProperties": {"type": "number"},
+                },
+                "transport_efficiency": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1.5,
+                },
+                "retention_efficiency": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1.5,
+                },
+                "chain_correction": {
+                    "type": "string",
+                    "enum": ["none", "assume_equilibrium", "forward_model"],
+                },
+                "external_rn": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "mode": {"type": "string", "enum": ["constant", "file"]},
+                        "constant_bq_per_m3": {"type": "number"},
+                        "file_path": {"type": "string"},
+                        "time_column": {"type": "string"},
+                        "value_column": {"type": "string"},
+                        "tz": {"type": "string"},
+                    },
+                    "required": ["mode"],
+                },
+                "output": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "write_per_interval": {"type": "boolean"},
+                        "write_cumulative": {"type": "boolean"},
+                    },
+                },
+            },
+            "required": [
+                "enabled",
+                "source_isotopes",
+                "detection_efficiency",
+                "transport_efficiency",
+                "retention_efficiency",
+                "chain_correction",
+                "external_rn",
+            ],
+        },
     },
     "required": [
         "pipeline",
@@ -307,6 +373,66 @@ def ensure_dir(path):
 # :mod:`utils` for backward compatibility with older code.
 
 
+def _validate_radon_inference(cfg: Mapping) -> None:
+    radon_cfg = cfg.get("radon_inference")
+    if not radon_cfg:
+        return
+
+    allowed_isotopes = {"Po214", "Po218"}
+    isotopes = list(radon_cfg.get("source_isotopes") or [])
+    invalid_isotopes = [iso for iso in isotopes if iso not in allowed_isotopes]
+    if invalid_isotopes:
+        raise ValueError(
+            "radon_inference.source_isotopes contains unsupported isotopes: "
+            + ", ".join(sorted(invalid_isotopes))
+        )
+
+    weights = radon_cfg.get("source_weights") or {}
+    extra_weight_keys = sorted(set(weights) - set(isotopes))
+    if extra_weight_keys:
+        raise ValueError(
+            "radon_inference.source_weights includes entries not listed in "
+            f"source_isotopes: {', '.join(extra_weight_keys)}"
+        )
+
+    detection = radon_cfg.get("detection_efficiency") or {}
+    missing_detection = [iso for iso in isotopes if iso not in detection]
+    if missing_detection:
+        raise ValueError(
+            "radon_inference.detection_efficiency must provide values for all "
+            "configured source_isotopes when radon inference is enabled "
+            f"(missing: {', '.join(missing_detection)})"
+        )
+
+    transport = radon_cfg.get("transport_efficiency")
+    if transport is not None and not (0 < transport <= 1.5):
+        raise ValueError(
+            "radon_inference.transport_efficiency must be in the interval (0, 1.5]"
+        )
+
+    retention = radon_cfg.get("retention_efficiency")
+    if retention is not None and not (0 < retention <= 1.5):
+        raise ValueError(
+            "radon_inference.retention_efficiency must be in the interval (0, 1.5]"
+        )
+
+    external = radon_cfg.get("external_rn") or {}
+    mode = external.get("mode")
+    if mode == "constant":
+        constant_val = external.get("constant_bq_per_m3")
+        if constant_val is None or constant_val <= 0:
+            raise ValueError(
+                "radon_inference.external_rn.constant_bq_per_m3 must be > 0 when "
+                "mode is 'constant'"
+            )
+    elif mode == "file":
+        file_path = external.get("file_path")
+        if not file_path:
+            raise ValueError(
+                "radon_inference.external_rn.file_path is required when mode is 'file'"
+            )
+
+
 def load_config(config_path):
     """Load a configuration mapping or YAML file and validate it."""
 
@@ -342,6 +468,8 @@ def load_config(config_path):
 
     if "analysis_isotope" not in cfg:
         cfg["analysis_isotope"] = "radon"
+
+    _validate_radon_inference(cfg)
 
     # Fill in default EMG usage for spectral fits when not explicitly provided
     spec = cfg.setdefault("spectral_fit", {})
