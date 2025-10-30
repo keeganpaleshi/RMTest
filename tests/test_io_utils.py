@@ -86,6 +86,68 @@ def test_load_config_resolution_conflict(tmp_path):
         load_config(p)
 
 
+def _base_cfg_with_radon_inference():
+    return {
+        "pipeline": {"log_level": "INFO"},
+        "spectral_fit": {"expected_peaks": {"Po210": 1250}},
+        "time_fit": {"do_time_fit": True},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+        "radon_inference": {
+            "enabled": True,
+            "source_isotopes": ["Po214", "Po218"],
+            "source_weights": {"Po214": 0.7, "Po218": 0.3},
+            "detection_efficiency": {"Po214": 0.12, "Po218": 0.10},
+            "transport_efficiency": 1.0,
+            "retention_efficiency": 1.0,
+            "chain_correction": "none",
+            "external_rn": {
+                "mode": "constant",
+                "constant_bq_per_m3": 80.0,
+                "file_path": "mine_rn_timeseries.csv",
+                "time_column": "timestamp",
+                "value_column": "rn_bq_per_m3",
+                "tz": "America/Toronto",
+            },
+            "output": {"write_per_interval": True, "write_cumulative": True},
+        },
+    }
+
+
+def test_load_config_radon_inference_valid(tmp_path):
+    cfg = _base_cfg_with_radon_inference()
+    p = tmp_path / "cfg.yaml"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+
+    loaded = load_config(p)
+
+    assert loaded["radon_inference"]["enabled"] is True
+    assert loaded["radon_inference"]["external_rn"]["mode"] == "constant"
+
+
+def test_load_config_radon_inference_missing_detection(tmp_path):
+    cfg = _base_cfg_with_radon_inference()
+    cfg["radon_inference"]["detection_efficiency"].pop("Po218")
+    p = tmp_path / "cfg.yaml"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+
+    with pytest.raises(ValueError, match="missing Po218"):
+        load_config(p)
+
+
+def test_load_config_radon_inference_extra_weight(tmp_path):
+    cfg = _base_cfg_with_radon_inference()
+    cfg["radon_inference"]["source_weights"]["Po210"] = 0.1
+    p = tmp_path / "cfg.yaml"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+
+    with pytest.raises(ValueError, match="unexpected: Po210"):
+        load_config(p)
+
+
 def test_load_events(tmp_path, caplog):
     df = pd.DataFrame(
         {
