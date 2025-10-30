@@ -167,6 +167,30 @@ systematics:
   adc_drift_rate: 0.0
   adc_drift_mode: linear
   adc_drift_params: null
+radon_inference:
+  enabled: true
+  source_isotopes:
+  - Po214
+  - Po218
+  source_weights:
+    Po214: 0.7
+    Po218: 0.3
+  detection_efficiency:
+    Po214: 0.12
+    Po218: 0.1
+  transport_efficiency: 1.0
+  retention_efficiency: 1.0
+  chain_correction: none  # allowed: none, assume_equilibrium, forward_model
+  external_rn:
+    mode: constant  # allowed: constant, file
+    constant_bq_per_m3: 80.0
+    file_path: mine_rn_timeseries.csv
+    time_column: timestamp
+    value_column: rn_bq_per_m3
+    tz: America/Toronto
+  output:
+    write_per_interval: true
+    write_cumulative: true
 plotting:
   plot_spectrum_binsize_adc: 1
   plot_time_binning_mode: fixed

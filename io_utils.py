@@ -19,6 +19,7 @@ from utils import to_native
 from utils.time_utils import parse_timestamp, to_epoch_seconds, tz_convert_utc
 import jsonschema
 from reporting import DEFAULT_DIAGNOSTICS
+from config.validation import validate_radon_inference
 
 
 def extract_time_series_events(events, cfg):
@@ -265,6 +266,84 @@ CONFIG_SCHEMA = {
                 "fchannel": {"type": "string"},
             },
         },
+        "radon_inference": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "enabled": {"type": "boolean"},
+                "source_isotopes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": ["Po214", "Po218"],
+                    },
+                    "minItems": 1,
+                },
+                "source_weights": {
+                    "type": "object",
+                    "patternProperties": {
+                        "^(Po214|Po218)$": {"type": "number"}
+                    },
+                    "additionalProperties": False,
+                },
+                "detection_efficiency": {
+                    "type": "object",
+                    "patternProperties": {
+                        "^(Po214|Po218)$": {"type": "number"}
+                    },
+                    "additionalProperties": False,
+                },
+                "transport_efficiency": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1.5,
+                },
+                "retention_efficiency": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1.5,
+                },
+                "chain_correction": {
+                    "type": "string",
+                    "enum": ["none", "assume_equilibrium", "forward_model"],
+                },
+                "external_rn": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "mode": {
+                            "type": "string",
+                            "enum": ["constant", "file"],
+                        },
+                        "constant_bq_per_m3": {"type": "number"},
+                        "file_path": {"type": "string"},
+                        "time_column": {"type": "string"},
+                        "value_column": {"type": "string"},
+                        "tz": {"type": "string"},
+                    },
+                    "required": ["mode"],
+                    "allOf": [
+                        {
+                            "if": {"properties": {"mode": {"const": "constant"}}},
+                            "then": {"required": ["constant_bq_per_m3"]},
+                        },
+                        {
+                            "if": {"properties": {"mode": {"const": "file"}}},
+                            "then": {"required": ["file_path"]},
+                        },
+                    ],
+                },
+                "output": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "write_per_interval": {"type": "boolean"},
+                        "write_cumulative": {"type": "boolean"},
+                    },
+                },
+            },
+            "required": ["enabled"],
+        },
         "efficiency": {"type": "object"},
     },
     "required": [
@@ -337,6 +416,8 @@ def load_config(config_path):
         if e.validator == "required":
             raise KeyError(e.message)
         raise
+
+    validate_radon_inference(cfg)
 
     cfg["nuclide_constants"] = load_nuclide_overrides(cfg)
 
