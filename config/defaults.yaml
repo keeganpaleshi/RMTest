@@ -4,3 +4,28 @@ time_fit:
 plotting:
   plot_time_binning_mode: fixed
   plot_time_bin_width_s: 3600
+
+radon_inference:
+  enabled: true
+  source_isotopes:
+    - "Po214"
+    - "Po218"
+  source_weights:
+    Po214: 0.7
+    Po218: 0.3
+  detection_efficiency:
+    Po214: 0.12
+    Po218: 0.10
+  transport_efficiency: 1.0
+  retention_efficiency: 1.0
+  chain_correction: "none"
+  external_rn:
+    mode: "constant"
+    constant_bq_per_m3: 80.0
+    file_path: "mine_rn_timeseries.csv"
+    time_column: "timestamp"
+    value_column: "rn_bq_per_m3"
+    tz: "America/Toronto"
+  output:
+    write_per_interval: true
+    write_cumulative: true

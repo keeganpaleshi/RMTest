@@ -11,6 +11,7 @@ from dateutil import parser as date_parser
 import argparse
 import pandas as pd
 from collections.abc import Mapping
+from numbers import Real
 from typing import Any, Iterator
 from constants import load_nuclide_overrides
 
@@ -266,6 +267,63 @@ CONFIG_SCHEMA = {
             },
         },
         "efficiency": {"type": "object"},
+        "radon_inference": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "enabled": {"type": "boolean"},
+                "source_isotopes": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["Po214", "Po218"]},
+                    "minItems": 1,
+                },
+                "source_weights": {
+                    "type": "object",
+                    "additionalProperties": {"type": "number"},
+                },
+                "detection_efficiency": {
+                    "type": "object",
+                    "additionalProperties": {"type": "number"},
+                },
+                "transport_efficiency": {
+                    "type": "number",
+                    "exclusiveMinimum": 0.0,
+                    "maximum": 1.5,
+                },
+                "retention_efficiency": {
+                    "type": "number",
+                    "exclusiveMinimum": 0.0,
+                    "maximum": 1.5,
+                },
+                "chain_correction": {
+                    "type": "string",
+                    "enum": ["none", "assume_equilibrium", "forward_model"],
+                },
+                "external_rn": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "mode": {
+                            "type": "string",
+                            "enum": ["constant", "file"],
+                        },
+                        "constant_bq_per_m3": {"type": "number"},
+                        "file_path": {"type": "string"},
+                        "time_column": {"type": "string"},
+                        "value_column": {"type": "string"},
+                        "tz": {"type": "string"},
+                    },
+                },
+                "output": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "write_per_interval": {"type": "boolean"},
+                        "write_cumulative": {"type": "boolean"},
+                    },
+                },
+            },
+        },
     },
     "required": [
         "pipeline",
@@ -294,6 +352,124 @@ def _construct_mapping(loader, node, deep=False):
 _UniqueKeyLoader.add_constructor(
     yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_mapping
 )
+
+
+def _validate_radon_inference(cfg: Mapping[str, Any]) -> None:
+    section = cfg.get("radon_inference")
+    if section is None:
+        return
+    if not isinstance(section, Mapping):
+        raise ValueError("radon_inference must be a mapping")
+
+    enabled = section.get("enabled")
+    if enabled is None:
+        return
+    if not isinstance(enabled, bool):
+        raise ValueError("radon_inference.enabled must be a boolean")
+    if not enabled:
+        return
+
+    source_isotopes = section.get("source_isotopes")
+    if not isinstance(source_isotopes, list) or not source_isotopes:
+        raise ValueError("radon_inference.source_isotopes must be a non-empty list")
+    allowed_isotopes = {"Po214", "Po218"}
+    invalid_isotopes = [iso for iso in source_isotopes if iso not in allowed_isotopes]
+    if invalid_isotopes:
+        raise ValueError(
+            "radon_inference.source_isotopes contains invalid entries: "
+            + ", ".join(sorted(set(invalid_isotopes)))
+        )
+    if len(set(source_isotopes)) != len(source_isotopes):
+        raise ValueError("radon_inference.source_isotopes must not contain duplicates")
+
+    weights = section.get("source_weights", {}) or {}
+    if not isinstance(weights, Mapping):
+        raise ValueError("radon_inference.source_weights must be a mapping if provided")
+    extra_weights = set(weights) - set(source_isotopes)
+    if extra_weights:
+        raise ValueError(
+            "radon_inference.source_weights keys must be a subset of source_isotopes; "
+            f"got unexpected: {', '.join(sorted(extra_weights))}"
+        )
+    for iso, val in weights.items():
+        if not isinstance(val, Real):
+            raise ValueError(
+                f"radon_inference.source_weights[{iso}] must be numeric; got {type(val).__name__}"
+            )
+
+    detection = section.get("detection_efficiency", {}) or {}
+    if not isinstance(detection, Mapping):
+        raise ValueError("radon_inference.detection_efficiency must be a mapping")
+    missing_detection = [iso for iso in source_isotopes if iso not in detection]
+    if missing_detection:
+        missing_str = ", ".join(sorted(missing_detection))
+        raise ValueError(
+            "radon_inference.detection_efficiency must provide values for all "
+            f"source_isotopes: missing {missing_str}"
+        )
+    for iso, val in detection.items():
+        if iso not in allowed_isotopes:
+            raise ValueError(
+                f"radon_inference.detection_efficiency contains unknown isotope '{iso}'"
+            )
+        if not isinstance(val, Real):
+            raise ValueError(
+                f"radon_inference.detection_efficiency[{iso}] must be numeric; got {type(val).__name__}"
+            )
+        if val < 0:
+            raise ValueError(
+                f"radon_inference.detection_efficiency[{iso}] must be non-negative"
+            )
+
+    def _check_efficiency(value: Any, key: str) -> None:
+        if value is None:
+            return
+        if not isinstance(value, Real):
+            raise ValueError(f"radon_inference.{key} must be numeric")
+        if not (0 < float(value) <= 1.5):
+            raise ValueError(
+                f"radon_inference.{key} must be in the range (0, 1.5]; got {value}"
+            )
+
+    _check_efficiency(section.get("transport_efficiency"), "transport_efficiency")
+    _check_efficiency(section.get("retention_efficiency"), "retention_efficiency")
+
+    chain = section.get("chain_correction")
+    if chain is not None and chain not in {
+        "none",
+        "assume_equilibrium",
+        "forward_model",
+    }:
+        raise ValueError(
+            "radon_inference.chain_correction must be one of "
+            "'none', 'assume_equilibrium', 'forward_model'"
+        )
+
+    external = section.get("external_rn")
+    if external is not None:
+        if not isinstance(external, Mapping):
+            raise ValueError("radon_inference.external_rn must be a mapping")
+        mode = external.get("mode")
+        if mode not in {"constant", "file"}:
+            raise ValueError(
+                "radon_inference.external_rn.mode must be 'constant' or 'file'"
+            )
+        if mode == "constant":
+            const = external.get("constant_bq_per_m3")
+            if not isinstance(const, Real) or const <= 0:
+                raise ValueError(
+                    "radon_inference.external_rn.constant_bq_per_m3 must be a positive number"
+                )
+        else:
+            file_path = external.get("file_path")
+            if not isinstance(file_path, str) or not file_path.strip():
+                raise ValueError(
+                    "radon_inference.external_rn.file_path must be a non-empty string when mode is 'file'"
+                )
+
+    output_cfg = section.get("output")
+    if output_cfg is not None and not isinstance(output_cfg, Mapping):
+        raise ValueError("radon_inference.output must be a mapping if provided")
 
 
 def ensure_dir(path):
@@ -342,6 +518,8 @@ def load_config(config_path):
 
     if "analysis_isotope" not in cfg:
         cfg["analysis_isotope"] = "radon"
+
+    _validate_radon_inference(cfg)
 
     # Fill in default EMG usage for spectral fits when not explicitly provided
     spec = cfg.setdefault("spectral_fit", {})
