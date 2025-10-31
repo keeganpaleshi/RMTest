@@ -20,23 +20,88 @@ from emg_stable import StableEMG, emg_left_stable
 _EMG_TAU_MIN = getattr(_emg_module, "_EMG_TAU_MIN", _TAU_MIN)
 _USE_STABLE_EMG_DEFAULT = True
 
+
+_EMG_MODE_ALIASES = {
+    "": "scipy_safe",
+    "auto": "scipy_safe",
+    "default": "scipy_safe",
+    "erfcx": "erfcx_exact",
+    "erfcx_exact": "erfcx_exact",
+    "legacy": "legacy",
+    "exponnorm": "legacy",
+    "off": "legacy",
+    "disabled": "legacy",
+    "scipy": "legacy",
+    "scipy_safe": "scipy_safe",
+    "stable": "scipy_safe",
+}
+
+
+def _normalize_emg_mode(mode):
+    text = "" if mode is None else str(mode).strip()
+    key = text.lower()
+    if key in _EMG_MODE_ALIASES:
+        return _EMG_MODE_ALIASES[key]
+    return text or "scipy_safe"
+
+
+def _mode_prefers_stable(mode):
+    key = str(mode).strip().lower()
+    if not key:
+        return None
+    if key in {"legacy"}:
+        return False
+    if key in {"scipy_safe", "erfcx_exact"}:
+        return True
+    return None
+
+
 if not hasattr(_emg_module, "EMG_STABLE_MODE"):
     setattr(_emg_module, "EMG_STABLE_MODE", "scipy_safe")
 
+EMG_STABLE_MODE = _normalize_emg_mode(getattr(_emg_module, "EMG_STABLE_MODE", "scipy_safe"))
+setattr(_emg_module, "EMG_STABLE_MODE", EMG_STABLE_MODE)
+
 # Backwards-compatibility attribute; prefer using the getters/setters below.
-USE_STABLE_EMG = _USE_STABLE_EMG_DEFAULT
+_mode_default = _mode_prefers_stable(EMG_STABLE_MODE)
+USE_STABLE_EMG = _USE_STABLE_EMG_DEFAULT if _mode_default is None else _mode_default
 
 
 def get_use_stable_emg() -> bool:
     """Return whether the stable EMG implementation should be used."""
 
+    mode_pref = _mode_prefers_stable(globals().get("EMG_STABLE_MODE", EMG_STABLE_MODE))
+    if mode_pref is not None:
+        return mode_pref
     return bool(globals().get("USE_STABLE_EMG", _USE_STABLE_EMG_DEFAULT))
 
 
 def set_use_stable_emg(value: bool) -> None:
     """Configure whether the stable EMG implementation should be used."""
 
-    globals()["USE_STABLE_EMG"] = bool(value)
+    use_stable = bool(value)
+    mode = globals().get("EMG_STABLE_MODE", EMG_STABLE_MODE)
+    if use_stable:
+        normalized = _normalize_emg_mode(mode)
+        if _mode_prefers_stable(normalized) is False:
+            normalized = "scipy_safe"
+    else:
+        normalized = "legacy"
+
+    set_emg_stable_mode(normalized)
+    globals()["USE_STABLE_EMG"] = bool(use_stable)
+
+
+def set_emg_stable_mode(mode: str) -> None:
+    """Set the legacy EMG mode string and keep module state in sync."""
+
+    normalized = _normalize_emg_mode(mode)
+    globals()["EMG_STABLE_MODE"] = normalized
+    setattr(_emg_module, "EMG_STABLE_MODE", normalized)
+
+    preference = _mode_prefers_stable(normalized)
+    if preference is not None:
+        globals()["USE_STABLE_EMG"] = preference
 
 
 def get_emg_tau_min() -> float:
