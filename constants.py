@@ -9,6 +9,10 @@ import yaml
 # Minimum allowed value for the exponential tail constant used in EMG fits.
 _TAU_MIN = 1e-6
 
+# Minimum tau value before the EMG reduces to a Gaussian.  This mirrors the
+# calibration module's EMG handling and can be overridden by configuration.
+_EMG_TAU_MIN = _TAU_MIN
+
 # Thresholds shared across the analysis modules
 # Maximum exponent before ``exp`` overflows a IEEE-754 double
 EXP_OVERFLOW_DOUBLE = 700.0
@@ -141,6 +145,7 @@ def load_half_life_overrides(cfg: dict | None) -> dict[str, float]:
 
 __all__ = [
     "_TAU_MIN",
+    "_EMG_TAU_MIN",
     "EXP_OVERFLOW_DOUBLE",
     "DEFAULT_NOISE_CUTOFF",
     "CURVE_FIT_MAX_EVALS",

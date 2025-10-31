@@ -1,36 +1,12 @@
-"""
-Module: emg_stable.py
-Purpose: Numerically stable Exponentially Modified Gaussian implementation using scipy special functions
-Author: RMTest Enhancement Module
-
-This module provides an enhanced, numerically stable implementation of the Exponentially
-Modified Gaussian (EMG) distribution for use in radon alpha spectroscopy peak fitting.
-
-Key Features:
-- Enhanced numerical stability with safeguards against overflow/underflow
-- Fallback to Gaussian for very small tau values (< 1e-6)
-- Validates and cleans output to prevent NaN/Inf propagation
-- Compatible with existing scipy.stats.exponnorm-based code
-- Optional fitting capabilities with parameter validation
-
-Integration:
-To use this stable EMG implementation, set USE_STABLE_EMG = True in calibration.py
-(this is the default). To revert to the legacy scipy.stats.exponnorm implementation,
-set USE_STABLE_EMG = False.
-
-Usage Example:
-    from emg_stable import StableEMG
-
-    emg = StableEMG(use_log_scale=False)
-    x = np.linspace(0, 1000, 1000)
-    y = emg.pdf(x, mu=500, sigma=20, tau=5.0, amplitude=1.0)
-"""
+"""Numerically stable Exponentially Modified Gaussian utilities."""
 
 import numpy as np
 from scipy import special
 from scipy.stats import norm
 from typing import Tuple, Optional, Union, Dict
 import warnings
+
+from constants import _EMG_TAU_MIN
 
 
 class StableEMG:
@@ -75,7 +51,8 @@ class StableEMG:
         Returns:
             EMG probability density values
         """
-        if tau <= 1e-6:
+        tau_min = _EMG_TAU_MIN
+        if tau <= tau_min:
             # Fall back to pure Gaussian for negligible tail
             return amplitude * norm.pdf(x, mu, sigma)
 
@@ -145,7 +122,7 @@ class StableEMG:
             bounds = {
                 'mu': (initial_params['mu'] - 0.5, initial_params['mu'] + 0.5),
                 'sigma': (0.001, 0.5),
-                'tau': (1e-6, 0.1),  # Enforce minimum tau for stability
+                'tau': (_EMG_TAU_MIN, 0.1),  # Enforce minimum tau for stability
                 'amplitude': (0, 10 * np.max(y_data))
             }
 
@@ -192,7 +169,7 @@ class StableEMG:
             warnings.warn(f"EMG fit failed: {e}. Returning Gaussian approximation.")
             # Fall back to Gaussian fit
             gaussian_params = self._fit_gaussian_fallback(x_data, y_data, initial_params)
-            gaussian_params['tau'] = 1e-6  # Minimal tail
+            gaussian_params['tau'] = _EMG_TAU_MIN  # Minimal tail
             gaussian_params['tau_err'] = 0
             gaussian_params['success'] = False
             return gaussian_params
@@ -231,7 +208,7 @@ class StableEMG:
         if params['tau'] <= 0:
             return False, "Tau must be positive"
 
-        if params['tau'] < 1e-6:
+        if params['tau'] < _EMG_TAU_MIN:
             return False, "Tau too small - numerical instability risk"
 
         if params['tau'] / params['sigma'] > 100:

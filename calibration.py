@@ -9,6 +9,7 @@ from scipy.stats import exponnorm
 import utils
 from constants import (
     _TAU_MIN,
+    _EMG_TAU_MIN,
     DEFAULT_NOISE_CUTOFF,
     DEFAULT_NOMINAL_ADC,
     DEFAULT_KNOWN_ENERGIES,
@@ -211,7 +212,8 @@ def emg_left(x, mu, sigma, tau):
         EMG probability density values (unit area PDF)
     """
 
-    if tau <= 0:
+    tau_min = _EMG_TAU_MIN
+    if tau <= tau_min:
         return gaussian(x, mu, sigma)
 
     if USE_STABLE_EMG:
