@@ -316,10 +316,17 @@ CONFIG_SCHEMA = {
                             "enum": ["constant", "file"],
                         },
                         "constant_bq_per_m3": {"type": "number"},
+                        "fallback_bq_per_m3": {"type": "number"},
                         "file_path": {"type": "string"},
                         "time_column": {"type": "string"},
                         "value_column": {"type": "string"},
                         "tz": {"type": "string"},
+                        "interpolation": {
+                            "type": "string",
+                            "enum": ["nearest", "ffill"],
+                        },
+                        "allowed_skew_seconds": {"type": "number"},
+                        "max_gap_seconds": {"type": "number"},
                     },
                     "required": ["mode"],
                     "allOf": [

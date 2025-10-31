@@ -141,3 +141,143 @@ def test_file_mode_missing_file_with_constant_falls_back(tmp_path):
     result = load_external_rn_series(cfg, ["2024-01-01T00:00:00Z"])
 
     assert [val for _, val in result] == [101.0]
+
+
+def test_new_parameter_names_max_gap_seconds(tmp_path):
+    """Test that max_gap_seconds parameter works correctly."""
+    csv_path = tmp_path / "external_sparse.csv"
+    df = pd.DataFrame(
+        {
+            "timestamp": [
+                "2024-01-01T00:00:00Z",
+                "2024-01-01T00:30:00Z",
+            ],
+            "rn_bq_per_m3": [55.0, 65.0],
+        }
+    )
+    df.to_csv(csv_path, index=False)
+
+    cfg = {
+        "mode": "file",
+        "file_path": str(csv_path),
+        "max_gap_seconds": 60,  # Using new parameter name
+        "fallback_bq_per_m3": 88.8,  # Using new parameter name
+    }
+    targets = [
+        "2024-01-01T00:00:00Z",
+        "2024-01-01T00:15:00Z",  # Will trigger fallback
+        "2024-01-01T00:30:00Z",
+    ]
+
+    result = load_external_rn_series(cfg, targets)
+
+    assert [round(val, 3) for _, val in result] == [55.0, 88.8, 65.0]
+
+
+def test_sparse_csv_with_ffill_and_fallback(tmp_path):
+    """Acceptance test: CSV with 10-minute gaps should fill 1-minute RMTest data."""
+    csv_path = tmp_path / "sparse_10min.csv"
+    df = pd.DataFrame(
+        {
+            "timestamp": [
+                "2024-01-01T00:00:00Z",
+                "2024-01-01T00:10:00Z",
+                "2024-01-01T00:20:00Z",
+            ],
+            "rn_bq_per_m3": [100.0, 110.0, 120.0],
+        }
+    )
+    df.to_csv(csv_path, index=False)
+
+    cfg = {
+        "mode": "file",
+        "file_path": str(csv_path),
+        "interpolation": "ffill",
+        "max_gap_seconds": 900,  # 15 minutes tolerance
+        "fallback_bq_per_m3": 80.0,
+    }
+    # Generate 1-minute interval targets for 25 minutes
+    targets = [
+        pd.Timestamp("2024-01-01T00:00:00Z") + pd.Timedelta(minutes=i)
+        for i in range(25)
+    ]
+
+    result = load_external_rn_series(cfg, targets)
+    values = [val for _, val in result]
+
+    # First 10 minutes should be 100.0 (ffill from 00:00)
+    assert values[0:10] == [100.0] * 10
+    # Next 10 minutes should be 110.0 (ffill from 00:10)
+    assert values[10:20] == [110.0] * 10
+    # Last 5 minutes should be 120.0 (ffill from 00:20)
+    assert values[20:25] == [120.0] * 5
+
+
+def test_csv_stops_halfway_uses_fallback(tmp_path):
+    """Acceptance test: CSV stops halfway, rest should use fallback."""
+    csv_path = tmp_path / "stops_halfway.csv"
+    df = pd.DataFrame(
+        {
+            "timestamp": [
+                "2024-01-01T00:00:00Z",
+                "2024-01-01T00:10:00Z",
+            ],
+            "rn_bq_per_m3": [100.0, 110.0],
+        }
+    )
+    df.to_csv(csv_path, index=False)
+
+    cfg = {
+        "mode": "file",
+        "file_path": str(csv_path),
+        "interpolation": "ffill",
+        "max_gap_seconds": 900,  # 15 minutes tolerance
+        "fallback_bq_per_m3": 80.0,
+    }
+    # Generate targets for 30 minutes (CSV only has data for first 10 minutes)
+    targets = [
+        pd.Timestamp("2024-01-01T00:00:00Z") + pd.Timedelta(minutes=i)
+        for i in range(31)
+    ]
+
+    result = load_external_rn_series(cfg, targets)
+    values = [val for _, val in result]
+
+    # First minute should be 100.0
+    assert values[0] == 100.0
+    # Minutes 10-20 should be 110.0 (within tolerance)
+    assert all(v == 110.0 for v in values[10:21])
+    # After 00:25 (15 min after last data point), should use fallback
+    assert all(v == 80.0 for v in values[26:])
+
+
+def test_missing_fallback_raises_clear_error(tmp_path):
+    """Test that missing fallback raises a clear error message."""
+    csv_path = tmp_path / "sparse.csv"
+    df = pd.DataFrame(
+        {
+            "timestamp": ["2024-01-01T00:00:00Z"],
+            "rn_bq_per_m3": [100.0],
+        }
+    )
+    df.to_csv(csv_path, index=False)
+
+    cfg = {
+        "mode": "file",
+        "file_path": str(csv_path),
+        "max_gap_seconds": 60,
+        # No fallback defined
+    }
+    targets = [
+        "2024-01-01T00:00:00Z",
+        "2024-01-01T00:10:00Z",  # Will be outside max_gap_seconds
+    ]
+
+    with pytest.raises(ValueError) as excinfo:
+        load_external_rn_series(cfg, targets)
+
+    error_msg = str(excinfo.value)
+    assert "No ambient radon value" in error_msg
+    assert "no fallback defined" in error_msg
+    assert "fallback_bq_per_m3" in error_msg
+    assert "max_gap_seconds" in error_msg

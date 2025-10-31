@@ -19,9 +19,15 @@ logger = logging.getLogger(__name__)
 
 
 def _get_constant(cfg_external: dict | None) -> float | None:
+    """Get constant/fallback value from config, checking both old and new parameter names."""
     if not cfg_external:
         return 80.0
 
+    # Check new parameter name first
+    if "fallback_bq_per_m3" in cfg_external:
+        return cfg_external.get("fallback_bq_per_m3")
+
+    # Fall back to old parameter names for backwards compatibility
     if "constant_bq_per_m3" in cfg_external:
         return cfg_external.get("constant_bq_per_m3")
 
@@ -113,8 +119,11 @@ def _load_file_series(cfg_external: dict, target_index: pd.DatetimeIndex) -> pd.
     series = series[~series.index.duplicated(keep="last")]
 
     interpolation = cfg_external.get("interpolation", "nearest")
-    allowed_skew_seconds = cfg_external.get("allowed_skew_seconds", 300)
-    return _reindex_series(series, target_index, interpolation, allowed_skew_seconds)
+    # Check for new parameter name first, fall back to old name for backwards compatibility
+    max_gap = cfg_external.get("max_gap_seconds")
+    if max_gap is None:
+        max_gap = cfg_external.get("allowed_skew_seconds", 300)
+    return _reindex_series(series, target_index, interpolation, max_gap)
 
 
 def load_external_rn_series(cfg_external: dict | None, target_timestamps):
@@ -154,10 +163,17 @@ def load_external_rn_series(cfg_external: dict | None, target_timestamps):
             if values.isna().any():
                 if constant_value is None:
                     missing = values[values.isna()].index[0]
+                    max_gap = cfg_external.get("max_gap_seconds") or cfg_external.get("allowed_skew_seconds", 300)
                     raise ValueError(
-                        "external radon series missing data for "
-                        f"{missing.isoformat()}"
+                        f"No ambient radon value for timestamp {missing.isoformat()} "
+                        f"(gap exceeds max_gap_seconds={max_gap}s) and no fallback defined. "
+                        f"Add 'fallback_bq_per_m3' to config or increase 'max_gap_seconds'."
                     )
+                logger.info(
+                    "Filling %d missing external radon values with fallback: %.1f Bq/m³",
+                    values.isna().sum(),
+                    constant_value,
+                )
                 values = values.fillna(constant_value)
     else:
         raise ValueError(f"unsupported external radon mode: {mode!r}")
