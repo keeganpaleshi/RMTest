@@ -30,8 +30,10 @@ Usage Example:
 import numpy as np
 from scipy import special
 from scipy.stats import norm
-from typing import Tuple, Optional, Union, Dict, Callable
+from typing import Tuple, Optional, Union, Dict, Callable, Iterable, Sequence, Mapping, List
 import warnings
+import threading
+from concurrent.futures import Executor, ThreadPoolExecutor, ProcessPoolExecutor
 
 import constants
 
@@ -244,6 +246,130 @@ class StableEMG:
             return False, "Amplitude must be non-negative"
 
         return True, "Parameters valid"
+
+
+_THREAD_LOCAL = threading.local()
+
+
+def _parallel_emg_worker(args):
+    """Worker function for parallel EMG evaluations.
+
+    Lazily instantiate a :class:`StableEMG` per worker thread/process to
+    avoid repeated object construction.
+    """
+
+    x_arr, use_log_scale, mu, sigma, tau, amplitude = args
+    stable = getattr(_THREAD_LOCAL, "stable_emg", None)
+    if stable is None or stable.use_log_scale != use_log_scale:
+        stable = StableEMG(use_log_scale=use_log_scale)
+        _THREAD_LOCAL.stable_emg = stable
+    return stable.pdf(x_arr, mu, sigma, tau, amplitude)
+
+
+def _normalise_emg_entry(
+    entry: Union[Mapping[str, float], Sequence[float]],
+    amplitude_default: float,
+) -> Tuple[float, float, float, float]:
+    """Validate and extract EMG parameters from a mapping or sequence."""
+
+    if isinstance(entry, Mapping):
+        try:
+            mu = float(entry["mu"])
+            sigma = float(entry["sigma"])
+            tau = float(entry["tau"])
+        except KeyError as exc:
+            raise KeyError("Missing EMG parameter in mapping entry") from exc
+        amplitude = float(entry.get("amplitude", amplitude_default))
+        return mu, sigma, tau, amplitude
+
+    if isinstance(entry, Sequence) and not isinstance(entry, (str, bytes)):
+        if len(entry) < 3:
+            raise ValueError("EMG parameter sequences must have at least 3 elements")
+        mu, sigma, tau = (float(entry[0]), float(entry[1]), float(entry[2]))
+        amplitude = float(entry[3]) if len(entry) > 3 else float(amplitude_default)
+        return mu, sigma, tau, amplitude
+
+    raise TypeError(
+        "EMG parameter entries must be mappings or sequences of length >= 3"
+    )
+
+
+def parallel_emg_pdf_map(
+    x: np.ndarray,
+    params: Iterable[Union[Mapping[str, float], Sequence[float]]],
+    *,
+    use_log_scale: bool = False,
+    amplitude_default: float = 1.0,
+    executor: Optional[Executor] = None,
+    max_workers: Optional[int] = None,
+    prefer: str = "threads",
+    chunk_size: Optional[int] = None,
+) -> List[np.ndarray]:
+    """Evaluate EMG PDFs for a collection of parameter sets in parallel.
+
+    Parameters
+    ----------
+    x : array-like
+        Domain over which to evaluate the EMG PDFs.
+    params : iterable
+        Iterable of parameter specifications. Each entry can be a mapping
+        containing ``mu``, ``sigma`` and ``tau`` (with an optional
+        ``amplitude``) or a sequence where the first three elements are
+        interpreted as ``mu``, ``sigma`` and ``tau``. A fourth element, if
+        present, is treated as the amplitude.
+    use_log_scale : bool, optional
+        Passed to :class:`StableEMG` for numerically extreme ranges.
+    amplitude_default : float, optional
+        Amplitude value used when a parameter entry omits the amplitude.
+    executor : concurrent.futures.Executor, optional
+        Existing executor used to execute the workload. When supplied the
+        caller is responsible for managing the executor's lifecycle.
+    max_workers : int, optional
+        Maximum number of worker threads or processes to spawn when the
+        function manages its own executor.
+    prefer : {"threads", "processes"}, optional
+        Preferred execution backend when an executor is not provided.
+    chunk_size : int, optional
+        Chunk size forwarded to :meth:`Executor.map` when using a process
+        pool. Ignored for thread pools.
+
+    Returns
+    -------
+    list of numpy.ndarray
+        Evaluated EMG PDFs corresponding to each parameter entry in ``params``.
+
+    Notes
+    -----
+    The order of the returned arrays matches the order of the input parameter
+    iterable. When ``params`` is empty an empty list is returned.
+    """
+
+    x_arr = np.asarray(x, dtype=float)
+    prepared: List[Tuple[np.ndarray, bool, float, float, float, float]] = []
+    for entry in params:
+        mu, sigma, tau, amplitude = _normalise_emg_entry(entry, amplitude_default)
+        prepared.append((x_arr, use_log_scale, mu, sigma, tau, amplitude))
+
+    if not prepared:
+        return []
+
+    if executor is not None:
+        futures = [executor.submit(_parallel_emg_worker, task) for task in prepared]
+        return [f.result() for f in futures]
+
+    prefer_norm = prefer.lower()
+    if prefer_norm not in {"threads", "processes"}:
+        raise ValueError("prefer must be 'threads' or 'processes'")
+
+    ExecutorCls = ThreadPoolExecutor if prefer_norm == "threads" else ProcessPoolExecutor
+    map_kwargs = {}
+    if prefer_norm == "processes" and chunk_size is not None:
+        map_kwargs["chunksize"] = max(1, int(chunk_size))
+
+    with ExecutorCls(max_workers=max_workers) as pool:
+        results = list(pool.map(_parallel_emg_worker, prepared, **map_kwargs))
+
+    return results
 
 
 def emg_left_stable(x, mu, sigma, tau, amplitude: float = 1.0, use_log_scale: bool = False):
