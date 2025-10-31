@@ -18,6 +18,23 @@ import emg_stable as _emg_module
 from emg_stable import StableEMG, emg_left_stable
 
 _EMG_TAU_MIN = getattr(_emg_module, "_EMG_TAU_MIN", _TAU_MIN)
+_DEFAULT_USE_STABLE_EMG = True
+
+if not hasattr(_emg_module, "EMG_STABLE_MODE"):
+    setattr(_emg_module, "EMG_STABLE_MODE", "scipy_safe")
+
+
+def get_use_stable_emg() -> bool:
+    """Return whether the stable EMG implementation should be used."""
+
+    return bool(globals().get("USE_STABLE_EMG", _DEFAULT_USE_STABLE_EMG))
+
+
+def set_use_stable_emg(value: bool) -> None:
+    """Set the stable EMG usage flag (and retain backward compatibility)."""
+
+    use_stable = bool(value)
+    globals()["USE_STABLE_EMG"] = use_stable
 
 
 def get_emg_tau_min() -> float:
@@ -46,7 +63,8 @@ _DEFAULT_TAU_BOUNDS = _make_tau_bounds(_TAU_MIN)
 # EMG implementation selection
 # Set to True to use the enhanced stable EMG implementation
 # Set to False to use the legacy scipy.stats.exponnorm implementation
-USE_STABLE_EMG = True
+# (value is updated via :func:`set_use_stable_emg` when configuration is loaded)
+USE_STABLE_EMG = get_use_stable_emg()
 
 
 def _set_tau_min(tau_min: float) -> None:
@@ -60,9 +78,9 @@ def _set_tau_min(tau_min: float) -> None:
 def configure_emg(use_stable_emg: bool, tau_min: float) -> None:
     """Apply EMG configuration sourced from the analysis configuration file."""
 
-    global USE_STABLE_EMG
-    USE_STABLE_EMG = bool(use_stable_emg)
-    _set_tau_min(tau_min)
+    set_use_stable_emg(use_stable_emg)
+    set_emg_tau_min(tau_min)
+    _set_tau_min(get_emg_tau_min())
 
     try:
         import fitting as _fitting  # type: ignore
@@ -259,7 +277,7 @@ def emg_left(x, mu, sigma, tau):
     if tau <= tau_min:
         return gaussian(x, mu, sigma)
 
-    if USE_STABLE_EMG:
+    if get_use_stable_emg():
         # Use enhanced stable implementation with erfcx
         return emg_left_stable(x, mu, sigma, tau, amplitude=1.0, use_log_scale=False)
     else:
