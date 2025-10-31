@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 
 # Minimum allowed value for the exponential tail constant used in EMG fits.
-_TAU_MIN = 1e-6
+_TAU_MIN = 1e-8
 
 # Thresholds shared across the analysis modules
 # Maximum exponent before ``exp`` overflows a IEEE-754 double

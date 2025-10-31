@@ -12,7 +12,12 @@ import argparse
 import pandas as pd
 from collections.abc import Mapping
 from typing import Any, Iterator
+from calibration import (
+    set_emg_tau_min as set_calibration_emg_tau_min,
+    set_use_stable_emg,
+)
 from constants import load_nuclide_overrides
+from fitting import set_emg_tau_min as set_fitting_emg_tau_min
 
 import numpy as np
 from utils import to_native
@@ -128,6 +133,14 @@ CONFIG_SCHEMA = {
         "spectral_fit": {
             "type": "object",
             "properties": {"expected_peaks": {"type": "object"}},
+        },
+        "fitting": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "use_stable_emg": {"type": "boolean"},
+                "emg_tau_min": {"type": "number", "exclusiveMinimum": 0},
+            },
         },
         "time_fit": {
             "type": "object",
@@ -444,6 +457,19 @@ def load_config(config_path):
     else:
         val = bool(emg_cfg)
         spec["use_emg"] = {iso: val for iso in default_emg}
+
+    fitting_cfg = cfg.setdefault("fitting", {})
+    if not isinstance(fitting_cfg, dict):
+        if not isinstance(fitting_cfg, Mapping):
+            raise TypeError("fitting configuration must be a mapping")
+        fitting_cfg = dict(fitting_cfg)
+        cfg["fitting"] = fitting_cfg
+
+    use_stable = fitting_cfg.setdefault("use_stable_emg", True)
+    tau_min_cfg = fitting_cfg.setdefault("emg_tau_min", 1e-8)
+    set_use_stable_emg(use_stable)
+    set_calibration_emg_tau_min(tau_min_cfg)
+    set_fitting_emg_tau_min(tau_min_cfg)
     # Validate resolution settings
     float_sigma_E = spec.get("float_sigma_E", True)
     fix_sigma0 = spec.get("flags", {}).get("fix_sigma0", False)
