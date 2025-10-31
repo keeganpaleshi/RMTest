@@ -87,6 +87,12 @@ from calibration import (
 
 from fitting import fit_spectrum, fit_time_series, FitResult, FitParams
 from reporting import build_diagnostics, start_warning_capture
+from src.rmtest.radon_inference import run_radon_inference
+from src.rmtest.plotting.radon_plots import (
+    plot_ambient_rn_vs_time,
+    plot_rn_inferred_vs_time,
+    plot_volume_equiv_vs_time,
+)
 
 from constants import (
     DEFAULT_NOISE_CUTOFF,
@@ -2706,6 +2712,7 @@ def main(argv=None):
     time_fit_background_meta: dict[str, dict[str, Any]] = {}
     priors_time_all = {}
     time_plot_data = {}
+    radon_isotope_series: dict[str, dict[float, dict[str, float]]] = {}
     iso_live_time = {}
     t_start_map = {}
     iso_counts = {}
@@ -4229,7 +4236,7 @@ def main(argv=None):
                 )
                 if sigma_arr is not None:
                     model_errs[iso_key] = sigma_arr
-            _ = plot_time_series(
+            ts_payload = plot_time_series(
                 all_timestamps=ts_times,
                 all_energies=ts_energy,
                 fit_results=fit_dict,
@@ -4239,8 +4246,59 @@ def main(argv=None):
                 out_png=Path(out_dir) / f"time_series_{iso}.png",
                 model_errors=model_errs,
             )
+            if isinstance(ts_payload, Mapping):
+                segments = ts_payload.get("segments")
+                if isinstance(segments, list):
+                    for seg in segments:
+                        if not isinstance(seg, Mapping):
+                            continue
+                        centers = np.asarray(seg.get("centers_abs", []), dtype=float)
+                        widths = np.asarray(seg.get("bin_widths", []), dtype=float)
+                        counts_map = seg.get("counts")
+                        if not isinstance(counts_map, Mapping):
+                            continue
+                        for iso_key, counts_arr in counts_map.items():
+                            counts = np.asarray(counts_arr, dtype=float)
+                            if counts.size != centers.size or counts.size == 0:
+                                continue
+                            iso_times = radon_isotope_series.setdefault(iso_key, {})
+                            for idx in range(counts.size):
+                                dt_val = widths[idx] if idx < widths.size else None
+                                if dt_val is None or not np.isfinite(dt_val) or dt_val <= 0:
+                                    continue
+                                t_val = float(centers[idx])
+                                entry = iso_times.setdefault(
+                                    t_val, {"counts": 0.0, "dt": float(dt_val)}
+                                )
+                                entry["counts"] += float(counts[idx])
+                                entry["dt"] = float(dt_val)
         except Exception as e:
             logger.warning("Could not create time-series plot for %s -> %s", iso, e)
+
+    radon_inference_input = {
+        iso: [
+            {"t": t, "counts": values.get("counts", 0.0), "dt": values.get("dt", 0.0)}
+            for t, values in sorted(time_map.items())
+        ]
+        for iso, time_map in radon_isotope_series.items()
+        if time_map
+    }
+    radon_inference_results = run_radon_inference(radon_inference_input, cfg)
+    if radon_inference_results:
+        summary["radon_inference"] = radon_inference_results
+        out_dir_path = Path(out_dir)
+        try:
+            plot_rn_inferred_vs_time(radon_inference_results, out_dir_path)
+        except Exception as exc:
+            logger.warning("Could not create inferred radon plot -> %s", exc)
+        try:
+            plot_ambient_rn_vs_time(radon_inference_results, out_dir_path)
+        except Exception as exc:
+            logger.warning("Could not create ambient radon plot -> %s", exc)
+        try:
+            plot_volume_equiv_vs_time(radon_inference_results, out_dir_path)
+        except Exception as exc:
+            logger.warning("Could not create equivalent volume plot -> %s", exc)
 
     # Additional visualizations
     if efficiency_results.get("sources"):
