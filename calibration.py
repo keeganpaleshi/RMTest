@@ -18,6 +18,25 @@ import emg_stable as _emg_module
 from emg_stable import StableEMG, emg_left_stable
 
 _EMG_TAU_MIN = getattr(_emg_module, "_EMG_TAU_MIN", _TAU_MIN)
+_USE_STABLE_EMG_DEFAULT = True
+
+if not hasattr(_emg_module, "EMG_STABLE_MODE"):
+    setattr(_emg_module, "EMG_STABLE_MODE", "scipy_safe")
+
+# Backwards-compatibility attribute; prefer using the getters/setters below.
+USE_STABLE_EMG = _USE_STABLE_EMG_DEFAULT
+
+
+def get_use_stable_emg() -> bool:
+    """Return whether the stable EMG implementation should be used."""
+
+    return bool(globals().get("USE_STABLE_EMG", _USE_STABLE_EMG_DEFAULT))
+
+
+def set_use_stable_emg(value: bool) -> None:
+    """Configure whether the stable EMG implementation should be used."""
+
+    globals()["USE_STABLE_EMG"] = bool(value)
 
 
 def get_emg_tau_min() -> float:
@@ -32,6 +51,7 @@ def set_emg_tau_min(value: float) -> None:
     tau_min = float(value)
     setattr(_emg_module, "_EMG_TAU_MIN", tau_min)
     globals()["_EMG_TAU_MIN"] = tau_min
+    _set_tau_min(tau_min)
 
 
 def _make_tau_bounds(tau_min: float) -> dict[str, tuple[float, float]]:
@@ -42,12 +62,6 @@ def _make_tau_bounds(tau_min: float) -> dict[str, tuple[float, float]]:
 
 
 _DEFAULT_TAU_BOUNDS = _make_tau_bounds(_TAU_MIN)
-
-# EMG implementation selection
-# Set to True to use the enhanced stable EMG implementation
-# Set to False to use the legacy scipy.stats.exponnorm implementation
-USE_STABLE_EMG = True
-
 
 def _set_tau_min(tau_min: float) -> None:
     """Update the minimum tau value used throughout the calibration module."""
@@ -60,9 +74,8 @@ def _set_tau_min(tau_min: float) -> None:
 def configure_emg(use_stable_emg: bool, tau_min: float) -> None:
     """Apply EMG configuration sourced from the analysis configuration file."""
 
-    global USE_STABLE_EMG
-    USE_STABLE_EMG = bool(use_stable_emg)
-    _set_tau_min(tau_min)
+    set_use_stable_emg(use_stable_emg)
+    set_emg_tau_min(tau_min)
 
     try:
         import fitting as _fitting  # type: ignore
@@ -259,7 +272,7 @@ def emg_left(x, mu, sigma, tau):
     if tau <= tau_min:
         return gaussian(x, mu, sigma)
 
-    if USE_STABLE_EMG:
+    if get_use_stable_emg():
         # Use enhanced stable implementation with erfcx
         return emg_left_stable(x, mu, sigma, tau, amplitude=1.0, use_log_scale=False)
     else:
