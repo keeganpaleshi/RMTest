@@ -29,8 +29,11 @@ Usage Example:
 import numpy as np
 from scipy import special
 from scipy.stats import norm
-from typing import Tuple, Optional, Union, Dict
+from typing import Tuple, Optional, Union, Dict, Callable
 import warnings
+
+
+EMG_STABLE_MODE = "scipy_safe"
 
 
 class StableEMG:
@@ -243,12 +246,46 @@ class StableEMG:
         return True, "Parameters valid"
 
 
+def _emg_left_stable_scipy_safe(
+    x,
+    mu,
+    sigma,
+    tau,
+    amplitude: float = 1.0,
+    use_log_scale: bool = False,
+):
+    """Current scipy-based implementation with safety guards."""
+    stable_emg = StableEMG(use_log_scale=use_log_scale)
+    result = stable_emg.pdf(x, mu, sigma, tau, amplitude)
+    return np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
+
+
+def _emg_left_stable_erfcx_exact(
+    x,
+    mu,
+    sigma,
+    tau,
+    amplitude: float = 1.0,
+    use_log_scale: bool = False,
+):
+    """Placeholder for an erfcx-based closed-form EMG implementation."""
+    raise NotImplementedError(
+        "The 'erfcx_exact' EMG strategy has not been implemented yet."
+    )
+
+
+_EMG_STRATEGIES: Dict[str, Callable[..., np.ndarray]] = {
+    "scipy_safe": _emg_left_stable_scipy_safe,
+    "erfcx_exact": _emg_left_stable_erfcx_exact,
+}
+
+
 def emg_left_stable(x, mu, sigma, tau, amplitude: float = 1.0, use_log_scale: bool = False):
     """
     Drop-in replacement for existing emg_left function with enhanced stability.
 
     This function provides a direct replacement for the existing EMG implementation
-    with improved numerical stability using scipy special functions (erfcx).
+    while dispatching between named strategies based on ``EMG_STABLE_MODE``.
 
     Args:
         x: Input values (energy in MeV or ADC units)
@@ -261,11 +298,11 @@ def emg_left_stable(x, mu, sigma, tau, amplitude: float = 1.0, use_log_scale: bo
     Returns:
         EMG probability density values
     """
-    stable_emg = StableEMG(use_log_scale=use_log_scale)
-    result = stable_emg.pdf(x, mu, sigma, tau, amplitude)
-    # Handle any remaining NaN/Inf
-    result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
-    return result
+    try:
+        strategy = _EMG_STRATEGIES[EMG_STABLE_MODE]
+    except KeyError as exc:
+        raise ValueError(f"Unknown EMG strategy '{EMG_STABLE_MODE}'") from exc
+    return strategy(x, mu, sigma, tau, amplitude=amplitude, use_log_scale=use_log_scale)
 
 
 if __name__ == "__main__":
