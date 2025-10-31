@@ -8,7 +8,7 @@ Modified Gaussian (EMG) distribution for use in radon alpha spectroscopy peak fi
 
 Key Features:
 - Enhanced numerical stability with safeguards against overflow/underflow
-- Fallback to Gaussian for very small tau values (< 1e-6)
+ - Fallback to Gaussian for tau values below a configurable floor
 - Validates and cleans output to prevent NaN/Inf propagation
 - Compatible with existing scipy.stats.exponnorm-based code
 - Optional fitting capabilities with parameter validation
@@ -31,6 +31,11 @@ from scipy import special
 from scipy.stats import norm
 from typing import Tuple, Optional, Union, Dict, Callable
 import warnings
+
+from constants import _TAU_MIN
+
+
+_EMG_TAU_MIN = _TAU_MIN
 
 
 EMG_STABLE_MODE = "scipy_safe"
@@ -78,7 +83,8 @@ class StableEMG:
         Returns:
             EMG probability density values
         """
-        if tau <= 1e-6:
+        tau_min = _EMG_TAU_MIN
+        if tau <= tau_min:
             # Fall back to pure Gaussian for negligible tail
             return amplitude * norm.pdf(x, mu, sigma)
 
