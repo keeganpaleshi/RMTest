@@ -27,13 +27,27 @@ Usage Example:
     y = emg.pdf(x, mu=500, sigma=20, tau=5.0, amplitude=1.0)
 """
 
+from __future__ import annotations
+
+from collections.abc import Iterable, Mapping, Sequence
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from multiprocessing import get_context
+from typing import Callable, Dict, Optional, Tuple, Union
+import warnings
+
 import numpy as np
 from scipy import special
 from scipy.stats import norm
-from typing import Tuple, Optional, Union, Dict, Callable
-import warnings
 
 import constants
+
+
+EMG_STABLE_MODE = "scipy_safe"
+"""Default evaluation strategy used by :func:`emg_left_stable`."""
+
+_PARALLEL_BACKEND_THREAD = "thread"
+_PARALLEL_BACKEND_PROCESS = "process"
+_PARALLEL_BACKEND_SEQUENTIAL = "sequential"
 
 
 class StableEMG:
@@ -270,6 +284,140 @@ def emg_left_stable(x, mu, sigma, tau, amplitude: float = 1.0, use_log_scale: bo
         raise ValueError(f"Unknown EMG stable mode: {EMG_STABLE_MODE}") from exc
 
     return strategy(x, mu, sigma, tau, amplitude=amplitude, use_log_scale=use_log_scale)
+
+
+def _evaluate_emg_args(args: Tuple[np.ndarray, float, float, float, float, bool]) -> np.ndarray:
+    x, mu, sigma, tau, amplitude, use_log_scale = args
+    return emg_left_stable(x, mu, sigma, tau, amplitude=amplitude, use_log_scale=use_log_scale)
+
+
+def _normalize_emg_scan_params(
+    params: Union[Mapping[str, float], Sequence[float]],
+    default_amplitude: float,
+    default_use_log: bool,
+) -> Tuple[float, float, float, float, bool]:
+    if isinstance(params, Mapping):
+        try:
+            mu = float(params["mu"])
+            sigma = float(params["sigma"])
+            tau = float(params["tau"])
+        except KeyError as exc:
+            raise KeyError(f"Missing EMG parameter {exc.args[0]!r} in mapping specification") from exc
+        amplitude = float(params.get("amplitude", default_amplitude))
+        use_log_scale = bool(params.get("use_log_scale", default_use_log))
+    else:
+        if len(params) < 3:
+            raise ValueError(
+                "Sequence specification for EMG scan must contain at least three elements "
+                "(mu, sigma, tau)"
+            )
+        mu = float(params[0])
+        sigma = float(params[1])
+        tau = float(params[2])
+        amplitude = float(params[3]) if len(params) >= 4 else default_amplitude
+        use_log_scale = bool(params[4]) if len(params) >= 5 else default_use_log
+
+    return mu, sigma, tau, amplitude, use_log_scale
+
+
+def parallel_emg_scan(
+    x: np.ndarray,
+    parameter_sets: Iterable[Union[Mapping[str, float], Sequence[float]]],
+    *,
+    amplitude: Optional[float] = None,
+    use_log_scale: Optional[bool] = None,
+    backend: str = _PARALLEL_BACKEND_THREAD,
+    max_workers: Optional[int] = None,
+    chunk_size: int = 1,
+    stack: bool = False,
+) -> Union[list[np.ndarray], np.ndarray]:
+    """Evaluate :func:`emg_left_stable` for many parameter combinations in parallel.
+
+    Parameters
+    ----------
+    x:
+        Sample locations shared across all evaluations.
+    parameter_sets:
+        Iterable containing parameter specifications. Each element may be a mapping
+        with ``mu``, ``sigma`` and ``tau`` keys (``amplitude`` and ``use_log_scale``
+        are optional) or a sequence providing those values in order.
+    amplitude, use_log_scale:
+        Optional defaults used when the corresponding entry is omitted from a
+        parameter specification. They default to ``1.0`` and ``False`` respectively.
+    backend:
+        Execution backend. Supported values are ``"thread"``, ``"process"`` and
+        ``"sequential"``. Threading is the default because NumPy releases the GIL
+        during heavy computations.
+    max_workers:
+        Maximum number of worker threads or processes. ``None`` defers to the
+        executor's default.
+    chunk_size:
+        Chunk size forwarded to ``Executor.map`` for the threaded/process backends.
+    stack:
+        If ``True`` the individual results are stacked along a new first axis and a
+        single :class:`numpy.ndarray` is returned. Otherwise a list of arrays is
+        produced.
+
+    Returns
+    -------
+    list[numpy.ndarray] | numpy.ndarray
+        Evaluated EMG probability density arrays.
+    """
+
+    x_array = np.asarray(x, dtype=float)
+    specs = list(parameter_sets)
+    if not specs:
+        empty = np.empty((0, x_array.size), dtype=float)
+        return empty if stack else []
+
+    default_amplitude = float(amplitude) if amplitude is not None else 1.0
+    default_use_log = bool(use_log_scale) if use_log_scale is not None else False
+
+    normalized_specs = [
+        _normalize_emg_scan_params(spec, default_amplitude, default_use_log) for spec in specs
+    ]
+
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be a positive integer")
+
+    backend_normalized = backend.lower()
+
+    if backend_normalized not in {
+        _PARALLEL_BACKEND_THREAD,
+        _PARALLEL_BACKEND_PROCESS,
+        _PARALLEL_BACKEND_SEQUENTIAL,
+    }:
+        raise ValueError(
+            "backend must be one of 'thread', 'process' or 'sequential', "
+            f"got {backend!r}"
+        )
+
+    if backend_normalized == _PARALLEL_BACKEND_SEQUENTIAL or len(normalized_specs) == 1 or max_workers == 1:
+        results = [
+            emg_left_stable(
+                x_array, mu, sigma, tau, amplitude=amp, use_log_scale=log_flag
+            )
+            for mu, sigma, tau, amp, log_flag in normalized_specs
+        ]
+    else:
+        if backend_normalized == _PARALLEL_BACKEND_THREAD:
+            executor_class = ThreadPoolExecutor
+            executor_kwargs = {"max_workers": max_workers}
+        else:
+            executor_class = ProcessPoolExecutor
+            executor_kwargs = {"max_workers": max_workers, "mp_context": get_context("spawn")}
+
+        call_args_iter = (
+            (x_array, mu, sigma, tau, amp, log_flag)
+            for mu, sigma, tau, amp, log_flag in normalized_specs
+        )
+
+        with executor_class(**executor_kwargs) as executor:
+            results = list(executor.map(_evaluate_emg_args, call_args_iter, chunksize=chunk_size))
+
+    if stack:
+        return np.stack(results, axis=0) if results else np.empty((0, x_array.size), dtype=float)
+    return results
 
 
 def _emg_strategy_scipy_safe(x, mu, sigma, tau, *, amplitude: float, use_log_scale: bool) -> np.ndarray:
