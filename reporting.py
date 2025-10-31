@@ -11,6 +11,7 @@ DEFAULT_DIAGNOSTICS: Dict[str, Any] = {
     "n_events_discarded": 0,
     "selected_analysis_modes": {},
     "warnings": [],
+    "baseline_quality": None,
 }
 
 
@@ -53,6 +54,9 @@ def build_diagnostics(
     time_fit_results: Mapping[str, Any],
     df_analysis,
     cfg: Mapping[str, Any],
+    events_df=None,
+    calibration: Mapping[str, Any] | None = None,
+    output_dir: str = ".",
 ) -> Dict[str, Any]:
     """Return a diagnostics dictionary for the run."""
 
@@ -115,6 +119,26 @@ def build_diagnostics(
     }
 
     diagnostics["warnings"] = get_captured_warnings()
+
+    # Baseline diagnostics (optional)
+    if events_df is not None and calibration is not None:
+        baseline_info = summary.get("baseline", {})
+        if baseline_info and cfg.get("generate_baseline_diagnostics", False):
+            try:
+                from baseline_diagnostics import build_baseline_diagnostics
+
+                baseline_diag = build_baseline_diagnostics(
+                    events=events_df,
+                    baseline_info=baseline_info,
+                    calibration=calibration,
+                    output_dir=output_dir,
+                )
+                diagnostics["baseline_quality"] = baseline_diag
+            except Exception as e:
+                diagnostics["warnings"].append(
+                    f"Baseline diagnostics generation failed: {str(e)}"
+                )
+
     return diagnostics
 
 
