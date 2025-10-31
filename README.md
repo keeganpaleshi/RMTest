@@ -863,6 +863,64 @@ uses only the chosen progeny while still recording the result under the
 `radon` entry of `summary.json`. The command line option `--iso` overrides
 this setting for a particular run.
 
+## Radon Inference
+
+The radon inference stage converts isotope count time series into inferred Rn-222 activity and equivalent air volume estimates. This stage is enabled by setting `radon_inference.enabled` to `true` in the configuration.
+
+### Mathematical Formulas
+
+The radon inference calculation follows these steps:
+
+1. Convert counts to isotope activity for each source isotope:
+   ```
+   A_iso = counts / (eff * dt)
+   ```
+   where `eff` is the detection efficiency for that isotope and `dt` is the bin width in seconds.
+
+2. Compute the weighted sum across all contributing isotopes:
+   ```
+   A_rn = sum(w_i * A_iso_i)
+   ```
+   where `w_i` are the normalised source weights.
+
+3. Apply transport and retention corrections:
+   ```
+   A_rn_corrected = A_rn / (transport * retention)
+   ```
+
+4. Calculate equivalent air volume when ambient radon concentration is available:
+   ```
+   V_equiv = (A_rn * dt) / (C_mine * transport * retention)
+   ```
+   where `C_mine` is the ambient radon concentration in Bq/m³.
+
+### Overlay and Duplication
+
+If you enable `overlay_isotopes`, RMTest may receive the same isotope time bin from more than one plot source. Since radon inference expects unique time bins per isotope, we dedupe bins by time (within microsecond precision) and identical counts/dt before inference. When duplicate entries for the same isotope at the same timestamp are encountered, the last entry is retained. This ensures that each isotope contributes exactly once per time bin to the radon activity calculation.
+
+### Sparse Ambient Radon Inputs
+
+If the ambient radon monitor reports every 10 minutes, RMTest will forward-fill or take nearest (as configured) to produce a value at every RMTest timestamp. The interpolation method is controlled by the `interpolation` field in the `external_rn` configuration, which accepts either `"nearest"` or `"ffill"`. The `allowed_skew_seconds` parameter defines the maximum time gap allowed for interpolation. If the gap between the target timestamp and the nearest ambient measurement exceeds this threshold, RMTest uses the fallback value specified by `constant_bq_per_m3` or `default_bq_per_m3`.
+
+Example configuration:
+
+```yaml
+radon_inference:
+  enabled: true
+  source_isotopes: ["Po214", "Po218"]
+  detection_efficiency:
+    Po214: 0.12
+    Po218: 0.10
+  transport_efficiency: 1.0
+  retention_efficiency: 1.0
+  external_rn:
+    mode: file
+    file_path: "ambient_radon.csv"
+    interpolation: ffill
+    allowed_skew_seconds: 300
+    constant_bq_per_m3: 100.0
+```
+
 ## Efficiency Calculations
 
 `efficiency.py` implements helpers to derive efficiencies from spike,
