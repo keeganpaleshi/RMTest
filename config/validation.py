@@ -118,6 +118,35 @@ def validate_radon_inference(cfg: dict) -> None:
             "radon_inference.retention_efficiency must lie within the interval (0, 1.5]"
         )
 
+    # Validate new deduplication parameters
+    dedupe_strategy = radon_cfg.get("dedupe_strategy")
+    if dedupe_strategy is not None:
+        if dedupe_strategy not in {"first", "last", "average"}:
+            raise ValueError(
+                "radon_inference.dedupe_strategy must be one of: 'first', 'last', 'average'"
+            )
+
+    dedupe_tolerance = radon_cfg.get("dedupe_time_tolerance_us")
+    if dedupe_tolerance is not None:
+        if not isinstance(dedupe_tolerance, (int, float)) or dedupe_tolerance < 0:
+            raise ValueError(
+                "radon_inference.dedupe_time_tolerance_us must be a non-negative number"
+            )
+
+    # Validate inference method
+    inference_method = radon_cfg.get("inference_method")
+    if inference_method is not None:
+        valid_methods = {"po214", "po218", "average", "weighted", "best"}
+        if inference_method.lower() not in valid_methods:
+            raise ValueError(
+                f"radon_inference.inference_method must be one of: {', '.join(sorted(valid_methods))}"
+            )
+
+    # Validate uncertainty tracking flag
+    track_unc = radon_cfg.get("track_uncertainties")
+    if track_unc is not None and not isinstance(track_unc, bool):
+        raise ValueError("radon_inference.track_uncertainties must be a boolean")
+
     external = radon_cfg.get("external_rn")
     if external is not None:
         if not isinstance(external, Mapping):
