@@ -472,7 +472,14 @@ def load_config(config_path):
         if hasattr(_calibration, "configure_emg"):
             _calibration.configure_emg(use_stable_emg, tau_min)
         else:  # pragma: no cover - compatibility with older versions
-            _calibration.USE_STABLE_EMG = use_stable_emg
+            if hasattr(_calibration, "set_use_stable_emg"):
+                _calibration.set_use_stable_emg(use_stable_emg)
+            else:
+                _calibration.USE_STABLE_EMG = use_stable_emg
+
+            if hasattr(_calibration, "set_emg_tau_min"):
+                _calibration.set_emg_tau_min(tau_min)
+
             if hasattr(_calibration, "_set_tau_min"):
                 _calibration._set_tau_min(tau_min)
             else:
