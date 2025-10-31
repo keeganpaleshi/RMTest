@@ -14,12 +14,18 @@ from constants import (
     DEFAULT_KNOWN_ENERGIES,
     safe_exp as _safe_exp,
 )
+from emg_stable import StableEMG, emg_left_stable
 
 
 _DEFAULT_TAU_BOUNDS = {
     "default": (_TAU_MIN, 50.0),
     "Po218": (_TAU_MIN, 8.0),
 }
+
+# EMG implementation selection
+# Set to True to use the enhanced stable EMG implementation
+# Set to False to use the legacy scipy.stats.exponnorm implementation
+USE_STABLE_EMG = True
 
 
 def _coerce_tau_bounds(bounds, iso):
@@ -189,16 +195,33 @@ class CalibrationResult:
 def emg_left(x, mu, sigma, tau):
     """Exponentially modified Gaussian (left-skewed) PDF.
 
-    ``exponnorm.pdf`` can overflow for large ``(x - mu)/sigma``.  Use the
-    logarithmic form with explicit clipping for numerical stability.
+    Uses either the enhanced stable EMG implementation or the legacy
+    scipy.stats.exponnorm implementation depending on USE_STABLE_EMG flag.
+
+    The stable implementation uses scipy special functions (erfcx) for
+    improved numerical stability across extreme parameter ranges.
+
+    Args:
+        x: Input values (energy in MeV or ADC units)
+        mu: Gaussian mean (peak center)
+        sigma: Gaussian standard deviation (resolution)
+        tau: Exponential decay constant (tail parameter)
+
+    Returns:
+        EMG probability density values (unit area PDF)
     """
 
     if tau <= 0:
         return gaussian(x, mu, sigma)
 
-    K = tau / sigma
-    logpdf = exponnorm.logpdf(x, K, loc=mu, scale=sigma)
-    return _safe_exp(logpdf)
+    if USE_STABLE_EMG:
+        # Use enhanced stable implementation with erfcx
+        return emg_left_stable(x, mu, sigma, tau, amplitude=1.0, use_log_scale=False)
+    else:
+        # Legacy implementation using exponnorm
+        K = tau / sigma
+        logpdf = exponnorm.logpdf(x, K, loc=mu, scale=sigma)
+        return _safe_exp(logpdf)
 
 
 def gaussian(x, mu, sigma):
