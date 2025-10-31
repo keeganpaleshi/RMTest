@@ -9,7 +9,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.patches import Rectangle
-import seaborn as sns
+try:
+    import seaborn as sns
+    HAS_SEABORN = True
+except ImportError:
+    HAS_SEABORN = False
 from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass, asdict
 import warnings
@@ -57,7 +61,13 @@ class BaselineDiagnostics:
             # Fallback to default style if specified style not available
             plt.style.use('default')
         self.logger = logging.getLogger(__name__)
-        self.color_palette = sns.color_palette("husl", 8)
+
+        # Use seaborn colors if available, otherwise use matplotlib default
+        if HAS_SEABORN:
+            self.color_palette = sns.color_palette("husl", 8)
+        else:
+            # Fallback to matplotlib's default color cycle
+            self.color_palette = plt.rcParams['axes.prop_cycle'].by_key()['color'][:8]
 
     def analyze_baseline(self,
                         events: pd.DataFrame,
