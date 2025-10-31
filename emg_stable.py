@@ -29,8 +29,11 @@ Usage Example:
 import numpy as np
 from scipy import special
 from scipy.stats import norm
-from typing import Tuple, Optional, Union, Dict
+from typing import Tuple, Optional, Union, Dict, Callable
 import warnings
+
+
+EMG_STABLE_MODE = "scipy_safe"
 
 
 class StableEMG:
@@ -261,11 +264,30 @@ def emg_left_stable(x, mu, sigma, tau, amplitude: float = 1.0, use_log_scale: bo
     Returns:
         EMG probability density values
     """
+    try:
+        strategy = _EMG_STRATEGIES[EMG_STABLE_MODE]
+    except KeyError as exc:
+        raise ValueError(f"Unknown EMG stable mode: {EMG_STABLE_MODE}") from exc
+
+    return strategy(x, mu, sigma, tau, amplitude=amplitude, use_log_scale=use_log_scale)
+
+
+def _emg_strategy_scipy_safe(x, mu, sigma, tau, *, amplitude: float, use_log_scale: bool) -> np.ndarray:
     stable_emg = StableEMG(use_log_scale=use_log_scale)
     result = stable_emg.pdf(x, mu, sigma, tau, amplitude)
     # Handle any remaining NaN/Inf
     result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
     return result
+
+
+def _emg_strategy_erfcx_exact(*_args, **_kwargs) -> np.ndarray:
+    raise NotImplementedError("Exact erfcx-based EMG evaluation not yet implemented.")
+
+
+_EMG_STRATEGIES: Dict[str, Callable[..., np.ndarray]] = {
+    "scipy_safe": _emg_strategy_scipy_safe,
+    "erfcx_exact": _emg_strategy_erfcx_exact,
+}
 
 
 if __name__ == "__main__":
