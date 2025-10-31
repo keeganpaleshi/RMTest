@@ -14,7 +14,24 @@ from constants import (
     DEFAULT_KNOWN_ENERGIES,
     safe_exp as _safe_exp,
 )
+import emg_stable as _emg_module
 from emg_stable import StableEMG, emg_left_stable
+
+_EMG_TAU_MIN = getattr(_emg_module, "_EMG_TAU_MIN", _TAU_MIN)
+
+
+def get_emg_tau_min() -> float:
+    """Return the EMG tau floor shared with the stable implementation."""
+
+    return float(getattr(_emg_module, "_EMG_TAU_MIN", _EMG_TAU_MIN))
+
+
+def set_emg_tau_min(value: float) -> None:
+    """Update the EMG tau floor for both calibration and stable EMG helpers."""
+
+    tau_min = float(value)
+    setattr(_emg_module, "_EMG_TAU_MIN", tau_min)
+    globals()["_EMG_TAU_MIN"] = tau_min
 
 
 _DEFAULT_TAU_BOUNDS = {
@@ -211,7 +228,8 @@ def emg_left(x, mu, sigma, tau):
         EMG probability density values (unit area PDF)
     """
 
-    if tau <= 0:
+    tau_min = get_emg_tau_min()
+    if tau <= tau_min:
         return gaussian(x, mu, sigma)
 
     if USE_STABLE_EMG:
