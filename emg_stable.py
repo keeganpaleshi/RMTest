@@ -6,9 +6,9 @@ Author: RMTest Enhancement Module
 This module provides an enhanced, numerically stable implementation of the Exponentially
 Modified Gaussian (EMG) distribution for use in radon alpha spectroscopy peak fitting.
 
-Key Features:
+ Key Features:
 - Enhanced numerical stability with safeguards against overflow/underflow
-- Fallback to Gaussian for very small tau values (< 1e-6)
+- Fallback to Gaussian when tau drops below a configurable floor
 - Validates and cleans output to prevent NaN/Inf propagation
 - Compatible with existing scipy.stats.exponnorm-based code
 - Optional fitting capabilities with parameter validation
@@ -31,6 +31,24 @@ from scipy import special
 from scipy.stats import norm
 from typing import Tuple, Optional, Union, Dict
 import warnings
+
+from constants import _TAU_MIN as _DEFAULT_EMG_TAU_MIN
+
+
+_EMG_TAU_MIN = float(_DEFAULT_EMG_TAU_MIN)
+
+
+def set_emg_tau_min(tau_min: float) -> None:
+    """Set the global floor applied to EMG tau values."""
+
+    global _EMG_TAU_MIN
+    _EMG_TAU_MIN = float(tau_min)
+
+
+def get_emg_tau_min() -> float:
+    """Return the current EMG tau floor."""
+
+    return _EMG_TAU_MIN
 
 
 class StableEMG:
@@ -75,7 +93,7 @@ class StableEMG:
         Returns:
             EMG probability density values
         """
-        if tau <= 1e-6:
+        if tau <= _EMG_TAU_MIN:
             # Fall back to pure Gaussian for negligible tail
             return amplitude * norm.pdf(x, mu, sigma)
 
@@ -145,7 +163,7 @@ class StableEMG:
             bounds = {
                 'mu': (initial_params['mu'] - 0.5, initial_params['mu'] + 0.5),
                 'sigma': (0.001, 0.5),
-                'tau': (1e-6, 0.1),  # Enforce minimum tau for stability
+                'tau': (_EMG_TAU_MIN, 0.1),  # Enforce minimum tau for stability
                 'amplitude': (0, 10 * np.max(y_data))
             }
 
@@ -262,6 +280,10 @@ def emg_left_stable(x, mu, sigma, tau, amplitude: float = 1.0, use_log_scale: bo
         EMG probability density values
     """
     stable_emg = StableEMG(use_log_scale=use_log_scale)
+    tau_min = get_emg_tau_min()
+    if tau <= tau_min:
+        return amplitude * norm.pdf(x, mu, sigma)
+
     result = stable_emg.pdf(x, mu, sigma, tau, amplitude)
     # Handle any remaining NaN/Inf
     result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
