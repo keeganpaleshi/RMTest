@@ -203,3 +203,33 @@ plotting:
   dump_time_series_json: true
   plot_time_style: lines
   overlay_isotopes: true
+
+# Enhancement modules configuration
+# These are optional performance and diagnostic enhancements that can be enabled
+# when the corresponding module files are available in the RMTest directory
+enhancements:
+  # Parallel data loading for large CSV files (>100MB)
+  # Requires: parallel_loader.py module
+  parallel_loading:
+    enabled: false
+    chunk_size: 100000
+    n_workers: null  # null = auto-detect CPU count
+    memory_limit_gb: 4.0
+
+  # Enhanced baseline diagnostics and stability analysis
+  # Requires: baseline_diagnostics.py module
+  baseline_diagnostics:
+    enabled: false
+    generate_report: true
+
+  # Enhanced radon inference with deduplication and improved methods
+  # Requires: radon_inference_enhanced.py module
+  radon_inference:
+    enhanced: false
+    dedupe_enabled: true
+
+  # Stable EMG fitting using scipy special functions
+  # Requires: emg_stable.py module
+  stable_emg:
+    enabled: false
+    use_log_scale: true
