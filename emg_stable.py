@@ -30,8 +30,19 @@ Usage Example:
 import numpy as np
 from scipy import special
 from scipy.stats import norm
-from typing import Tuple, Optional, Union, Dict, Callable
+from typing import (
+    Tuple,
+    Optional,
+    Union,
+    Dict,
+    Callable,
+    Iterable,
+    Mapping,
+    Sequence,
+    List,
+)
 import warnings
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
 import constants
 
@@ -288,6 +299,111 @@ _EMG_STRATEGIES: Dict[str, Callable[..., np.ndarray]] = {
     "scipy_safe": _emg_strategy_scipy_safe,
     "erfcx_exact": _emg_strategy_erfcx_exact,
 }
+
+
+def _validate_param_mapping(params: Mapping[str, float]) -> None:
+    required = {"mu", "sigma", "tau"}
+    missing = required - params.keys()
+    if missing:
+        raise KeyError(
+            "EMG parameter mapping missing required keys: "
+            + ", ".join(sorted(missing))
+        )
+
+
+def _parallel_emg_worker(
+    args: Tuple[np.ndarray, Mapping[str, float], bool, str]
+) -> np.ndarray:
+    x_values, params, use_log_scale, amplitude_key = args
+    stable = StableEMG(use_log_scale=use_log_scale)
+    amplitude = float(params.get(amplitude_key, 1.0))
+    return stable.pdf(
+        x_values,
+        float(params["mu"]),
+        float(params["sigma"]),
+        float(params["tau"]),
+        amplitude,
+    )
+
+
+def parallel_map_emg_scans(
+    x_values: Union[np.ndarray, Sequence[float]],
+    parameter_sets: Iterable[Mapping[str, float]],
+    *,
+    use_log_scale: bool = False,
+    amplitude_key: str = "amplitude",
+    max_workers: Optional[int] = None,
+    prefer: str = "thread",
+) -> List[np.ndarray]:
+    """Evaluate multiple EMG parameter sets in parallel.
+
+    Parameters
+    ----------
+    x_values:
+        Energy values where the EMG should be evaluated.
+    parameter_sets:
+        Iterable of mappings containing at least ``mu``, ``sigma`` and ``tau`` keys.
+        An optional amplitude value is read from ``amplitude_key`` (default
+        ``"amplitude"``) and falls back to 1.0 when omitted.
+    use_log_scale:
+        Whether each worker should evaluate the EMG using the log-stable mode.
+    max_workers:
+        Maximum number of worker threads/processes to spawn. ``None`` follows the
+        ``concurrent.futures`` defaults.
+    prefer:
+        ``"thread"`` (default) or ``"process"`` to control the type of executor.
+
+    Returns
+    -------
+    list of ``np.ndarray``
+        EMG evaluations for each parameter mapping in the order received.
+    """
+
+    params_list = list(parameter_sets)
+    if not params_list:
+        return []
+
+    for params in params_list:
+        _validate_param_mapping(params)
+
+    x_arr = np.asarray(x_values, dtype=float)
+    if x_arr.ndim == 0:
+        x_arr = x_arr[None]
+
+    if prefer not in {"thread", "process"}:
+        raise ValueError(
+            f"prefer must be either 'thread' or 'process'; got {prefer!r}"
+        )
+
+    if max_workers == 1 or len(params_list) == 1:
+        stable = StableEMG(use_log_scale=use_log_scale)
+        return [
+            stable.pdf(
+                x_arr,
+                float(params["mu"]),
+                float(params["sigma"]),
+                float(params["tau"]),
+                float(params.get(amplitude_key, 1.0)),
+            )
+            for params in params_list
+        ]
+
+    if prefer == "thread":
+        executor_cls = ThreadPoolExecutor
+        worker_args = [
+            (x_arr, params, use_log_scale, amplitude_key) for params in params_list
+        ]
+        with executor_cls(max_workers=max_workers) as executor:
+            futures = [executor.submit(_parallel_emg_worker, args) for args in worker_args]
+            return [f.result() for f in futures]
+
+    # prefer == "process"
+    worker_args = [
+        (x_arr, params, use_log_scale, amplitude_key) for params in params_list
+    ]
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(_parallel_emg_worker, args) for args in worker_args]
+        return [f.result() for f in futures]
 
 
 if __name__ == "__main__":
