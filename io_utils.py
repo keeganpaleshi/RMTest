@@ -17,6 +17,7 @@ from constants import load_nuclide_overrides
 import numpy as np
 from utils import to_native
 from utils.time_utils import parse_timestamp, to_epoch_seconds, tz_convert_utc
+from utils.parallel_loader import ParallelCSVLoader, LoadConfig
 import jsonschema
 from reporting import DEFAULT_DIAGNOSTICS
 from config.validation import validate_radon_inference
@@ -456,7 +457,7 @@ def load_config(config_path):
     return cfg
 
 
-def load_events(csv_path, *, start=None, end=None, column_map=None):
+def load_events(csv_path, *, start=None, end=None, column_map=None, use_parallel=None, parallel_config=None):
     """
     Read event CSV into a DataFrame with columns:
        ['fUniqueID','fBits','timestamp','adc','fchannel']
@@ -466,13 +467,42 @@ def load_events(csv_path, *, start=None, end=None, column_map=None):
     column is parsed to ``datetime64[ns, UTC]`` while ``adc`` is returned as a
     floating point number. The DataFrame is sorted by ``timestamp`` before being
     returned.
+
+    Parameters
+    ----------
+    csv_path : str or Path
+        Path to the CSV file to load
+    start : str, datetime, or None
+        Optional start time filter
+    end : str, datetime, or None
+        Optional end time filter
+    column_map : dict or None
+        Mapping of canonical column names to CSV headers
+    use_parallel : bool or None
+        Enable parallel loading for large files. If None, automatically
+        determined based on file size (>100MB uses parallel by default)
+    parallel_config : dict or None
+        Configuration options for parallel loading (chunk_size, n_workers, etc.)
     """
     path = Path(csv_path)
     if not path.is_file():
         raise FileNotFoundError(f"Input CSV not found: {csv_path}")
 
-    # Read CSV strictly as strings to avoid type inference surprises
-    df = pd.read_csv(path, sep=",", engine="c", dtype=str)
+    # Determine whether to use parallel loading
+    file_size_mb = path.stat().st_size / (1024 * 1024)
+    if use_parallel is None:
+        # Auto-enable parallel loading for files > 100MB
+        use_parallel = file_size_mb > 100.0
+
+    # Use parallel loader if enabled
+    if use_parallel:
+        config = LoadConfig(**(parallel_config or {}))
+        loader = ParallelCSVLoader(config)
+        # Read as strings to maintain compatibility with existing logic
+        df = loader.load_file(path, read_as_strings=True)
+    else:
+        # Original single-threaded loading
+        df = pd.read_csv(path, sep=",", engine="c", dtype=str)
 
     # Rename columns based on explicit configuration mapping
     if column_map:

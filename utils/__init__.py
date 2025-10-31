@@ -9,6 +9,12 @@ from datetime import datetime, timezone, tzinfo, timedelta
 from dateutil import parser as date_parser
 from dateutil.tz import gettz
 from .time_utils import parse_timestamp as _parse_timestamp, to_epoch_seconds
+from .parallel_loader import (
+    ParallelCSVLoader,
+    LoadConfig,
+    IncrementalProcessor,
+    optimize_dtypes,
+)
 import warnings
 
 __all__ = [
@@ -23,6 +29,10 @@ __all__ = [
     "parse_datetime",
     "to_seconds",
     "LITERS_PER_M3",
+    "ParallelCSVLoader",
+    "LoadConfig",
+    "IncrementalProcessor",
+    "optimize_dtypes",
 ]
 
 # Conversion factor from cubic meters to liters

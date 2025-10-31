@@ -9,6 +9,12 @@ allow_negative_baseline: false
 pipeline:
   log_level: INFO
   random_seed: null
+  # Parallel CSV loading configuration
+  parallel_loading:
+    enabled: true  # Enable/disable parallel loading
+    chunk_size: 50000  # Rows per chunk
+    n_workers: null  # Number of workers (null = auto-detect)
+    size_threshold_mb: 100.0  # File size threshold for parallel loading (MB)
 analysis:
   analysis_start_time: '2023-06-14T00:00:00Z'
   analysis_end_time: '2025-02-23T23:59:59Z'
