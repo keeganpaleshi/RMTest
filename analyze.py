@@ -3925,6 +3925,9 @@ def main(argv=None):
         },
     )
 
+    if radon_inference_results_payload:
+        summary.radon_inference = radon_inference_results_payload
+
     if radon_combined_info is not None:
         summary.radon_combined = radon_combined_info
 
@@ -4185,6 +4188,57 @@ def main(argv=None):
 
     overlay = cfg.get("plotting", {}).get("overlay_isotopes", False)
 
+    radon_ts_bins: dict[str, dict[str, dict[str, float]]] = {}
+    radon_ts_lookup: dict[str, float] = {}
+    overlay_primary_iso = next(iter(time_plot_data)) if overlay and time_plot_data else None
+
+    def _record_radon_timeseries(payload, allowed_isotopes: set[str] | None = None):
+        if not isinstance(payload, Mapping):
+            return
+        segments = payload.get("segments")
+        if not segments:
+            return
+        for seg in segments:
+            centers = np.asarray(seg.get("centers_abs", []), dtype=float)
+            widths = np.asarray(seg.get("bin_widths", []), dtype=float)
+            counts_map = seg.get("counts", {})
+            if not isinstance(counts_map, Mapping):
+                continue
+            if centers.size == 0 or widths.size == 0:
+                continue
+            for iso_name, counts_arr in counts_map.items():
+                if allowed_isotopes is not None and iso_name not in allowed_isotopes:
+                    continue
+                arr = np.asarray(counts_arr, dtype=float)
+                if arr.size == 0:
+                    continue
+                length = min(centers.size, widths.size, arr.size)
+                if length == 0:
+                    continue
+                iso_dict = radon_ts_bins.setdefault(iso_name, {})
+                for idx in range(length):
+                    width_val = float(widths[idx])
+                    if width_val <= 0:
+                        continue
+                    center_val = float(centers[idx])
+                    ts_key = (
+                        datetime.fromtimestamp(center_val, tz=timezone.utc)
+                        .isoformat()
+                        .replace("+00:00", "Z")
+                    )
+                    radon_ts_lookup.setdefault(ts_key, center_val)
+                    entry = iso_dict.get(ts_key)
+                    if entry is None:
+                        iso_dict[ts_key] = {
+                            "t": ts_key,
+                            "t_seconds": center_val,
+                            "counts": float(arr[idx]),
+                            "dt": width_val,
+                        }
+                    else:
+                        entry["counts"] += float(arr[idx])
+                        entry["dt"] += width_val
+
     for iso, pdata in time_plot_data.items():
         try:
             plot_cfg = dict(cfg.get("time_fit", {}))
@@ -4229,7 +4283,7 @@ def main(argv=None):
                 )
                 if sigma_arr is not None:
                     model_errs[iso_key] = sigma_arr
-            _ = plot_time_series(
+            plot_payload = plot_time_series(
                 all_timestamps=ts_times,
                 all_energies=ts_energy,
                 fit_results=fit_dict,
@@ -4239,8 +4293,87 @@ def main(argv=None):
                 out_png=Path(out_dir) / f"time_series_{iso}.png",
                 model_errors=model_errs,
             )
+            if overlay:
+                if iso == overlay_primary_iso:
+                    _record_radon_timeseries(plot_payload)
+            else:
+                _record_radon_timeseries(plot_payload, {iso})
         except Exception as e:
             logger.warning("Could not create time-series plot for %s -> %s", iso, e)
+
+    radon_inference_series: dict[str, list[dict[str, float]]] = {}
+    radon_inference_results_payload: dict[str, Any] | None = None
+    if radon_ts_bins:
+        for iso, data in radon_ts_bins.items():
+            ordered = sorted(
+                (dict(entry) for entry in data.values()),
+                key=lambda item: item.get("t_seconds", 0.0),
+            )
+            for entry in ordered:
+                entry.pop("t_seconds", None)
+            if ordered:
+                radon_inference_series[iso] = ordered
+
+        if radon_inference_series:
+            timestamp_order = [
+                key
+                for key, _ in sorted(
+                    radon_ts_lookup.items(), key=lambda kv: kv[1]
+                )
+            ]
+            try:
+                from radon.external_rn_loader import load_external_rn_series
+                from radon_inference import run_radon_inference
+
+                external_cfg = cfg.get("radon_inference", {})
+                if isinstance(external_cfg, Mapping):
+                    external_series = load_external_rn_series(
+                        external_cfg.get("external_rn"), timestamp_order
+                    )
+                else:
+                    external_series = []
+                radon_inference_results_payload = run_radon_inference(
+                    radon_inference_series,
+                    cfg,
+                    external_series,
+                )
+            except Exception as exc:
+                logger.warning("Radon inference stage failed -> %s", exc)
+
+    if radon_inference_results_payload:
+        try:
+            from radon_plots import (
+                plot_ambient_rn_vs_time,
+                plot_rn_inferred_vs_time,
+                plot_volume_equiv_vs_time,
+            )
+        except Exception as exc:
+            logger.warning("Could not import radon inference plotting helpers -> %s", exc)
+        else:
+            try:
+                plot_rn_inferred_vs_time(
+                    radon_inference_results_payload,
+                    Path(out_dir) / "radon_inferred.png",
+                    config=cfg.get("plotting", {}),
+                )
+            except Exception as exc:
+                logger.warning("Could not create radon inferred plot -> %s", exc)
+            try:
+                plot_ambient_rn_vs_time(
+                    radon_inference_results_payload,
+                    Path(out_dir) / "ambient_radon.png",
+                    config=cfg.get("plotting", {}),
+                )
+            except Exception as exc:
+                logger.warning("Could not create ambient radon plot -> %s", exc)
+            try:
+                plot_volume_equiv_vs_time(
+                    radon_inference_results_payload,
+                    Path(out_dir) / "radon_volume.png",
+                    config=cfg.get("plotting", {}),
+                )
+            except Exception as exc:
+                logger.warning("Could not create equivalent volume plot -> %s", exc)
 
     # Additional visualizations
     if efficiency_results.get("sources"):
