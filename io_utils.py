@@ -75,6 +75,7 @@ class Summary(Mapping[str, Any]):
     baseline: dict = field(default_factory=dict)
     radon_results: dict = field(default_factory=dict)
     radon_combined: dict = field(default_factory=dict)
+    radon_inference: dict = field(default_factory=dict)
     radon: dict = field(default_factory=dict)
     po214: dict = field(default_factory=dict)
     po218: dict = field(default_factory=dict)
