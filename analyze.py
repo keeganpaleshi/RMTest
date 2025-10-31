@@ -67,6 +67,14 @@ from scipy.stats import norm
 from dateutil.tz import UTC, gettz
 import radon_activity
 
+from radon.external_rn_loader import load_external_rn_series
+from radon.radon_inference import run_radon_inference
+from radon.radon_plots import (
+    plot_ambient_rn_vs_time,
+    plot_rn_inferred_vs_time,
+    plot_volume_equiv_vs_time,
+)
+
 from hierarchical import fit_hierarchical_runs
 
 # ‣ Import our supporting modules (all must live in the same folder).
@@ -1091,6 +1099,45 @@ def _ts_bin_centers_widths(times, cfg, t_start, t_end):
     )
     widths = np.concatenate(width_lists) if width_lists else np.array([], dtype=float)
     return centers, widths
+
+
+def _segments_to_isotope_series(ts_metadata):
+    """Convert plot_time_series metadata to per-isotope count entries."""
+
+    if not isinstance(ts_metadata, Mapping):
+        return {}
+
+    segments = ts_metadata.get("segments") or []
+    iso_map: dict[str, list[dict[str, float]]] = {}
+    for seg_idx, seg in enumerate(segments):
+        counts_map = seg.get("counts") or {}
+        centers = np.asarray(seg.get("centers_abs", []), dtype=float)
+        widths = np.asarray(seg.get("bin_widths", []), dtype=float)
+        for iso, counts in counts_map.items():
+            counts_arr = np.asarray(counts, dtype=float)
+            n = min(counts_arr.size, centers.size, widths.size)
+            if n == 0:
+                continue
+            entries = iso_map.setdefault(iso, [])
+            for idx in range(n):
+                t_val = float(centers[idx]) if np.isfinite(centers[idx]) else None
+                dt_val = float(widths[idx]) if np.isfinite(widths[idx]) else None
+                if t_val is None or dt_val is None or dt_val <= 0:
+                    continue
+                entries.append(
+                    {
+                        "t": t_val,
+                        "counts": float(counts_arr[idx]),
+                        "dt": dt_val,
+                        "segment_index": seg_idx,
+                        "bin_index": idx,
+                    }
+                )
+
+    for entries in iso_map.values():
+        entries.sort(key=lambda row: row["t"])
+
+    return iso_map
 
 
 def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
@@ -4184,6 +4231,7 @@ def main(argv=None):
             logger.warning("Could not create burst scan plot -> %s", e)
 
     overlay = cfg.get("plotting", {}).get("overlay_isotopes", False)
+    isotope_series_data: dict[str, list[dict[str, float]]] = {}
 
     for iso, pdata in time_plot_data.items():
         try:
@@ -4229,7 +4277,7 @@ def main(argv=None):
                 )
                 if sigma_arr is not None:
                     model_errs[iso_key] = sigma_arr
-            _ = plot_time_series(
+            ts_info = plot_time_series(
                 all_timestamps=ts_times,
                 all_energies=ts_energy,
                 fit_results=fit_dict,
@@ -4239,8 +4287,68 @@ def main(argv=None):
                 out_png=Path(out_dir) / f"time_series_{iso}.png",
                 model_errors=model_errs,
             )
+            if ts_info:
+                series_map = _segments_to_isotope_series(ts_info)
+                for iso_key, entries in series_map.items():
+                    if not entries:
+                        continue
+                    existing = isotope_series_data.setdefault(iso_key, [])
+                    existing.extend(entries)
         except Exception as e:
             logger.warning("Could not create time-series plot for %s -> %s", iso, e)
+
+    for iso_entries in isotope_series_data.values():
+        iso_entries.sort(key=lambda row: row.get("t", 0.0))
+
+    radon_inference_results = None
+    radon_inference_cfg = cfg.get("radon_inference")
+    if isotope_series_data and isinstance(radon_inference_cfg, Mapping):
+        timestamps_for_external = sorted(
+            {
+                float(entry.get("t"))
+                for entries in isotope_series_data.values()
+                for entry in entries
+                if entry.get("t") is not None
+            }
+        )
+        external_series = None
+        if timestamps_for_external and radon_inference_cfg.get("enabled", False):
+            try:
+                raw_external = load_external_rn_series(
+                    radon_inference_cfg.get("external_rn"), timestamps_for_external
+                )
+            except Exception as exc:
+                logger.warning("Failed to load external radon series: %s", exc)
+                raw_external = []
+
+            if raw_external:
+                external_series = []
+                for ts_obj, value in raw_external:
+                    try:
+                        if hasattr(ts_obj, "timestamp"):
+                            t_val = float(ts_obj.timestamp())
+                        else:
+                            t_val = float(ts_obj)
+                        val_float = float(value)
+                    except (TypeError, ValueError):
+                        continue
+                    if not np.isfinite(t_val) or not np.isfinite(val_float):
+                        continue
+                    external_series.append({"t": t_val, "rn_bq_per_m3": val_float})
+
+        radon_inference_results = run_radon_inference(
+            isotope_series_data,
+            cfg,
+            external_series,
+        )
+        if radon_inference_results:
+            summary["radon_inference"] = radon_inference_results
+            try:
+                plot_rn_inferred_vs_time(radon_inference_results, Path(out_dir))
+                plot_ambient_rn_vs_time(radon_inference_results, Path(out_dir))
+                plot_volume_equiv_vs_time(radon_inference_results, Path(out_dir))
+            except Exception as exc:
+                logger.warning("Failed to create radon inference plots: %s", exc)
 
     # Additional visualizations
     if efficiency_results.get("sources"):
