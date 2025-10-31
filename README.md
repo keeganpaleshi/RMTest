@@ -14,12 +14,14 @@ This repository provides a complete pipeline to analyze electrostatic radon moni
 - `efficiency.py`: Efficiency calculations and BLUE combination helpers.
 - `systematics.py`: Scan for systematic uncertainties (optional).
 - `plot_utils.py`: Plotting routines for spectrum and time-series.
+- `baseline_diagnostics.py`: Comprehensive baseline quality diagnostics with statistical tests,
+  stability metrics, multi-panel diagnostic plots, and automated report generation.
 
 - `utils.py`: Miscellaneous utilities providing JSON helpers, count-rate
   conversions, and `parse_datetime`. Time conversion functions such as
   `parse_timestamp` and `to_epoch_seconds` reside in `utils.time_utils`.
 
-- `tests/`: `pytest` unit tests for calibration, fitting, and I/O.
+- `tests/`: `pytest` unit tests for calibration, fitting, I/O, and baseline diagnostics.
 
 ## Installation
 
@@ -151,6 +153,20 @@ Running `analyze.py` produces a consistent set of artifacts next to `summary.jso
 - `eff_cov.png` – heatmap of the efficiency covariance matrix.
 - `total_radon.png` – total radon present in the sampled air after scaling the fitted activity by the combined counting volume `(monitor + sample)` (Bq).
 - `equivalent_air.png` – equivalent air volume plot when `--ambient-file` or `--ambient-concentration` is provided.
+- `baseline_diagnostics.png` – comprehensive 7-panel baseline quality diagnostic plot (generated when `generate_baseline_diagnostics: true` is set in config).
+- `baseline_quality_report.txt` – text report with baseline stability metrics, statistical tests, and recommendations.
+
+### Baseline Diagnostics
+
+The baseline diagnostics module provides comprehensive quality assessment for baseline measurements. Enable it by setting `generate_baseline_diagnostics: true` in your config file. The diagnostics include:
+
+- **Stability metrics**: Mean rate, coefficient of variation, stability score (0-1 scale)
+- **Statistical tests**: Trend analysis, chi-squared test for Poisson behavior, outlier detection
+- **Multi-panel plots**: Rate timeline, spectrum comparison, rate distribution, autocorrelation, QQ-plot
+- **Isotope-specific rates**: Count rates for Po-210, Po-214, and Po-218 windows
+- **Automated recommendations**: Flags for instability, short duration, or anomalies
+
+The diagnostic results are included in the `baseline_quality` field of `summary.json` when enabled.
 
 The `time_fit` routine still fits only Po‑214 and Po‑218.
 When `window_po210` is provided the Po‑210 events are extracted and a
