@@ -29,8 +29,11 @@ Usage Example:
 import numpy as np
 from scipy import special
 from scipy.stats import norm
-from typing import Tuple, Optional, Union, Dict
+from typing import Tuple, Optional, Union, Dict, Callable
 import warnings
+
+
+EMG_STABLE_MODE = "scipy_safe"
 
 
 class StableEMG:
@@ -243,6 +246,47 @@ class StableEMG:
         return True, "Parameters valid"
 
 
+def _emg_left_scipy_safe(
+    x,
+    mu,
+    sigma,
+    tau,
+    amplitude: float = 1.0,
+    use_log_scale: bool = False,
+):
+    stable_emg = StableEMG(use_log_scale=use_log_scale)
+    result = stable_emg.pdf(x, mu, sigma, tau, amplitude)
+    return np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
+
+
+def _emg_left_erfcx_exact(
+    x,
+    mu,
+    sigma,
+    tau,
+    amplitude: float = 1.0,
+    use_log_scale: bool = False,
+):
+    raise NotImplementedError(
+        "The 'erfcx_exact' EMG strategy is not implemented yet."
+    )
+
+
+_EMG_STRATEGIES: Dict[str, Callable[..., np.ndarray]] = {
+    "scipy_safe": _emg_left_scipy_safe,
+    "erfcx_exact": _emg_left_erfcx_exact,
+}
+
+
+def _get_emg_strategy_key() -> str:
+    key = EMG_STABLE_MODE
+    if key not in _EMG_STRATEGIES:
+        raise ValueError(
+            f"Unknown EMG strategy '{key}'. Valid options are: {sorted(_EMG_STRATEGIES.keys())}."
+        )
+    return key
+
+
 def emg_left_stable(x, mu, sigma, tau, amplitude: float = 1.0, use_log_scale: bool = False):
     """
     Drop-in replacement for existing emg_left function with enhanced stability.
@@ -261,11 +305,14 @@ def emg_left_stable(x, mu, sigma, tau, amplitude: float = 1.0, use_log_scale: bo
     Returns:
         EMG probability density values
     """
-    stable_emg = StableEMG(use_log_scale=use_log_scale)
-    result = stable_emg.pdf(x, mu, sigma, tau, amplitude)
-    # Handle any remaining NaN/Inf
-    result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
-    return result
+    return _EMG_STRATEGIES[_get_emg_strategy_key()](
+        x,
+        mu,
+        sigma,
+        tau,
+        amplitude,
+        use_log_scale,
+    )
 
 
 if __name__ == "__main__":
