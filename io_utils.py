@@ -164,6 +164,14 @@ CONFIG_SCHEMA = {
             "properties": {"plot_save_formats": {"type": "array"}},
             "required": ["plot_save_formats"],
         },
+        "fitting": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "use_stable_emg": {"type": "boolean"},
+                "emg_tau_min": {"type": "number", "minimum": 0},
+            },
+        },
         "baseline": {
             "type": "object",
             "additionalProperties": False,
@@ -430,6 +438,11 @@ def load_config(config_path):
 
     if "analysis_isotope" not in cfg:
         cfg["analysis_isotope"] = "radon"
+
+    fit_cfg = cfg.setdefault("fitting", {}) if isinstance(cfg, dict) else {}
+    if isinstance(fit_cfg, Mapping):
+        fit_cfg.setdefault("use_stable_emg", True)
+        fit_cfg.setdefault("emg_tau_min", 1e-8)
 
     # Fill in default EMG usage for spectral fits when not explicitly provided
     spec = cfg.setdefault("spectral_fit", {})
