@@ -157,6 +157,51 @@ When `window_po210` is provided the Po‑210 events are extracted and a
 time‑series histogram is produced without a decay fit. The `hl_po210`
 value controls only the model curve drawn in this plot.
 
+### Radon inference from daughters
+
+The pipeline can infer the parent Rn‑222 activity directly from the binned
+Po‑214 and Po‑218 counts using the `radon_inference` configuration block.
+For every time bin the counts are divided by the configured detection,
+transport, and retention efficiencies to obtain an activity in Bq. Multiple
+isotopes are combined using user-specified weights, and the resulting series
+is stored under `summary["radon_inference"]`. When an external mine-radon
+monitor is provided, the inferred activity is divided by that concentration to
+yield an equivalent sampled volume per bin along with a cumulative integral.
+
+Enable the stage in `config.yaml`:
+
+```yaml
+radon_inference:
+  enabled: true
+  source_isotopes: [Po214, Po218]
+  source_weights:
+    Po214: 0.7
+    Po218: 0.3
+  detection_efficiency:
+    Po214: 0.12
+    Po218: 0.10
+  transport_efficiency: 1.0
+  retention_efficiency: 1.0
+  chain_correction: none
+  external_rn:
+    mode: constant
+    constant_bq_per_m3: 80.0
+```
+
+Three plots (`rn_inferred.png`, `ambient_rn.png`, and
+`equivalent_volume.png`) summarize the derived series alongside the optional
+`equivalent_volume_cumulative.png` integral. The annotations list the isotopes,
+weights, and efficiencies that were applied so downstream reviewers can check
+the assumptions quickly.
+
+**Limitations.** The inferred activity assumes the daughters are at or near
+equilibrium with the parent. When that is not true the signal can lag the true
+Rn‑222 concentration. Using ambient radon concentrations that are unrealistically
+low will inflate the equivalent volume, and uncertain transport or retention
+efficiencies translate directly into a scale uncertainty on the inferred
+activity. Leave those efficiencies at `1.0` when they are unknown and interpret
+the result as a lower bound.
+
 The time‐series model multiplies the decay rate by the detection efficiency
 internally.  Therefore the fitted `E_Po214` and `E_Po218` values correspond to
 the physical decay rates in Bq (decays/s) before any detector volume correction.

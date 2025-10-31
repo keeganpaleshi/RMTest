@@ -66,6 +66,13 @@ import pandas as pd
 from scipy.stats import norm
 from dateutil.tz import UTC, gettz
 import radon_activity
+from radon.external_rn_loader import load_external_rn_series
+from radon.radon_inference import run_radon_inference
+from radon.radon_plots import (
+    plot_ambient_rn_vs_time,
+    plot_equivalent_volume_vs_time,
+    plot_rn_inferred_vs_time,
+)
 
 from hierarchical import fit_hierarchical_runs
 
@@ -1036,16 +1043,7 @@ def prepare_analysis_df(
 
 def _ts_bin_centers_widths(times, cfg, t_start, t_end):
     """Return bin centers and widths matching :func:`plot_time_series`."""
-    arr = np.asarray(times)
-    if np.issubdtype(arr.dtype, "datetime64"):
-        arr = arr.astype("int64") / 1e9
-    elif np.issubdtype(arr.dtype, np.object_):
-        if arr.size > 0 and isinstance(arr.flat[0], datetime):
-            arr = np.array([dt.timestamp() for dt in arr], dtype=float)
-        else:
-            arr = arr.astype(float)
-    else:
-        arr = arr.astype(float)
+    arr = _coerce_unix_seconds(times)
 
     if isinstance(t_start, datetime):
         t_start = t_start.timestamp()
@@ -1091,6 +1089,127 @@ def _ts_bin_centers_widths(times, cfg, t_start, t_end):
     )
     widths = np.concatenate(width_lists) if width_lists else np.array([], dtype=float)
     return centers, widths
+
+
+def _coerce_unix_seconds(values):
+    arr = np.asarray(values)
+    if np.issubdtype(arr.dtype, "datetime64"):
+        return arr.astype("int64") / 1e9
+    if np.issubdtype(arr.dtype, np.object_):
+        if arr.size > 0 and isinstance(arr.flat[0], datetime):
+            return np.array([dt.timestamp() for dt in arr], dtype=float)
+        return arr.astype(float)
+    return arr.astype(float)
+
+
+def _time_segments_for_series(times, cfg, t_start, t_end):
+    """Return segments matching :func:`plot_time_series` binning."""
+
+    arr = _coerce_unix_seconds(times)
+
+    if isinstance(t_start, datetime):
+        t_start = t_start.timestamp()
+    elif isinstance(t_start, np.datetime64):
+        t_start = float(t_start.astype("int64") / 1e9)
+    if isinstance(t_end, datetime):
+        t_end = t_end.timestamp()
+    elif isinstance(t_end, np.datetime64):
+        t_end = float(t_end.astype("int64") / 1e9)
+
+    bin_mode = str(
+        cfg.get("plot_time_binning_mode", cfg.get("time_bin_mode", "fixed"))
+    ).lower()
+    bin_width_s = float(cfg.get("plot_time_bin_width_s", cfg.get("time_bin_s", 3600.0)))
+    time_bins_fallback = int(cfg.get("time_bins_fallback", 1))
+
+    periods = _resolve_run_periods(cfg, t_start, t_end)
+    segments = _build_time_segments(
+        arr,
+        periods=periods,
+        bin_mode=bin_mode,
+        bin_width_s=bin_width_s,
+        time_bins_fallback=time_bins_fallback,
+        t_start=t_start,
+    )
+    if not segments:
+        segments = _build_time_segments(
+            arr,
+            periods=[(float(t_start), float(t_end))],
+            bin_mode=bin_mode,
+            bin_width_s=bin_width_s,
+            time_bins_fallback=time_bins_fallback,
+            t_start=t_start,
+        )
+    return segments
+
+
+def build_isotope_timeseries(
+    timestamps,
+    energies,
+    cfg,
+    t_start,
+    t_end,
+    run_periods=None,
+):
+    """Return per-isotope binned counts matching the plotting configuration."""
+
+    plot_cfg = dict(cfg.get("time_fit", {}))
+    plot_cfg.update(cfg.get("plotting", {}))
+    if run_periods:
+        plot_cfg["run_periods"] = run_periods
+
+    segments = _time_segments_for_series(timestamps, plot_cfg, t_start, t_end)
+    time_axis: list[float] = []
+    dt_axis: list[float] = []
+    for seg in segments:
+        time_axis.extend(float(v) for v in np.asarray(seg["centers_abs"], dtype=float))
+        dt_axis.extend(float(v) for v in np.asarray(seg["bin_widths"], dtype=float))
+
+    if not time_axis:
+        return {"series": {}, "time_axis": [], "dt": []}
+
+    ts_arr = _coerce_unix_seconds(timestamps)
+    energy_arr = np.asarray(energies, dtype=float)
+
+    isotope_windows = {}
+    for iso in ("Po214", "Po218", "Po210"):
+        win = plot_cfg.get(f"window_{iso.lower()}")
+        if win is None:
+            continue
+        try:
+            lo, hi = float(win[0]), float(win[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        isotope_windows[iso] = (lo, hi)
+
+    series: dict[str, list[dict[str, float]]] = {}
+
+    for iso, (lo, hi) in isotope_windows.items():
+        mask_energy = (energy_arr >= lo) & (energy_arr <= hi)
+        times_iso = ts_arr[mask_energy]
+        entries: list[dict[str, float]] = []
+        for seg in segments:
+            edges = np.asarray(seg["edges_abs"], dtype=float)
+            if edges.size < 2:
+                continue
+            counts, _ = np.histogram(times_iso, bins=edges)
+            widths = np.asarray(seg["bin_widths"], dtype=float)
+            centers = np.asarray(seg["centers_abs"], dtype=float)
+            for idx, count in enumerate(counts):
+                if idx >= widths.size or widths[idx] <= 0:
+                    continue
+                entries.append(
+                    {
+                        "t": float(centers[idx]),
+                        "counts": float(count),
+                        "dt": float(widths[idx]),
+                        "bin_start": float(edges[idx]),
+                        "bin_end": float(edges[idx + 1]),
+                    }
+                )
+        series[iso] = entries
+
+    return {"series": series, "time_axis": time_axis, "dt": dt_axis}
 
 
 def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
@@ -2711,6 +2830,7 @@ def main(argv=None):
     iso_counts = {}
     iso_counts_raw = {}
     radon_estimate_info = None
+    radon_inference_results: dict[str, Any] = {}
     po214_estimate_info = None
     po218_estimate_info = None
     allow_negative_baseline = bool(cfg.get("allow_negative_baseline"))
@@ -3886,6 +4006,7 @@ def main(argv=None):
         systematics=systematics_results,
         baseline=baseline_info,
         radon_results=radon_results,
+        radon_inference=radon_inference_results,
         noise_cut={"removed_events": int(n_removed_noise)},
         burst_filter={
             "removed_events": int(n_removed_burst),
@@ -3961,6 +4082,32 @@ def main(argv=None):
         err218=err218_final,
         analysis_isotope=iso_mode,
     )
+
+    isotope_ts_payload = build_isotope_timeseries(
+        df_analysis["timestamp"].values,
+        df_analysis["energy_MeV"].values,
+        cfg,
+        t0_global.timestamp(),
+        t_end_global_ts,
+        run_periods_cfg,
+    )
+
+    radon_cfg = cfg.get("radon_inference")
+    external_rn_series = None
+    if isinstance(radon_cfg, Mapping) and radon_cfg.get("enabled"):
+        timestamps_target = isotope_ts_payload.get("time_axis", [])
+        if timestamps_target:
+            try:
+                external_rn_series = load_external_rn_series(
+                    radon_cfg.get("external_rn"), timestamps_target
+                )
+            except Exception as exc:
+                logger.warning("Could not load external radon series -> %s", exc)
+        radon_inference_results = run_radon_inference(
+            isotope_ts_payload.get("series", {}),
+            cfg,
+            external_rn_series=external_rn_series,
+        )
 
     # ── Construct a minimal time-series aligned with the measurement window ──
     ts_start, ts_end = _radon_time_window(t0_cfg, t_end_cfg, radon_interval_cfg)
@@ -4079,6 +4226,23 @@ def main(argv=None):
             Path(out_dir) / "radon_trend.png",
             config=cfg.get("plotting", {}),
         )
+
+    radon_inference_summary = (
+        summary.get("radon_inference") if hasattr(summary, "get") else None
+    )
+    if isinstance(radon_inference_summary, Mapping) and radon_inference_summary:
+        try:
+            plot_rn_inferred_vs_time(radon_inference_summary, Path(out_dir))
+        except Exception as exc:
+            logger.warning("Could not create radon inference plot -> %s", exc)
+        try:
+            plot_ambient_rn_vs_time(radon_inference_summary, Path(out_dir))
+        except Exception as exc:
+            logger.warning("Could not create ambient radon plot -> %s", exc)
+        try:
+            plot_equivalent_volume_vs_time(radon_inference_summary, Path(out_dir))
+        except Exception as exc:
+            logger.warning("Could not create equivalent volume plot -> %s", exc)
 
     # Generate plots now that the output directory exists
     spectrum_png = Path(out_dir) / "spectrum.png"
