@@ -30,7 +30,8 @@ Usage Example:
 import numpy as np
 from scipy import special
 from scipy.stats import norm
-from typing import Tuple, Optional, Union, Dict, Callable
+from typing import Tuple, Optional, Union, Dict, Callable, Iterable, Sequence, Mapping
+from concurrent.futures import ThreadPoolExecutor
 import warnings
 
 import constants
@@ -284,10 +285,152 @@ def _emg_strategy_erfcx_exact(*_args, **_kwargs) -> np.ndarray:
     raise NotImplementedError("Exact erfcx-based EMG evaluation not yet implemented.")
 
 
+EMG_STABLE_MODE = "scipy_safe"
+
+
 _EMG_STRATEGIES: Dict[str, Callable[..., np.ndarray]] = {
     "scipy_safe": _emg_strategy_scipy_safe,
     "erfcx_exact": _emg_strategy_erfcx_exact,
 }
+
+
+__all__ = ["StableEMG", "emg_left_stable", "parallel_emg_map", "EMG_STABLE_MODE"]
+
+
+def _normalize_param_set(param: Union[Mapping[str, float], Sequence[float]],
+                         default_amplitude: float) -> Tuple[float, float, float, float]:
+    """Return ``(mu, sigma, tau, amplitude)`` from ``param``.
+
+    ``param`` may be either a mapping with ``mu``, ``sigma`` and ``tau`` keys
+    (and an optional ``amplitude`` key) or a length-3/4 sequence in the order
+    ``(mu, sigma, tau[, amplitude])``.
+    """
+
+    if isinstance(param, Mapping):
+        try:
+            mu = float(param["mu"])
+            sigma = float(param["sigma"])
+            tau = float(param["tau"])
+        except KeyError as exc:  # pragma: no cover - defensive guard
+            missing = exc.args[0]
+            raise KeyError(f"Missing required EMG parameter: {missing}") from exc
+
+        amplitude = float(param.get("amplitude", default_amplitude))
+        return mu, sigma, tau, amplitude
+
+    if isinstance(param, Sequence) and not isinstance(param, (str, bytes, bytearray)):
+        values = list(param)
+        if len(values) == 3:
+            mu, sigma, tau = map(float, values)
+            amplitude = float(default_amplitude)
+            return mu, sigma, tau, amplitude
+
+        if len(values) == 4:
+            mu, sigma, tau, amplitude = map(float, values)
+            return mu, sigma, tau, amplitude
+
+        raise ValueError(
+            "Sequence-based EMG parameters must contain 3 or 4 values "
+            "(mu, sigma, tau[, amplitude])."
+        )
+
+    raise TypeError(
+        "EMG parameter sets must be mappings or length-3/4 sequences."
+    )
+
+
+def parallel_emg_map(x: Union[np.ndarray, Sequence[float]],
+                     param_sets: Iterable[Union[Mapping[str, float], Sequence[float]]],
+                     *,
+                     amplitude: Optional[float] = 1.0,
+                     use_log_scale: bool = False,
+                     max_workers: Optional[int] = None,
+                     chunk_size: Optional[int] = None,
+                     mode: Optional[str] = None) -> np.ndarray:
+    """Evaluate EMG PDFs for many parameter sets in parallel.
+
+    Parameters
+    ----------
+    x:
+        Coordinates where the EMG PDF should be evaluated.
+    param_sets:
+        Iterable of EMG parameter definitions. Each entry may be either a
+        mapping with ``mu``, ``sigma`` and ``tau`` keys (optionally including an
+        ``amplitude`` key) or a sequence ``(mu, sigma, tau[, amplitude])``.
+    amplitude:
+        Default amplitude used when a parameter set omits the ``amplitude``
+        field. Defaults to ``1.0``.
+    use_log_scale:
+        Passed through to :func:`emg_left_stable` for numerically extreme
+        evaluations.
+    max_workers:
+        Number of worker threads used for the parallel evaluation. ``None``
+        defers to :class:`concurrent.futures.ThreadPoolExecutor`'s default. A
+        value of ``1`` disables threading and falls back to a serial
+        evaluation.
+    chunk_size:
+        Optional chunksize forwarded to :meth:`ThreadPoolExecutor.map`. When
+        ``None`` a safe default of ``1`` is used.
+    mode:
+        Optional EMG evaluation strategy key from :data:`_EMG_STRATEGIES`.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of shape ``(len(param_sets), len(x))`` containing the evaluated
+        EMG PDFs.
+    """
+
+    x_arr = np.asarray(x, dtype=float)
+
+    params_list = list(param_sets)
+    if not params_list:
+        return np.empty((0, x_arr.size), dtype=float)
+
+    if amplitude is None:
+        default_amplitude = 1.0
+    else:
+        default_amplitude = float(amplitude)
+
+    strategy_key = mode or globals().get("EMG_STABLE_MODE", "scipy_safe")
+    try:
+        strategy = _EMG_STRATEGIES[strategy_key]
+    except KeyError as exc:  # pragma: no cover - defensive guard
+        raise ValueError(f"Unknown EMG stable mode: {strategy_key}") from exc
+
+    normalized_params = [
+        _normalize_param_set(param, default_amplitude)
+        for param in params_list
+    ]
+
+    def _evaluate(param_tuple: Tuple[float, float, float, float]) -> np.ndarray:
+        mu, sigma, tau, amp = param_tuple
+        return strategy(
+            x_arr,
+            mu,
+            sigma,
+            tau,
+            amplitude=amp,
+            use_log_scale=use_log_scale,
+        )
+
+    if max_workers == 1:
+        results = [_evaluate(param_tuple) for param_tuple in normalized_params]
+    else:
+        chunksize_value = 1 if chunk_size is None else int(chunk_size)
+        if chunksize_value <= 0:
+            raise ValueError("chunk_size must be a positive integer")
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            results = list(
+                executor.map(
+                    _evaluate,
+                    normalized_params,
+                    chunksize=chunksize_value,
+                )
+            )
+
+    return np.vstack([np.asarray(result, dtype=float) for result in results])
 
 
 if __name__ == "__main__":
