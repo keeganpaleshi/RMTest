@@ -14,7 +14,7 @@ from constants import (
     DEFAULT_KNOWN_ENERGIES,
     safe_exp as _safe_exp,
 )
-from emg_stable import StableEMG, emg_left_stable
+from emg_stable import StableEMG, emg_left_stable, get_emg_tau_min
 
 
 _DEFAULT_TAU_BOUNDS = {
@@ -211,7 +211,8 @@ def emg_left(x, mu, sigma, tau):
         EMG probability density values (unit area PDF)
     """
 
-    if tau <= 0:
+    tau_min = get_emg_tau_min()
+    if tau <= tau_min:
         return gaussian(x, mu, sigma)
 
     if USE_STABLE_EMG:
