@@ -1886,7 +1886,21 @@ def main(argv=None):
     # 2. Load event data
     # ────────────────────────────────────────────────────────────
     try:
-        events_all = load_events(args.input, column_map=cfg.get("columns"))
+        # Get parallel loading configuration
+        parallel_cfg = cfg.get("pipeline", {}).get("parallel_loading", {})
+        use_parallel = parallel_cfg.get("enabled", True)
+        parallel_config = {
+            "chunk_size": parallel_cfg.get("chunk_size", 50000),
+            "n_workers": parallel_cfg.get("n_workers"),
+            "size_threshold_mb": parallel_cfg.get("size_threshold_mb", 100.0),
+        }
+
+        events_all = load_events(
+            args.input,
+            column_map=cfg.get("columns"),
+            use_parallel=use_parallel,
+            parallel_config=parallel_config
+        )
 
         # Parse timestamps to UTC ``Timestamp`` objects
         events_all["timestamp"] = events_all["timestamp"].map(parse_timestamp)
