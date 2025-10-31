@@ -34,15 +34,42 @@ def set_emg_tau_min(value: float) -> None:
     globals()["_EMG_TAU_MIN"] = tau_min
 
 
-_DEFAULT_TAU_BOUNDS = {
-    "default": (_TAU_MIN, 50.0),
-    "Po218": (_TAU_MIN, 8.0),
-}
+def _make_tau_bounds(tau_min: float) -> dict[str, tuple[float, float]]:
+    return {
+        "default": (tau_min, 50.0),
+        "Po218": (tau_min, 8.0),
+    }
+
+
+_DEFAULT_TAU_BOUNDS = _make_tau_bounds(_TAU_MIN)
 
 # EMG implementation selection
 # Set to True to use the enhanced stable EMG implementation
 # Set to False to use the legacy scipy.stats.exponnorm implementation
 USE_STABLE_EMG = True
+
+
+def _set_tau_min(tau_min: float) -> None:
+    """Update the minimum tau value used throughout the calibration module."""
+
+    global _TAU_MIN, _DEFAULT_TAU_BOUNDS
+    _TAU_MIN = float(tau_min)
+    _DEFAULT_TAU_BOUNDS = _make_tau_bounds(_TAU_MIN)
+
+
+def configure_emg(use_stable_emg: bool, tau_min: float) -> None:
+    """Apply EMG configuration sourced from the analysis configuration file."""
+
+    global USE_STABLE_EMG
+    USE_STABLE_EMG = bool(use_stable_emg)
+    _set_tau_min(tau_min)
+
+    try:
+        import fitting as _fitting  # type: ignore
+
+        _fitting._TAU_MIN = _TAU_MIN
+    except ImportError:  # pragma: no cover - fitting may be optional
+        pass
 
 
 def _coerce_tau_bounds(bounds, iso):
@@ -875,4 +902,5 @@ __all__ = [
     "calibrate_run",
     "derive_calibration_constants",
     "derive_calibration_constants_auto",
+    "configure_emg",
 ]

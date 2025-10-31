@@ -164,6 +164,14 @@ CONFIG_SCHEMA = {
             "properties": {"plot_save_formats": {"type": "array"}},
             "required": ["plot_save_formats"],
         },
+        "fitting": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "use_stable_emg": {"type": "boolean"},
+                "emg_tau_min": {"type": "number", "exclusiveMinimum": 0},
+            },
+        },
         "baseline": {
             "type": "object",
             "additionalProperties": False,
@@ -430,6 +438,54 @@ def load_config(config_path):
 
     if "analysis_isotope" not in cfg:
         cfg["analysis_isotope"] = "radon"
+
+    fit_cfg_raw = cfg.get("fitting")
+    if fit_cfg_raw is None:
+        fit_cfg: dict[str, Any] = {}
+        cfg["fitting"] = fit_cfg
+    elif isinstance(fit_cfg_raw, Mapping) and not isinstance(fit_cfg_raw, dict):
+        fit_cfg = dict(fit_cfg_raw)
+        cfg["fitting"] = fit_cfg
+    elif isinstance(fit_cfg_raw, dict):
+        fit_cfg = fit_cfg_raw
+    else:
+        raise TypeError("'fitting' section must be a mapping if provided")
+
+    use_stable_emg_raw = fit_cfg.get("use_stable_emg")
+    if use_stable_emg_raw is None:
+        use_stable_emg = True
+    else:
+        use_stable_emg = bool(use_stable_emg_raw)
+    fit_cfg["use_stable_emg"] = use_stable_emg
+
+    tau_min_raw = fit_cfg.get("emg_tau_min")
+    tau_min = float(1e-8 if tau_min_raw is None else tau_min_raw)
+    fit_cfg["emg_tau_min"] = tau_min
+
+    import constants as _constants
+
+    _constants._TAU_MIN = tau_min
+
+    try:
+        import calibration as _calibration  # type: ignore
+
+        if hasattr(_calibration, "configure_emg"):
+            _calibration.configure_emg(use_stable_emg, tau_min)
+        else:  # pragma: no cover - compatibility with older versions
+            _calibration.USE_STABLE_EMG = use_stable_emg
+            if hasattr(_calibration, "_set_tau_min"):
+                _calibration._set_tau_min(tau_min)
+            else:
+                _calibration._TAU_MIN = tau_min
+    except ImportError:  # pragma: no cover - calibration module optional in some contexts
+        pass
+
+    try:
+        import fitting as _fitting  # type: ignore
+
+        _fitting._TAU_MIN = tau_min
+    except ImportError:  # pragma: no cover - fitting may be optional in some contexts
+        pass
 
     # Fill in default EMG usage for spectral fits when not explicitly provided
     spec = cfg.setdefault("spectral_fit", {})
