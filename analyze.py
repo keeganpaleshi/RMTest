@@ -1140,6 +1140,72 @@ def _segments_to_isotope_series(ts_metadata):
     return iso_map
 
 
+def dedupe_isotope_series(isotope_series_data, tol_seconds=0.5):
+    """
+    Remove duplicate time bins from isotope series data.
+
+    Input:
+        isotope_series_data: {"Po214": [{"t": ...,"counts": ...,"dt": ...}, ...], ...}
+        tol_seconds: tolerance for considering timestamps equal (default 0.5 seconds)
+
+    Output:
+        Same shape as input, but with duplicate time bins removed.
+        Duplicates are defined as entries with the same isotope where:
+        - |t1 - t2| < tol_seconds
+        - counts are equal
+        - dt are equal
+
+    The first occurrence of each unique entry is kept.
+    """
+    if not isinstance(isotope_series_data, dict):
+        return isotope_series_data
+
+    deduplicated = {}
+
+    for isotope, entries in isotope_series_data.items():
+        if not entries:
+            deduplicated[isotope] = []
+            continue
+
+        # Sort by timestamp to ensure stable deduplication
+        sorted_entries = sorted(entries, key=lambda row: row.get("t", 0.0))
+
+        unique_entries = []
+        for entry in sorted_entries:
+            t_val = entry.get("t")
+            counts_val = entry.get("counts")
+            dt_val = entry.get("dt")
+
+            if t_val is None or counts_val is None or dt_val is None:
+                # Keep entries with missing values
+                unique_entries.append(entry)
+                continue
+
+            # Check if this entry is a duplicate of any already-added entry
+            is_duplicate = False
+            for existing in unique_entries:
+                existing_t = existing.get("t")
+                existing_counts = existing.get("counts")
+                existing_dt = existing.get("dt")
+
+                if existing_t is None or existing_counts is None or existing_dt is None:
+                    continue
+
+                # Check if timestamps are within tolerance and counts/dt match
+                if (abs(existing_t - t_val) < tol_seconds and
+                    existing_counts == counts_val and
+                    existing_dt == dt_val):
+                    is_duplicate = True
+                    break
+
+            if not is_duplicate:
+                unique_entries.append(entry)
+
+        deduplicated[isotope] = unique_entries
+
+    return deduplicated
+
+
 def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
     """Propagate fit parameter errors to the model curve."""
     if fit_obj is None:
@@ -4299,6 +4365,9 @@ def main(argv=None):
 
     for iso_entries in isotope_series_data.values():
         iso_entries.sort(key=lambda row: row.get("t", 0.0))
+
+    # Deduplicate isotope series data to prevent duplicate bins when overlay_isotopes is enabled
+    isotope_series_data = dedupe_isotope_series(isotope_series_data)
 
     radon_inference_results = None
     radon_inference_cfg = cfg.get("radon_inference")
