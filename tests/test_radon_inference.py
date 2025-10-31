@@ -224,3 +224,272 @@ def test_external_rn_fallback():
 
     finally:
         Path(csv_path).unlink()
+
+
+def test_dedupe_strategy_first():
+    """Test enhanced deduplication: 'first' strategy."""
+    config = _base_config(
+        detection_efficiency={"Po214": 0.12},
+        dedupe_strategy="first"
+    )
+    # Two entries at same timestamp with different counts
+    series = {
+        "Po214": [
+            {"t": 100.0, "counts": 50.0, "dt": 60.0},
+            {"t": 100.0, "counts": 100.0, "dt": 60.0},
+        ]
+    }
+
+    result = run_radon_inference(series, config)
+    assert result is not None
+
+    rn_inferred = result["rn_inferred"]
+    assert len(rn_inferred) == 1
+    # With 'first' strategy, should use counts=50.0
+    expected_rn_bq = 50.0 / (0.12 * 60.0)
+    assert rn_inferred[0]["rn_bq"] == pytest.approx(expected_rn_bq)
+
+    # Check metadata
+    assert result["meta"]["dedupe_strategy"] == "first"
+    assert result["meta"]["duplicates_removed"] == 1
+
+
+def test_dedupe_strategy_last():
+    """Test enhanced deduplication: 'last' strategy (default)."""
+    config = _base_config(
+        detection_efficiency={"Po214": 0.12},
+        dedupe_strategy="last"
+    )
+    # Two entries at same timestamp with different counts
+    series = {
+        "Po214": [
+            {"t": 100.0, "counts": 50.0, "dt": 60.0},
+            {"t": 100.0, "counts": 100.0, "dt": 60.0},
+        ]
+    }
+
+    result = run_radon_inference(series, config)
+    assert result is not None
+
+    rn_inferred = result["rn_inferred"]
+    assert len(rn_inferred) == 1
+    # With 'last' strategy, should use counts=100.0
+    expected_rn_bq = 100.0 / (0.12 * 60.0)
+    assert rn_inferred[0]["rn_bq"] == pytest.approx(expected_rn_bq)
+
+    assert result["meta"]["dedupe_strategy"] == "last"
+    assert result["meta"]["duplicates_removed"] == 1
+
+
+def test_dedupe_strategy_average():
+    """Test enhanced deduplication: 'average' strategy."""
+    config = _base_config(
+        detection_efficiency={"Po214": 0.12},
+        dedupe_strategy="average"
+    )
+    # Two entries at same timestamp with different counts
+    series = {
+        "Po214": [
+            {"t": 100.0, "counts": 50.0, "dt": 60.0},
+            {"t": 100.0, "counts": 100.0, "dt": 60.0},
+        ]
+    }
+
+    result = run_radon_inference(series, config)
+    assert result is not None
+
+    rn_inferred = result["rn_inferred"]
+    assert len(rn_inferred) == 1
+    # With 'average' strategy, should use average counts=75.0
+    expected_rn_bq = 75.0 / (0.12 * 60.0)
+    assert rn_inferred[0]["rn_bq"] == pytest.approx(expected_rn_bq)
+
+    assert result["meta"]["dedupe_strategy"] == "average"
+    assert result["meta"]["duplicates_removed"] == 1
+
+
+def test_inference_method_po214():
+    """Test inference method: use only Po214."""
+    config = _base_config(
+        source_isotopes=["Po214", "Po218"],
+        detection_efficiency={"Po214": 0.12, "Po218": 0.10},
+        inference_method="po214"
+    )
+    series = {
+        "Po214": [{"t": 0.0, "counts": 120.0, "dt": 60.0}],
+        "Po218": [{"t": 0.0, "counts": 100.0, "dt": 60.0}],
+    }
+
+    result = run_radon_inference(series, config)
+    assert result is not None
+
+    rn_entry = result["rn_inferred"][0]
+    # Should use only Po214: 120.0 / (0.12 * 60.0)
+    expected_rn_bq = 120.0 / (0.12 * 60.0)
+    assert rn_entry["rn_bq"] == pytest.approx(expected_rn_bq)
+    assert rn_entry["source"] == "Po214"
+
+    assert result["meta"]["inference_method"] == "po214"
+
+
+def test_inference_method_po218():
+    """Test inference method: use only Po218."""
+    config = _base_config(
+        source_isotopes=["Po214", "Po218"],
+        detection_efficiency={"Po214": 0.12, "Po218": 0.10},
+        inference_method="po218"
+    )
+    series = {
+        "Po214": [{"t": 0.0, "counts": 120.0, "dt": 60.0}],
+        "Po218": [{"t": 0.0, "counts": 100.0, "dt": 60.0}],
+    }
+
+    result = run_radon_inference(series, config)
+    assert result is not None
+
+    rn_entry = result["rn_inferred"][0]
+    # Should use only Po218: 100.0 / (0.10 * 60.0)
+    expected_rn_bq = 100.0 / (0.10 * 60.0)
+    assert rn_entry["rn_bq"] == pytest.approx(expected_rn_bq)
+    assert rn_entry["source"] == "Po218"
+
+    assert result["meta"]["inference_method"] == "po218"
+
+
+def test_inference_method_average():
+    """Test inference method: simple average of isotopes."""
+    config = _base_config(
+        source_isotopes=["Po214", "Po218"],
+        detection_efficiency={"Po214": 0.12, "Po218": 0.10},
+        inference_method="average"
+    )
+    series = {
+        "Po214": [{"t": 0.0, "counts": 120.0, "dt": 60.0}],
+        "Po218": [{"t": 0.0, "counts": 100.0, "dt": 60.0}],
+    }
+
+    result = run_radon_inference(series, config)
+    assert result is not None
+
+    rn_entry = result["rn_inferred"][0]
+    # Average of Po214 and Po218 activities
+    activity_po214 = 120.0 / (0.12 * 60.0)
+    activity_po218 = 100.0 / (0.10 * 60.0)
+    expected_rn_bq = (activity_po214 + activity_po218) / 2.0
+    assert rn_entry["rn_bq"] == pytest.approx(expected_rn_bq)
+    assert rn_entry["source"] == "average"
+
+    assert result["meta"]["inference_method"] == "average"
+
+
+def test_inference_method_weighted():
+    """Test inference method: weighted combination (default)."""
+    config = _base_config(
+        source_isotopes=["Po214", "Po218"],
+        source_weights={"Po214": 0.7, "Po218": 0.3},
+        detection_efficiency={"Po214": 0.12, "Po218": 0.10},
+        inference_method="weighted"
+    )
+    series = {
+        "Po214": [{"t": 0.0, "counts": 120.0, "dt": 60.0}],
+        "Po218": [{"t": 0.0, "counts": 100.0, "dt": 60.0}],
+    }
+
+    result = run_radon_inference(series, config)
+    assert result is not None
+
+    rn_entry = result["rn_inferred"][0]
+    # Weighted combination
+    activity_po214 = 120.0 / (0.12 * 60.0)
+    activity_po218 = 100.0 / (0.10 * 60.0)
+    expected_rn_bq = 0.7 * activity_po214 + 0.3 * activity_po218
+    assert rn_entry["rn_bq"] == pytest.approx(expected_rn_bq)
+    assert rn_entry["source"] == "weighted"
+
+    assert result["meta"]["inference_method"] == "weighted"
+
+
+def test_inference_method_best_auto_selects():
+    """Test inference method: 'best' auto-selects based on available data."""
+    config = _base_config(
+        source_isotopes=["Po214", "Po218"],
+        detection_efficiency={"Po214": 0.12, "Po218": 0.10},
+        inference_method="best"
+    )
+    # Provide both isotopes
+    series = {
+        "Po214": [{"t": 0.0, "counts": 120.0, "dt": 60.0}],
+        "Po218": [{"t": 0.0, "counts": 100.0, "dt": 60.0}],
+    }
+
+    result = run_radon_inference(series, config)
+    assert result is not None
+
+    # Should auto-select 'weighted' when both isotopes available
+    assert result["meta"]["inference_method"] == "weighted"
+
+
+def test_uncertainty_tracking_enabled():
+    """Test that uncertainty tracking adds uncertainty fields."""
+    config = _base_config(
+        detection_efficiency={"Po214": 0.12},
+        track_uncertainties=True
+    )
+    series = {"Po214": [{"t": 0.0, "counts": 100.0, "dt": 60.0}]}
+
+    result = run_radon_inference(series, config)
+    assert result is not None
+
+    rn_entry = result["rn_inferred"][0]
+    # Should have uncertainty field
+    assert "rn_bq_unc" in rn_entry
+    assert rn_entry["rn_bq_unc"] > 0
+
+    # Poisson uncertainty: sqrt(N) / (eff * dt)
+    expected_unc = math.sqrt(100.0) / (0.12 * 60.0)
+    assert rn_entry["rn_bq_unc"] == pytest.approx(expected_unc)
+
+    # Check metadata has uncertainties
+    assert "uncertainties" in rn_entry["meta"]
+    assert "Po214" in rn_entry["meta"]["uncertainties"]
+
+    assert result["meta"]["track_uncertainties"] is True
+
+
+def test_uncertainty_tracking_disabled():
+    """Test that uncertainty tracking can be disabled."""
+    config = _base_config(
+        detection_efficiency={"Po214": 0.12},
+        track_uncertainties=False
+    )
+    series = {"Po214": [{"t": 0.0, "counts": 100.0, "dt": 60.0}]}
+
+    result = run_radon_inference(series, config)
+    assert result is not None
+
+    rn_entry = result["rn_inferred"][0]
+    # Should NOT have uncertainty field
+    assert "rn_bq_unc" not in rn_entry
+
+    assert result["meta"]["track_uncertainties"] is False
+
+
+def test_volume_uncertainty_propagation():
+    """Test that volume uncertainties are calculated when tracking enabled."""
+    config = _base_config(
+        detection_efficiency={"Po214": 0.12},
+        track_uncertainties=True,
+        external_rn={"mode": "constant", "constant_bq_per_m3": 80.0}
+    )
+    series = {"Po214": [{"t": 0.0, "counts": 120.0, "dt": 60.0}]}
+    external = [{"t": 0.0, "rn_bq_per_m3": 80.0}]
+
+    result = run_radon_inference(series, config, external)
+    assert result is not None
+
+    vol_entry = result["volume_equiv"][0]
+    # Should have volume uncertainty fields
+    assert "v_m3_unc" in vol_entry
+    assert "v_lpm_unc" in vol_entry
+    assert vol_entry["v_m3_unc"] > 0
+    assert vol_entry["v_lpm_unc"] > 0
