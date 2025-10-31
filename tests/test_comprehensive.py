@@ -467,10 +467,10 @@ class TestBaselineUtilities:
 
         dilution = compute_dilution_factor(monitor_volume, sample_volume)
 
-        # Dilution should be ratio of volumes
-        expected = monitor_volume / sample_volume
+        # Dilution factor is monitor / (monitor + sample)
+        expected = monitor_volume / (monitor_volume + sample_volume)
         assert abs(dilution - expected) < 1e-10
-        assert dilution >= 1.0  # Monitor volume should be >= sample volume
+        assert 0.0 < dilution <= 1.0  # Should be a fraction
 
     def test_compute_dilution_factor_equal_volumes(self):
         """Test dilution factor with equal volumes."""
@@ -478,7 +478,17 @@ class TestBaselineUtilities:
 
         dilution = compute_dilution_factor(volume, volume)
 
-        # Should be 1.0 when volumes are equal
+        # Should be 0.5 when volumes are equal: V/(V+V) = V/2V = 0.5
+        assert abs(dilution - 0.5) < 1e-10
+
+    def test_compute_dilution_factor_zero_sample(self):
+        """Test dilution factor with zero sample volume."""
+        monitor_volume = 10.0
+        sample_volume = 0.0
+
+        dilution = compute_dilution_factor(monitor_volume, sample_volume)
+
+        # With no sample volume: monitor/(monitor+0) = 1.0
         assert abs(dilution - 1.0) < 1e-10
 
     def test_estimate_baseline_noise(self):
