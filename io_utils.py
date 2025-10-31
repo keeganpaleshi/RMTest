@@ -159,6 +159,14 @@ CONFIG_SCHEMA = {
             "properties": {"enable": {"type": "boolean"}},
             "required": ["enable"],
         },
+        "fitting": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "use_stable_emg": {"type": "boolean"},
+                "emg_tau_min": {"type": "number", "exclusiveMinimum": 0},
+            },
+        },
         "plotting": {
             "type": "object",
             "properties": {"plot_save_formats": {"type": "array"}},
@@ -430,6 +438,14 @@ def load_config(config_path):
 
     if "analysis_isotope" not in cfg:
         cfg["analysis_isotope"] = "radon"
+
+    # Provide defaults for EMG fitting controls when omitted
+    fitting_cfg = cfg.get("fitting")
+    if fitting_cfg is None or not isinstance(fitting_cfg, Mapping):
+        fitting_cfg = {}
+        cfg["fitting"] = fitting_cfg
+    fitting_cfg.setdefault("use_stable_emg", True)
+    fitting_cfg.setdefault("emg_tau_min", 1e-8)
 
     # Fill in default EMG usage for spectral fits when not explicitly provided
     spec = cfg.setdefault("spectral_fit", {})
