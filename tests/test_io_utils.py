@@ -37,6 +37,8 @@ def test_load_config(tmp_path):
     loaded = load_config(p)
     assert loaded["pipeline"]["log_level"] == "INFO"
     assert loaded["burst_filter"]["burst_mode"] == "rate"
+    assert loaded["fitting"]["use_stable_emg"] is True
+    assert loaded["fitting"]["emg_tau_min"] == pytest.approx(1e-8)
 
 
 def test_load_config_missing_key(tmp_path):
