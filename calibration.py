@@ -8,7 +8,7 @@ from scipy.optimize import curve_fit
 from scipy.stats import exponnorm
 import utils
 from constants import (
-    _TAU_MIN,
+    _TAU_MIN as _DEFAULT_TAU_MIN,
     DEFAULT_NOISE_CUTOFF,
     DEFAULT_NOMINAL_ADC,
     DEFAULT_KNOWN_ENERGIES,
@@ -17,15 +17,41 @@ from constants import (
 from emg_stable import StableEMG, emg_left_stable
 
 
-_DEFAULT_TAU_BOUNDS = {
-    "default": (_TAU_MIN, 50.0),
-    "Po218": (_TAU_MIN, 8.0),
-}
+_EMG_TAU_MIN = float(_DEFAULT_TAU_MIN)
+
+
+def _make_default_tau_bounds() -> dict[str, tuple[float, float]]:
+    tau_min = float(_EMG_TAU_MIN)
+    return {
+        "default": (tau_min, 50.0),
+        "Po218": (tau_min, 8.0),
+    }
+
+
+_DEFAULT_TAU_BOUNDS = _make_default_tau_bounds()
 
 # EMG implementation selection
 # Set to True to use the enhanced stable EMG implementation
 # Set to False to use the legacy scipy.stats.exponnorm implementation
 USE_STABLE_EMG = True
+
+
+def set_use_stable_emg(value: bool) -> None:
+    """Toggle the stable EMG implementation globally."""
+
+    global USE_STABLE_EMG
+    USE_STABLE_EMG = bool(value)
+
+
+def set_emg_tau_min(value: float) -> None:
+    """Update the global minimum allowed EMG tau value."""
+
+    global _EMG_TAU_MIN, _DEFAULT_TAU_BOUNDS
+    tau = float(value)
+    if not np.isfinite(tau) or tau <= 0.0:
+        raise ValueError("emg_tau_min must be a positive finite number")
+    _EMG_TAU_MIN = tau
+    _DEFAULT_TAU_BOUNDS = _make_default_tau_bounds()
 
 
 def _coerce_tau_bounds(bounds, iso):
@@ -46,7 +72,7 @@ def _coerce_tau_bounds(bounds, iso):
     if not np.isfinite(lo) or not np.isfinite(hi):
         raise ValueError(f"Tau bounds for {iso} must be finite, got {bounds!r}")
 
-    lo = max(lo, _TAU_MIN)
+    lo = max(lo, _EMG_TAU_MIN)
     if hi <= lo:
         raise ValueError(
             f"Upper tau bound must exceed lower bound for {iso}, got {bounds!r}"
@@ -332,7 +358,7 @@ def fixed_slope_calibration(adc_values, cfg):
             sigma0 = float(abs(sigma_E_guess) / abs(a))
 
     tau_cfg = cal_cfg.get("init_tau_adc", 0.0)
-    tau0 = max(tau_cfg, _TAU_MIN) if use_emg else 0.0
+    tau0 = max(tau_cfg, _EMG_TAU_MIN) if use_emg else 0.0
 
     if use_emg:
         def model_emg(x, A, mu, sigma, tau):
@@ -340,7 +366,7 @@ def fixed_slope_calibration(adc_values, cfg):
 
         p0 = [amp0, mu0, sigma0, tau0]
         bounds = (
-            [0, mu0 - fit_window, 1e-3, _TAU_MIN],
+            [0, mu0 - fit_window, 1e-3, _EMG_TAU_MIN],
             [np.inf, mu0 + fit_window, 50.0, 200.0],
         )
         popt, pcov = curve_fit(model_emg, x_slice, y_slice, p0=p0, bounds=bounds)
@@ -521,7 +547,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
         tau_cfg = config["calibration"].get("init_tau_adc", 0.0)
         # Avoid zero or negative starting tau which can cause numerical issues
-        tau0 = max(tau_cfg, _TAU_MIN) if use_emg else 0.0
+        tau0 = max(tau_cfg, _EMG_TAU_MIN) if use_emg else 0.0
 
         if use_emg and iso in ("Po210", "Po218"):
             # Fit EMG: parameters [amp, mu, sigma, tau]

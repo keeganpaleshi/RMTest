@@ -16,11 +16,22 @@ from scipy.optimize import curve_fit
 _ORIG_CURVE_FIT = curve_fit
 from scipy.stats import chi2
 from calibration import emg_left, gaussian
-from constants import _TAU_MIN, safe_exp as _safe_exp
+from constants import _TAU_MIN as _DEFAULT_TAU_MIN, safe_exp as _safe_exp
 from math_utils import log_expm1_stable
 
 
+_TAU_MIN = float(_DEFAULT_TAU_MIN)
 _TAU_BOUND_EXPANSION = 10.0
+
+
+def set_emg_tau_min(value: float) -> None:
+    """Update the minimum allowed EMG tau across spectrum fits."""
+
+    global _TAU_MIN
+    tau = float(value)
+    if not np.isfinite(tau) or tau <= 0.0:
+        raise ValueError("emg_tau_min must be a positive finite number")
+    _TAU_MIN = tau
 
 
 def softplus(x: np.ndarray | float) -> np.ndarray | float:
@@ -79,7 +90,14 @@ _make_linear_bkg = make_linear_bkg
 
 
 # Use shared overflow guard for exponentiation
-__all__ = ["fit_time_series", "fit_decay", "fit_spectrum", "softplus", "make_linear_bkg"]
+__all__ = [
+    "fit_time_series",
+    "fit_decay",
+    "fit_spectrum",
+    "softplus",
+    "make_linear_bkg",
+    "set_emg_tau_min",
+]
 
 
 class FitParams(TypedDict, total=False):
