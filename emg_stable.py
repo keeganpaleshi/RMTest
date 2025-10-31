@@ -1,23 +1,24 @@
 """
 Module: emg_stable.py
-Purpose: Numerically stable Exponentially Modified Gaussian implementation using scipy special functions
+Purpose: Provide a cleaned-up wrapper around ``scipy.stats.exponnorm`` for the
+Exponentially Modified Gaussian used in radon alpha spectroscopy peak fitting.
 Author: RMTest Enhancement Module
 
-This module provides an enhanced, numerically stable implementation of the Exponentially
-Modified Gaussian (EMG) distribution for use in radon alpha spectroscopy peak fitting.
+This module keeps the legacy EMG lineshape while adding light-weight
+stabilization steps such as NaN/Inf cleaning, guarding against overflow, and
+falling back to a Gaussian when tau approaches the configured floor.
 
 Key Features:
-- Enhanced numerical stability with safeguards against overflow/underflow
-- Fallback to Gaussian for very small tau values (at the configured minimum)
-- Validates and cleans output to prevent NaN/Inf propagation
-- Compatible with existing scipy.stats.exponnorm-based code
-- Optional fitting capabilities with parameter validation
+- Drop-in replacement for existing :mod:`scipy.stats.exponnorm` calls
+- Safeguards against overflow/underflow and invalid values
+- Optional fitting helpers with parameter validation
 
 Integration:
-To use this stable EMG implementation, enable ``fitting.use_stable_emg`` in the
+To use this stabilized EMG helper, enable ``fitting.use_stable_emg`` in the
 analysis configuration (the default). To revert to the legacy
 ``scipy.stats.exponnorm`` implementation, set ``fitting.use_stable_emg`` to
 ``false``. The minimum tau floor is configurable via ``fitting.emg_tau_min``.
+If true erfcx-style EMG is required, see Module 6.
 
 Usage Example:
     from emg_stable import StableEMG
@@ -89,12 +90,10 @@ class StableEMG:
         # K = tau / sigma is the shape parameter for exponnorm
         K = tau / sigma
 
-        # Use erfcx-based stable computation
-        # This formula is mathematically equivalent to exponnorm.pdf but more stable
-        # EMG = (1/tau) * exp((mu-x)/tau + sigma^2/(2*tau^2)) * Phi((x-mu-sigma^2/tau)/sigma)
-        # where Phi is the standard normal CDF
+        # Historically we prototyped erfcx-based expressions for the EMG, but the
+        # production path simply delegates to scipy.stats.exponnorm with guards.
 
-        # Compute in a numerically stable way
+        # Compute in a numerically aware way
         lambda_param = 1.0 / tau
         exp_arg = lambda_param * (mu - x) + 0.5 * lambda_param**2 * sigma**2
 
@@ -103,14 +102,6 @@ class StableEMG:
 
         # Compute the CDF argument
         cdf_arg = (x - mu - sigma**2 * lambda_param) / sigma
-
-        # Use erfcx for numerical stability when computing exp * erfc
-        # erfcx(z) = exp(z^2) * erfc(z)
-        # We need: exp(exp_arg) * Phi(cdf_arg)
-        # Where Phi(z) = 0.5 * erfc(-z/sqrt(2))
-
-        # For numerical stability, use the fact that:
-        # exp(exp_arg) * erfc(-cdf_arg/sqrt(2)) = exp(exp_arg - cdf_arg^2/2) * erfcx(-cdf_arg/sqrt(2)) * exp(cdf_arg^2/2)
 
         # Simplified: use scipy's exponnorm for the core calculation but with safeguards
         from scipy.stats import exponnorm
