@@ -462,10 +462,32 @@ fit.  Important keys include:
 - `use_emg` – mapping of isotopes to boolean flags selecting an EMG tail.
   Set `{"Po210": true}` to enable only the Po‑210 tail, or use a single
   boolean to toggle all peaks (e.g. `true` enables EMG tails for every
-  isotope that does not already have an explicit override).  When omitted
-  every isotope defaults to `false`.  When an explicit `tau_{iso}` prior
-  is supplied the tail is automatically enabled even if the mapping omits
-  the isotope, ensuring priors always take effect.
+  isotope).
+- `emg_stable_mode` – optional string selecting the EMG implementation.
+  The default `'scipy_safe'` uses the numerically robust backend, `'erfcx_exact'`
+  forces the high-precision branch, and `'legacy'` reverts to SciPy's
+  `exponnorm` helper.
+
+EMG tails follow a clear precedence order: defining a `tau_{iso}` prior
+automatically enables the corresponding tail, overriding the
+`use_emg` map; per-isotope entries in `use_emg` override a global boolean
+flag; and when none of these are provided EMG support defaults to
+`false`.  The `fitting.emg_stable_mode` toggle controls which EMG kernel
+is evaluated when a tail is active.
+
+Example EMG configuration:
+
+```yaml
+fitting:
+  use_emg:
+    Po210: true
+  tau_Po210_prior_mean: 0.005
+  tau_Po210_prior_sigma: 0.002
+  emg_stable_mode: scipy_safe
+```
+
+Defining the `tau_Po210` priors above enables the Po‑210 tail even if
+`use_emg` omits that isotope.
 - `mu_bounds` – optional dict mapping isotopes to `[lo, hi]` centroid
   limits.  Set for example `{"Po218": [5.9, 6.1]}` to keep the Po‑218 fit
   from drifting into the Po‑210 region.  Initial centroid guesses found
