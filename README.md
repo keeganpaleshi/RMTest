@@ -462,9 +462,10 @@ fit.  Important keys include:
 - `use_emg` – mapping of isotopes to boolean flags selecting an EMG tail.
   Set `{"Po210": true}` to enable only the Po‑210 tail, or use a single
   boolean to toggle all peaks (e.g. `true` enables EMG tails for every
-  isotope).  When an explicit `tau_{iso}` prior is supplied the tail is
-  automatically enabled even if the mapping omits the isotope, ensuring
-  priors always take effect.
+  isotope that does not already have an explicit override).  When omitted
+  every isotope defaults to `false`.  When an explicit `tau_{iso}` prior
+  is supplied the tail is automatically enabled even if the mapping omits
+  the isotope, ensuring priors always take effect.
 - `mu_bounds` – optional dict mapping isotopes to `[lo, hi]` centroid
   limits.  Set for example `{"Po218": [5.9, 6.1]}` to keep the Po‑218 fit
   from drifting into the Po‑210 region.  Initial centroid guesses found
