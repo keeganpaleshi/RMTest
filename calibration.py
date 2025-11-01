@@ -317,11 +317,11 @@ class CalibrationResult:
 def emg_left(x, mu, sigma, tau):
     """Exponentially modified Gaussian (left-skewed) PDF.
 
-    Uses either the enhanced stable EMG implementation or the legacy
-    scipy.stats.exponnorm implementation depending on USE_STABLE_EMG flag.
-
-    The stable implementation uses scipy special functions (erfcx) for
-    improved numerical stability across extreme parameter ranges.
+    We provide two implementations, switching between them via the
+    ``USE_STABLE_EMG`` flag: the legacy ``scipy.stats.exponnorm`` call and a
+    stabilized wrapper around the same function. The stabilized version cleans
+    NaN/Inf values and falls back to a Gaussian when ``tau`` is below the
+    configured threshold, but it does not alter the underlying EMG lineshape.
 
     Args:
         x: Input values (energy in MeV or ADC units)
@@ -338,7 +338,7 @@ def emg_left(x, mu, sigma, tau):
         return gaussian(x, mu, sigma)
 
     if get_use_stable_emg():
-        # Use enhanced stable implementation with erfcx
+        # Use stabilized wrapper with additional safety checks
         return emg_left_stable(x, mu, sigma, tau, amplitude=1.0, use_log_scale=False)
     else:
         # Legacy implementation using exponnorm
