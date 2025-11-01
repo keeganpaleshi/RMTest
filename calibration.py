@@ -320,8 +320,9 @@ def emg_left(x, mu, sigma, tau):
     Uses either the enhanced stable EMG implementation or the legacy
     scipy.stats.exponnorm implementation depending on USE_STABLE_EMG flag.
 
-    The stable implementation uses scipy special functions (erfcx) for
-    improved numerical stability across extreme parameter ranges.
+    We provide 2 implementations: legacy (scipy exponnorm) and a stabilized
+    wrapper. The stabilized version mostly adds NaN/Inf cleaning and
+    small-tau fallback. It does not change the physical lineshape.
 
     Args:
         x: Input values (energy in MeV or ADC units)
@@ -338,7 +339,7 @@ def emg_left(x, mu, sigma, tau):
         return gaussian(x, mu, sigma)
 
     if get_use_stable_emg():
-        # Use enhanced stable implementation with erfcx
+        # Use stabilized wrapper around scipy.stats.exponnorm
         return emg_left_stable(x, mu, sigma, tau, amplitude=1.0, use_log_scale=False)
     else:
         # Legacy implementation using exponnorm
