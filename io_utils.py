@@ -169,6 +169,7 @@ CONFIG_SCHEMA = {
             "additionalProperties": False,
             "properties": {
                 "use_stable_emg": {"type": "boolean"},
+                "emg_stable_mode": {"type": "boolean"},
                 "emg_tau_min": {"type": "number", "exclusiveMinimum": 0},
             },
         },
@@ -456,7 +457,16 @@ def load_config(config_path):
         use_stable_emg = True
     else:
         use_stable_emg = bool(use_stable_emg_raw)
+
+    emg_stable_mode_raw = fit_cfg.get("emg_stable_mode")
+    if emg_stable_mode_raw is None:
+        emg_stable_mode = use_stable_emg
+    else:
+        emg_stable_mode = bool(emg_stable_mode_raw)
+        use_stable_emg = emg_stable_mode
+
     fit_cfg["use_stable_emg"] = use_stable_emg
+    fit_cfg["emg_stable_mode"] = emg_stable_mode
 
     tau_min_raw = fit_cfg.get("emg_tau_min")
     tau_min = float(1e-8 if tau_min_raw is None else tau_min_raw)
@@ -484,22 +494,51 @@ def load_config(config_path):
         import fitting as _fitting  # type: ignore
 
         _fitting._TAU_MIN = tau_min
+        if hasattr(_fitting, "_update_emg_stable_mode_from_config"):
+            _fitting._update_emg_stable_mode_from_config(cfg)
+        else:  # pragma: no cover - fallback for older versions without helper
+            _fitting.EMG_STABLE_MODE = emg_stable_mode
     except ImportError:  # pragma: no cover - fitting may be optional in some contexts
         pass
 
-    # Fill in default EMG usage for spectral fits when not explicitly provided
+    # Fill in default EMG usage for spectral fits honoring tau priors and overrides
     spec = cfg.setdefault("spectral_fit", {})
-    default_emg = {"Po210": True, "Po218": False, "Po214": False}
+    isotopes = ("Po210", "Po218", "Po214")
+    use_emg = {iso: False for iso in isotopes}
+    forced_true: set[str] = set()
+    explicit: set[str] = set()
+
+    for iso in isotopes:
+        mean_key = f"tau_{iso}_prior_mean"
+        sigma_key = f"tau_{iso}_prior_sigma"
+        if (
+            mean_key in spec
+            and sigma_key in spec
+            and spec[mean_key] is not None
+            and spec[sigma_key] is not None
+        ):
+            use_emg[iso] = True
+            forced_true.add(iso)
+            explicit.add(iso)
+
     emg_cfg = spec.get("use_emg")
-    if emg_cfg is None:
-        spec["use_emg"] = default_emg.copy()
-    elif isinstance(emg_cfg, Mapping):
-        merged = default_emg.copy()
-        merged.update(emg_cfg)
-        spec["use_emg"] = merged
-    else:
-        val = bool(emg_cfg)
-        spec["use_emg"] = {iso: val for iso in default_emg}
+    if isinstance(emg_cfg, Mapping):
+        for iso, value in emg_cfg.items():
+            if iso in use_emg and iso not in forced_true:
+                use_emg[iso] = bool(value)
+                explicit.add(iso)
+    elif emg_cfg is not None:
+        scalar: bool | None
+        if isinstance(emg_cfg, bool):
+            scalar = emg_cfg
+        else:
+            scalar = bool(emg_cfg)
+        for iso in isotopes:
+            if iso in forced_true or iso in explicit:
+                continue
+            use_emg[iso] = scalar
+
+    spec["use_emg"] = use_emg
     # Validate resolution settings
     float_sigma_E = spec.get("float_sigma_E", True)
     fix_sigma0 = spec.get("flags", {}).get("fix_sigma0", False)

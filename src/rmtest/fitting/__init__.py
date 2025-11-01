@@ -12,7 +12,7 @@ _TAU_MIN = _fitting._TAU_MIN
 fit_spectrum = _fitting.fit_spectrum
 fit_time_series = _fitting.fit_time_series
 
-__all__ = ["FitResult", "_TAU_MIN", "fit_spectrum", "fit_time_series"]
+__all__ = ["FitResult", "_TAU_MIN", "fit_spectrum", "fit_time_series", "EMG_STABLE_MODE"]
 
 
 class _FittingProxyModule(types.ModuleType):
@@ -30,7 +30,11 @@ class _FittingProxyModule(types.ModuleType):
         if hasattr(_fitting, name):
             setattr(_fitting, name, value)
             if name in __all__:
-                super().__setattr__(name, getattr(_fitting, name))
+                if name == "EMG_STABLE_MODE":
+                    data = object.__getattribute__(self, "__dict__")
+                    data.pop(name, None)
+                else:
+                    super().__setattr__(name, getattr(_fitting, name))
             return
         super().__setattr__(name, value)
 

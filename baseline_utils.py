@@ -305,8 +305,8 @@ def summarize_baseline(
 
     Notes
     -----
-    When ``allow_negative_baseline`` is ``True`` the corrected rates are
-    preserved exactly as reported by the fit, even if they are negative.
+    When ``baseline.allow_negative_baseline`` is ``True`` the corrected rates
+    are preserved exactly as reported by the fit, even if they are negative.
     When it is ``False`` negative corrected rates are clipped to ``0.0`` so
     downstream consumers never observe negative activities without opting in.
     """
@@ -319,7 +319,7 @@ def summarize_baseline(
     if not isinstance(corrected_rates, Mapping):
         corrected_rates = {}
 
-    allow_negative = bool(cfg.get("allow_negative_baseline"))
+    allow_negative = bool(baseline.get("allow_negative_baseline", False))
 
     summary: dict[str, tuple[float, float, float]] = {}
     for iso in isotopes:
