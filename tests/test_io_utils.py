@@ -98,6 +98,70 @@ def _base_config():
     }
 
 
+def _write_and_load(tmp_path, cfg):
+    path = tmp_path / "cfg.yaml"
+    with open(path, "w") as f:
+        json.dump(cfg, f)
+    return load_config(path)
+
+
+def test_load_config_use_emg_defaults_false(tmp_path):
+    cfg = _base_config()
+    loaded = _write_and_load(tmp_path, cfg)
+    assert loaded["spectral_fit"]["use_emg"] == {
+        "Po210": False,
+        "Po218": False,
+        "Po214": False,
+    }
+
+
+def test_load_config_use_emg_per_isotope_override(tmp_path):
+    cfg = _base_config()
+    cfg["spectral_fit"]["use_emg"] = {"Po210": True, "Po214": False}
+    loaded = _write_and_load(tmp_path, cfg)
+    assert loaded["spectral_fit"]["use_emg"] == {
+        "Po210": True,
+        "Po218": False,
+        "Po214": False,
+    }
+
+
+def test_load_config_use_emg_tau_prior_forces_true(tmp_path):
+    cfg = _base_config()
+    spec = cfg["spectral_fit"]
+    spec.update(
+        {
+            "tau_Po214_prior_mean": 0.01,
+            "tau_Po214_prior_sigma": 0.005,
+            "use_emg": {"Po214": False},
+        }
+    )
+    loaded = _write_and_load(tmp_path, cfg)
+    assert loaded["spectral_fit"]["use_emg"] == {
+        "Po210": False,
+        "Po218": False,
+        "Po214": True,
+    }
+
+
+def test_load_config_use_emg_global_applies_to_unset(tmp_path):
+    cfg = _base_config()
+    spec = cfg["spectral_fit"]
+    spec.update(
+        {
+            "tau_Po210_prior_mean": 0.01,
+            "tau_Po210_prior_sigma": 0.005,
+            "use_emg": True,
+        }
+    )
+    loaded = _write_and_load(tmp_path, cfg)
+    assert loaded["spectral_fit"]["use_emg"] == {
+        "Po210": True,
+        "Po218": True,
+        "Po214": True,
+    }
+
+
 def test_load_config_radon_inference_valid(tmp_path):
     cfg = _base_config()
     cfg["radon_inference"] = {
