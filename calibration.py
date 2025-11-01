@@ -15,6 +15,7 @@ from constants import (
     safe_exp as _safe_exp,
 )
 import emg_stable as _emg_module
+import constants as _constants_module
 from emg_stable import StableEMG, emg_left_stable
 
 _EMG_TAU_MIN = getattr(_emg_module, "_EMG_TAU_MIN", _TAU_MIN)
@@ -116,6 +117,7 @@ def set_emg_tau_min(value: float) -> None:
     tau_min = float(value)
     setattr(_emg_module, "_EMG_TAU_MIN", tau_min)
     globals()["_EMG_TAU_MIN"] = tau_min
+    setattr(_constants_module, "_TAU_MIN", tau_min)
     _set_tau_min(tau_min)
 
 
