@@ -23,6 +23,36 @@ from math_utils import log_expm1_stable
 _TAU_BOUND_EXPANSION = 10.0
 
 
+EMG_STABLE_MODE: bool = True
+
+
+def _update_emg_stable_mode_from_config(
+    cfg: Mapping[str, object] | SimpleNamespace | None,
+) -> None:
+    """Synchronize :data:`EMG_STABLE_MODE` with a loaded configuration."""
+
+    global EMG_STABLE_MODE
+
+    if cfg is None:
+        EMG_STABLE_MODE = True
+        return
+
+    fit_cfg: object | None
+    if isinstance(cfg, Mapping):
+        fit_cfg = cfg.get("fitting")  # type: ignore[arg-type]
+    else:
+        fit_cfg = getattr(cfg, "fitting", None)
+
+    if isinstance(fit_cfg, Mapping):
+        value = fit_cfg.get("emg_stable_mode", True)
+    elif isinstance(fit_cfg, SimpleNamespace):
+        value = getattr(fit_cfg, "emg_stable_mode", True)
+    else:
+        value = True
+
+    EMG_STABLE_MODE = bool(value)
+
+
 def softplus(x: np.ndarray | float) -> np.ndarray | float:
     """Stable softplus implementation for positive parameters."""
     x = np.asarray(x, dtype=float)
@@ -79,7 +109,14 @@ _make_linear_bkg = make_linear_bkg
 
 
 # Use shared overflow guard for exponentiation
-__all__ = ["fit_time_series", "fit_decay", "fit_spectrum", "softplus", "make_linear_bkg"]
+__all__ = [
+    "fit_time_series",
+    "fit_decay",
+    "fit_spectrum",
+    "softplus",
+    "make_linear_bkg",
+    "EMG_STABLE_MODE",
+]
 
 
 class FitParams(TypedDict, total=False):

@@ -169,6 +169,7 @@ CONFIG_SCHEMA = {
             "additionalProperties": False,
             "properties": {
                 "use_stable_emg": {"type": "boolean"},
+                "emg_stable_mode": {"type": "boolean"},
                 "emg_tau_min": {"type": "number", "exclusiveMinimum": 0},
             },
         },
@@ -456,7 +457,16 @@ def load_config(config_path):
         use_stable_emg = True
     else:
         use_stable_emg = bool(use_stable_emg_raw)
+
+    emg_stable_mode_raw = fit_cfg.get("emg_stable_mode")
+    if emg_stable_mode_raw is None:
+        emg_stable_mode = use_stable_emg
+    else:
+        emg_stable_mode = bool(emg_stable_mode_raw)
+        use_stable_emg = emg_stable_mode
+
     fit_cfg["use_stable_emg"] = use_stable_emg
+    fit_cfg["emg_stable_mode"] = emg_stable_mode
 
     tau_min_raw = fit_cfg.get("emg_tau_min")
     tau_min = float(1e-8 if tau_min_raw is None else tau_min_raw)
@@ -484,6 +494,10 @@ def load_config(config_path):
         import fitting as _fitting  # type: ignore
 
         _fitting._TAU_MIN = tau_min
+        if hasattr(_fitting, "_update_emg_stable_mode_from_config"):
+            _fitting._update_emg_stable_mode_from_config(cfg)
+        else:  # pragma: no cover - fallback for older versions without helper
+            _fitting.EMG_STABLE_MODE = emg_stable_mode
     except ImportError:  # pragma: no cover - fitting may be optional in some contexts
         pass
 

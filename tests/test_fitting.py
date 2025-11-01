@@ -8,7 +8,11 @@ import matplotlib.pyplot as plt
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+src_path = Path(__file__).resolve().parents[1] / "src"
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
 from fitting import fit_time_series, fit_spectrum, FitResult, _TAU_MIN
+from io_utils import load_config
 import analyze
 
 
@@ -918,3 +922,41 @@ def test_spectrum_positive_amplitude_bound():
     assert res.params["fit_valid"]
     for key in ("S_Po210", "S_Po218", "S_Po214"):
         assert res.params[key] >= 0
+
+
+def test_rmtest_proxy_emg_stable_mode_sync(tmp_path):
+    import fitting as core_fitting
+    import calibration
+
+    original_mode = core_fitting.EMG_STABLE_MODE
+    original_cal_mode = calibration.EMG_STABLE_MODE
+
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "spectral_fit": {"expected_peaks": {"Po210": 1250, "Po218": 1400, "Po214": 1800}},
+        "time_fit": {"do_time_fit": True},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+        "burst_filter": {"burst_mode": "rate"},
+        "fitting": {"emg_stable_mode": False},
+    }
+
+    cfg_path = tmp_path / "cfg.yaml"
+    with open(cfg_path, "w", encoding="utf-8") as handle:
+        json.dump(cfg, handle)
+
+    try:
+        loaded = load_config(cfg_path)
+        from rmtest.fitting import EMG_STABLE_MODE as proxy_mode
+
+        assert loaded["fitting"]["emg_stable_mode"] is False
+        assert proxy_mode is False
+    finally:
+        calibration.set_emg_stable_mode(original_cal_mode)
+        core_fitting.EMG_STABLE_MODE = original_mode
+        try:
+            import rmtest.fitting as proxy
+
+            proxy.EMG_STABLE_MODE = original_mode
+        except ImportError:
+            pass

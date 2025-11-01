@@ -57,6 +57,24 @@ def _mode_prefers_stable(mode):
     return None
 
 
+def _sync_fitting_emg_stable_mode(value: bool | None = None) -> None:
+    try:
+        import fitting as _fitting  # type: ignore
+    except ImportError:  # pragma: no cover - optional dependency path
+        return
+
+    if value is None:
+        current = bool(globals().get("USE_STABLE_EMG", _USE_STABLE_EMG_DEFAULT))
+    else:
+        current = bool(value)
+
+    updater = getattr(_fitting, "_update_emg_stable_mode_from_config", None)
+    if callable(updater):
+        updater({"fitting": {"emg_stable_mode": current}})
+    else:  # pragma: no cover - compatibility with older versions
+        setattr(_fitting, "EMG_STABLE_MODE", current)
+
+
 if not hasattr(_emg_module, "EMG_STABLE_MODE"):
     setattr(_emg_module, "EMG_STABLE_MODE", "scipy_safe")
 
@@ -91,6 +109,7 @@ def set_use_stable_emg(value: bool) -> None:
 
     set_emg_stable_mode(normalized)
     globals()["USE_STABLE_EMG"] = bool(use_stable)
+    _sync_fitting_emg_stable_mode()
 
 
 def set_emg_stable_mode(mode: str) -> None:
@@ -103,6 +122,9 @@ def set_emg_stable_mode(mode: str) -> None:
     preference = _mode_prefers_stable(normalized)
     if preference is not None:
         globals()["USE_STABLE_EMG"] = preference
+        _sync_fitting_emg_stable_mode(preference)
+    else:
+        _sync_fitting_emg_stable_mode()
 
 
 def get_emg_tau_min() -> float:
