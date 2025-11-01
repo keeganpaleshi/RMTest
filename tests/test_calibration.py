@@ -12,6 +12,8 @@ from calibration import (
     derive_calibration_constants,
 )
 import calibration as calib_mod
+import constants
+import emg_stable
 from constants import DEFAULT_KNOWN_ENERGIES
 
 
@@ -26,6 +28,28 @@ def test_two_point_calibration():
     # Check that calibration maps 1000->5.30 and 2000->7.69
     assert pytest.approx(m * 1000 + c, rel=1e-3) == 5.30
     assert pytest.approx(m * 2000 + c, rel=1e-3) == 7.69
+
+
+def test_configure_emg_updates_tau_floor():
+    """configure_emg should sync tau floors across modules and fallbacks."""
+
+    original_tau = calib_mod.get_emg_tau_min()
+    original_use_stable = calib_mod.get_use_stable_emg()
+
+    tau_floor = 5e-3
+    calib_mod.configure_emg(True, tau_floor)
+    try:
+        assert constants._TAU_MIN == pytest.approx(tau_floor)
+
+        x = np.linspace(-1.0, 1.0, 5)
+        gaussian_pdf = gaussian(x, 0.0, 1.0)
+        stable_pdf = emg_stable.StableEMG().pdf(
+            x, mu=0.0, sigma=1.0, tau=tau_floor / 2, amplitude=1.0
+        )
+
+        assert np.allclose(stable_pdf, gaussian_pdf)
+    finally:
+        calib_mod.configure_emg(original_use_stable, original_tau)
 
 
 def test_two_point_calibration_identical_centroids_error():
