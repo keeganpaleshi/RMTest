@@ -52,13 +52,10 @@ def _emg_section(cfg: Mapping[str, Any] | None) -> Dict[str, Any]:
 
 def emg_min_tau_from_config(cfg: Mapping[str, Any] | None) -> float:
     section = _emg_section(cfg)
-    value = section.get("min_tau", EMG_MIN_TAU)
-    try:
-        v = float(value)
-    except (TypeError, ValueError):
-        v = EMG_MIN_TAU
-    # hard floor: never go below 5e-4 from config
-    return v if v >= 5.0e-4 else 5.0e-4
+    if "min_tau" in section:
+        # trust the config, even if it is lower than the default
+        return float(section["min_tau"])
+    return EMG_MIN_TAU
 
 
 def emg_stable_mode_from_config(cfg: Mapping[str, Any] | None) -> bool:
