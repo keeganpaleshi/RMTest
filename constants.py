@@ -8,9 +8,10 @@ import yaml
 
 # Import centralized EMG constants
 try:
-    from rmtest.emg_constants import EMG_MIN_TAU as _TAU_MIN
-except ImportError:
-    # Fallback for when rmtest package is not available
+    # prefer the centralized/package value
+    from rmtest.fitting import EMG_MIN_TAU as _TAU_MIN
+except Exception:
+    # must match tests, do NOT go below this
     _TAU_MIN = 5e-4
 
 # Legacy alias - kept for backward compatibility

@@ -12,6 +12,19 @@ from the top-level fitting module, not through this package.
 
 from __future__ import annotations
 
+# Import EMG constants from the centralized location
+from ..emg_constants import (
+    EMG_STABLE_MODE,
+    EMG_MIN_TAU,
+    EMG_DEFAULT_METHOD,
+    emg_min_tau_from_config,
+    emg_stable_mode_from_config,
+    emg_method_from_config,
+    emg_use_emg_from_config,
+    clamp_tau,
+)
+
+# Import EMG config helpers
 from .emg_config import (
     get_emg_stable_mode,
     resolve_emg_mode_preference,
@@ -19,14 +32,28 @@ from .emg_config import (
     set_emg_mode_override,
     reset_emg_mode_preferences,
 )
+
+# Import EMG utils
 from .emg_utils import EMGTailSpec, resolve_emg_usage
 
 __all__ = [
+    # Constants from emg_constants
+    "EMG_STABLE_MODE",
+    "EMG_MIN_TAU",
+    "EMG_DEFAULT_METHOD",
+    # Config helpers from emg_constants
+    "emg_min_tau_from_config",
+    "emg_stable_mode_from_config",
+    "emg_method_from_config",
+    "emg_use_emg_from_config",
+    "clamp_tau",
+    # Config helpers from emg_config
     "get_emg_stable_mode",
     "resolve_emg_mode_preference",
     "set_emg_mode_from_config",
     "set_emg_mode_override",
     "reset_emg_mode_preferences",
+    # Utils from emg_utils
     "EMGTailSpec",
     "resolve_emg_usage",
 ]
