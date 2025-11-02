@@ -3,6 +3,16 @@ pipeline:
   log_level: INFO
 
 fitting:
+  # New centralized EMG configuration structure
+  emg:
+    stable_mode: true       # Use numerically stable EMG implementation
+    min_tau: 5.0e-4        # Minimum tau floor (hard limit)
+    method: "erfcx"         # Numerical method: "erfcx" or "direct"
+    use_emg:                # Per-isotope EMG control
+      Po210: true
+      Po218: false
+      Po214: false
+  # Legacy configuration (deprecated but still supported)
   use_stable_emg: true
   emg_stable_mode: scipy_safe
 

@@ -6,8 +6,15 @@ from dataclasses import dataclass
 from pathlib import Path
 import yaml
 
+# Import centralized EMG constants
+try:
+    from rmtest.emg_constants import EMG_MIN_TAU as _TAU_MIN
+except ImportError:
+    # Fallback for when rmtest package is not available
+    _TAU_MIN = 5e-4
+
+# Legacy alias - kept for backward compatibility
 # Minimum allowed value for the exponential tail constant used in EMG fits.
-_TAU_MIN = 1e-8
 
 # Thresholds shared across the analysis modules
 # Maximum exponent before ``exp`` overflows a IEEE-754 double

@@ -36,6 +36,11 @@ from typing import Tuple, Optional, Union, Dict, Callable, Iterable, Sequence, M
 from concurrent.futures import ThreadPoolExecutor
 import warnings
 
+try:
+    from rmtest.emg_constants import EMG_MIN_TAU
+except ImportError:
+    EMG_MIN_TAU = 5e-4
+
 import constants
 
 
@@ -78,7 +83,7 @@ class StableEMG:
         Returns:
             EMG probability density values
         """
-        if tau <= constants._TAU_MIN:
+        if tau <= EMG_MIN_TAU:
             # Fall back to pure Gaussian for negligible tail
             return amplitude * norm.pdf(x, mu, sigma)
 
@@ -124,7 +129,7 @@ class StableEMG:
             bounds = {
                 'mu': (initial_params['mu'] - 0.5, initial_params['mu'] + 0.5),
                 'sigma': (0.001, 0.5),
-                'tau': (constants._TAU_MIN, 0.1),  # Enforce minimum tau for stability
+                'tau': (EMG_MIN_TAU, 0.1),  # Enforce minimum tau for stability
                 'amplitude': (0, 10 * np.max(y_data))
             }
 
@@ -171,7 +176,7 @@ class StableEMG:
             warnings.warn(f"EMG fit failed: {e}. Returning Gaussian approximation.")
             # Fall back to Gaussian fit
             gaussian_params = self._fit_gaussian_fallback(x_data, y_data, initial_params)
-            gaussian_params['tau'] = constants._TAU_MIN  # Minimal tail
+            gaussian_params['tau'] = EMG_MIN_TAU  # Minimal tail
             gaussian_params['tau_err'] = 0
             gaussian_params['success'] = False
             return gaussian_params
@@ -210,7 +215,7 @@ class StableEMG:
         if params['tau'] <= 0:
             return False, "Tau must be positive"
 
-        if params['tau'] < constants._TAU_MIN:
+        if params['tau'] < EMG_MIN_TAU:
             return False, "Tau too small - numerical instability risk"
 
         if params['tau'] / params['sigma'] > 100:
@@ -257,8 +262,50 @@ def _emg_strategy_scipy_safe(x, mu, sigma, tau, *, amplitude: float, use_log_sca
     return result
 
 
-def _emg_strategy_erfcx_exact(*_args, **_kwargs) -> np.ndarray:
-    raise NotImplementedError("Exact erfcx-based EMG evaluation not yet implemented.")
+def _emg_strategy_erfcx_exact(
+    x: np.ndarray, mu: float, sigma: float, tau: float, *, amplitude: float = 1.0, use_log_scale: bool = False
+) -> np.ndarray:
+    """Exact EMG implementation using erfcx for numerical stability.
+
+    This implementation uses the scaled complementary error function (erfcx)
+    which is more stable for small tau and narrow sigma values.
+
+    The EMG PDF is:
+        EMG(x) = (1/(2*tau)) * exp((sigma^2)/(2*tau^2) + (mu-x)/tau) * erfc((sigma^2/tau + mu - x)/(sqrt(2)*sigma))
+
+    Using erfcx(z) = exp(z^2) * erfc(z) for stability:
+        EMG(x) = (1/(2*tau)) * exp(u - u^2) * erfcx(u)
+    where u = (sigma^2/tau + mu - x) / (sqrt(2) * sigma)
+    """
+    from scipy.special import erfcx
+
+    x = np.asarray(x, dtype=float)
+
+    # Check for degenerate case
+    if tau <= EMG_MIN_TAU or sigma <= 0:
+        # Fall back to Gaussian
+        expo = -0.5 * ((x - mu) / sigma) ** 2
+        return amplitude * np.exp(np.clip(expo, -700, 700)) / (sigma * np.sqrt(2 * np.pi))
+
+    sqrt2 = np.sqrt(2.0)
+
+    # Compute the argument for erfcx
+    # u = (sigma^2/tau + mu - x) / (sqrt(2) * sigma)
+    sigma2_over_tau = (sigma * sigma) / tau
+    u = (sigma2_over_tau + mu - x) / (sqrt2 * sigma)
+
+    # Compute the exponential factor
+    # A = sigma^2/(2*tau^2) + (mu-x)/tau - u^2
+    A = (sigma * sigma) / (2.0 * tau * tau) + (mu - x) / tau - u * u
+    A_clipped = np.clip(A, -700, 700)  # Prevent overflow
+
+    result = amplitude / (2.0 * tau) * np.exp(A_clipped) * erfcx(u)
+
+    # Clean up numerical artifacts
+    result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
+    result = np.maximum(result, 0.0)
+
+    return result
 
 
 EMG_STABLE_MODE = "scipy_safe"
@@ -267,7 +314,35 @@ EMG_STABLE_MODE = "scipy_safe"
 _EMG_STRATEGIES: Dict[str, Callable[..., np.ndarray]] = {
     "scipy_safe": _emg_strategy_scipy_safe,
     "erfcx_exact": _emg_strategy_erfcx_exact,
+    "legacy": _emg_strategy_scipy_safe,  # legacy mode uses scipy_safe
 }
+
+
+def _normalize_emg_method(method: str | None) -> str:
+    """Normalize EMG method name to canonical strategy key.
+
+    Maps user-facing config values like "erfcx" and "direct" to
+    internal strategy names.
+    """
+    if method is None:
+        return "scipy_safe"
+
+    method_lower = str(method).strip().lower()
+
+    # Map config method names to internal strategy keys
+    method_map = {
+        "": "scipy_safe",
+        "auto": "scipy_safe",
+        "default": "scipy_safe",
+        "erfcx": "erfcx_exact",
+        "erfcx_exact": "erfcx_exact",
+        "direct": "scipy_safe",
+        "scipy_safe": "scipy_safe",
+        "stable": "scipy_safe",
+        "legacy": "legacy",
+    }
+
+    return method_map.get(method_lower, "scipy_safe")
 
 
 __all__ = ["StableEMG", "emg_left_stable", "parallel_emg_map", "EMG_STABLE_MODE"]

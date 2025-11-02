@@ -16,8 +16,12 @@ from scipy.optimize import curve_fit
 _ORIG_CURVE_FIT = curve_fit
 from scipy.stats import chi2
 from calibration import emg_left, gaussian
-from constants import _TAU_MIN, safe_exp as _safe_exp
+from constants import safe_exp as _safe_exp
 from math_utils import log_expm1_stable
+try:
+    from rmtest.emg_constants import EMG_MIN_TAU as _TAU_MIN
+except ImportError:
+    from constants import _TAU_MIN
 try:  # pragma: no cover - optional dependency path for package layout
     from rmtest.fitting.emg_config import (
         get_emg_stable_mode as _get_emg_stable_mode,

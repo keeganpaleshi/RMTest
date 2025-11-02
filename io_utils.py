@@ -476,6 +476,15 @@ def load_config(config_path):
 
     _constants._TAU_MIN = tau_min
 
+    # Update centralized EMG constants
+    try:
+        import rmtest.emg_constants as _emg_constants
+        # Note: Module-level constants are read-only, but we can update via setattr
+        # This allows runtime configuration to override defaults
+        object.__setattr__(_emg_constants, 'EMG_MIN_TAU', tau_min)
+    except (ImportError, AttributeError):  # pragma: no cover
+        pass
+
     try:
         import calibration as _calibration  # type: ignore
 
