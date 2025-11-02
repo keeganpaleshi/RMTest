@@ -3072,6 +3072,11 @@ def main(argv=None):
             "background_b_fixed_value": cfg["time_fit"].get(
                 "background_b_fixed_value"
             ),
+            "model": cfg["time_fit"].get("model", "single_exp"),
+            "t0": cfg["time_fit"].get("t0"),
+            "fix_lambda": cfg["time_fit"].get("fix_lambda", False),
+            "lambda": cfg["time_fit"].get("lambda"),
+            "activity_units": cfg["time_fit"].get("activity_units", "Bq"),
         }
 
         # Determine baseline rate for fixed-background first pass

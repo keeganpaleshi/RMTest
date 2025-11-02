@@ -665,6 +665,24 @@ Example snippet:
 These half-life values may also be set on the command line with
 `--hl-po214` and `--hl-po218`.
 
+### Advanced Time Fit Options
+
+Additional time-fit configuration options are available:
+
+```yaml
+time_fit:
+  model: single_exp
+  fix_lambda: true
+  lambda: 2.1e-6
+  activity_units: cpd
+```
+
+- `model` – decay model to use. Options are `"single_exp"` (default), `"bi_exp"`, `"constant"`, or `"poisson_decays"`.
+- `fix_lambda` – when `true`, use the fixed decay constant specified by `lambda` instead of calculating it from the half-life.
+- `lambda` – fixed decay constant value (used when `fix_lambda` is `true`).
+- `t0` – optional reference time for the fit.
+- `activity_units` – units for activity values. Options are `"Bq"` (default) or `"cpd"` (counts per day).
+
 ### Baseline Runs
 
 A baseline run measures the radon background with an empty monitor before

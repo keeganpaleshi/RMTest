@@ -1096,6 +1096,11 @@ def fit_time_series(
           "fit_initial": bool
           "background_guess": float  (initial guess for B_iso)
           "initial_guess":    float  (initial guess for N0_iso)
+          "model": str (default "single_exp")
+          "fix_lambda": bool (default False)
+          "lambda": float (decay constant, used if fix_lambda is True)
+          "t0": float (reference time)
+          "activity_units": str (default "Bq")
     Returns: dict with best fit values & 1  uncertainties, e.g.:
         {
           "E_Po214": 12.3,  "dE_Po214": 1.4,
@@ -1107,6 +1112,11 @@ def fit_time_series(
           "fit_valid": True
         }
     """
+    # Apply defaults for new time_fit options
+    if "model" not in config:
+        config = dict(config)
+        config["model"] = "single_exp"
+
     iso_list = list(config["isotopes"].keys())
 
     # Normalize weights mapping
@@ -1142,12 +1152,23 @@ def fit_time_series(
     # 1) Build maps: lam_map, eff_map, fix_b_map, fix_n0_map
     lam_map, eff_map = {}, {}
     fix_b_map, fix_n0_map = {}, {}
+
+    # Check for fix_lambda and lambda in config
+    fix_lambda = config.get("fix_lambda", False)
+    lambda_value = config.get("lambda")
+
     for iso in iso_list:
         iso_cfg = config["isotopes"][iso]
-        hl = float(iso_cfg["half_life_s"])
-        if hl <= 0:
-            raise ValueError("half_life_s must be positive")
-        lam_map[iso] = np.log(2.0) / hl
+
+        # Use fixed lambda if configured, otherwise calculate from half_life
+        if fix_lambda and lambda_value is not None:
+            lam_map[iso] = float(lambda_value)
+        else:
+            hl = float(iso_cfg["half_life_s"])
+            if hl <= 0:
+                raise ValueError("half_life_s must be positive")
+            lam_map[iso] = np.log(2.0) / hl
+
         eff_val = iso_cfg.get("efficiency", 1.0)
         if eff_val is None:
             eff_map[iso] = None
