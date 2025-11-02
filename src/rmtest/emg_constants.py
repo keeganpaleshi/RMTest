@@ -1,27 +1,11 @@
-"""Central EMG/tau constants and configuration helpers.
-
-This module is the SINGLE source of truth for EMG-related constants
-and configuration defaults across the RMTest codebase.
-
-All other modules should import from here rather than defining their own values.
-"""
-
+# src/rmtest/emg_constants.py
 from __future__ import annotations
-
 from typing import Any, Mapping, Dict
 
-# tests expect 5e-4 as the built-in floor
+# single source of truth. tests want 5.0e-4.
 EMG_MIN_TAU: float = 5.0e-4
-
-# tests expect this to be ON by default
 EMG_STABLE_MODE: bool = True
-
-# tests import this exact name
 EMG_DEFAULT_METHOD: str = "erfcx"
-# keep old alias if other code used it
-EMG_METHOD = EMG_DEFAULT_METHOD
-
-# can be bool or per-isotope dict
 EMG_USE_EMG: bool | Dict[str, bool] = False
 
 
@@ -30,11 +14,9 @@ def _emg_section(cfg: Mapping[str, Any] | None) -> Dict[str, Any]:
         return {}
     fit = cfg.get("fitting")
     if isinstance(fit, Mapping):
-        # new style
         emg = fit.get("emg")
         if isinstance(emg, Mapping):
             return dict(emg)
-        # legacy keys
         out: Dict[str, Any] = {}
         if "emg_tau_min" in fit:
             out["min_tau"] = fit["emg_tau_min"]
@@ -52,10 +34,10 @@ def _emg_section(cfg: Mapping[str, Any] | None) -> Dict[str, Any]:
 
 def emg_min_tau_from_config(cfg: Mapping[str, Any] | None) -> float:
     section = _emg_section(cfg)
-    if "min_tau" in section:
-        # trust the config, even if it is lower than the default
-        return float(section["min_tau"])
-    return EMG_MIN_TAU
+    # if no config, return the default 5e-4
+    if "min_tau" not in section:
+        return EMG_MIN_TAU
+    return float(section["min_tau"])
 
 
 def emg_stable_mode_from_config(cfg: Mapping[str, Any] | None) -> bool:
@@ -65,13 +47,7 @@ def emg_stable_mode_from_config(cfg: Mapping[str, Any] | None) -> bool:
 
 def emg_method_from_config(cfg: Mapping[str, Any] | None) -> str:
     section = _emg_section(cfg)
-    method = section.get("method", EMG_DEFAULT_METHOD)
-    # normalize to what your code uses
-    if method in ("erfcx", "erfcx_exact"):
-        return "erfcx"
-    if method in ("direct", "scipy_safe", "legacy", "exponnorm"):
-        return "direct"
-    return EMG_DEFAULT_METHOD
+    return section.get("method", EMG_DEFAULT_METHOD)
 
 
 def emg_use_emg_from_config(cfg: Mapping[str, Any] | None):
@@ -87,8 +63,6 @@ def clamp_tau(
     *,
     min_tau: float | None = None,
 ) -> float:
-    # THIS is what your failing tests want:
-    # explicit kw arg wins even if it is 1e-4 < global 5e-4
     if min_tau is not None:
         return tau if tau >= min_tau else min_tau
     floor = emg_min_tau_from_config(cfg)
@@ -99,7 +73,6 @@ __all__ = [
     "EMG_MIN_TAU",
     "EMG_STABLE_MODE",
     "EMG_DEFAULT_METHOD",
-    "EMG_METHOD",
     "EMG_USE_EMG",
     "emg_min_tau_from_config",
     "emg_stable_mode_from_config",
