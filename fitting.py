@@ -51,6 +51,78 @@ except ImportError:  # pragma: no cover - package may be unavailable at runtime
             return _get_emg_stable_mode()
 
 
+try:  # pragma: no cover - optional dependency path for package layout
+    from rmtest.fitting.emg_utils import (
+        EmgTailSetting as _EmgTailSetting,
+        resolve_emg_tail_settings as _resolve_emg_tail_settings,
+    )
+except ImportError:  # pragma: no cover - package may be unavailable at runtime
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    _emg_utils_path = (
+        Path(__file__).resolve().parent / "src" / "rmtest" / "fitting" / "emg_utils.py"
+    )
+    if _emg_utils_path.is_file():
+        spec = importlib.util.spec_from_file_location(
+            "rmtest.fitting.emg_utils", _emg_utils_path
+        )
+        if spec and spec.loader:  # pragma: no cover - dynamic import fallback
+            module = importlib.util.module_from_spec(spec)
+            sys.modules.setdefault("rmtest.fitting.emg_utils", module)
+            spec.loader.exec_module(module)
+            _EmgTailSetting = module.EmgTailSetting
+            _resolve_emg_tail_settings = module.resolve_emg_tail_settings
+        else:  # pragma: no cover - extremely defensive fallback
+            from dataclasses import dataclass
+
+            @dataclass(frozen=True)
+            class _EmgTailSetting:
+                enabled: bool
+                tau: float | None = None
+
+            def _resolve_emg_tail_settings(
+                *,
+                priors=None,
+                flags=None,
+                isotopes=None,
+                tau_floor=0.0,
+                default_tau=None,
+            ):
+                iso_list = tuple(isotopes) if isotopes is not None else (
+                    "Po210",
+                    "Po218",
+                    "Po214",
+                )
+                return {
+                    iso: _EmgTailSetting(False, None)
+                    for iso in iso_list
+                }
+    else:  # pragma: no cover - defensive fallback when module missing
+        from dataclasses import dataclass
+
+        @dataclass(frozen=True)
+        class _EmgTailSetting:
+            enabled: bool
+            tau: float | None = None
+
+        def _resolve_emg_tail_settings(
+            *,
+            priors=None,
+            flags=None,
+            isotopes=None,
+            tau_floor=0.0,
+            default_tau=None,
+        ):
+            iso_list = tuple(isotopes) if isotopes is not None else (
+                "Po210",
+                "Po218",
+                "Po214",
+            )
+            return {iso: _EmgTailSetting(False, None) for iso in iso_list}
+
+
 _TAU_BOUND_EXPANSION = 10.0
 
 
@@ -476,26 +548,16 @@ def fit_spectrum(
     def p(name, default):
         return priors.get(name, (default, 1.0))
 
-    # Determine which peaks should include an EMG tail based on configuration
-    # flags and provided priors.  When a configuration mapping is supplied via
-    # ``flags['use_emg']`` it takes precedence, otherwise we default to enabling
-    # tails only when an explicit tau prior is given.
+    # Determine which peaks should include an EMG tail using the shared helper
     iso_list = ["Po210", "Po218", "Po214"]
-    use_emg_flag = flags.get("use_emg") if isinstance(flags, Mapping) else None
-    use_emg = {iso: False for iso in iso_list}
-
-    if isinstance(use_emg_flag, Mapping):
-        for iso, enabled in use_emg_flag.items():
-            if iso in use_emg:
-                use_emg[iso] = bool(enabled)
-    elif use_emg_flag is not None:
-        # Allow a scalar truthy flag to toggle EMG tails for all peaks
-        enabled = bool(use_emg_flag)
-        use_emg = {iso: enabled for iso in iso_list}
-
-    for iso in iso_list:
-        if f"tau_{iso}" in priors:
-            use_emg[iso] = use_emg.get(iso, False) or True
+    emg_settings = _resolve_emg_tail_settings(
+        priors=priors,
+        flags=flags,
+        isotopes=iso_list,
+        tau_floor=_TAU_MIN,
+    )
+    use_emg = {iso: emg_settings[iso].enabled for iso in iso_list}
+    tau_start = {iso: emg_settings[iso].tau for iso in iso_list}
 
     # Track which resolution parameters are fixed
     fix_sigma0 = flags.get("fix_sigma0", False)
@@ -541,6 +603,10 @@ def fit_spectrum(
             mean = float(_softplus_inv(mean))
         # Enforce a strictly positive initial tau to avoid singular EMG tails
         if name.startswith("tau_"):
+            iso = name.split("_", 1)[1]
+            guess = tau_start.get(iso)
+            if guess is not None:
+                mean = float(guess)
             mean = max(mean, _TAU_MIN)
         is_fixed = flags.get(f"fix_{name}", False) or sig == 0
         if is_fixed:
