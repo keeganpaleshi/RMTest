@@ -478,7 +478,7 @@ def load_config(config_path):
     fit_cfg["emg_stable_mode"] = emg_stable_mode
 
     tau_min_raw = fit_cfg.get("emg_tau_min")
-    tau_min = float(1e-8 if tau_min_raw is None else tau_min_raw)
+    tau_min = float(5.0e-4 if tau_min_raw is None else tau_min_raw)
     fit_cfg["emg_tau_min"] = tau_min
 
     import constants as _constants
