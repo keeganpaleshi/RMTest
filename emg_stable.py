@@ -36,12 +36,16 @@ from typing import Tuple, Optional, Union, Dict, Callable, Iterable, Sequence, M
 from concurrent.futures import ThreadPoolExecutor
 import warnings
 
-try:
-    from rmtest.emg_constants import EMG_MIN_TAU
-except ImportError:
-    EMG_MIN_TAU = 5e-4
-
 import constants
+
+
+def _get_tau_min():
+    """Get the current tau minimum from the constants module.
+
+    This allows the floor to be updated at runtime via io_utils config loading.
+    Falls back to a safe default if constants module doesn't have _TAU_MIN set.
+    """
+    return getattr(constants, '_TAU_MIN', 5e-4)
 
 
 class StableEMG:
@@ -83,7 +87,7 @@ class StableEMG:
         Returns:
             EMG probability density values
         """
-        if tau <= EMG_MIN_TAU:
+        if tau <= _get_tau_min():
             # Fall back to pure Gaussian for negligible tail
             return amplitude * norm.pdf(x, mu, sigma)
 
@@ -129,7 +133,7 @@ class StableEMG:
             bounds = {
                 'mu': (initial_params['mu'] - 0.5, initial_params['mu'] + 0.5),
                 'sigma': (0.001, 0.5),
-                'tau': (EMG_MIN_TAU, 0.1),  # Enforce minimum tau for stability
+                'tau': (_get_tau_min(), 0.1),  # Enforce minimum tau for stability
                 'amplitude': (0, 10 * np.max(y_data))
             }
 
@@ -176,7 +180,7 @@ class StableEMG:
             warnings.warn(f"EMG fit failed: {e}. Returning Gaussian approximation.")
             # Fall back to Gaussian fit
             gaussian_params = self._fit_gaussian_fallback(x_data, y_data, initial_params)
-            gaussian_params['tau'] = EMG_MIN_TAU  # Minimal tail
+            gaussian_params['tau'] = _get_tau_min()  # Minimal tail
             gaussian_params['tau_err'] = 0
             gaussian_params['success'] = False
             return gaussian_params
@@ -215,7 +219,7 @@ class StableEMG:
         if params['tau'] <= 0:
             return False, "Tau must be positive"
 
-        if params['tau'] < EMG_MIN_TAU:
+        if params['tau'] < _get_tau_min():
             return False, "Tau too small - numerical instability risk"
 
         if params['tau'] / params['sigma'] > 100:
@@ -282,7 +286,7 @@ def _emg_strategy_erfcx_exact(
     x = np.asarray(x, dtype=float)
 
     # Check for degenerate case
-    if tau <= EMG_MIN_TAU or sigma <= 0:
+    if tau <= _get_tau_min() or sigma <= 0:
         # Fall back to Gaussian
         expo = -0.5 * ((x - mu) / sigma) ** 2
         return amplitude * np.exp(np.clip(expo, -700, 700)) / (sigma * np.sqrt(2 * np.pi))

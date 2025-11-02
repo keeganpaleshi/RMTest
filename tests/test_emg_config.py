@@ -292,5 +292,89 @@ class TestBaselineHelpers:
         assert corrected == pytest.approx(-2.0)  # Allowed to be negative
 
 
+class TestRegressionGuards:
+    """Tests to prevent regressions in constant handling and alias mapping."""
+
+    def test_constants_tau_min_not_overwritten(self):
+        """Ensure constants._TAU_MIN uses centralized value, not legacy override.
+
+        This test guards against regression of accidentally overriding the
+        centralized EMG_MIN_TAU with a legacy hardcoded value like 1e-8.
+        """
+        import constants
+
+        # The constants module should use the centralized value (5e-4 default)
+        # NOT the old legacy value (1e-8)
+        assert constants._TAU_MIN >= 5e-4
+        assert constants._TAU_MIN != pytest.approx(1e-8)
+
+        # Verify it actually matches the centralized constant
+        from rmtest.emg_constants import EMG_MIN_TAU
+        assert constants._TAU_MIN == pytest.approx(EMG_MIN_TAU)
+
+    def test_emg_method_alias_direct_resolves_correctly(self):
+        """Ensure 'direct' method alias resolves to intended strategy.
+
+        This guards against accidental changes to the method alias table.
+        The 'direct' method should map to 'scipy_safe' strategy.
+        """
+        from calibration import _normalize_emg_mode
+
+        # Test that "direct" maps to "scipy_safe"
+        assert _normalize_emg_mode("direct") == "scipy_safe"
+
+        # Also test other common aliases for consistency
+        assert _normalize_emg_mode("erfcx") == "erfcx_exact"
+        assert _normalize_emg_mode("erfcx_exact") == "erfcx_exact"
+        assert _normalize_emg_mode("legacy") == "legacy"
+        assert _normalize_emg_mode("scipy_safe") == "scipy_safe"
+        assert _normalize_emg_mode("") == "scipy_safe"  # default
+
+    def test_emg_stable_uses_runtime_tau_floor(self):
+        """Ensure emg_stable.py uses runtime-configurable tau floor, not frozen constant.
+
+        This tests that emg_stable._get_tau_min() queries constants._TAU_MIN
+        instead of using a frozen module-level constant.
+        """
+        import constants
+        from emg_stable import _get_tau_min
+
+        # Get the original value
+        original_tau = getattr(constants, '_TAU_MIN', None)
+
+        try:
+            # Set a test value in constants
+            test_tau = 1e-3
+            constants._TAU_MIN = test_tau
+
+            # emg_stable should pick up the new value
+            assert _get_tau_min() == pytest.approx(test_tau)
+
+        finally:
+            # Restore original value
+            if original_tau is not None:
+                constants._TAU_MIN = original_tau
+
+    def test_calibration_uses_single_tau_min(self):
+        """Ensure calibration.py doesn't have confusing dual tau min paths.
+
+        This guards against regression where _EMG_TAU_MIN and _TAU_MIN
+        coexist with different values.
+        """
+        import calibration
+
+        # Should have _TAU_MIN
+        assert hasattr(calibration, '_TAU_MIN')
+
+        # Should NOT have separate _EMG_TAU_MIN (that was removed)
+        # If it exists, it should be the same as _TAU_MIN
+        if hasattr(calibration, '_EMG_TAU_MIN'):
+            assert calibration._EMG_TAU_MIN == calibration._TAU_MIN
+
+        # get_emg_tau_min() should return _TAU_MIN
+        from calibration import get_emg_tau_min
+        assert get_emg_tau_min() == pytest.approx(calibration._TAU_MIN)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

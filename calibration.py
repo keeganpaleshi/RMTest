@@ -21,7 +21,6 @@ import emg_stable as _emg_module
 import constants as _constants_module
 from emg_stable import StableEMG, emg_left_stable
 
-_EMG_TAU_MIN = _TAU_MIN
 _USE_STABLE_EMG_DEFAULT = True
 
 
@@ -134,15 +133,14 @@ def set_emg_stable_mode(mode: str) -> None:
 def get_emg_tau_min() -> float:
     """Return the EMG tau floor shared with the stable implementation."""
 
-    return float(getattr(_emg_module, "_EMG_TAU_MIN", _EMG_TAU_MIN))
+    return float(_TAU_MIN)
 
 
 def set_emg_tau_min(value: float) -> None:
     """Update the EMG tau floor for both calibration and stable EMG helpers."""
 
     tau_min = float(value)
-    setattr(_emg_module, "_EMG_TAU_MIN", tau_min)
-    globals()["_EMG_TAU_MIN"] = tau_min
+    globals()["_TAU_MIN"] = tau_min
     setattr(_constants_module, "_TAU_MIN", tau_min)
     _set_tau_min(tau_min)
 
