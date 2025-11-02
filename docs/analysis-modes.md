@@ -7,5 +7,6 @@ These opt-in features let interested users test alternate background and likelih
 
 Enable them from the CLI or configuration; see the README for examples.
 The spectral-fitting section now includes an EMG configuration snippet
-showing `fitting.use_emg`, the per-isotope `tau` priors, and the
-`fitting.emg_stable_mode` toggle that selects the stable EMG backend.
+showing the global `fitting.use_stable_emg` toggle, the per-isotope `tau`
+priors inside `spectral_fit`, and the `fitting.emg_stable_mode` switch
+that selects the stable EMG backend.

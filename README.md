@@ -479,15 +479,21 @@ Example EMG configuration:
 
 ```yaml
 fitting:
+  use_stable_emg: true
+  emg_stable_mode: scipy_safe
+  emg_tau_min: 1.0e-5
+
+spectral_fit:
   use_emg:
     Po210: true
   tau_Po210_prior_mean: 0.005
   tau_Po210_prior_sigma: 0.002
-  emg_stable_mode: scipy_safe
 ```
 
 Defining the `tau_Po210` priors above enables the Po‑210 tail even if
-`use_emg` omits that isotope.
+`use_emg` omits that isotope.  The `fitting` block controls which EMG
+implementation is used globally while the `spectral_fit` section enables
+tails on a per-isotope basis.
 - `mu_bounds` – optional dict mapping isotopes to `[lo, hi]` centroid
   limits.  Set for example `{"Po218": [5.9, 6.1]}` to keep the Po‑218 fit
   from drifting into the Po‑210 region.  Initial centroid guesses found

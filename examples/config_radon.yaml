@@ -1,0 +1,106 @@
+# Example configuration demonstrating the EMG layout for a radon analysis run.
+pipeline:
+  log_level: INFO
+  random_seed: 42
+
+analysis:
+  analysis_start_time: '2024-01-05T00:00:00Z'
+  analysis_end_time: '2024-01-10T00:00:00Z'
+  run_periods:
+    - ['2024-01-05T00:00:00Z', '2024-01-07T23:59:59Z']
+  spike_periods:
+    - ['2024-01-05T00:00:00Z', '2024-01-05T04:00:00Z']
+  spike_end_time: '2024-01-05T04:00:00Z'
+  ambient_concentration: null
+
+columns:
+  timestamp: timestamp
+  adc: adc
+
+baseline:
+  range: ['2024-01-05T00:00:00Z', '2024-01-05T12:00:00Z']
+  monitor_volume_l: 605.0
+  sample_volume_l: 10.0
+  isotopes_to_subtract:
+    - noise
+
+burst_filter:
+  burst_mode: rate
+  burst_window_size_s: 60
+  rolling_median_window: 5
+  burst_multiplier: 5
+
+calibration:
+  method: two-point
+  noise_cutoff: 400
+  float_slope: true
+  slope_MeV_per_ch: 0.0043
+  known_energies:
+    Po210: 5.304
+    Po218: 6.002
+    Po214: 7.687
+  nominal_adc:
+    Po210: 1246
+    Po218: 1399
+    Po214: 1802
+  fit_window_adc: 40
+
+fitting:
+  use_stable_emg: true
+  emg_stable_mode: scipy_safe
+  emg_tau_min: 1.0e-5
+
+spectral_fit:
+  do_spectral_fit: true
+  spectral_binning_mode: energy
+  energy_bin_width: 0.013
+  fd_hist_bins: 400
+  amp_prior_scale: 5.0
+  mu_sigma: 0.005
+  tau_Po210_prior_mean: 0.008
+  tau_Po210_prior_sigma: 0.004
+  tau_Po218_prior_mean: 0.020
+  tau_Po218_prior_sigma: 0.010
+  tau_Po214_prior_mean: 0.010
+  tau_Po214_prior_sigma: 0.005
+  use_emg:
+    Po210: true
+    Po218: true
+    Po214: false
+  bkg_mode: loglin_unit
+  b0_prior: [0.0, 2.0]
+  b1_prior: [0.0, 2.0]
+  sigma_E_prior_source: calibration
+  float_sigma_E: true
+  expected_peaks:
+    Po210: 1250
+    Po218: 1400
+    Po214: 1800
+
+time_fit:
+  do_time_fit: true
+  window_po214: [7.55, 7.80]
+  window_po218: [5.90, 6.10]
+  eff_po214: 0.99
+  eff_po218: 0.65
+
+radon_inference:
+  enabled: true
+  source_isotopes:
+    - Po214
+    - Po218
+  detection_efficiency:
+    Po214: 0.12
+    Po218: 0.10
+  source_weights:
+    Po214: 0.7
+    Po218: 0.3
+  transport_efficiency: 1.0
+  retention_efficiency: 1.0
+
+plotting:
+  plot_save_formats:
+    - png
+    - pdf
+  plot_time_binning_mode: fixed
+  plot_time_bin_width_s: 3600

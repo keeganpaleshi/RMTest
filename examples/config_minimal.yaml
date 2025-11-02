@@ -1,0 +1,32 @@
+# Minimal configuration focusing on the EMG layout.
+pipeline:
+  log_level: INFO
+
+fitting:
+  use_stable_emg: true
+  emg_stable_mode: scipy_safe
+
+spectral_fit:
+  expected_peaks:
+    Po210: 1250
+    Po218: 1400
+    Po214: 1800
+  use_emg:
+    Po210: true
+    Po218: false
+    Po214: false
+  tau_Po210_prior_mean: 0.005
+  tau_Po210_prior_sigma: 0.002
+
+time_fit:
+  do_time_fit: true
+
+systematics:
+  enable: false
+
+plotting:
+  plot_save_formats:
+    - png
+
+burst_filter:
+  burst_mode: rate
