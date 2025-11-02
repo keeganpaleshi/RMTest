@@ -6,7 +6,7 @@ import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import SimpleNamespace
-from typing import NotRequired, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 import numpy as np
 import pandas as pd
@@ -52,6 +52,72 @@ except ImportError:  # pragma: no cover - package may be unavailable at runtime
 
 
 _TAU_BOUND_EXPANSION = 10.0
+
+try:  # pragma: no cover - optional dependency path for package layout
+    from rmtest.fitting.emg_utils import (
+        EMGTailDecision as _EmgTailDecision,
+        resolve_emg_tail_usage as _resolve_emg_tail_usage,
+    )
+except ImportError:  # pragma: no cover - package may be unavailable at runtime
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    _emg_utils_path = (
+        Path(__file__).resolve().parent / "src" / "rmtest" / "fitting" / "emg_utils.py"
+    )
+    if _emg_utils_path.is_file():
+        spec = importlib.util.spec_from_file_location(
+            "rmtest.fitting.emg_utils", _emg_utils_path
+        )
+        if spec and spec.loader:
+            module = importlib.util.module_from_spec(spec)
+            sys.modules.setdefault("rmtest.fitting.emg_utils", module)
+            spec.loader.exec_module(module)
+            _EmgTailDecision = module.EMGTailDecision
+            _resolve_emg_tail_usage = module.resolve_emg_tail_usage
+        else:  # pragma: no cover - defensive fallback
+            from dataclasses import dataclass
+            from typing import Any, Mapping, Sequence
+
+            @dataclass(frozen=True)
+            class _EmgTailDecision:  # type: ignore
+                enabled: bool
+                tau_hint: float | None
+                source: str | None = None
+
+            def _resolve_emg_tail_usage(  # type: ignore
+                priors: Mapping[str, Any],
+                *,
+                flags: Mapping[str, Any] | None = None,
+                isotopes: Sequence[str] | None = None,
+                tau_floor: float = 1e-8,
+            ) -> dict[str, _EmgTailDecision]:
+                if isotopes is None:
+                    isotopes = ("Po210", "Po218", "Po214")
+                return {
+                    iso: _EmgTailDecision(False, None, "default") for iso in isotopes
+                }
+    else:  # pragma: no cover - module missing entirely
+        from dataclasses import dataclass
+        from typing import Any, Mapping, Sequence
+
+        @dataclass(frozen=True)
+        class _EmgTailDecision:  # type: ignore
+            enabled: bool
+            tau_hint: float | None
+            source: str | None = None
+
+        def _resolve_emg_tail_usage(  # type: ignore
+            priors: Mapping[str, Any],
+            *,
+            flags: Mapping[str, Any] | None = None,
+            isotopes: Sequence[str] | None = None,
+            tau_floor: float = 1e-8,
+        ) -> dict[str, _EmgTailDecision]:
+            if isotopes is None:
+                isotopes = ("Po210", "Po218", "Po214")
+            return {iso: _EmgTailDecision(False, None, "default") for iso in isotopes}
 
 
 EMG_STABLE_MODE: bool = _get_emg_stable_mode()
@@ -474,28 +540,26 @@ def fit_spectrum(
 
     # Helper to fetch prior values
     def p(name, default):
-        return priors.get(name, (default, 1.0))
+        if name in priors:
+            return priors[name]
+        if name.startswith("tau_"):
+            iso = name.split("_", 1)[1]
+            decision = emg_decisions.get(iso)
+            if decision and decision.tau_hint is not None:
+                return (decision.tau_hint, 1.0)
+        return (default, 1.0)
 
-    # Determine which peaks should include an EMG tail based on configuration
-    # flags and provided priors.  When a configuration mapping is supplied via
-    # ``flags['use_emg']`` it takes precedence, otherwise we default to enabling
-    # tails only when an explicit tau prior is given.
+    # Determine which peaks should include an EMG tail using the shared
+    # precedence helper so that priors and configuration flags remain in sync
+    # with ``io_utils.load_config`` and the public documentation.
     iso_list = ["Po210", "Po218", "Po214"]
-    use_emg_flag = flags.get("use_emg") if isinstance(flags, Mapping) else None
-    use_emg = {iso: False for iso in iso_list}
-
-    if isinstance(use_emg_flag, Mapping):
-        for iso, enabled in use_emg_flag.items():
-            if iso in use_emg:
-                use_emg[iso] = bool(enabled)
-    elif use_emg_flag is not None:
-        # Allow a scalar truthy flag to toggle EMG tails for all peaks
-        enabled = bool(use_emg_flag)
-        use_emg = {iso: enabled for iso in iso_list}
-
-    for iso in iso_list:
-        if f"tau_{iso}" in priors:
-            use_emg[iso] = use_emg.get(iso, False) or True
+    emg_decisions = _resolve_emg_tail_usage(
+        priors,
+        flags=flags,
+        isotopes=iso_list,
+        tau_floor=_TAU_MIN,
+    )
+    use_emg = {iso: emg_decisions[iso].enabled for iso in iso_list}
 
     # Track which resolution parameters are fixed
     fix_sigma0 = flags.get("fix_sigma0", False)
