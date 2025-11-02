@@ -186,6 +186,23 @@ CONFIG_SCHEMA = {
             "type": "object",
             "additionalProperties": False,
             "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["auto", "linear", "manual"],
+                },
+                "allow_negative_baseline": {"type": "boolean"},
+                "b0_prior": {
+                    "type": "array",
+                    "items": {"type": "number"},
+                    "minItems": 2,
+                    "maxItems": 2,
+                },
+                "b1_prior": {
+                    "type": "array",
+                    "items": {"type": "number"},
+                    "minItems": 2,
+                    "maxItems": 2,
+                },
                 "range": {
                     "type": "array",
                     "items": {"type": ["string", "number"]},
