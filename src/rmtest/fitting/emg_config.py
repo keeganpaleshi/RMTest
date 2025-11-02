@@ -26,6 +26,7 @@ __all__ = [
     "resolve_emg_mode_preference",
     "set_emg_mode_from_config",
     "set_emg_mode_override",
+    "reset_emg_mode_preferences",
 ]
 
 _DEFAULT_PREFERENCE = True
@@ -115,3 +116,11 @@ def get_emg_stable_mode(default: bool = _DEFAULT_PREFERENCE) -> bool:
         config=_config_preference,
         default=default,
     )
+
+
+def reset_emg_mode_preferences() -> None:
+    """Clear stored configuration and runtime overrides."""
+
+    global _config_preference, _runtime_override
+    _config_preference = None
+    _runtime_override = None
