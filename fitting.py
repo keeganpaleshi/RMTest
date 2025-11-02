@@ -521,6 +521,9 @@ def fit_spectrum(
     def p(name, default):
         return priors.get(name, (default, 1.0))
 
+    # Extract config if present for use in tau clamping and per-isotope overrides
+    cfg = flags.get("cfg") or flags.get("config")
+
     # Determine which peaks should include an EMG tail using the shared helper
     iso_list = ["Po210", "Po218", "Po214"]
     emg_specs = _resolve_emg_usage(
@@ -535,11 +538,59 @@ def fit_spectrum(
         if spec.enabled and key not in priors and spec.mean is not None:
             mean = float(spec.mean)
             # Clamp tau to the global floor
-            mean = _clamp_tau(mean, None, min_tau=_EMG_FLOOR)
+            mean = _clamp_tau(mean, cfg, min_tau=_EMG_FLOOR)
             sigma = float(spec.sigma) if spec.sigma is not None else 1.0
             if not np.isfinite(sigma) or sigma <= 0:
                 sigma = 1.0
             priors[key] = (mean, sigma)
+
+    # Apply per-isotope overrides from config if present
+    if cfg is not None:
+        per_isotope = cfg.get("fitting", {}).get("per_isotope", {})
+        for iso in iso_list:
+            if iso not in per_isotope:
+                continue
+            overrides = per_isotope[iso]
+
+            # Override use_emg if specified
+            if "use_emg" in overrides:
+                use_emg[iso] = bool(overrides["use_emg"])
+                emg_specs[iso].enabled = bool(overrides["use_emg"])
+
+            # Override tau if specified
+            if "tau" in overrides and use_emg.get(iso, False):
+                tau_val = float(overrides["tau"])
+                # Clamp tau using the shared helper
+                tau_val = _clamp_tau(tau_val, cfg, min_tau=_EMG_FLOOR)
+                # Override or set tau_prior if present
+                if "tau_prior" in overrides:
+                    tau_prior = overrides["tau_prior"]
+                    if isinstance(tau_prior, (list, tuple)) and len(tau_prior) == 2:
+                        priors[f"tau_{iso}"] = (tau_val, float(tau_prior[1]))
+                else:
+                    # Use existing sigma if present, otherwise default to 1.0
+                    existing_sigma = priors.get(f"tau_{iso}", (None, 1.0))[1]
+                    priors[f"tau_{iso}"] = (tau_val, existing_sigma)
+            elif "tau_prior" in overrides and use_emg.get(iso, False):
+                # Only tau_prior is specified without tau
+                tau_prior = overrides["tau_prior"]
+                if isinstance(tau_prior, (list, tuple)) and len(tau_prior) == 2:
+                    tau_mean = _clamp_tau(float(tau_prior[0]), cfg, min_tau=_EMG_FLOOR)
+                    priors[f"tau_{iso}"] = (tau_mean, float(tau_prior[1]))
+
+            # Override peak_sigma if specified
+            if "peak_sigma" in overrides:
+                key = f"sigma_{iso}"
+                if key in priors:
+                    mean, _ = priors[key]
+                    priors[key] = (float(overrides["peak_sigma"]), priors[key][1])
+
+            # Override peak_scale if specified
+            if "peak_scale" in overrides:
+                key = f"S_{iso}"
+                if key in priors:
+                    _, sigma = priors[key]
+                    priors[key] = (float(overrides["peak_scale"]), sigma)
 
     # Track which resolution parameters are fixed
     fix_sigma0 = flags.get("fix_sigma0", False)
