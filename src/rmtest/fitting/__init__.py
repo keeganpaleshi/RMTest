@@ -11,8 +11,16 @@ FitResult = _fitting.FitResult
 _TAU_MIN = _fitting._TAU_MIN
 fit_spectrum = _fitting.fit_spectrum
 fit_time_series = _fitting.fit_time_series
+get_emg_stable_mode = _fitting.get_emg_stable_mode
 
-__all__ = ["FitResult", "_TAU_MIN", "fit_spectrum", "fit_time_series", "EMG_STABLE_MODE"]
+__all__ = [
+    "FitResult",
+    "_TAU_MIN",
+    "fit_spectrum",
+    "fit_time_series",
+    "EMG_STABLE_MODE",
+    "get_emg_stable_mode",
+]
 
 
 class _FittingProxyModule(types.ModuleType):

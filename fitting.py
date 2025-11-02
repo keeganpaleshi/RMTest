@@ -18,12 +18,43 @@ from scipy.stats import chi2
 from calibration import emg_left, gaussian
 from constants import _TAU_MIN, safe_exp as _safe_exp
 from math_utils import log_expm1_stable
+try:  # pragma: no cover - optional dependency path for package layout
+    from rmtest.fitting.emg_config import (
+        get_emg_stable_mode as _get_emg_stable_mode,
+        set_emg_mode_from_config as _set_emg_mode_from_config,
+    )
+except ImportError:  # pragma: no cover - package may be unavailable at runtime
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    _emg_cfg_path = Path(__file__).resolve().parent / "src" / "rmtest" / "fitting" / "emg_config.py"
+    if _emg_cfg_path.is_file():
+        spec = importlib.util.spec_from_file_location("rmtest.fitting.emg_config", _emg_cfg_path)
+        if spec and spec.loader:  # pragma: no cover - dynamic import fallback
+            module = importlib.util.module_from_spec(spec)
+            sys.modules.setdefault("rmtest.fitting.emg_config", module)
+            spec.loader.exec_module(module)
+            _get_emg_stable_mode = module.get_emg_stable_mode
+            _set_emg_mode_from_config = module.set_emg_mode_from_config
+        else:  # pragma: no cover - extremely defensive fallback
+            def _get_emg_stable_mode(default: bool = True) -> bool:
+                return bool(default)
+
+            def _set_emg_mode_from_config(cfg):
+                return _get_emg_stable_mode()
+    else:  # pragma: no cover - defensive fallback when module missing
+        def _get_emg_stable_mode(default: bool = True) -> bool:
+            return bool(default)
+
+        def _set_emg_mode_from_config(cfg):
+            return _get_emg_stable_mode()
 
 
 _TAU_BOUND_EXPANSION = 10.0
 
 
-EMG_STABLE_MODE: bool = True
+EMG_STABLE_MODE: bool = _get_emg_stable_mode()
 
 
 def _update_emg_stable_mode_from_config(
@@ -32,25 +63,13 @@ def _update_emg_stable_mode_from_config(
     """Synchronize :data:`EMG_STABLE_MODE` with a loaded configuration."""
 
     global EMG_STABLE_MODE
+    EMG_STABLE_MODE = _set_emg_mode_from_config(cfg)
 
-    if cfg is None:
-        EMG_STABLE_MODE = True
-        return
 
-    fit_cfg: object | None
-    if isinstance(cfg, Mapping):
-        fit_cfg = cfg.get("fitting")  # type: ignore[arg-type]
-    else:
-        fit_cfg = getattr(cfg, "fitting", None)
+def get_emg_stable_mode() -> bool:
+    """Return the resolved EMG stable mode preference."""
 
-    if isinstance(fit_cfg, Mapping):
-        value = fit_cfg.get("emg_stable_mode", True)
-    elif isinstance(fit_cfg, SimpleNamespace):
-        value = getattr(fit_cfg, "emg_stable_mode", True)
-    else:
-        value = True
-
-    EMG_STABLE_MODE = bool(value)
+    return _get_emg_stable_mode()
 
 
 def softplus(x: np.ndarray | float) -> np.ndarray | float:
@@ -116,6 +135,7 @@ __all__ = [
     "softplus",
     "make_linear_bkg",
     "EMG_STABLE_MODE",
+    "get_emg_stable_mode",
 ]
 
 
