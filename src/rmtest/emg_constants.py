@@ -13,7 +13,8 @@ from typing import Any, Mapping, Dict
 # Single source of truth defaults that tests expect
 EMG_MIN_TAU: float = 5.0e-4
 EMG_STABLE_MODE: bool = True
-EMG_METHOD: str = "erfcx"
+EMG_DEFAULT_METHOD: str = "erfcx"
+EMG_METHOD = EMG_DEFAULT_METHOD  # Alias for backward compatibility
 EMG_USE_EMG: bool | Dict[str, bool] = False
 
 
@@ -162,6 +163,7 @@ def clamp_tau(
 __all__ = [
     "EMG_MIN_TAU",
     "EMG_STABLE_MODE",
+    "EMG_DEFAULT_METHOD",
     "EMG_METHOD",
     "EMG_USE_EMG",
     "emg_min_tau_from_config",
