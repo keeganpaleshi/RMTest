@@ -2828,6 +2828,47 @@ def main(argv=None):
     po218_estimate_info = None
     allow_negative_baseline = bool(cfg.get("allow_negative_baseline"))
     if cfg.get("time_fit", {}).get("do_time_fit", False):
+        time_fit_section = cfg.get("time_fit") or {}
+        if isinstance(time_fit_section, Mapping):
+            time_cfg: dict[str, Any] = dict(time_fit_section)
+        else:
+            logger.debug(
+                "time_fit config is not a mapping (%r); using defaults instead",
+                type(time_fit_section),
+            )
+            time_cfg = {}
+
+        model = str(time_cfg.get("model", "single_exp"))
+
+        t0_raw = time_cfg.get("t0")
+        t0: float | None
+        if t0_raw is None:
+            t0 = None
+        else:
+            try:
+                t0 = float(t0_raw)
+            except (TypeError, ValueError):
+                logger.debug("Invalid time_fit.t0=%r; ignoring", t0_raw)
+                t0 = None
+
+        fix_lambda = bool(time_cfg.get("fix_lambda", False))
+
+        lambda_raw = time_cfg.get("lambda")
+        lambda_val: float | None = None
+        if lambda_raw is not None:
+            try:
+                lambda_val = float(lambda_raw)
+            except (TypeError, ValueError):
+                logger.debug("Invalid time_fit.lambda=%r; ignoring", lambda_raw)
+
+        units = str(time_cfg.get("activity_units", "Bq"))
+
+        base_fit_kwargs: dict[str, Any] = {"model": model, "units": units}
+        if t0 is not None:
+            base_fit_kwargs["t0"] = t0
+        if fix_lambda and lambda_val is not None:
+            base_fit_kwargs["lambda_fixed"] = lambda_val
+
         for iso in ("Po218", "Po214"):
             win_key = f"window_{iso.lower()}"
 
@@ -3116,6 +3157,7 @@ def main(argv=None):
                 weights=weights_map,
                 strict=args.strict_covariance,
                 fit_func=fit_time_series,
+                fit_kwargs=base_fit_kwargs,
             )
             time_fit_results[iso] = decay_out
         except Exception as e:

@@ -1067,6 +1067,20 @@ plotting:
   plot_time_bin_width_s: 3600
 ```
 
+Time-series fitting can also be configured using the simplified schema that
+drives the standalone fitter:
+
+```yaml
+time_fit:
+  model: single_exp
+  fix_lambda: true
+  lambda: 2.1e-6
+  activity_units: cpd
+```
+
+Extra keys under `time_fit` are ignored but preserved for backward
+compatibility with older configurations.
+
 After the initial pass, the fit is repeated with `B` free and the result is kept only if the Akaike Information Criterion improves by at least 0.5.
 
 Baseline windows are validated before analysis. The configuration below will raise a `ValueError` because the baseline starts after the analysis window:

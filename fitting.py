@@ -1137,6 +1137,7 @@ def fit_time_series(
     weights=None,
     strict=False,
     fixed_background=None,
+    **kwargs,
 ):
     """
     times_dict: mapping of isotope -> array of timestamps in seconds.
@@ -1165,6 +1166,12 @@ def fit_time_series(
           "fit_valid": True
         }
     """
+    if kwargs:
+        logging.debug(
+            "fit_time_series: ignoring unsupported keyword arguments: %s",
+            sorted(kwargs.keys()),
+        )
+
     iso_list = list(config["isotopes"].keys())
 
     # Normalize weights mapping
