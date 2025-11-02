@@ -7,6 +7,8 @@ import types
 
 import fitting as _fitting
 
+from .emg_utils import EMGTailSpec, resolve_emg_usage
+
 FitResult = _fitting.FitResult
 _TAU_MIN = _fitting._TAU_MIN
 fit_spectrum = _fitting.fit_spectrum
@@ -20,6 +22,8 @@ __all__ = [
     "fit_time_series",
     "EMG_STABLE_MODE",
     "get_emg_stable_mode",
+    "EMGTailSpec",
+    "resolve_emg_usage",
 ]
 
 

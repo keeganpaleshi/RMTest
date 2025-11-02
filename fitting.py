@@ -23,6 +23,7 @@ try:  # pragma: no cover - optional dependency path for package layout
         get_emg_stable_mode as _get_emg_stable_mode,
         set_emg_mode_from_config as _set_emg_mode_from_config,
     )
+    from rmtest.fitting.emg_utils import resolve_emg_usage as _resolve_emg_usage
 except ImportError:  # pragma: no cover - package may be unavailable at runtime
     import importlib.util
     import sys
@@ -49,6 +50,33 @@ except ImportError:  # pragma: no cover - package may be unavailable at runtime
 
         def _set_emg_mode_from_config(cfg):
             return _get_emg_stable_mode()
+
+    _emg_utils_path = Path(__file__).resolve().parent / "src" / "rmtest" / "fitting" / "emg_utils.py"
+    if "_resolve_emg_usage" not in globals():
+        class _FallbackEMGSpec:
+            __slots__ = ("enabled", "mean", "sigma", "source")
+
+            def __init__(self, enabled: bool):
+                self.enabled = bool(enabled)
+                self.mean = None
+                self.sigma = None
+                self.source = "fallback"
+
+        if _emg_utils_path.is_file():
+            spec_utils = importlib.util.spec_from_file_location(
+                "rmtest.fitting.emg_utils", _emg_utils_path
+            )
+            if spec_utils and spec_utils.loader:  # pragma: no cover - dynamic import fallback
+                module_utils = importlib.util.module_from_spec(spec_utils)
+                sys.modules.setdefault("rmtest.fitting.emg_utils", module_utils)
+                spec_utils.loader.exec_module(module_utils)
+                _resolve_emg_usage = module_utils.resolve_emg_usage
+            else:  # pragma: no cover - defensive fallback
+                def _resolve_emg_usage(isotopes, priors, **kwargs):
+                    return {iso: _FallbackEMGSpec(False) for iso in isotopes}
+        else:  # pragma: no cover - defensive fallback when module missing
+            def _resolve_emg_usage(isotopes, priors, **kwargs):
+                return {iso: _FallbackEMGSpec(False) for iso in isotopes}
 
 
 _TAU_BOUND_EXPANSION = 10.0
@@ -476,26 +504,23 @@ def fit_spectrum(
     def p(name, default):
         return priors.get(name, (default, 1.0))
 
-    # Determine which peaks should include an EMG tail based on configuration
-    # flags and provided priors.  When a configuration mapping is supplied via
-    # ``flags['use_emg']`` it takes precedence, otherwise we default to enabling
-    # tails only when an explicit tau prior is given.
+    # Determine which peaks should include an EMG tail using the shared helper
     iso_list = ["Po210", "Po218", "Po214"]
-    use_emg_flag = flags.get("use_emg") if isinstance(flags, Mapping) else None
-    use_emg = {iso: False for iso in iso_list}
-
-    if isinstance(use_emg_flag, Mapping):
-        for iso, enabled in use_emg_flag.items():
-            if iso in use_emg:
-                use_emg[iso] = bool(enabled)
-    elif use_emg_flag is not None:
-        # Allow a scalar truthy flag to toggle EMG tails for all peaks
-        enabled = bool(use_emg_flag)
-        use_emg = {iso: enabled for iso in iso_list}
-
-    for iso in iso_list:
-        if f"tau_{iso}" in priors:
-            use_emg[iso] = use_emg.get(iso, False) or True
+    emg_specs = _resolve_emg_usage(
+        iso_list,
+        priors,
+        flags=flags,
+        tau_floor=_TAU_MIN,
+    )
+    use_emg = {iso: spec.enabled for iso, spec in emg_specs.items()}
+    for iso, spec in emg_specs.items():
+        key = f"tau_{iso}"
+        if spec.enabled and key not in priors and spec.mean is not None:
+            mean = float(spec.mean)
+            sigma = float(spec.sigma) if spec.sigma is not None else 1.0
+            if not np.isfinite(sigma) or sigma <= 0:
+                sigma = 1.0
+            priors[key] = (mean, sigma)
 
     # Track which resolution parameters are fixed
     fix_sigma0 = flags.get("fix_sigma0", False)
