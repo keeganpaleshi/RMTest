@@ -13,8 +13,8 @@ from typing import Any, Mapping, Dict
 # tests expect 5e-4 as the built-in floor
 EMG_MIN_TAU: float = 5.0e-4
 
-# tests expect the proxy to be False, not True
-EMG_STABLE_MODE: bool = False
+# tests expect this to be ON by default
+EMG_STABLE_MODE: bool = True
 
 # tests import this exact name
 EMG_DEFAULT_METHOD: str = "erfcx"
