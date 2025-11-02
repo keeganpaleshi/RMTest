@@ -19,9 +19,13 @@ from calibration import emg_left, gaussian
 from constants import safe_exp as _safe_exp
 from math_utils import log_expm1_stable
 try:
-    from rmtest.emg_constants import EMG_MIN_TAU as _TAU_MIN
+    from rmtest.emg_constants import EMG_MIN_TAU as _TAU_MIN, clamp_tau as _clamp_tau
 except Exception:
     _TAU_MIN = 5e-4
+    def _clamp_tau(val, cfg=None, *, min_tau=None):
+        """Fallback clamp_tau when package import fails."""
+        floor = _TAU_MIN if min_tau is None else min_tau
+        return val if val >= floor else floor
 try:  # pragma: no cover - optional dependency path for package layout
     from rmtest.fitting.emg_config import (
         get_emg_stable_mode as _get_emg_stable_mode,
@@ -521,6 +525,8 @@ def fit_spectrum(
         key = f"tau_{iso}"
         if spec.enabled and key not in priors and spec.mean is not None:
             mean = float(spec.mean)
+            # Clamp tau to the global floor
+            mean = _clamp_tau(mean, min_tau=_TAU_MIN)
             sigma = float(spec.sigma) if spec.sigma is not None else 1.0
             if not np.isfinite(sigma) or sigma <= 0:
                 sigma = 1.0
@@ -570,7 +576,7 @@ def fit_spectrum(
             mean = float(_softplus_inv(mean))
         # Enforce a strictly positive initial tau to avoid singular EMG tails
         if name.startswith("tau_"):
-            mean = max(mean, _TAU_MIN)
+            mean = _clamp_tau(mean, min_tau=_TAU_MIN)
         is_fixed = flags.get(f"fix_{name}", False) or sig == 0
         if is_fixed:
             # Optimiser requires lower < upper; use a tiny width around fixed values

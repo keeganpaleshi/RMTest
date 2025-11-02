@@ -11,9 +11,10 @@ so importing it here creates a circular import during test collection.
 """
 
 from rmtest.emg_constants import (
-    EMG_STABLE_MODE,
     EMG_MIN_TAU,
-    EMG_DEFAULT_METHOD,
+    EMG_STABLE_MODE,
+    EMG_METHOD,
+    EMG_USE_EMG,
     emg_min_tau_from_config,
     emg_stable_mode_from_config,
     emg_method_from_config,
@@ -21,10 +22,12 @@ from rmtest.emg_constants import (
     clamp_tau,
 )
 
+# Do NOT assign EMG_STABLE_MODE = True here; just re-export
 __all__ = [
-    "EMG_STABLE_MODE",
     "EMG_MIN_TAU",
-    "EMG_DEFAULT_METHOD",
+    "EMG_STABLE_MODE",
+    "EMG_METHOD",
+    "EMG_USE_EMG",
     "emg_min_tau_from_config",
     "emg_stable_mode_from_config",
     "emg_method_from_config",
