@@ -10,44 +10,31 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Dict
 
-# Single source of truth defaults that tests expect
+# tests expect 5e-4 as the built-in floor
 EMG_MIN_TAU: float = 5.0e-4
-EMG_STABLE_MODE: bool = True
+
+# tests expect the proxy to be False, not True
+EMG_STABLE_MODE: bool = False
+
+# tests import this exact name
 EMG_DEFAULT_METHOD: str = "erfcx"
-EMG_METHOD = EMG_DEFAULT_METHOD  # Alias for backward compatibility
+# keep old alias if other code used it
+EMG_METHOD = EMG_DEFAULT_METHOD
+
+# can be bool or per-isotope dict
 EMG_USE_EMG: bool | Dict[str, bool] = False
 
 
 def _emg_section(cfg: Mapping[str, Any] | None) -> Dict[str, Any]:
-    """Return the normalized EMG section from a config dict.
-
-    Supports both new layout:
-        fitting:
-          emg:
-            stable_mode: ...
-            min_tau: ...
-            method: ...
-            use_emg: ...
-
-    And legacy layout:
-        fitting:
-          emg_tau_min: ...
-          emg_stable_mode: ...
-          use_stable_emg: ...
-          emg_method: ...
-          emg_use_emg: ...
-    """
     if cfg is None:
         return {}
-
     fit = cfg.get("fitting")
     if isinstance(fit, Mapping):
-        # New layout: fitting.emg.*
+        # new style
         emg = fit.get("emg")
         if isinstance(emg, Mapping):
             return dict(emg)
-
-        # Legacy keys directly under "fitting"
+        # legacy keys
         out: Dict[str, Any] = {}
         if "emg_tau_min" in fit:
             out["min_tau"] = fit["emg_tau_min"]
@@ -60,78 +47,39 @@ def _emg_section(cfg: Mapping[str, Any] | None) -> Dict[str, Any]:
         if "emg_use_emg" in fit:
             out["use_emg"] = fit["emg_use_emg"]
         return out
-
     return {}
 
 
 def emg_min_tau_from_config(cfg: Mapping[str, Any] | None) -> float:
-    """Extract minimum tau from config or return default.
-
-    Args:
-        cfg: Configuration dictionary, may be None
-
-    Returns:
-        Minimum tau value, always >= 5.0e-4
-    """
     section = _emg_section(cfg)
     value = section.get("min_tau", EMG_MIN_TAU)
     try:
         v = float(value)
     except (TypeError, ValueError):
         v = EMG_MIN_TAU
-
-    # Tests want a hard floor of 5e-4 even if somebody gives 1e-8
-    if v < 5.0e-4:
-        return 5.0e-4
-    return v
+    # hard floor: never go below 5e-4 from config
+    return v if v >= 5.0e-4 else 5.0e-4
 
 
 def emg_stable_mode_from_config(cfg: Mapping[str, Any] | None) -> bool:
-    """Extract EMG stable mode from config or return default.
-
-    Args:
-        cfg: Configuration dictionary, may be None
-
-    Returns:
-        Stable mode setting as boolean
-    """
     section = _emg_section(cfg)
     return bool(section.get("stable_mode", EMG_STABLE_MODE))
 
 
 def emg_method_from_config(cfg: Mapping[str, Any] | None) -> str:
-    """Extract EMG method from config or return default.
-
-    Args:
-        cfg: Configuration dictionary, may be None
-
-    Returns:
-        EMG method name ("erfcx" or "direct")
-    """
     section = _emg_section(cfg)
-    method = section.get("method", EMG_METHOD)
-
-    # Normalize what users write to what code actually uses
+    method = section.get("method", EMG_DEFAULT_METHOD)
+    # normalize to what your code uses
     if method in ("erfcx", "erfcx_exact"):
         return "erfcx"
     if method in ("direct", "scipy_safe", "legacy", "exponnorm"):
-        # Tests ask for "direct"
         return "direct"
-    return EMG_METHOD
+    return EMG_DEFAULT_METHOD
 
 
 def emg_use_emg_from_config(cfg: Mapping[str, Any] | None):
-    """Extract use_emg flag from config or return default.
-
-    Args:
-        cfg: Configuration dictionary, may be None
-
-    Returns:
-        Either a boolean (global setting) or dict mapping isotope -> bool
-    """
     section = _emg_section(cfg)
     if "use_emg" in section:
-        # Can be bool OR dict; tests check for the dict case
         return section["use_emg"]
     return EMG_USE_EMG
 
@@ -142,21 +90,11 @@ def clamp_tau(
     *,
     min_tau: float | None = None,
 ) -> float:
-    """Clamp tau to the floor from config or to the explicit floor.
-
-    Args:
-        tau: Tau value to clamp
-        cfg: Configuration dictionary, may be None
-        min_tau: Override minimum tau (keyword-only)
-
-    Returns:
-        Clamped tau value, always >= floor
-
-    Notes:
-        tests/test_emg_config.py calls this with min_tau=...
-        so the kw-only arg must exist.
-    """
-    floor = min_tau if min_tau is not None else emg_min_tau_from_config(cfg)
+    # THIS is what your failing tests want:
+    # explicit kw arg wins even if it is 1e-4 < global 5e-4
+    if min_tau is not None:
+        return tau if tau >= min_tau else min_tau
+    floor = emg_min_tau_from_config(cfg)
     return tau if tau >= floor else floor
 
 
