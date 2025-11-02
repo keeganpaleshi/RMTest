@@ -11,7 +11,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 src_path = Path(__file__).resolve().parents[1] / "src"
 if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
-from fitting import fit_time_series, fit_spectrum, FitResult, _TAU_MIN
+from fitting import fit_time_series, fit_spectrum, FitResult
+try:
+    from rmtest.emg_constants import EMG_MIN_TAU as _TAU_MIN
+except ImportError:
+    from fitting import _TAU_MIN
 from io_utils import load_config
 import analyze
 

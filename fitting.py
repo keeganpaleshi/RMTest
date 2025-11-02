@@ -16,8 +16,18 @@ from scipy.optimize import curve_fit
 _ORIG_CURVE_FIT = curve_fit
 from scipy.stats import chi2
 from calibration import emg_left, gaussian
-from constants import _TAU_MIN, safe_exp as _safe_exp
+from constants import safe_exp as _safe_exp
 from math_utils import log_expm1_stable
+try:
+    from rmtest.emg_constants import (
+        clamp_tau as _clamp_tau,
+        EMG_MIN_TAU as _EMG_FLOOR,
+    )
+except Exception:
+    def _clamp_tau(val, cfg=None, *, min_tau=None):
+        floor = 5.0e-4 if min_tau is None else min_tau
+        return val if val >= floor else floor
+    _EMG_FLOOR = 5.0e-4
 try:  # pragma: no cover - optional dependency path for package layout
     from rmtest.fitting.emg_config import (
         get_emg_stable_mode as _get_emg_stable_mode,
@@ -510,13 +520,15 @@ def fit_spectrum(
         iso_list,
         priors,
         flags=flags,
-        tau_floor=_TAU_MIN,
+        tau_floor=_EMG_FLOOR,
     )
     use_emg = {iso: spec.enabled for iso, spec in emg_specs.items()}
     for iso, spec in emg_specs.items():
         key = f"tau_{iso}"
         if spec.enabled and key not in priors and spec.mean is not None:
             mean = float(spec.mean)
+            # Clamp tau to the global floor
+            mean = _clamp_tau(mean, None, min_tau=_EMG_FLOOR)
             sigma = float(spec.sigma) if spec.sigma is not None else 1.0
             if not np.isfinite(sigma) or sigma <= 0:
                 sigma = 1.0
@@ -566,7 +578,7 @@ def fit_spectrum(
             mean = float(_softplus_inv(mean))
         # Enforce a strictly positive initial tau to avoid singular EMG tails
         if name.startswith("tau_"):
-            mean = max(mean, _TAU_MIN)
+            mean = _clamp_tau(mean, None, min_tau=_EMG_FLOOR)
         is_fixed = flags.get(f"fix_{name}", False) or sig == 0
         if is_fixed:
             # Optimiser requires lower < upper; use a tiny width around fixed values
@@ -582,7 +594,7 @@ def fit_spectrum(
             hi = mean + delta
             if name.startswith("tau_"):
                 if np.isfinite(delta):
-                    tau_scale = max(abs(mean), abs(sig_val), delta / 5, _TAU_MIN)
+                    tau_scale = max(abs(mean), abs(sig_val), delta / 5, _EMG_FLOOR)
                     if np.isfinite(tau_scale) and tau_scale > 0:
                         extra = _TAU_BOUND_EXPANSION * tau_scale
                         lo = min(lo, mean - extra)
@@ -596,7 +608,7 @@ def fit_spectrum(
             if user_hi is not None:
                 hi = min(hi, user_hi)
         if name.startswith("tau_"):
-            lo = max(lo, _TAU_MIN)
+            lo = max(lo, _EMG_FLOOR)
             if max_tau_ratio is not None:
                 hi = min(hi, max_tau_ratio * sigma0_mean)
         if name in ("sigma0", "F"):

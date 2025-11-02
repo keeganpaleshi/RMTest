@@ -29,6 +29,7 @@ __all__ = [
     "rate_histogram",
     "subtract",
     "summarize_baseline",
+    "baseline_allows_negative",
     "baseline_period_before_data",
 ]
 
@@ -286,6 +287,22 @@ subtract_baseline_dataframe = apply_baseline_subtraction
 # thin wrappers are imported above from :mod:`radon.baseline`
 
 
+def baseline_allows_negative(cfg: dict) -> bool:
+    """Return whether the configuration allows negative baseline-corrected values.
+
+    Parameters
+    ----------
+    cfg : dict
+        Configuration dictionary containing the baseline section.
+
+    Returns
+    -------
+    bool
+        True if negative values are allowed, False if they should be clipped to 0.
+    """
+    return bool(cfg.get("baseline", {}).get("allow_negative_baseline", False))
+
+
 def summarize_baseline(
     cfg: dict, isotopes: list[str]
 ) -> dict[str, tuple[float, float, float]]:
@@ -319,7 +336,7 @@ def summarize_baseline(
     if not isinstance(corrected_rates, Mapping):
         corrected_rates = {}
 
-    allow_negative = bool(baseline.get("allow_negative_baseline", False))
+    allow_negative = baseline_allows_negative(cfg)
 
     summary: dict[str, tuple[float, float, float]] = {}
     for iso in isotopes:

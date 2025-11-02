@@ -169,7 +169,16 @@ CONFIG_SCHEMA = {
             "additionalProperties": False,
             "properties": {
                 "use_stable_emg": {"type": "boolean"},
-                "emg_stable_mode": {"type": "boolean"},
+                "emg_stable_mode": {
+                    "type": ["string", "boolean"],
+                    "enum": [
+                        True, False,
+                        "", "auto", "default",
+                        "scipy_safe", "erfcx", "erfcx_exact",
+                        "legacy", "direct", "stable",
+                        "exponnorm", "off", "disabled", "scipy",
+                    ],
+                },
                 "emg_tau_min": {"type": "number", "exclusiveMinimum": 0},
             },
         },
@@ -469,12 +478,21 @@ def load_config(config_path):
     fit_cfg["emg_stable_mode"] = emg_stable_mode
 
     tau_min_raw = fit_cfg.get("emg_tau_min")
-    tau_min = float(1e-8 if tau_min_raw is None else tau_min_raw)
+    tau_min = float(5.0e-4 if tau_min_raw is None else tau_min_raw)
     fit_cfg["emg_tau_min"] = tau_min
 
     import constants as _constants
 
     _constants._TAU_MIN = tau_min
+
+    # Update centralized EMG constants
+    try:
+        import rmtest.emg_constants as _emg_constants
+        # Note: Module-level constants are read-only, but we can update via setattr
+        # This allows runtime configuration to override defaults
+        object.__setattr__(_emg_constants, 'EMG_MIN_TAU', tau_min)
+    except (ImportError, AttributeError):  # pragma: no cover
+        pass
 
     try:
         import calibration as _calibration  # type: ignore
