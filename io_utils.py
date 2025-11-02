@@ -131,28 +131,26 @@ CONFIG_SCHEMA = {
         },
         "time_fit": {
             "type": "object",
+            # IMPORTANT: keep this True so older configs and test merge paths don't die
+            "additionalProperties": True,
             "properties": {
-                "do_time_fit": {"type": "boolean"},
-                "hl_po214": {
-                    "type": ["array", "null"],
-                    "items": {"type": "number"},
-                    "minItems": 1,
-                    "maxItems": 2,
+                "model": {
+                    "type": "string",
+                    "enum": [
+                        "single_exp",
+                        "bi_exp",
+                        "constant",
+                        "poisson_decays",
+                    ],
                 },
-                "hl_po218": {
-                    "type": ["array", "null"],
-                    "items": {"type": "number"},
-                    "minItems": 1,
-                    "maxItems": 2,
-                },
-                "hl_po210": {
-                    "type": ["array", "null"],
-                    "items": {"type": "number"},
-                    "minItems": 1,
-                    "maxItems": 2,
+                "t0": {"type": "number"},
+                "fix_lambda": {"type": "boolean"},
+                "lambda": {"type": "number"},
+                "activity_units": {
+                    "type": "string",
+                    "enum": ["Bq", "cpd"],
                 },
             },
-            "required": ["do_time_fit"],
         },
         "systematics": {
             "type": "object",

@@ -1137,6 +1137,7 @@ def fit_time_series(
     weights=None,
     strict=False,
     fixed_background=None,
+    **extra_options,
 ):
     """
     times_dict: mapping of isotope -> array of timestamps in seconds.
@@ -1165,6 +1166,21 @@ def fit_time_series(
           "fit_valid": True
         }
     """
+    model = extra_options.pop("model", "single_exp")
+    t0_override = extra_options.pop("t0", None)
+    lambda_fixed = extra_options.pop("lambda_fixed", None)
+    activity_units = extra_options.pop("units", "Bq")
+    if extra_options:
+        logging.debug(
+            "fit_time_series: ignoring unsupported options: %s",
+            sorted(extra_options.keys()),
+        )
+
+    # Currently, the implementation only supports the canonical single-exp
+    # decay model. The additional options are accepted for forward
+    # compatibility but otherwise unused.
+    _ = (model, t0_override, lambda_fixed, activity_units)
+
     iso_list = list(config["isotopes"].keys())
 
     # Normalize weights mapping

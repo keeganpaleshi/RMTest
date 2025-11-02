@@ -47,6 +47,10 @@ def two_pass_time_fit(
     weights=None,
     strict: bool = False,
     fit_func=fit_time_series,
+    model: str = "single_exp",
+    t0=None,
+    units: str = "Bq",
+    lambda_fixed=None,
 ) -> FitResult:
     """Run a two-pass time-series fit with optional fixed background.
 
@@ -67,26 +71,35 @@ def two_pass_time_fit(
             if eff_val is not None:
                 fixed_val = float(fixed_val) * eff_val
 
+    fit_kwargs = {
+        "weights": weights,
+        "strict": strict,
+        "model": model,
+        "t0": t0,
+        "units": units,
+    }
+    if lambda_fixed is not None:
+        fit_kwargs["lambda_fixed"] = lambda_fixed
+
     if not fix_first or fixed_val is None or not iso:
         return fit_func(
             times_dict,
             t_start,
             t_end,
             config,
-            weights=weights,
-            strict=strict,
+            **fit_kwargs,
         )
 
     cfg_first = dict(config)
     cfg_first["fit_background"] = False
+    fit_kwargs_first = dict(fit_kwargs)
+    fit_kwargs_first["fixed_background"] = {iso: float(fixed_val)}
     res1 = fit_func(
         times_dict,
         t_start,
         t_end,
         cfg_first,
-        weights=weights,
-        strict=strict,
-        fixed_background={iso: float(fixed_val)},
+        **fit_kwargs_first,
     )
 
     cfg_second = dict(config)
@@ -96,8 +109,7 @@ def two_pass_time_fit(
         t_start,
         t_end,
         cfg_second,
-        weights=weights,
-        strict=strict,
+        **fit_kwargs,
     )
 
     def _aic(res: FitResult) -> float:

@@ -662,6 +662,18 @@ Example snippet:
 }
 ```
 
+A minimal configuration for the new decay-model options looks like:
+
+```yaml
+time_fit:
+  model: single_exp
+  fix_lambda: true
+  lambda: 2.1e-6
+  activity_units: cpd
+```
+
+Extra keys under `time_fit` are ignored for backward compatibility.
+
 These half-life values may also be set on the command line with
 `--hl-po214` and `--hl-po218`.
 

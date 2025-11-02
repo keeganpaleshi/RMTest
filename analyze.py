@@ -2827,6 +2827,15 @@ def main(argv=None):
     po214_estimate_info = None
     po218_estimate_info = None
     allow_negative_baseline = bool(cfg.get("allow_negative_baseline"))
+    time_cfg = cfg.get("time_fit", {}) or {}
+    time_fit_model = time_cfg.get("model", "single_exp")
+    time_fit_t0 = time_cfg.get("t0")
+    time_fit_fix_lambda = bool(time_cfg.get("fix_lambda", False))
+    time_fit_lambda_val = time_cfg.get("lambda")
+    time_fit_units = time_cfg.get("activity_units", "Bq")
+    lambda_fixed_val = (
+        time_fit_lambda_val if time_fit_fix_lambda and time_fit_lambda_val is not None else None
+    )
     if cfg.get("time_fit", {}).get("do_time_fit", False):
         for iso in ("Po218", "Po214"):
             win_key = f"window_{iso.lower()}"
@@ -3107,15 +3116,23 @@ def main(argv=None):
                 t_start_fit = to_utc_datetime(
                     t_start_val if t_start_val is not None else t0_global
                 ).timestamp()
+            two_pass_kwargs = {
+                "baseline_rate": baseline_rate_iso,
+                "weights": weights_map,
+                "strict": args.strict_covariance,
+                "fit_func": fit_time_series,
+                "model": time_fit_model,
+                "t0": time_fit_t0,
+                "units": time_fit_units,
+            }
+            if lambda_fixed_val is not None:
+                two_pass_kwargs["lambda_fixed"] = lambda_fixed_val
             decay_out = two_pass_time_fit(
                 times_dict,
                 t_start_fit,
                 t_end_global_ts,
                 fit_cfg,
-                baseline_rate=baseline_rate_iso,
-                weights=weights_map,
-                strict=args.strict_covariance,
-                fit_func=fit_time_series,
+                **two_pass_kwargs,
             )
             time_fit_results[iso] = decay_out
         except Exception as e:
