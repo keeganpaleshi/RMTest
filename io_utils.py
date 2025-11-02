@@ -180,6 +180,20 @@ CONFIG_SCHEMA = {
                     ],
                 },
                 "emg_tau_min": {"type": "number", "exclusiveMinimum": 0},
+                "per_isotope": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                            "use_emg": {"type": ["boolean", "object"]},
+                            "tau": {"type": "number"},
+                            "tau_prior": {"type": "array", "minItems": 2, "maxItems": 2},
+                            "peak_sigma": {"type": "number"},
+                            "peak_scale": {"type": "number"},
+                        },
+                        "additionalProperties": False,
+                    },
+                },
             },
         },
         "baseline": {
