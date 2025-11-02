@@ -14,6 +14,39 @@ from collections.abc import Mapping
 from typing import Any, Iterator
 from constants import load_nuclide_overrides
 
+try:  # pragma: no cover - compatibility when rmtest package is unavailable
+    from rmtest.fitting.emg_config import (
+        DEFAULT_EMG_STABLE_MODE as _EMG_STABLE_DEFAULT,
+        EmgPreferences as _EmgPreferences,
+        apply_emg_preferences as _apply_emg_preferences,
+        resolve_emg_preferences as _resolve_emg_preferences,
+    )
+except Exception:  # pragma: no cover - fallback for legacy usage
+    _EMG_STABLE_DEFAULT = True
+    _apply_emg_preferences = None
+
+    @dataclass(frozen=True)
+    class _EmgPreferences:
+        use_stable_emg: bool
+        emg_stable_mode: bool
+
+    def _resolve_emg_preferences(cfg, *, default_mode=_EMG_STABLE_DEFAULT):
+        if isinstance(cfg, Mapping):
+            section = cfg.get("fitting", {})
+        elif cfg is None:
+            section = {}
+        else:
+            section = getattr(cfg, "fitting", {})
+        if isinstance(section, Mapping):
+            use_raw = section.get("use_stable_emg")
+            mode_raw = section.get("emg_stable_mode")
+        else:
+            use_raw = getattr(section, "use_stable_emg", None)
+            mode_raw = getattr(section, "emg_stable_mode", None)
+        use_val = default_mode if use_raw is None else bool(use_raw)
+        mode_val = use_val if mode_raw is None else bool(mode_raw)
+        return _EmgPreferences(use_stable_emg=mode_val, emg_stable_mode=mode_val)
+
 import numpy as np
 from utils import to_native
 from utils.time_utils import parse_timestamp, to_epoch_seconds, tz_convert_utc
@@ -452,21 +485,19 @@ def load_config(config_path):
     else:
         raise TypeError("'fitting' section must be a mapping if provided")
 
-    use_stable_emg_raw = fit_cfg.get("use_stable_emg")
-    if use_stable_emg_raw is None:
-        use_stable_emg = True
-    else:
-        use_stable_emg = bool(use_stable_emg_raw)
-
-    emg_stable_mode_raw = fit_cfg.get("emg_stable_mode")
-    if emg_stable_mode_raw is None:
-        emg_stable_mode = use_stable_emg
-    else:
-        emg_stable_mode = bool(emg_stable_mode_raw)
-        use_stable_emg = emg_stable_mode
+    prefs = _resolve_emg_preferences(cfg, default_mode=_EMG_STABLE_DEFAULT)
+    if isinstance(prefs, _EmgPreferences):
+        use_stable_emg = bool(getattr(prefs, "use_stable_emg"))
+        emg_stable_mode = bool(getattr(prefs, "emg_stable_mode"))
+    else:  # pragma: no cover - defensive branch for unforeseen types
+        use_stable_emg = bool(prefs["use_stable_emg"])
+        emg_stable_mode = bool(prefs["emg_stable_mode"])
 
     fit_cfg["use_stable_emg"] = use_stable_emg
     fit_cfg["emg_stable_mode"] = emg_stable_mode
+
+    if _apply_emg_preferences is not None:
+        _apply_emg_preferences(cfg, default_mode=_EMG_STABLE_DEFAULT)
 
     tau_min_raw = fit_cfg.get("emg_tau_min")
     tau_min = float(1e-8 if tau_min_raw is None else tau_min_raw)

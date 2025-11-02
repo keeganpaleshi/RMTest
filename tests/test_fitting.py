@@ -13,6 +13,11 @@ if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
 from fitting import fit_time_series, fit_spectrum, FitResult, _TAU_MIN
 from io_utils import load_config
+from rmtest.fitting.emg_config import (
+    DEFAULT_EMG_STABLE_MODE,
+    EmgPreferences,
+    resolve_emg_preferences,
+)
 import analyze
 
 
@@ -224,6 +229,23 @@ def test_fit_spectrum_use_emg_config_map():
 
     assert "tau_Po210" in result.params
     assert result.params["tau_Po210"] >= _TAU_MIN
+
+
+def test_resolve_emg_preferences_precedence():
+    prefs_default = resolve_emg_preferences({})
+    assert isinstance(prefs_default, EmgPreferences)
+    assert prefs_default.use_stable_emg is DEFAULT_EMG_STABLE_MODE
+    assert prefs_default.emg_stable_mode is DEFAULT_EMG_STABLE_MODE
+
+    cfg_use_only = {"fitting": {"use_stable_emg": False}}
+    prefs_use_only = resolve_emg_preferences(cfg_use_only)
+    assert prefs_use_only.use_stable_emg is False
+    assert prefs_use_only.emg_stable_mode is False
+
+    cfg_mode_override = {"fitting": {"use_stable_emg": False, "emg_stable_mode": True}}
+    prefs_mode_override = resolve_emg_preferences(cfg_mode_override)
+    assert prefs_mode_override.use_stable_emg is True
+    assert prefs_mode_override.emg_stable_mode is True
 
 
 def test_loglin_unit_bootstraps_background():

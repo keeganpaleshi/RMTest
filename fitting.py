@@ -8,6 +8,42 @@ from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import NotRequired, TypedDict
 
+try:  # pragma: no cover - defensive fallback when rmtest is unavailable
+    from rmtest.fitting.emg_config import (
+        DEFAULT_EMG_STABLE_MODE as _EMG_STABLE_DEFAULT,
+        EmgPreferences as _EmgPreferences,
+        resolve_emg_preferences as _resolve_emg_preferences,
+    )
+except Exception:  # pragma: no cover - fallback for isolated installs
+    _EMG_STABLE_DEFAULT = True
+
+    class _EmgPreferences(TypedDict):
+        use_stable_emg: bool
+        emg_stable_mode: bool
+
+    def _resolve_emg_preferences(cfg, *, default_mode=_EMG_STABLE_DEFAULT):
+        if cfg is None:
+            return _EmgPreferences(
+                use_stable_emg=default_mode,
+                emg_stable_mode=default_mode,
+            )
+        if isinstance(cfg, Mapping):
+            section = cfg.get("fitting", {})
+        else:
+            section = getattr(cfg, "fitting", {})
+        if isinstance(section, Mapping):
+            use_raw = section.get("use_stable_emg")
+            mode_raw = section.get("emg_stable_mode")
+        else:
+            use_raw = getattr(section, "use_stable_emg", None)
+            mode_raw = getattr(section, "emg_stable_mode", None)
+        use_val = default_mode if use_raw is None else bool(use_raw)
+        mode_val = use_val if mode_raw is None else bool(mode_raw)
+        return _EmgPreferences(
+            use_stable_emg=mode_val,
+            emg_stable_mode=mode_val,
+        )
+
 import numpy as np
 import pandas as pd
 from iminuit import Minuit
@@ -23,34 +59,22 @@ from math_utils import log_expm1_stable
 _TAU_BOUND_EXPANSION = 10.0
 
 
-EMG_STABLE_MODE: bool = True
+EMG_STABLE_MODE: bool = _EMG_STABLE_DEFAULT
 
 
 def _update_emg_stable_mode_from_config(
     cfg: Mapping[str, object] | SimpleNamespace | None,
-) -> None:
+) -> bool:
     """Synchronize :data:`EMG_STABLE_MODE` with a loaded configuration."""
 
     global EMG_STABLE_MODE
 
-    if cfg is None:
-        EMG_STABLE_MODE = True
-        return
-
-    fit_cfg: object | None
-    if isinstance(cfg, Mapping):
-        fit_cfg = cfg.get("fitting")  # type: ignore[arg-type]
+    prefs = _resolve_emg_preferences(cfg, default_mode=_EMG_STABLE_DEFAULT)
+    if isinstance(prefs, dict):
+        EMG_STABLE_MODE = bool(prefs.get("emg_stable_mode", _EMG_STABLE_DEFAULT))
     else:
-        fit_cfg = getattr(cfg, "fitting", None)
-
-    if isinstance(fit_cfg, Mapping):
-        value = fit_cfg.get("emg_stable_mode", True)
-    elif isinstance(fit_cfg, SimpleNamespace):
-        value = getattr(fit_cfg, "emg_stable_mode", True)
-    else:
-        value = True
-
-    EMG_STABLE_MODE = bool(value)
+        EMG_STABLE_MODE = bool(prefs.emg_stable_mode)
+    return EMG_STABLE_MODE
 
 
 def softplus(x: np.ndarray | float) -> np.ndarray | float:
