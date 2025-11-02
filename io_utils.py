@@ -452,21 +452,28 @@ def load_config(config_path):
     else:
         raise TypeError("'fitting' section must be a mapping if provided")
 
-    use_stable_emg_raw = fit_cfg.get("use_stable_emg")
-    if use_stable_emg_raw is None:
-        use_stable_emg = True
-    else:
-        use_stable_emg = bool(use_stable_emg_raw)
+    try:
+        from rmtest.fitting.emg_config import load_emg_config as _rm_load_emg_config
+    except ImportError:  # pragma: no cover - compatibility when rmtest is absent
+        use_stable_emg_raw = fit_cfg.get("use_stable_emg")
+        if use_stable_emg_raw is None:
+            use_stable_emg = True
+        else:
+            use_stable_emg = bool(use_stable_emg_raw)
 
-    emg_stable_mode_raw = fit_cfg.get("emg_stable_mode")
-    if emg_stable_mode_raw is None:
-        emg_stable_mode = use_stable_emg
-    else:
-        emg_stable_mode = bool(emg_stable_mode_raw)
-        use_stable_emg = emg_stable_mode
+        emg_stable_mode_raw = fit_cfg.get("emg_stable_mode")
+        if emg_stable_mode_raw is None:
+            emg_stable_mode = use_stable_emg
+        else:
+            emg_stable_mode = bool(emg_stable_mode_raw)
+            use_stable_emg = emg_stable_mode
 
-    fit_cfg["use_stable_emg"] = use_stable_emg
-    fit_cfg["emg_stable_mode"] = emg_stable_mode
+        fit_cfg["use_stable_emg"] = use_stable_emg
+        fit_cfg["emg_stable_mode"] = emg_stable_mode
+    else:
+        emg_stable_mode = _rm_load_emg_config(cfg)
+        fit_cfg = cfg["fitting"]
+        use_stable_emg = fit_cfg["use_stable_emg"]
 
     tau_min_raw = fit_cfg.get("emg_tau_min")
     tau_min = float(1e-8 if tau_min_raw is None else tau_min_raw)
@@ -496,7 +503,7 @@ def load_config(config_path):
         _fitting._TAU_MIN = tau_min
         if hasattr(_fitting, "_update_emg_stable_mode_from_config"):
             _fitting._update_emg_stable_mode_from_config(cfg)
-        else:  # pragma: no cover - fallback for older versions without helper
+        elif hasattr(_fitting, "EMG_STABLE_MODE"):
             _fitting.EMG_STABLE_MODE = emg_stable_mode
     except ImportError:  # pragma: no cover - fitting may be optional in some contexts
         pass
