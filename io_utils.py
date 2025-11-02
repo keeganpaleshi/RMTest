@@ -169,7 +169,16 @@ CONFIG_SCHEMA = {
             "additionalProperties": False,
             "properties": {
                 "use_stable_emg": {"type": "boolean"},
-                "emg_stable_mode": {"type": "boolean"},
+                "emg_stable_mode": {
+                    "type": ["string", "boolean"],
+                    "enum": [
+                        True, False,
+                        "", "auto", "default",
+                        "scipy_safe", "erfcx", "erfcx_exact",
+                        "legacy", "direct", "stable",
+                        "exponnorm", "off", "disabled", "scipy",
+                    ],
+                },
                 "emg_tau_min": {"type": "number", "exclusiveMinimum": 0},
             },
         },
