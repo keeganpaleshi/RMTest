@@ -51,6 +51,86 @@ except ImportError:  # pragma: no cover - package may be unavailable at runtime
             return _get_emg_stable_mode()
 
 
+try:  # pragma: no cover - optional dependency path for package layout
+    from rmtest.fitting.emg_utils import resolve_emg_tails as _resolve_emg_tails
+except ImportError:  # pragma: no cover - package may be unavailable at runtime
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    _emg_utils_path = Path(__file__).resolve().parent / "src" / "rmtest" / "fitting" / "emg_utils.py"
+    if _emg_utils_path.is_file():
+        spec = importlib.util.spec_from_file_location(
+            "rmtest.fitting.emg_utils", _emg_utils_path
+        )
+        if spec and spec.loader:
+            module = importlib.util.module_from_spec(spec)
+            sys.modules.setdefault("rmtest.fitting.emg_utils", module)
+            spec.loader.exec_module(module)
+            _resolve_emg_tails = module.resolve_emg_tails
+        else:  # pragma: no cover - fallback to minimal implementation
+            def _resolve_emg_tails(
+                priors,
+                flags=None,
+                *,
+                isotopes=("Po210", "Po218", "Po214"),
+                tau_floor=_TAU_MIN,
+                default_tau=1.0,
+            ):
+                priors = priors or {}
+                from collections.abc import Mapping as _Mapping
+
+                if isinstance(flags, _Mapping):
+                    use_emg_flag = flags.get("use_emg")
+                else:
+                    use_emg_flag = getattr(flags, "use_emg", None)
+
+                resolved = {}
+                for iso in isotopes:
+                    key = f"tau_{iso}"
+                    forced = key in priors
+                    enabled = bool(use_emg_flag.get(iso)) if isinstance(use_emg_flag, _Mapping) else bool(use_emg_flag) if use_emg_flag is not None else False
+                    if forced:
+                        enabled = True
+                        value = priors[key]
+                        if isinstance(value, (tuple, list)) and value:
+                            mean = float(value[0])
+                        else:
+                            mean = float(default_tau)
+                        tau_val = max(mean, float(tau_floor))
+                    elif enabled:
+                        tau_val = max(float(default_tau), float(tau_floor))
+                    else:
+                        tau_val = 0.0
+                    resolved[iso] = SimpleNamespace(enabled=enabled, tau=tau_val)
+                return resolved
+    else:  # pragma: no cover - defensive fallback when module missing entirely
+        def _resolve_emg_tails(
+            priors,
+            flags=None,
+            *,
+            isotopes=("Po210", "Po218", "Po214"),
+            tau_floor=_TAU_MIN,
+            default_tau=1.0,
+        ):
+            priors = priors or {}
+            resolved = {}
+            for iso in isotopes:
+                key = f"tau_{iso}"
+                enabled = key in priors
+                if enabled:
+                    value = priors[key]
+                    if isinstance(value, (tuple, list)) and value:
+                        mean = float(value[0])
+                    else:
+                        mean = float(default_tau)
+                    tau_val = max(mean, float(tau_floor))
+                else:
+                    tau_val = 0.0
+                resolved[iso] = SimpleNamespace(enabled=enabled, tau=tau_val)
+            return resolved
+
+
 _TAU_BOUND_EXPANSION = 10.0
 
 
@@ -472,30 +552,20 @@ def fit_spectrum(
             "check input energies and binning parameters"
         )
 
-    # Helper to fetch prior values
+    # Helper to fetch prior values with parameter-specific defaults
     def p(name, default):
         return priors.get(name, (default, 1.0))
 
-    # Determine which peaks should include an EMG tail based on configuration
-    # flags and provided priors.  When a configuration mapping is supplied via
-    # ``flags['use_emg']`` it takes precedence, otherwise we default to enabling
-    # tails only when an explicit tau prior is given.
     iso_list = ["Po210", "Po218", "Po214"]
-    use_emg_flag = flags.get("use_emg") if isinstance(flags, Mapping) else None
-    use_emg = {iso: False for iso in iso_list}
-
-    if isinstance(use_emg_flag, Mapping):
-        for iso, enabled in use_emg_flag.items():
-            if iso in use_emg:
-                use_emg[iso] = bool(enabled)
-    elif use_emg_flag is not None:
-        # Allow a scalar truthy flag to toggle EMG tails for all peaks
-        enabled = bool(use_emg_flag)
-        use_emg = {iso: enabled for iso in iso_list}
-
-    for iso in iso_list:
-        if f"tau_{iso}" in priors:
-            use_emg[iso] = use_emg.get(iso, False) or True
+    resolved_emg = _resolve_emg_tails(
+        priors,
+        flags,
+        isotopes=iso_list,
+        tau_floor=_TAU_MIN,
+        default_tau=1.0,
+    )
+    use_emg = {iso: resolved_emg[iso].enabled for iso in iso_list}
+    tau_defaults = {iso: resolved_emg[iso].tau for iso in iso_list}
 
     # Track which resolution parameters are fixed
     fix_sigma0 = flags.get("fix_sigma0", False)
@@ -536,7 +606,11 @@ def fit_spectrum(
     eps = 1e-12
     sigma0_mean = sigma0_val
     for name in param_order:
-        mean, sig = p(name, 1.0)
+        default_mean = 1.0
+        if name.startswith("tau_"):
+            iso = name.split("_", 1)[1]
+            default_mean = tau_defaults.get(iso, max(1.0, _TAU_MIN))
+        mean, sig = p(name, default_mean)
         if name.startswith("S_"):
             mean = float(_softplus_inv(mean))
         # Enforce a strictly positive initial tau to avoid singular EMG tails
