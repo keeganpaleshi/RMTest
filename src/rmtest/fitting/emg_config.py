@@ -21,6 +21,8 @@ from collections.abc import Mapping
 from types import SimpleNamespace
 from typing import Any
 
+from ..emg_constants import EMG_STABLE_MODE
+
 __all__ = [
     "get_emg_stable_mode",
     "resolve_emg_mode_preference",
@@ -29,7 +31,7 @@ __all__ = [
     "reset_emg_mode_preferences",
 ]
 
-_DEFAULT_PREFERENCE = True
+_DEFAULT_PREFERENCE = EMG_STABLE_MODE
 _config_preference: bool | None = None
 _runtime_override: bool | None = None
 
