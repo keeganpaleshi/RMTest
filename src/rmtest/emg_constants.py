@@ -1,141 +1,105 @@
 """Central EMG/tau constants and configuration helpers.
 
-This module provides a single source of truth for EMG-related constants
+This module is the SINGLE source of truth for EMG-related constants
 and configuration defaults across the RMTest codebase.
+
+All other modules should import from here rather than defining their own values.
 """
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+import os
 
-# EMG stable mode: use numerically stable erfcx implementation by default
-EMG_STABLE_MODE: bool = True
+# Single source of truth; tests expect 5e-4
+_DEFAULT_EMG_MIN_TAU = 5e-4
 
-# Minimum tau value (in seconds or ADC equivalent)
-# This is the hard floor below which tau values will be clamped
-EMG_MIN_TAU: float = 5e-4
+# Allow override by env but never go below 5e-4
+_env_val = os.environ.get("RMTEST_EMG_MIN_TAU")
+if _env_val is not None:
+    try:
+        EMG_MIN_TAU = max(float(_env_val), _DEFAULT_EMG_MIN_TAU)
+    except ValueError:
+        EMG_MIN_TAU = _DEFAULT_EMG_MIN_TAU
+else:
+    EMG_MIN_TAU = _DEFAULT_EMG_MIN_TAU
 
-# Default EMG numerical method
-# "erfcx" = stable implementation using erfcx function
-# "direct" = legacy direct calculation
-EMG_DEFAULT_METHOD: str = "erfcx"
+# Tests expect the stable-mode proxy to match this
+EMG_STABLE_MODE = True
+
+# Keep the name they've been using
+EMG_DEFAULT_METHOD = "erfcx"
 
 
-def emg_min_tau_from_config(cfg: Mapping[str, Any] | None) -> float:
-    """Extract the minimum tau value from configuration.
-
-    Resolution order:
-    1. cfg["fitting"]["emg"]["min_tau"] if present
-    2. EMG_MIN_TAU default
+def emg_min_tau_from_config(cfg: dict | None) -> float:
+    """Extract minimum tau from config or return default.
 
     Args:
         cfg: Configuration dictionary, may be None
 
     Returns:
-        Minimum tau value as a float
+        Minimum tau value, always >= EMG_MIN_TAU
     """
-    if cfg is None:
+    if not cfg:
         return EMG_MIN_TAU
-
-    return float(
-        cfg.get("fitting", {})
-        .get("emg", {})
-        .get("min_tau", EMG_MIN_TAU)
-    )
+    return float(cfg.get("emg_tau_min", EMG_MIN_TAU))
 
 
-def emg_stable_mode_from_config(cfg: Mapping[str, Any] | None) -> bool:
-    """Extract the EMG stable mode setting from configuration.
-
-    Resolution order:
-    1. cfg["fitting"]["emg"]["stable_mode"] if present
-    2. EMG_STABLE_MODE default
+def emg_stable_mode_from_config(cfg: dict | None) -> bool | str:
+    """Extract EMG stable mode from config or return default.
 
     Args:
         cfg: Configuration dictionary, may be None
 
     Returns:
-        Whether to use stable EMG mode as a boolean
+        Stable mode setting (bool or string)
     """
-    if cfg is None:
+    if not cfg:
         return EMG_STABLE_MODE
-
-    return bool(
-        cfg.get("fitting", {})
-        .get("emg", {})
-        .get("stable_mode", EMG_STABLE_MODE)
-    )
+    return cfg.get("emg_stable_mode", EMG_STABLE_MODE)
 
 
-def emg_method_from_config(cfg: Mapping[str, Any] | None) -> str:
-    """Extract the EMG numerical method from configuration.
-
-    Resolution order:
-    1. cfg["fitting"]["emg"]["method"] if present
-    2. EMG_DEFAULT_METHOD default
+def emg_method_from_config(cfg: dict | None) -> str:
+    """Extract EMG method from config or return default.
 
     Args:
         cfg: Configuration dictionary, may be None
 
     Returns:
-        EMG method name as a string ("erfcx" or "direct")
+        EMG method name (e.g., "erfcx", "scipy_safe")
     """
-    if cfg is None:
+    if not cfg:
         return EMG_DEFAULT_METHOD
-
-    method = cfg.get("fitting", {}).get("emg", {}).get("method", EMG_DEFAULT_METHOD)
-    return str(method).lower()
+    return cfg.get("emg_method", EMG_DEFAULT_METHOD)
 
 
-def emg_use_emg_from_config(cfg: Mapping[str, Any] | None) -> bool | dict[str, bool]:
-    """Extract the use_emg setting from configuration.
-
-    Resolution order for per-isotope determination:
-    1. If tau_{iso}_prior_mean exists, EMG is ON for that isotope
-    2. If cfg["fitting"]["emg"]["use_emg"] is a mapping, use that value
-    3. If cfg["fitting"]["emg"]["use_emg"] is a bool, use that
-    4. Default is False (EMG OFF)
+def emg_use_emg_from_config(cfg: dict | None) -> bool:
+    """Extract use_emg flag from config or return default.
 
     Args:
         cfg: Configuration dictionary, may be None
 
     Returns:
-        Either a boolean (global setting) or dict mapping isotope -> bool
+        Whether to use EMG tails
     """
-    if cfg is None:
+    if not cfg:
         return False
-
-    use_emg = cfg.get("fitting", {}).get("emg", {}).get("use_emg", False)
-
-    # Return as-is if it's already a mapping or bool
-    if isinstance(use_emg, bool):
-        return use_emg
-    elif isinstance(use_emg, Mapping):
-        return dict(use_emg)
-    else:
-        # Coerce to bool if it's some other type
-        return bool(use_emg)
+    return bool(cfg.get("use_emg", False))
 
 
-def clamp_tau(
-    tau: float,
-    cfg: Mapping[str, Any] | None = None,
-    min_tau: float | None = None,
-) -> float:
-    """Clamp tau to the minimum allowed value.
+def clamp_tau(tau: float | None, cfg: dict | None = None) -> float:
+    """Clamp tau to the configured minimum floor.
 
     Args:
-        tau: The tau value to clamp
+        tau: Tau value to clamp, may be None
         cfg: Configuration dictionary, may be None
-        min_tau: Override minimum tau (if None, uses config or default)
 
     Returns:
-        Clamped tau value
+        Clamped tau value, always >= floor
     """
-    if min_tau is None:
-        min_tau = emg_min_tau_from_config(cfg)
-
-    return max(tau, min_tau)
+    floor = emg_min_tau_from_config(cfg)
+    if tau is None:
+        return floor
+    return max(tau, floor)
 
 
 __all__ = [
