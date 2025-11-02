@@ -7,12 +7,29 @@ import types
 
 import fitting as _fitting
 
+from .emg_config import (
+    DEFAULT_EMG_STABLE_MODE,
+    emg_stable_mode_from_config,
+    resolve_emg_stable_mode,
+    synchronize_emg_stable_mode,
+)
+
 FitResult = _fitting.FitResult
 _TAU_MIN = _fitting._TAU_MIN
 fit_spectrum = _fitting.fit_spectrum
 fit_time_series = _fitting.fit_time_series
 
-__all__ = ["FitResult", "_TAU_MIN", "fit_spectrum", "fit_time_series", "EMG_STABLE_MODE"]
+__all__ = [
+    "FitResult",
+    "_TAU_MIN",
+    "fit_spectrum",
+    "fit_time_series",
+    "DEFAULT_EMG_STABLE_MODE",
+    "emg_stable_mode_from_config",
+    "resolve_emg_stable_mode",
+    "synchronize_emg_stable_mode",
+    "EMG_STABLE_MODE",
+]
 
 
 class _FittingProxyModule(types.ModuleType):
