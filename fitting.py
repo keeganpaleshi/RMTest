@@ -23,11 +23,18 @@ try:
         clamp_tau as _clamp_tau,
         EMG_MIN_TAU as _EMG_FLOOR,
     )
-except Exception:
-    def _clamp_tau(val, cfg=None, *, min_tau=None):
-        floor = 5.0e-4 if min_tau is None else min_tau
-        return val if val >= floor else floor
-    _EMG_FLOOR = 5.0e-4
+except ImportError:
+    try:
+        from src.rmtest.emg_constants import (
+            clamp_tau as _clamp_tau,
+            EMG_MIN_TAU as _EMG_FLOOR,
+        )
+    except ImportError:
+        # Fallback implementation for local development
+        def _clamp_tau(val, cfg=None, *, min_tau=None):
+            floor = 5.0e-4 if min_tau is None else min_tau
+            return val if val >= floor else floor
+        _EMG_FLOOR = 5.0e-4
 try:  # pragma: no cover - optional dependency path for package layout
     from rmtest.fitting.emg_config import (
         get_emg_stable_mode as _get_emg_stable_mode,

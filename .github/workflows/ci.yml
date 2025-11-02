@@ -16,5 +16,7 @@ jobs:
       - name: Install dependencies
         run: |
           bash scripts/setup_tests.sh
+      - name: Install package
+        run: pip install -e .
       - name: Run tests
         run: pytest -v
