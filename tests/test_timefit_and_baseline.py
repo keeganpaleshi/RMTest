@@ -53,3 +53,58 @@ def test_two_pass_time_fit_rejects_invalid_second_pass():
 
     assert out is first
 
+
+def test_two_pass_time_fit_legacy_callback_suppresses_kwargs():
+    calls = []
+
+    def legacy_fit(times_dict, t_start, t_end, config, *, weights=None, strict=False, fixed_background=None):
+        calls.append((times_dict, t_start, t_end, config, weights, strict, fixed_background))
+        return FitResult({"fit_valid": True}, None, 0, counts=1)
+
+    out = two_pass_time_fit(
+        {"Po214": [0.0, 1.0]},
+        0.0,
+        10.0,
+        {"fix_background_b_first_pass": False},
+        fit_func=legacy_fit,
+        fit_kwargs={"model": "single", "units": "Bq"},
+    )
+
+    assert out.params.get("fit_valid") is True
+    assert calls
+
+
+def test_two_pass_time_fit_versioned_callback_receives_kwargs():
+    captured = {}
+
+    def modern_fit(
+        times_dict,
+        t_start,
+        t_end,
+        config,
+        *,
+        model=None,
+        units=None,
+        weights=None,
+        strict=False,
+        fixed_background=None,
+    ):
+        captured["model"] = model
+        captured["units"] = units
+        return FitResult({"fit_valid": True}, None, 0, counts=1)
+
+    modern_fit.__rmtest_time_fit_callback_version__ = (1, 1)
+
+    out = two_pass_time_fit(
+        {"Po214": [0.0, 1.0]},
+        0.0,
+        10.0,
+        {"fix_background_b_first_pass": False},
+        fit_func=modern_fit,
+        fit_kwargs={"model": "single", "units": "Bq"},
+    )
+
+    assert out.params.get("fit_valid") is True
+    assert captured["model"] == "single"
+    assert captured["units"] == "Bq"
+
