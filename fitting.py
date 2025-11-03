@@ -1410,6 +1410,9 @@ def fit_time_series(
     return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
 
 
+fit_time_series.__rmtest_time_fit_callback_version__ = (1, 1)
+
+
 # -----------------------------------------------------
 # End of fitting.py
 # -----------------------------------------------------

@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 from collections.abc import Mapping
 from math import isfinite
 
 from fitting import fit_time_series, FitResult
+
+TIME_FIT_CALLBACK_VERSION: tuple[int, int] = (1, 1)
+"""Current version of the time-fit callback interface.
+
+Callbacks that support keyword forwarding should expose their supported
+interface by defining ``__rmtest_time_fit_callback_version__`` and setting it to
+at least :data:`TIME_FIT_CALLBACK_VERSION`.
+"""
+
+_LEGACY_CALLBACK_VERSION: tuple[int, int] = (1, 0)
+_CALLBACK_VERSION_ATTR = "__rmtest_time_fit_callback_version__"
 
 
 def _prior_efficiency(config: Mapping[str, object], iso: str) -> float | None:
@@ -69,6 +81,87 @@ def two_pass_time_fit(
                 fixed_val = float(fixed_val) * eff_val
 
     extra_kwargs = dict(fit_kwargs or {})
+
+    def _resolve_attr(func, attr):
+        seen: set[int] = set()
+        current = func
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            if hasattr(current, attr):
+                return getattr(current, attr)
+            current = getattr(current, "__wrapped__", None) or getattr(current, "func", None)
+        return None
+
+    def _normalize_version(value) -> tuple[int, int]:
+        if value is None:
+            return _LEGACY_CALLBACK_VERSION
+        if isinstance(value, (tuple, list)) and value:
+            try:
+                major = int(value[0])
+                minor = int(value[1]) if len(value) > 1 else 0
+                return (major, minor)
+            except (TypeError, ValueError):  # pragma: no cover - defensive
+                return _LEGACY_CALLBACK_VERSION
+        if isinstance(value, str):  # pragma: no cover - defensive
+            parts = value.replace("_", ".").split(".")
+            try:
+                major = int(parts[0])
+                minor = int(parts[1]) if len(parts) > 1 else 0
+                return (major, minor)
+            except (ValueError, IndexError):
+                return _LEGACY_CALLBACK_VERSION
+        if isinstance(value, int):  # pragma: no cover - defensive
+            return (int(value), 0)
+        return _LEGACY_CALLBACK_VERSION
+
+    callback_version = _normalize_version(_resolve_attr(fit_func, _CALLBACK_VERSION_ATTR))
+    supports_extra_kwargs = callback_version >= TIME_FIT_CALLBACK_VERSION
+
+    def _callable_keywords(func) -> tuple[set[str], bool]:
+        try:
+            sig = inspect.signature(func)
+        except (TypeError, ValueError):  # pragma: no cover - signature unavailable
+            return set(), False
+
+        accepts_var_kw = False
+        allowed: set[str] = set()
+        for param in sig.parameters.values():
+            if param.kind is inspect.Parameter.VAR_POSITIONAL:
+                continue
+            if param.kind is inspect.Parameter.VAR_KEYWORD:
+                accepts_var_kw = True
+                continue
+            if param.kind in (
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                inspect.Parameter.KEYWORD_ONLY,
+            ):
+                allowed.add(param.name)
+        return allowed, accepts_var_kw
+
+    if extra_kwargs:
+        allowed_names, has_var_kw = _callable_keywords(fit_func)
+        if not has_var_kw:
+            forwarded = {k: v for k, v in extra_kwargs.items() if k in allowed_names}
+            dropped = sorted(set(extra_kwargs) - set(forwarded))
+        else:
+            forwarded = extra_kwargs
+            dropped = []
+
+        if supports_extra_kwargs:
+            extra_kwargs = forwarded
+            if dropped:
+                logging.debug(
+                    "two_pass_time_fit: callback %r cannot handle fit_kwargs %s; dropping",
+                    getattr(fit_func, "__name__", repr(fit_func)),
+                    dropped,
+                )
+        else:
+            if extra_kwargs:
+                logging.debug(
+                    "two_pass_time_fit: legacy callback %r; suppressing forwarded fit_kwargs",
+                    getattr(fit_func, "__name__", repr(fit_func)),
+                )
+            extra_kwargs = {}
 
     if not fix_first or fixed_val is None or not iso:
         return fit_func(
