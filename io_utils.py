@@ -150,6 +150,37 @@ CONFIG_SCHEMA = {
                     "type": "string",
                     "enum": ["Bq", "cpd"],
                 },
+                "do_time_fit": {"type": "boolean"},
+                "hl_po214": {
+                    "anyOf": [
+                        {"type": "number", "minimum": 0.0},
+                        {
+                            "type": "array",
+                            "items": {"type": "number", "minimum": 0.0},
+                        },
+                        {"type": "null"},
+                    ]
+                },
+                "hl_po218": {
+                    "anyOf": [
+                        {"type": "number", "minimum": 0.0},
+                        {
+                            "type": "array",
+                            "items": {"type": "number", "minimum": 0.0},
+                        },
+                        {"type": "null"},
+                    ]
+                },
+                "hl_po210": {
+                    "anyOf": [
+                        {"type": "number", "minimum": 0.0},
+                        {
+                            "type": "array",
+                            "items": {"type": "number", "minimum": 0.0},
+                        },
+                        {"type": "null"},
+                    ]
+                },
             },
         },
         "systematics": {
