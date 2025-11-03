@@ -131,28 +131,57 @@ CONFIG_SCHEMA = {
         },
         "time_fit": {
             "type": "object",
+            # IMPORTANT: keep this True so older configs and test merge paths don't die
+            "additionalProperties": True,
             "properties": {
+                "model": {
+                    "type": "string",
+                    "enum": [
+                        "single_exp",
+                        "bi_exp",
+                        "constant",
+                        "poisson_decays",
+                    ],
+                },
+                "t0": {"type": "number"},
+                "fix_lambda": {"type": "boolean"},
+                "lambda": {"type": "number"},
+                "activity_units": {
+                    "type": "string",
+                    "enum": ["Bq", "cpd"],
+                },
                 "do_time_fit": {"type": "boolean"},
                 "hl_po214": {
-                    "type": ["array", "null"],
-                    "items": {"type": "number"},
-                    "minItems": 1,
-                    "maxItems": 2,
+                    "anyOf": [
+                        {"type": "number", "minimum": 0.0},
+                        {
+                            "type": "array",
+                            "items": {"type": "number", "minimum": 0.0},
+                        },
+                        {"type": "null"},
+                    ]
                 },
                 "hl_po218": {
-                    "type": ["array", "null"],
-                    "items": {"type": "number"},
-                    "minItems": 1,
-                    "maxItems": 2,
+                    "anyOf": [
+                        {"type": "number", "minimum": 0.0},
+                        {
+                            "type": "array",
+                            "items": {"type": "number", "minimum": 0.0},
+                        },
+                        {"type": "null"},
+                    ]
                 },
                 "hl_po210": {
-                    "type": ["array", "null"],
-                    "items": {"type": "number"},
-                    "minItems": 1,
-                    "maxItems": 2,
+                    "anyOf": [
+                        {"type": "number", "minimum": 0.0},
+                        {
+                            "type": "array",
+                            "items": {"type": "number", "minimum": 0.0},
+                        },
+                        {"type": "null"},
+                    ]
                 },
             },
-            "required": ["do_time_fit"],
         },
         "systematics": {
             "type": "object",

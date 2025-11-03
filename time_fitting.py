@@ -47,6 +47,7 @@ def two_pass_time_fit(
     weights=None,
     strict: bool = False,
     fit_func=fit_time_series,
+    fit_kwargs: Mapping[str, object] | None = None,
 ) -> FitResult:
     """Run a two-pass time-series fit with optional fixed background.
 
@@ -67,6 +68,8 @@ def two_pass_time_fit(
             if eff_val is not None:
                 fixed_val = float(fixed_val) * eff_val
 
+    extra_kwargs = dict(fit_kwargs or {})
+
     if not fix_first or fixed_val is None or not iso:
         return fit_func(
             times_dict,
@@ -75,6 +78,7 @@ def two_pass_time_fit(
             config,
             weights=weights,
             strict=strict,
+            **extra_kwargs,
         )
 
     cfg_first = dict(config)
@@ -87,6 +91,7 @@ def two_pass_time_fit(
         weights=weights,
         strict=strict,
         fixed_background={iso: float(fixed_val)},
+        **extra_kwargs,
     )
 
     cfg_second = dict(config)
@@ -98,6 +103,7 @@ def two_pass_time_fit(
         cfg_second,
         weights=weights,
         strict=strict,
+        **extra_kwargs,
     )
 
     def _aic(res: FitResult) -> float:
