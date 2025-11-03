@@ -623,6 +623,52 @@ def _resolved_efficiency(
     return _config_efficiency(cfg, iso)
 
 
+def _safe_float(value: Any) -> float | None:
+    """Return ``value`` coerced to ``float`` when it is finite."""
+
+    try:
+        if value is None:
+            return None
+        coerced = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(coerced):
+        return None
+    return coerced
+
+
+def _float_with_default(value: Any, default: float) -> float:
+    """Return ``value`` as ``float`` or ``default`` when coercion fails."""
+
+    coerced = _safe_float(value)
+    return default if coerced is None else coerced
+
+
+def _radon_activity_curve_from_fit(
+    iso: str,
+    fit_result: FitResult | Mapping[str, Any] | None,
+    fit_params: Mapping[str, Any],
+    t_rel: Sequence[float] | np.ndarray,
+    cfg: Mapping[str, Any],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return radon activity curve using sanitized fit parameters."""
+
+    raw_E = fit_params.get("E_corrected")
+    if _safe_float(raw_E) is None:
+        raw_E = fit_params.get(f"E_{iso}")
+    E = _float_with_default(raw_E, 0.0)
+
+    raw_dE = fit_params.get("dE_corrected")
+    if _safe_float(raw_dE) is None:
+        raw_dE = fit_params.get(f"dE_{iso}", 0.0)
+    dE = _float_with_default(raw_dE, 0.0)
+    N0 = _float_with_default(fit_params.get(f"N0_{iso}", 0.0), 0.0)
+    dN0 = _float_with_default(fit_params.get(f"dN0_{iso}", 0.0), 0.0)
+    hl = _hl_value(cfg, iso)
+    cov = _cov_lookup(fit_result, f"E_{iso}", f"N0_{iso}")
+    return radon_activity.radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
+
+
 def _cov_lookup(
     fit_result: FitResult | Mapping[str, float] | None, name1: str, name2: str
 ) -> float:
@@ -3923,21 +3969,6 @@ def main(argv=None):
     if radon_interval is not None:
         from radon_activity import radon_delta
 
-        def _safe_float(value: Any) -> float | None:
-            try:
-                if value is None:
-                    return None
-                coerced = float(value)
-            except (TypeError, ValueError):
-                return None
-            if not math.isfinite(coerced):
-                return None
-            return coerced
-
-        def _float_with_default(value: Any, default: float) -> float:
-            coerced = _safe_float(value)
-            return default if coerced is None else coerced
-
         t_start_rel = (radon_interval[0] - analysis_start).total_seconds()
         t_end_rel = (radon_interval[1] - analysis_start).total_seconds()
 
@@ -4513,8 +4544,6 @@ def main(argv=None):
 
     # Radon activity and equivalent air plots
     try:
-        from radon_activity import radon_activity_curve
-
         rad_summary = summary.get("radon", {}) if hasattr(summary, "get") else {}
         if not isinstance(rad_summary, Mapping):
             rad_summary = {}
@@ -4635,14 +4664,8 @@ def main(argv=None):
         if "Po214" in valid_fits:
             fit_result = time_fit_results["Po214"]
             fit = valid_fits["Po214"]
-            E = fit.get("E_corrected", fit.get("E_Po214"))
-            dE = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
-            N0 = fit.get("N0_Po214", 0.0)
-            dN0 = fit.get("dN0_Po214", 0.0)
-            hl = _hl_value(cfg, "Po214")
-            cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
-            A214, dA214 = radon_activity_curve(
-                t_rel, E, dE, N0, dN0, hl, cov
+            A214, dA214 = _radon_activity_curve_from_fit(
+                "Po214", fit_result, fit, t_rel, cfg
             )
             plot_radon_activity(
                 time_grid,
@@ -4658,14 +4681,8 @@ def main(argv=None):
         if "Po218" in valid_fits:
             fit_result = time_fit_results["Po218"]
             fit = valid_fits["Po218"]
-            E = fit.get("E_corrected", fit.get("E_Po218"))
-            dE = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
-            N0 = fit.get("N0_Po218", 0.0)
-            dN0 = fit.get("dN0_Po218", 0.0)
-            hl = _hl_value(cfg, "Po218")
-            cov = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
-            A218, dA218 = radon_activity_curve(
-                t_rel, E, dE, N0, dN0, hl, cov
+            A218, dA218 = _radon_activity_curve_from_fit(
+                "Po218", fit_result, fit, t_rel, cfg
             )
 
         activity_arr = err_arr = None
@@ -4804,28 +4821,16 @@ def main(argv=None):
                 fit_result = time_fit_results["Po214"]
                 fit = _fit_params(fit_result)
                 if fit.get("fit_valid", True) and fit.get("fit_valid_Po214", True):
-                    E214 = fit.get("E_corrected", fit.get("E_Po214"))
-                    dE214 = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
-                    N0214 = fit.get("N0_Po214", 0.0)
-                    dN0214 = fit.get("dN0_Po214", 0.0)
-                    hl214 = _hl_value(cfg, "Po214")
-                    cov214 = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
-                    A214_tr, _ = radon_activity_curve(
-                        rel_trend, E214, dE214, N0214, dN0214, hl214, cov214
+                    A214_tr, _ = _radon_activity_curve_from_fit(
+                        "Po214", fit_result, fit, rel_trend, cfg
                     )
             A218_tr = None
             if "Po218" in time_fit_results:
                 fit_result = time_fit_results["Po218"]
                 fit = _fit_params(fit_result)
                 if fit.get("fit_valid", True) and fit.get("fit_valid_Po218", True):
-                    E218 = fit.get("E_corrected", fit.get("E_Po218"))
-                    dE218 = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
-                    N0218 = fit.get("N0_Po218", 0.0)
-                    dN0218 = fit.get("dN0_Po218", 0.0)
-                    hl218 = _hl_value(cfg, "Po218")
-                    cov218 = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
-                    A218_tr, _ = radon_activity_curve(
-                        rel_trend, E218, dE218, N0218, dN0218, hl218, cov218
+                    A218_tr, _ = _radon_activity_curve_from_fit(
+                        "Po218", fit_result, fit, rel_trend, cfg
                     )
             if A214_tr is not None or A218_tr is not None:
                 trend = np.zeros_like(times_trend)
