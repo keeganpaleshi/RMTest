@@ -3923,6 +3923,21 @@ def main(argv=None):
     if radon_interval is not None:
         from radon_activity import radon_delta
 
+        def _safe_float(value: Any) -> float | None:
+            try:
+                if value is None:
+                    return None
+                coerced = float(value)
+            except (TypeError, ValueError):
+                return None
+            if not math.isfinite(coerced):
+                return None
+            return coerced
+
+        def _float_with_default(value: Any, default: float) -> float:
+            coerced = _safe_float(value)
+            return default if coerced is None else coerced
+
         t_start_rel = (radon_interval[0] - analysis_start).total_seconds()
         t_end_rel = (radon_interval[1] - analysis_start).total_seconds()
 
@@ -3930,43 +3945,57 @@ def main(argv=None):
         if "Po214" in time_fit_results:
             fit_result = time_fit_results["Po214"]
             fit = _fit_params(fit_result)
-            E = fit.get("E_corrected", fit.get("E_Po214"))
-            dE = fit.get("dE_corrected", fit.get("dE_Po214", 0.0))
-            N0 = fit.get("N0_Po214", 0.0)
-            dN0 = fit.get("dN0_Po214", 0.0)
-            hl = _hl_value(cfg, "Po214")
-            cov = _cov_lookup(fit_result, "E_Po214", "N0_Po214")
-            delta214, err_delta214 = radon_delta(
-                t_start_rel,
-                t_end_rel,
-                E,
-                dE,
-                N0,
-                dN0,
-                hl,
-                cov,
-            )
+            E = _safe_float(fit.get("E_corrected", fit.get("E_Po214")))
+            if E is None:
+                logger.warning(
+                    "Skipping radon delta calculation for Po214 because the fitted E parameter is missing or non-finite."
+                )
+            else:
+                dE = _float_with_default(
+                    fit.get("dE_corrected", fit.get("dE_Po214", 0.0)), 0.0
+                )
+                N0 = _float_with_default(fit.get("N0_Po214", 0.0), 0.0)
+                dN0 = _float_with_default(fit.get("dN0_Po214", 0.0), 0.0)
+                hl = _hl_value(cfg, "Po214")
+                cov = _safe_float(_cov_lookup(fit_result, "E_Po214", "N0_Po214"))
+                delta214, err_delta214 = radon_delta(
+                    t_start_rel,
+                    t_end_rel,
+                    E,
+                    dE,
+                    N0,
+                    dN0,
+                    hl,
+                    0.0 if cov is None else cov,
+                )
 
         delta218 = err_delta218 = None
         if "Po218" in time_fit_results:
             fit_result = time_fit_results["Po218"]
             fit = _fit_params(fit_result)
-            E = fit.get("E_corrected", fit.get("E_Po218"))
-            dE = fit.get("dE_corrected", fit.get("dE_Po218", 0.0))
-            N0 = fit.get("N0_Po218", 0.0)
-            dN0 = fit.get("dN0_Po218", 0.0)
-            hl = _hl_value(cfg, "Po218")
-            cov = _cov_lookup(fit_result, "E_Po218", "N0_Po218")
-            delta218, err_delta218 = radon_delta(
-                t_start_rel,
-                t_end_rel,
-                E,
-                dE,
-                N0,
-                dN0,
-                hl,
-                cov,
-            )
+            E = _safe_float(fit.get("E_corrected", fit.get("E_Po218")))
+            if E is None:
+                logger.warning(
+                    "Skipping radon delta calculation for Po218 because the fitted E parameter is missing or non-finite."
+                )
+            else:
+                dE = _float_with_default(
+                    fit.get("dE_corrected", fit.get("dE_Po218", 0.0)), 0.0
+                )
+                N0 = _float_with_default(fit.get("N0_Po218", 0.0), 0.0)
+                dN0 = _float_with_default(fit.get("dN0_Po218", 0.0), 0.0)
+                hl = _hl_value(cfg, "Po218")
+                cov = _safe_float(_cov_lookup(fit_result, "E_Po218", "N0_Po218"))
+                delta218, err_delta218 = radon_delta(
+                    t_start_rel,
+                    t_end_rel,
+                    E,
+                    dE,
+                    N0,
+                    dN0,
+                    hl,
+                    0.0 if cov is None else cov,
+                )
 
         d_radon, d_err = compute_radon_activity(
             delta218,
