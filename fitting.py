@@ -934,6 +934,20 @@ def fit_spectrum(
         k = len(param_order)
         out["aic"] = float(2 * m.fval + 2 * k)
         out["likelihood_path"] = likelihood_path
+
+        # Sanity check: for unbinned fits, sum of peak yields should be
+        # on same order as N_events (not inflated by bin-width factors)
+        if unbinned and n_events > 0:
+            sum_peaks = sum(out.get(f"S_{iso}", 0.0) for iso in ("Po210", "Po218", "Po214"))
+            ratio = sum_peaks / n_events
+            if not (0.1 <= ratio <= 5.0):
+                logging.warning(
+                    "fit_spectrum: unbinned fit sanity check failed: "
+                    f"sum(S_k) = {sum_peaks:.1f}, N_events = {n_events}, "
+                    f"ratio = {ratio:.2f} (expected 0.1-5.0). "
+                    "This may indicate a normalization bug (e.g., bin-width scaling)."
+                )
+
         return FitResult(
             out,
             cov,

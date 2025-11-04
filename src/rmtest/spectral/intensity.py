@@ -101,6 +101,11 @@ def spectral_intensity_E(E, params, domain, use_emg=None):
     # Build intensity as sum of peaks + background
     lam = np.zeros_like(E, dtype=float)
 
+    # Ensure yields are non-negative (safety check for direct calls)
+    N210 = max(0.0, float(N210))
+    N218 = max(0.0, float(N218))
+    N214 = max(0.0, float(N214))
+
     # Po-210 peak
     if N210 > 0:
         if use_emg.get("Po210", True) and tau210 > 0:
