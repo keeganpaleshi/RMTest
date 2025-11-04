@@ -132,7 +132,7 @@ def build_spectral_intensity(iso_list, use_emg, domain):
             b1 = params.get("b1", 0.0)
             lam += b0 + b1 * E
 
-        return np.clip(lam, 1e-300, np.inf)
+        return lam
 
     return intensity
 

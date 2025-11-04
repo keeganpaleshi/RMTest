@@ -14,7 +14,7 @@ to exactly N_k over the fit window.
 """
 
 import numpy as np
-from scipy.special import erfc, erf
+from scipy.special import erfcx, erf  # erfcx for numerical stability
 
 __all__ = ["emg_pdf_E", "gaussian_pdf_E", "gaussian_cdf_E", "emg_cdf_E"]
 
@@ -101,9 +101,8 @@ def gaussian_cdf_E(E, mu, sigma):
 def emg_pdf_E(E, mu, sigma, tau):
     """Unit-normalized exponentially modified Gaussian in energy (MeV^-1).
 
-    Correct, normalized PDF for unbinned likelihood:
-        f(E) = (1/(2*tau)) * exp( sigma^2/(2*tau^2) - (E-mu)/tau ) *
-               erfc( (sigma/tau - (E-mu)/sigma)/sqrt(2) )
+    Numerically stable implementation using erfcx (scaled complementary error
+    function) and log-domain assembly to avoid overflow/underflow.
 
     Integrates to 1 over the entire energy domain. Handles both scalar and
     vector sigma (energy-dependent resolution).
@@ -127,11 +126,13 @@ def emg_pdf_E(E, mu, sigma, tau):
 
     Notes
     -----
-    - Uses np.erfc (plain complementary error function), NOT erfcx.
-    - If you need the scaled error function erfcx for numerical stability,
-      you must compensate with exp(-z^2) exactly once to avoid blow-up.
-    - The formula is the standard normalized EMG from convolution of
-      Gaussian(mu, sigma) with Exponential(tau).
+    Uses erfcx for numerical stability. The standard EMG formula
+    f(E) = (1/(2*tau)) * exp(sigma^2/(2*tau^2) - (E-mu)/tau) * erfc(z)
+    overflows for moderate z values. Instead, we use log-domain assembly:
+
+        log f = -log(2τ) + 0.5*(σ/τ)^2 - (E-μ)/τ - z^2 + log(erfcx(z))
+
+    where erfcx(z) = exp(z^2) * erfc(z) is numerically stable.
 
     For energy-dependent resolution:
         sigma_E = np.sqrt(sigma0**2 + F * E)
@@ -141,6 +142,7 @@ def emg_pdf_E(E, mu, sigma, tau):
     ----------
     Kalambet et al. (2011) "Reconstruction of chromatographic peaks using the
     exponentially modified Gaussian function"
+    Wikipedia: Exponentially modified Gaussian distribution
     """
     E = np.asarray(E, dtype=float)
     sigma = np.asarray(sigma, dtype=float)
@@ -154,16 +156,22 @@ def emg_pdf_E(E, mu, sigma, tau):
     inv_tau = 1.0 / tau
     E_mu = E - mu
 
-    # Argument to erfc: z = (sigma/tau - (E-mu)/sigma) / sqrt(2)
-    # Use broadcasting-friendly operations
+    # Argument to erfcx: z = (sigma/tau - (E-mu)/sigma) / sqrt(2)
     z = (sigma * inv_tau - E_mu / sigma) / np.sqrt(2.0)
 
-    # Standard normalized EMG formula with plain erfc
-    # f(E) = (1/(2*tau)) * exp(sigma^2/(2*tau^2) - (E-mu)/tau) * erfc(z)
-    out = 0.5 * inv_tau * np.exp(0.5 * (sigma * inv_tau) ** 2 - E_mu * inv_tau) * erfc(z)
+    # Log-domain assembly for numerical stability
+    # log f = -log(2τ) + 0.5*(σ/τ)^2 - (E-μ)/τ - z^2 + log(erfcx(z))
+    log_pdf = (
+        -np.log(2.0 * tau)
+        + 0.5 * (sigma * inv_tau) ** 2
+        - E_mu * inv_tau
+        - z ** 2
+        + np.log(erfcx(z))
+    )
 
-    # Clean up any non-finite values from numerical issues
-    out = np.where(np.isfinite(out), out, 0.0)
+    # Clamp for exp to avoid overflow/underflow warnings
+    log_pdf = np.where(np.isfinite(log_pdf), log_pdf, -np.inf)
+    out = np.exp(np.clip(log_pdf, -745.0, 709.0))
 
     return out
 

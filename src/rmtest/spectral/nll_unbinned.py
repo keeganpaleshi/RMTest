@@ -67,8 +67,11 @@ def nll_extended_unbinned(E, params, domain, iso_list=None, use_emg=None):
     lam = spectral_intensity_E(E, params, domain, iso_list=iso_list, use_emg=use_emg)
 
     # Check for invalid intensities
-    if np.any(lam <= 0) or not np.isfinite(lam).all():
+    if not np.isfinite(lam).all():
         return np.inf
+
+    # Small floor avoids -inf from accidental zeros in tails
+    lam = np.clip(lam, 1e-300, np.inf)
 
     # Compute total expected count
     mu_tot = integral_of_intensity(params, domain, iso_list=iso_list)
