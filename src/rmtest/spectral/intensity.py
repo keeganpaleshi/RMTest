@@ -176,10 +176,21 @@ def build_spectral_intensity(iso_list, use_emg, domain):
 
                 lam += N * pdf_vals
 
-        # Add linear background (already a density in counts/MeV)
-        b0 = params.get("b0", 0.0)
-        b1 = params.get("b1", 0.0)
-        lam += b0 + b1 * E
+        # Background handling: use S_bkg (flat) if present, else b0/b1 (linear)
+        # IMPORTANT: When S_bkg is present, ignore b0/b1 to prevent double counting
+        # and optimizer competition (b0/b1 tilt can steal counts from peaks)
+        if "S_bkg" in params:
+            # Flat background with total counts S_bkg over window
+            S_bkg = params.get("S_bkg", 0.0)
+            if S_bkg > 0:
+                window_length = max(1e-12, E_max - E_min)
+                flat_density = S_bkg / window_length  # counts/MeV
+                lam += flat_density
+        else:
+            # Linear background density (counts/MeV)
+            b0 = params.get("b0", 0.0)
+            b1 = params.get("b1", 0.0)
+            lam += b0 + b1 * E
 
         return np.clip(lam, 1e-300, np.inf)
 
@@ -296,14 +307,20 @@ def integral_of_intensity(params, domain, iso_list=None):
                 f"Array params must have 12 elements; got {len(params)}"
             )
 
-    # Sum of signal yields (PDFs integrate to 1, so integral is just N_k)
+    # Sum of signal yields (PDFs integrate to 1 over window, so integral is just N_k)
     total = sum(params.get(f"N_{iso}", 0.0) for iso in iso_list)
 
-    # Background integral: ∫(b0 + b1·E) dE from E_min to E_max
-    b0 = params.get("b0", 0.0)
-    b1 = params.get("b1", 0.0)
-    dE = E_max - E_min
-    bkg_integral = b0 * dE + 0.5 * b1 * (E_max ** 2 - E_min ** 2)
+    # Background integral: use S_bkg (flat) if present, else b0/b1 (linear)
+    # This must match the logic in build_spectral_intensity
+    if "S_bkg" in params:
+        # Flat background: integral is simply S_bkg (counts over window)
+        bkg_integral = max(0.0, params.get("S_bkg", 0.0))
+    else:
+        # Linear background: ∫(b0 + b1·E) dE from E_min to E_max
+        b0 = params.get("b0", 0.0)
+        b1 = params.get("b1", 0.0)
+        dE = E_max - E_min
+        bkg_integral = b0 * dE + 0.5 * b1 * (E_max ** 2 - E_min ** 2)
 
     total += bkg_integral
 
