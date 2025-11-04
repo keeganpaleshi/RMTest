@@ -828,6 +828,7 @@ def fit_spectrum(
                     p_map,
                     area_keys=area_keys,
                     background_model="loglin_unit" if background_model == "loglin_unit" else None,
+                    domain=(E_lo, E_hi),
                 )
         else:
             def _nll(*params):

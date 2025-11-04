@@ -9,7 +9,7 @@ def _softplus(x):
 
 
 def neg_loglike_extended(
-    E, intensity_fn, params, *, area_keys, clip=1e-300, background_model=None
+    E, intensity_fn, params, *, area_keys, clip=1e-300, background_model=None, domain=None
 ):
     """Extended unbinned negative log-likelihood.
 
@@ -31,6 +31,9 @@ def neg_loglike_extended(
     background_model : str, optional
         Name of the background model. When set to ``"loglin_unit"`` required
         background parameters are validated before evaluation.
+    domain : tuple, optional
+        (Emin, Emax) defining the fit range in MeV. Required when background
+        parameters b0/b1 are present to compute the background integral.
 
     Returns
     -------
@@ -69,5 +72,28 @@ def neg_loglike_extended(
         )
 
     lam = np.clip(intensity_fn(E, params), clip, np.inf)
+
+    # Compute total expected counts: sum of peak areas + background integral
     Nexp = float(sum(_softplus(params[k]) for k in area_keys))
+
+    # Add background integral if b0/b1 are present and not accounted for via S_bkg
+    if "b0" in params and "b1" in params and "S_bkg" not in area_keys:
+        if domain is None:
+            # Estimate domain from data if not provided
+            if E.size > 0:
+                Emin, Emax = float(E.min()), float(E.max())
+            else:
+                raise ValueError(
+                    "domain must be provided when using b0/b1 background without S_bkg"
+                )
+        else:
+            Emin, Emax = domain
+
+        b0 = float(params["b0"])
+        b1 = float(params["b1"])
+
+        # Integral of (b0 + b1*E) from Emin to Emax
+        background_integral = b0 * (Emax - Emin) + 0.5 * b1 * (Emax**2 - Emin**2)
+        Nexp += background_integral
+
     return float(-(np.sum(np.log(lam)) - Nexp))
