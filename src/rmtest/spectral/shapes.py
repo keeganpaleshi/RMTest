@@ -3,6 +3,9 @@
 This module provides properly normalized PDF shapes in energy space (MeV^-1)
 for use in unbinned extended likelihood fitting. All shapes integrate to 1
 over their support.
+
+IMPORTANT: These functions support both scalar and vector sigma (for energy-
+dependent resolution σ(E) = √(σ₀² + F·E)). All parameter checks are array-safe.
 """
 
 import numpy as np
@@ -11,12 +14,58 @@ from scipy.special import erfc
 __all__ = ["emg_pdf_E", "gaussian_pdf_E"]
 
 
+def gaussian_pdf_E(E, mu, sigma):
+    """Unit-normalized Gaussian in energy (MeV^-1).
+
+    Integrates to 1 over the entire energy domain. Handles both scalar and
+    vector sigma (energy-dependent resolution).
+
+    Parameters
+    ----------
+    E : array-like
+        Energy values in MeV.
+    mu : float
+        Gaussian mean in MeV.
+    sigma : float or array-like
+        Gaussian standard deviation in MeV. Can be scalar or vector for
+        energy-dependent resolution σ(E).
+
+    Returns
+    -------
+    array-like
+        Gaussian probability density values with units of MeV^-1. Integrates to 1.
+
+    Notes
+    -----
+    For energy-dependent resolution, pass sigma as an array:
+        sigma_E = np.sqrt(sigma0**2 + F * E)
+        pdf = gaussian_pdf_E(E, mu, sigma_E)
+    """
+    E = np.asarray(E, dtype=float)
+    sigma = np.asarray(sigma, dtype=float)
+
+    # Vector-safe validation: return zeros if any sigma is invalid
+    if np.any(~np.isfinite(sigma)) or np.any(sigma <= 0):
+        return np.zeros_like(E, dtype=float)
+
+    x = (E - mu) / sigma
+    out = (1.0 / (np.sqrt(2.0 * np.pi) * sigma)) * np.exp(-0.5 * x * x)
+
+    # Clean up any lingering non-finite values
+    out = np.where(np.isfinite(out), out, 0.0)
+
+    return out
+
+
 def emg_pdf_E(E, mu, sigma, tau):
     """Unit-normalized exponentially modified Gaussian in energy (MeV^-1).
 
-    Returns a proper probability density function that integrates to 1 over
-    the entire energy domain. This is the correct form for unbinned likelihood
-    fitting, where the intensity is λ(E) = N × emg_pdf_E(E).
+    Correct, normalized PDF for unbinned likelihood:
+        f(E) = (1/(2*tau)) * exp( sigma^2/(2*tau^2) - (E-mu)/tau ) *
+               erfc( (sigma/tau - (E-mu)/sigma)/sqrt(2) )
+
+    Integrates to 1 over the entire energy domain. Handles both scalar and
+    vector sigma (energy-dependent resolution).
 
     Parameters
     ----------
@@ -24,8 +73,9 @@ def emg_pdf_E(E, mu, sigma, tau):
         Energy values in MeV.
     mu : float
         Gaussian mean (peak center) in MeV.
-    sigma : float
-        Gaussian standard deviation (resolution) in MeV.
+    sigma : float or array-like
+        Gaussian standard deviation (resolution) in MeV. Can be scalar or
+        vector for energy-dependent resolution σ(E).
     tau : float
         Exponential decay constant (tail parameter) in MeV.
 
@@ -36,76 +86,42 @@ def emg_pdf_E(E, mu, sigma, tau):
 
     Notes
     -----
-    The EMG is defined as the convolution of a Gaussian with an exponential
-    decay. The PDF is:
+    - Uses np.erfc (plain complementary error function), NOT erfcx.
+    - If you need the scaled error function erfcx for numerical stability,
+      you must compensate with exp(-z^2) exactly once to avoid blow-up.
+    - The formula is the standard normalized EMG from convolution of
+      Gaussian(mu, sigma) with Exponential(tau).
 
-        f(E) = 1/(2τ) exp(σ²/(2τ²) - (E-μ)/τ) erfc((σ/τ - (E-μ)/σ)/√2)
-
-    For numerical stability, falls back to zero density when sigma or tau are
-    non-positive.
+    For energy-dependent resolution:
+        sigma_E = np.sqrt(sigma0**2 + F * E)
+        pdf = emg_pdf_E(E, mu, sigma_E, tau)
 
     References
     ----------
     Kalambet et al. (2011) "Reconstruction of chromatographic peaks using the
     exponentially modified Gaussian function"
     """
-    E = np.asarray(E)
+    E = np.asarray(E, dtype=float)
+    sigma = np.asarray(sigma, dtype=float)
+    tau = np.asarray(tau, dtype=float)
 
-    # Handle invalid parameters
-    if sigma <= 0 or tau <= 0:
+    # Vector-safe validation: return zeros if any parameter is invalid
+    if np.any(~np.isfinite(sigma)) or np.any(~np.isfinite(tau)) \
+       or np.any(sigma <= 0) or np.any(tau <= 0):
         return np.zeros_like(E, dtype=float)
 
-    # Normalized variables
-    z = (E - mu) / sigma
-    t = sigma / tau
+    inv_tau = 1.0 / tau
+    E_mu = E - mu
 
-    # EMG formula: (1/2τ) exp(t²/2 - z/t) erfc((t - z)/√2)
-    pref = 1.0 / (2.0 * tau)
+    # Argument to erfc: z = (sigma/tau - (E-mu)/sigma) / sqrt(2)
+    # Use broadcasting-friendly operations
+    z = (sigma * inv_tau - E_mu / sigma) / np.sqrt(2.0)
 
-    # Compute exponent with care for numerical stability
-    exponent = 0.5 * (t ** 2) - z / t
+    # Standard normalized EMG formula with plain erfc
+    # f(E) = (1/(2*tau)) * exp(sigma^2/(2*tau^2) - (E-mu)/tau) * erfc(z)
+    out = 0.5 * inv_tau * np.exp(0.5 * (sigma * inv_tau) ** 2 - E_mu * inv_tau) * erfc(z)
 
-    # Compute argument to erfc
-    erfc_arg = (t - z) / np.sqrt(2.0)
+    # Clean up any non-finite values from numerical issues
+    out = np.where(np.isfinite(out), out, 0.0)
 
-    # Combine terms
-    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
-        result = pref * np.exp(exponent) * erfc(erfc_arg)
-
-    # Clean up any NaN or Inf values
-    result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
-
-    return result
-
-
-def gaussian_pdf_E(E, mu, sigma):
-    """Unit-normalized Gaussian in energy (MeV^-1).
-
-    Parameters
-    ----------
-    E : array-like
-        Energy values in MeV.
-    mu : float
-        Gaussian mean in MeV.
-    sigma : float
-        Gaussian standard deviation in MeV.
-
-    Returns
-    -------
-    array-like
-        Gaussian probability density values with units of MeV^-1. Integrates to 1.
-    """
-    E = np.asarray(E)
-
-    if sigma <= 0:
-        return np.zeros_like(E, dtype=float)
-
-    z = (E - mu) / sigma
-    norm = sigma * np.sqrt(2.0 * np.pi)
-
-    with np.errstate(over="ignore", under="ignore"):
-        result = np.exp(-0.5 * z ** 2) / norm
-
-    result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
-
-    return result
+    return out
