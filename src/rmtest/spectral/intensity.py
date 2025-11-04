@@ -15,13 +15,61 @@ to prevent amplitude bleeding between components and background.
 """
 
 import numpy as np
-from .shapes import emg_pdf_E, gaussian_pdf_E, emg_cdf_E, gaussian_cdf_E
+from .shapes import emg_pdf_E, gaussian_pdf_E
 
 __all__ = [
     "build_spectral_intensity",
     "spectral_intensity_E",
     "integral_of_intensity",
 ]
+
+
+def _normalize_pdf_over_window(pdf_fun, E_lo, E_hi, n_grid=2048):
+    """Return pdf_norm(E) and the (raw) area over [E_lo, E_hi].
+
+    Parameters
+    ----------
+    pdf_fun : callable
+        Function that returns PDF values: pdf_fun(E) -> array
+        This PDF is assumed to be normalized over all energy (−∞, +∞).
+    E_lo, E_hi : float
+        Energy window bounds in MeV.
+    n_grid : int, optional
+        Number of grid points for numerical integration. Default: 2048.
+
+    Returns
+    -------
+    pdf_norm : callable
+        Window-normalized PDF function.
+    area : float
+        Integral of raw_pdf over [E_lo, E_hi].
+
+    Notes
+    -----
+    For a PDF f(E) normalized over all energy:
+        ∫_{-∞}^{+∞} f(E) dE = 1
+
+    Over a truncated window [E_lo, E_hi]:
+        ∫_{E_lo}^{E_hi} f(E) dE = α < 1
+
+    The window-normalized PDF is:
+        f_window(E) = f(E) / α
+
+    so that:
+        ∫_{E_lo}^{E_hi} f_window(E) dE = 1
+    """
+    grid = np.linspace(E_lo, E_hi, n_grid)
+    y = pdf_fun(grid)
+    # CRITICAL: pass grid to trapz, not just y (which would use dx=1)
+    area = np.trapz(y, grid)
+
+    if not np.isfinite(area) or area <= 0:
+        return (lambda E: np.zeros_like(np.asarray(E), dtype=float)), 0.0
+
+    def pdf_norm(E):
+        return pdf_fun(E) / area
+
+    return pdf_norm, area
 
 
 def build_spectral_intensity(iso_list, use_emg, domain):
@@ -47,8 +95,11 @@ def build_spectral_intensity(iso_list, use_emg, domain):
     Each component PDF is normalized over the truncated fit window [E_min, E_max]
     to ensure that amplitude parameters represent actual expected counts in the window.
     This prevents amplitude bleeding between components and background.
+
+    The normalization is applied exactly once: each f̂_k(E) integrates to 1 over
+    the window, so λ(E) = Σ N_k f̂_k(E) + bkg(E) has ∫ λ dE = Σ N_k + ∫ bkg dE.
     """
-    E_min, E_max = domain
+    E_lo, E_hi = domain
 
     def intensity(E, params):
         """Compute total rate density λ(E) in counts/MeV.
@@ -79,7 +130,6 @@ def build_spectral_intensity(iso_list, use_emg, domain):
         F = params.get("F", 0.0)
 
         # Add each isotope peak with window normalization
-        # Use analytical CDFs for exact, fast window normalization
         for iso in iso_list:
             N = params.get(f"N_{iso}", 0.0)
             if N <= 0:
@@ -87,34 +137,26 @@ def build_spectral_intensity(iso_list, use_emg, domain):
 
             mu = params[f"mu_{iso}"]
 
-            # For CDF evaluation, use effective constant sigma
-            # If F is nonzero, this is approximate; for exact handling with
-            # energy-dependent sigma, numerical integration would be needed.
-            # For typical radon fits, F is small, so sigma_eff ≈ sigma0 is accurate.
-            sigma_eff = sigma0
-
-            # Compute in-window mass Z_k = CDF(E_max) - CDF(E_min)
+            # Create raw PDF function for this component
+            # Energy-dependent resolution: σ(E) = √(σ₀² + F·E)
             if use_emg.get(iso, False):
                 tau = params[f"tau_{iso}"]
-                Z_hi = emg_cdf_E(E_max, mu, sigma_eff, tau)
-                Z_lo = emg_cdf_E(E_min, mu, sigma_eff, tau)
+
+                def raw_pdf(E_grid, mu=mu, sigma0=sigma0, F=F, tau=tau):
+                    sigma_E_grid = np.sqrt(sigma0**2 + F * E_grid)
+                    return emg_pdf_E(E_grid, mu, sigma_E_grid, tau)
             else:
-                Z_hi = gaussian_cdf_E(E_max, mu, sigma_eff)
-                Z_lo = gaussian_cdf_E(E_min, mu, sigma_eff)
 
-            Z_k = float(Z_hi - Z_lo)
-            Z_k = max(Z_k, 1e-12)  # Guard against peaks far outside window
+                def raw_pdf(E_grid, mu=mu, sigma0=sigma0, F=F):
+                    sigma_E_grid = np.sqrt(sigma0**2 + F * E_grid)
+                    return gaussian_pdf_E(E_grid, mu, sigma_E_grid)
 
-            # Evaluate PDF at data points (may use energy-dependent sigma)
-            sigma_E = np.sqrt(sigma0 ** 2 + F * E)
-            if use_emg.get(iso, False):
-                pdf_vals = emg_pdf_E(E, mu, sigma_E, tau)
-            else:
-                pdf_vals = gaussian_pdf_E(E, mu, sigma_E)
+            # Normalize over window [E_lo, E_hi]
+            pdf_norm, _ = _normalize_pdf_over_window(raw_pdf, E_lo, E_hi)
 
-            # Window-normalize: λ_k(E) = (N_k / Z_k) × f_k(E)
-            # This ensures ∫[E_min, E_max] λ_k(E) dE = N_k
-            lam += (N / Z_k) * pdf_vals
+            # Add to intensity: λ += N × f̂(E)
+            # Each f̂ integrates to 1 over window, so this contributes N counts
+            lam += N * pdf_norm(E)
 
         # Background handling: use S_bkg (flat) if present, else b0/b1 (linear)
         # IMPORTANT: When S_bkg is present, ignore b0/b1 to prevent double counting
@@ -123,7 +165,7 @@ def build_spectral_intensity(iso_list, use_emg, domain):
             # Flat background with total counts S_bkg over window
             S_bkg = params.get("S_bkg", 0.0)
             if S_bkg > 0:
-                window_length = max(1e-12, E_max - E_min)
+                window_length = max(1e-12, E_hi - E_lo)
                 flat_density = S_bkg / window_length  # counts/MeV
                 lam += flat_density
         else:
