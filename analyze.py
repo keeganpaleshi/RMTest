@@ -2699,6 +2699,21 @@ def main(argv=None):
                 mu_map,
                 peak_width=peak_tol,
             )
+            # estimate_linear_background returns counts/bin; convert to counts/MeV for unbinned fits
+            if spectral_cfg.get("unbinned_likelihood", False):
+                # Compute average bin width from the bin_edges
+                if bin_edges is not None and len(bin_edges) > 1:
+                    avg_bin_width = float(np.mean(np.diff(bin_edges)))
+                else:
+                    # Fallback: use a typical bin width or estimate from data range
+                    E_all = df_analysis["energy_MeV"].values
+                    if E_all.size > 1:
+                        avg_bin_width = (E_all.max() - E_all.min()) / max(bins if bins else 100, 1)
+                    else:
+                        avg_bin_width = 0.02  # Default 20 keV bins
+                # Convert from counts/bin to counts/MeV
+                b0_est = b0_est / avg_bin_width
+                b1_est = b1_est / avg_bin_width
             priors_spec["b0"] = (b0_est, abs(b0_est) * 0.1 + 1e-3)
             priors_spec["b1"] = (b1_est, abs(b1_est) * 0.1 + 1e-3)
         elif bkg_mode.startswith("auto_poly"):

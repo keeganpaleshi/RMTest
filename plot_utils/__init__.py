@@ -60,7 +60,24 @@ __all__ = [
 
 
 def _counts_per_bin(density, widths):
-    """Convert a spectral density into expected counts per bin."""
+    """Convert a spectral density into expected counts per bin.
+
+    For unbinned fits, the model is a density λ(E) in counts/MeV. To overlay
+    on a histogram (which shows counts per bin), we must multiply by the bin
+    width: counts = λ(E) × ΔE.
+
+    Parameters
+    ----------
+    density : array-like
+        Spectral density [counts/MeV].
+    widths : array-like
+        Bin widths [MeV].
+
+    Returns
+    -------
+    array-like
+        Expected counts per bin for histogram overlay.
+    """
 
     density_arr = np.asarray(density, dtype=float)
     widths_arr = np.asarray(widths, dtype=float)
@@ -847,6 +864,8 @@ def plot_spectrum(
             else:
                 density = gaussian(centers_arr, float(mu), sigma_vals)
             density = np.nan_to_num(density, nan=0.0, posinf=0.0, neginf=0.0)
+            # For unbinned fits: amp [counts] × density [MeV^-1] × width [MeV] = counts/bin
+            # For binned fits: same formula applies (amp is still total counts)
             comps[iso] = _counts_per_bin(float(amp) * density, widths)
             total += comps[iso]
 
@@ -862,6 +881,8 @@ def plot_spectrum(
                 amplitude = float(fit_params.get("S_bkg", 0.0))
                 background_density = amplitude * shape(centers_arr, b0, b1)
             else:
+                # For unbinned fits: b0, b1 are already in counts/MeV units
+                # For binned fits: same (background density)
                 background_density = b0 + b1 * centers_arr
                 if "S_bkg" in fit_params:
                     amplitude = float(fit_params["S_bkg"])
@@ -873,6 +894,7 @@ def plot_spectrum(
             background_density = np.nan_to_num(
                 background_density, nan=0.0, posinf=0.0, neginf=0.0
             )
+            # Convert density [counts/MeV] to counts/bin by multiplying by width [MeV]
             background = _counts_per_bin(background_density, widths)
             total += background
 
