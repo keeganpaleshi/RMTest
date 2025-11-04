@@ -70,6 +70,8 @@ def select_neg_loglike(opts: Any) -> Callable:
             area_keys: Sequence[str],
             clip: float = 1e-300,
             background_model: str | None = None,
+            bounds: tuple[float, float] | None = None,
+            expected_total: float | None = None,
         ) -> float:
             missing = [k for k in area_keys if k not in params]
             if missing:
@@ -85,6 +87,8 @@ def select_neg_loglike(opts: Any) -> Callable:
                 area_keys=area_keys,
                 clip=clip,
                 background_model=background_model,
+                bounds=bounds,
+                expected_total=expected_total,
             )
 
         return neg_loglike
@@ -96,6 +100,8 @@ def select_neg_loglike(opts: Any) -> Callable:
         *,
         area_keys: Sequence[str] | None = None,
         clip: float = 1e-300,
+        bounds: tuple[float, float] | None = None,
+        expected_total: float | None = None,
     ) -> float:
         """Simple unextended unbinned negative log-likelihood."""
 

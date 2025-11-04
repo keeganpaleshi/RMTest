@@ -9,7 +9,15 @@ def _softplus(x):
 
 
 def neg_loglike_extended(
-    E, intensity_fn, params, *, area_keys, clip=1e-300, background_model=None
+    E,
+    intensity_fn,
+    params,
+    *,
+    area_keys,
+    clip=1e-300,
+    background_model=None,
+    bounds=None,
+    expected_total=None,
 ):
     """Extended unbinned negative log-likelihood.
 
@@ -31,6 +39,13 @@ def neg_loglike_extended(
     background_model : str, optional
         Name of the background model. When set to ``"loglin_unit"`` required
         background parameters are validated before evaluation.
+    bounds : tuple[float, float], optional
+        Energy bounds ``(E_lo, E_hi)`` used when computing the expected event
+        count by integrating the background model. Required unless
+        ``expected_total`` is provided.
+    expected_total : float, optional
+        Precomputed integral of the spectral intensity over the fit window. If
+        supplied the ``bounds`` argument is ignored.
 
     Returns
     -------
@@ -69,5 +84,30 @@ def neg_loglike_extended(
         )
 
     lam = np.clip(intensity_fn(E, params), clip, np.inf)
-    Nexp = float(sum(_softplus(params[k]) for k in area_keys))
+
+    if expected_total is None:
+        if bounds is None:
+            raise ValueError(
+                "neg_loglike_extended requires bounds when expected_total is not provided"
+            )
+        E_lo, E_hi = map(float, bounds)
+        peak_keys = [k for k in area_keys if k != "S_bkg"]
+        total = float(sum(_softplus(params[k]) for k in peak_keys))
+
+        if background_model == "loglin_unit":
+            if "S_bkg" not in params:
+                raise ValueError(
+                    "background_model=loglin_unit requires S_bkg to compute expected counts"
+                )
+            total += float(_softplus(params["S_bkg"]))
+        elif "S_bkg" in params:
+            total += float(_softplus(params["S_bkg"]))
+        else:
+            b0 = float(params.get("b0", 0.0))
+            b1 = float(params.get("b1", 0.0))
+            total += b0 * (E_hi - E_lo) + 0.5 * b1 * (E_hi**2 - E_lo**2)
+        Nexp = total
+    else:
+        Nexp = float(expected_total)
+
     return float(-(np.sum(np.log(lam)) - Nexp))
