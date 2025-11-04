@@ -18,6 +18,27 @@ from scipy.stats import chi2
 from calibration import emg_left, gaussian
 from constants import safe_exp as _safe_exp
 from math_utils import log_expm1_stable
+
+# Import new properly-normalized spectral modules for unbinned fitting
+try:
+    from rmtest.spectral import (
+        emg_pdf_E,
+        gaussian_pdf_E,
+        build_spectral_intensity,
+        integral_of_intensity as _spectral_integral,
+    )
+    _HAS_SPECTRAL_MODULES = True
+except ImportError:
+    try:
+        from src.rmtest.spectral import (
+            emg_pdf_E,
+            gaussian_pdf_E,
+            build_spectral_intensity,
+            integral_of_intensity as _spectral_integral,
+        )
+        _HAS_SPECTRAL_MODULES = True
+    except ImportError:
+        _HAS_SPECTRAL_MODULES = False
 try:
     from rmtest.emg_constants import (
         clamp_tau as _clamp_tau,
@@ -815,9 +836,57 @@ def fit_spectrum(
             pcov = np.array(pcov_cf)
             popt = np.array(popt_cf)
     else:
-        def _intensity_fn(E_vals, p_map):
-            arr = [p_map[name] for name in param_order]
-            return _model_density(E_vals, *arr)
+        # Unbinned likelihood path
+        # Use properly normalized spectral modules if available
+        if _HAS_SPECTRAL_MODULES and flags.get("use_spectral_modules", True):
+            # Build properly normalized intensity function
+            domain = (E_lo, E_hi)
+            base_intensity = build_spectral_intensity(iso_list, use_emg, domain)
+
+            def _intensity_fn(E_vals, p_map):
+                """Intensity function using properly normalized shapes.
+
+                This version avoids bin-width scaling issues by using unit-normalized
+                PDFs for each component. The intensity is λ(E) = Σ N_k f_k(E) + background,
+                where each f_k integrates to 1 over the energy domain.
+                """
+                # Extract and transform parameters
+                params_dict = {}
+
+                # Resolution parameters
+                if fix_sigma0:
+                    params_dict["sigma0"] = sigma0_val
+                else:
+                    params_dict["sigma0"] = p_map["sigma0"]
+
+                if fix_F:
+                    params_dict["F"] = F_val
+                else:
+                    params_dict["F"] = p_map.get("F", 0.0)
+
+                # Peak parameters for each isotope
+                for iso in iso_list:
+                    # Yields: apply softplus to ensure positivity
+                    S_raw = p_map[f"S_{iso}"]
+                    params_dict[f"N_{iso}"] = _softplus(S_raw)
+
+                    # Peak positions
+                    params_dict[f"mu_{iso}"] = p_map[f"mu_{iso}"]
+
+                    # Tail parameters (if using EMG)
+                    if use_emg[iso]:
+                        params_dict[f"tau_{iso}"] = p_map[f"tau_{iso}"]
+
+                # Background parameters (already densities in counts/MeV)
+                params_dict["b0"] = p_map["b0"]
+                params_dict["b1"] = p_map["b1"]
+
+                return base_intensity(E_vals, params_dict)
+        else:
+            # Legacy path: use existing _model_density
+            def _intensity_fn(E_vals, p_map):
+                arr = [p_map[name] for name in param_order]
+                return _model_density(E_vals, *arr)
 
         if flags.get("likelihood") == "extended":
             def _nll(*params):
@@ -933,6 +1002,40 @@ def fit_spectrum(
         k = len(param_order)
         out["aic"] = float(2 * m.fval + 2 * k)
         out["likelihood_path"] = likelihood_path
+
+        # Sanity checks for unbinned extended likelihood fits
+        if _HAS_SPECTRAL_MODULES and flags.get("likelihood") == "extended":
+            # Check that sum of yields is on the same order as N_events
+            sum_yields = sum(out.get(f"S_{iso}", 0.0) for iso in iso_list)
+            ratio = sum_yields / n_events if n_events > 0 else np.inf
+
+            if ratio < 0.1 or ratio > 5.0:
+                logging.warning(
+                    f"Unbinned fit sanity check: sum of yields ({sum_yields:.1f}) "
+                    f"is {ratio:.2f}× N_events ({n_events}). "
+                    f"Expected ratio in [0.1, 5.0]. This may indicate normalization issues."
+                )
+
+            # Check background parameters are reasonable
+            b0 = out.get("b0", 0.0)
+            b1 = out.get("b1", 0.0)
+            dE = E_hi - E_lo
+            bkg_integral = b0 * dE + 0.5 * b1 * (E_hi ** 2 - E_lo ** 2)
+            bkg_fraction = bkg_integral / n_events if n_events > 0 else 0.0
+
+            if bkg_fraction < 0 or bkg_fraction > 0.9:
+                logging.warning(
+                    f"Unbinned fit sanity check: background integral ({bkg_integral:.1f}) "
+                    f"is {bkg_fraction:.1%} of N_events. Expected < 90%."
+                )
+
+            # Log fit summary for debugging
+            logging.debug(
+                f"Unbinned fit summary: N_events={n_events}, "
+                f"sum_yields={sum_yields:.1f}, ratio={ratio:.2f}, "
+                f"bkg_integral={bkg_integral:.1f}, AIC={out['aic']:.1f}"
+            )
+
         return FitResult(
             out,
             cov,
