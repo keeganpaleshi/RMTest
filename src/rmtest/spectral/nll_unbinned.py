@@ -3,17 +3,20 @@
 This module implements the correct extended unbinned likelihood for spectral
 fitting. The NLL is:
 
-    NLL = μ - Σᵢ ln λ(Eᵢ)
+    NLL = μ - Σᵢ ln λ(Eᵢ) + ln(N!)
 
 where:
     - μ = ∫ λ(E) dE is the total expected event count (Poisson parameter)
     - λ(Eᵢ) is the rate density at each observed energy
+    - N is the observed event count
+    - ln(N!) is the Poisson constant term (keeps NLL positive and finite)
 
 The intensity λ(E) must be a proper density in counts/MeV, with each peak
-component normalized as N_k × f_k(E) where ∫ f_k dE = 1.
+component normalized as N_k × f_k(E) where ∫ f_k dE = 1 over the fit window.
 """
 
 import numpy as np
+from scipy.special import gammaln
 from .intensity import spectral_intensity_E, integral_of_intensity
 
 __all__ = ["nll_extended_unbinned", "nll_extended_unbinned_simple"]
@@ -73,8 +76,11 @@ def nll_extended_unbinned(E, params, domain, iso_list=None, use_emg=None):
     if not np.isfinite(mu_tot) or mu_tot <= 0:
         return np.inf
 
-    # Extended NLL: μ - Σ ln λ(Eᵢ)
-    nll = mu_tot - np.sum(np.log(lam))
+    # Extended NLL: μ - Σ ln λ(Eᵢ) + ln(N!)
+    # The Poisson constant ln(N!) keeps NLL positive and finite
+    n = E.size
+    log_sum = np.sum(np.log(lam))
+    nll = mu_tot - log_sum + gammaln(n + 1)
 
     return float(nll)
 
