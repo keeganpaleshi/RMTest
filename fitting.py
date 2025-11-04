@@ -682,7 +682,7 @@ def fit_spectrum(
     if background_model == "loglin_unit" or "S_bkg" in priors:
         area_keys = area_keys + ["S_bkg"]
 
-    def _model_density(x, *params):
+    def _model_intensity_and_integral(x, *params):
         if fix_sigma0:
             sigma0 = sigma0_val
         else:
@@ -691,11 +691,13 @@ def fit_spectrum(
             F_current = F_val
         else:
             F_current = params[param_index["F"]]
-        y = np.zeros_like(x)
+        y = np.zeros_like(x, dtype=float)
+        total = 0.0
         for iso in iso_list:
             mu = params[param_index[f"mu_{iso}"]]
             S_raw = params[param_index[f"S_{iso}"]]
             S = _softplus(S_raw)
+            total += float(S)
             if use_emg[iso]:
                 tau = params[param_index[f"tau_{iso}"]]
                 sigma = np.sqrt(sigma0 ** 2 + F_current * x)
@@ -711,17 +713,33 @@ def fit_spectrum(
         bkg_params = {"b0": beta0, "b1": beta1}
         if "S_bkg" in priors:
             bkg_params["S_bkg"] = params[param_index["S_bkg"]]
+        background_area = 0.0
+        has_s_bkg = "S_bkg" in param_index
+        s_bkg_val = params[param_index["S_bkg"]] if has_s_bkg else None
         if background_model == "loglin_unit":
+            if has_s_bkg:
+                bkg_params["S_bkg"] = s_bkg_val
             y += bkg_factory(x, bkg_params)
+            if has_s_bkg:
+                background_area = float(_softplus(s_bkg_val))
         elif "S_bkg" in priors:
-            B = _softplus(bkg_params["S_bkg"])
+            B = float(_softplus(s_bkg_val)) if has_s_bkg else 0.0
             norm = beta0 * (E_hi - E_lo) + 0.5 * beta1 * (E_hi**2 - E_lo**2)
             if norm > 0:
                 base = bkg_factory(x, {"b0": beta0, "b1": beta1})
                 y += B * base / norm
+                background_area = B
         else:
             y += bkg_factory(x, bkg_params)
-        return np.clip(y, 1e-300, np.inf)
+            background_area = (
+                beta0 * (E_hi - E_lo) + 0.5 * beta1 * (E_hi**2 - E_lo**2)
+            )
+        total += float(background_area)
+        return np.clip(y, 1e-300, np.inf), float(total)
+
+    def _model_density(x, *params):
+        y, _ = _model_intensity_and_integral(x, *params)
+        return y
 
     def _model_binned(x, *params):
         y = _model_density(x, *params)
@@ -815,19 +833,30 @@ def fit_spectrum(
             pcov = np.array(pcov_cf)
             popt = np.array(popt_cf)
     else:
-        def _intensity_fn(E_vals, p_map):
+        def _intensity_with_integral(E_vals, p_map):
             arr = [p_map[name] for name in param_order]
-            return _model_density(E_vals, *arr)
+            return _model_intensity_and_integral(E_vals, *arr)
+
+        def _intensity_fn(E_vals, p_map):
+            y, _ = _intensity_with_integral(E_vals, p_map)
+            return y
 
         if flags.get("likelihood") == "extended":
             def _nll(*params):
                 p_map = dict(zip(param_order, params))
+                y, total = _intensity_with_integral(e, p_map)
+
+                def _stub_intensity(E_vals, _params):
+                    return y
+
                 return neg_loglike(
                     e,
-                    _intensity_fn,
+                    _stub_intensity,
                     p_map,
                     area_keys=area_keys,
                     background_model="loglin_unit" if background_model == "loglin_unit" else None,
+                    bounds=(E_lo, E_hi),
+                    expected_total=total,
                 )
         else:
             def _nll(*params):
