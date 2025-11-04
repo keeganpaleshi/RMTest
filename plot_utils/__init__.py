@@ -60,7 +60,24 @@ __all__ = [
 
 
 def _counts_per_bin(density, widths):
-    """Convert a spectral density into expected counts per bin."""
+    """Convert a spectral density into expected counts per bin.
+
+    For unbinned fits, the model is a density λ(E) in counts/MeV. To overlay
+    on a histogram (which shows counts per bin), we must multiply by the bin
+    width: counts = λ(E) × ΔE.
+
+    Parameters
+    ----------
+    density : array-like
+        Spectral density [counts/MeV].
+    widths : array-like
+        Bin widths [MeV].
+
+    Returns
+    -------
+    array-like
+        Expected counts per bin for histogram overlay.
+    """
 
     density_arr = np.asarray(density, dtype=float)
     widths_arr = np.asarray(widths, dtype=float)
