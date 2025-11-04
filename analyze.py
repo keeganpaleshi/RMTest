@@ -2720,6 +2720,9 @@ def main(argv=None):
                 priors_spec[f"b{i}"] = (float(c), abs(float(c)) * 0.1 + 1e-3)
             priors_spec["poly_order"] = order
         else:
+            # NOTE: b0, b1 units are counts/MeV (density) for unbinned mode,
+            # counts/bin for binned mode. Config priors should be specified in counts/MeV.
+            # For binned fits, the model internally converts via _model_binned.
             priors_spec["b0"] = tuple(spectral_cfg.get("b0_prior"))
             priors_spec["b1"] = tuple(spectral_cfg.get("b1_prior"))
 

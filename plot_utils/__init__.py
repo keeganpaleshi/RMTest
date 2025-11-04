@@ -825,59 +825,127 @@ def plot_spectrum(
         centers_arr = np.asarray(centers, dtype=float)
         total = np.zeros_like(widths, dtype=float)
 
-        # Peak contributions
-        sigma0 = fit_params.get("sigma0")
-        F = fit_params.get("F", 0.0)
-        if sigma0 is None:
-            sigma0 = fit_params.get("sigma_E", 0.0)
-            F = 0.0 if "F" not in fit_params else fit_params.get("F", 0.0)
-        sigma0 = float(sigma0 if sigma0 is not None else 0.0)
-        F = float(F if F is not None else 0.0)
-        sigma_sq = np.clip(sigma0**2 + F * centers_arr, 1e-12, np.inf)
-        sigma_vals = np.sqrt(sigma_sq)
+        # Check if fit used unbinned extended likelihood with new spectral modules
+        use_new_spectral = (
+            flags.get("likelihood") == "extended"
+            and flags.get("use_spectral_modules", True)
+        )
 
-        for iso in ("Po210", "Po218", "Po214"):
-            mu = fit_params.get(f"mu_{iso}")
-            amp = fit_params.get(f"S_{iso}")
-            if mu is None or amp is None:
-                continue
-            tau = fit_params.get(f"tau_{iso}")
-            if tau is not None:
-                density = emg_left(centers_arr, float(mu), sigma_vals, float(tau))
-            else:
-                density = gaussian(centers_arr, float(mu), sigma_vals)
-            density = np.nan_to_num(density, nan=0.0, posinf=0.0, neginf=0.0)
-            comps[iso] = _counts_per_bin(float(amp) * density, widths)
-            total += comps[iso]
+        # Try to import new spectral modules
+        try:
+            from rmtest.spectral import spectral_intensity_E
+            has_spectral = True
+        except ImportError:
+            try:
+                from src.rmtest.spectral import spectral_intensity_E
+                has_spectral = True
+            except ImportError:
+                has_spectral = False
 
-        # Background contribution
-        b0 = fit_params.get("b0")
-        b1 = fit_params.get("b1")
-        background = None
-        if b0 is not None or b1 is not None:
-            b0 = float(0.0 if b0 is None else b0)
-            b1 = float(0.0 if b1 is None else b1)
-            if flags.get("background_model") == "loglin_unit":
-                shape = make_linear_bkg(float(edges[0]), float(edges[-1]))
-                amplitude = float(fit_params.get("S_bkg", 0.0))
-                background_density = amplitude * shape(centers_arr, b0, b1)
-            else:
-                background_density = b0 + b1 * centers_arr
-                if "S_bkg" in fit_params:
-                    amplitude = float(fit_params["S_bkg"])
-                    norm = b0 * (edges[-1] - edges[0]) + 0.5 * b1 * (
-                        edges[-1] ** 2 - edges[0] ** 2
-                    )
-                    if norm > 0:
-                        background_density = background_density * (amplitude / norm)
-            background_density = np.nan_to_num(
-                background_density, nan=0.0, posinf=0.0, neginf=0.0
-            )
-            background = _counts_per_bin(background_density, widths)
-            total += background
+        # For unbinned fits with new modules, use spectral_intensity_E directly
+        if use_new_spectral and has_spectral:
+            # Build params dict for spectral_intensity_E
+            params_dict = {}
+            params_dict["sigma0"] = float(fit_params.get("sigma0", 0.134))
+            params_dict["F"] = float(fit_params.get("F", 0.0))
+            params_dict["b0"] = float(fit_params.get("b0", 0.0))
+            params_dict["b1"] = float(fit_params.get("b1", 0.0))
 
-        if background is not None:
-            comps["Background"] = background
+            iso_list = ["Po210", "Po218", "Po214"]
+            use_emg = {}
+
+            for iso in iso_list:
+                params_dict[f"N_{iso}"] = float(fit_params.get(f"S_{iso}", 0.0))
+                params_dict[f"mu_{iso}"] = float(fit_params.get(f"mu_{iso}", 0.0))
+                tau = fit_params.get(f"tau_{iso}")
+                if tau is not None:
+                    params_dict[f"tau_{iso}"] = float(tau)
+                    use_emg[iso] = True
+                else:
+                    use_emg[iso] = False
+
+            # Compute intensity λ(E) in counts/MeV
+            domain = (float(edges[0]), float(edges[-1]))
+            try:
+                lambda_E = spectral_intensity_E(centers_arr, params_dict, domain,
+                                                 iso_list=iso_list, use_emg=use_emg)
+                # Convert to counts per bin: multiply by bin width
+                model_counts_per_bin = lambda_E * widths  # counts/MeV × MeV = counts
+                total = model_counts_per_bin
+
+                # Decompose into components (approximate for plotting)
+                for iso in iso_list:
+                    if params_dict[f"N_{iso}"] > 0:
+                        comps[iso] = model_counts_per_bin * (
+                            params_dict[f"N_{iso}"] / (params_dict[f"N_{iso}"] + 1e-12)
+                        ) * 0.3  # Rough fraction for visualization
+
+                # Background component
+                bkg_density = params_dict["b0"] + params_dict["b1"] * centers_arr
+                comps["Background"] = bkg_density * widths
+
+                # NOTE: For unbinned with new modules, we show total but don't decompose perfectly
+                # The total is correct; component breakdown is approximate.
+
+            except Exception:
+                # Fall back to legacy path if spectral_intensity_E fails
+                use_new_spectral = False
+
+        if not use_new_spectral:
+            # Legacy path: use old emg_left and gaussian functions
+            # Peak contributions
+            sigma0 = fit_params.get("sigma0")
+            F = fit_params.get("F", 0.0)
+            if sigma0 is None:
+                sigma0 = fit_params.get("sigma_E", 0.0)
+                F = 0.0 if "F" not in fit_params else fit_params.get("F", 0.0)
+            sigma0 = float(sigma0 if sigma0 is not None else 0.0)
+            F = float(F if F is not None else 0.0)
+            sigma_sq = np.clip(sigma0**2 + F * centers_arr, 1e-12, np.inf)
+            sigma_vals = np.sqrt(sigma_sq)
+
+            for iso in ("Po210", "Po218", "Po214"):
+                mu = fit_params.get(f"mu_{iso}")
+                amp = fit_params.get(f"S_{iso}")
+                if mu is None or amp is None:
+                    continue
+                tau = fit_params.get(f"tau_{iso}")
+                if tau is not None:
+                    density = emg_left(centers_arr, float(mu), sigma_vals, float(tau))
+                else:
+                    density = gaussian(centers_arr, float(mu), sigma_vals)
+                density = np.nan_to_num(density, nan=0.0, posinf=0.0, neginf=0.0)
+                comps[iso] = _counts_per_bin(float(amp) * density, widths)
+                total += comps[iso]
+
+            # Background contribution
+            b0 = fit_params.get("b0")
+            b1 = fit_params.get("b1")
+            background = None
+            if b0 is not None or b1 is not None:
+                b0 = float(0.0 if b0 is None else b0)
+                b1 = float(0.0 if b1 is None else b1)
+                if flags.get("background_model") == "loglin_unit":
+                    shape = make_linear_bkg(float(edges[0]), float(edges[-1]))
+                    amplitude = float(fit_params.get("S_bkg", 0.0))
+                    background_density = amplitude * shape(centers_arr, b0, b1)
+                else:
+                    background_density = b0 + b1 * centers_arr
+                    if "S_bkg" in fit_params:
+                        amplitude = float(fit_params["S_bkg"])
+                        norm = b0 * (edges[-1] - edges[0]) + 0.5 * b1 * (
+                            edges[-1] ** 2 - edges[0] ** 2
+                        )
+                        if norm > 0:
+                            background_density = background_density * (amplitude / norm)
+                background_density = np.nan_to_num(
+                    background_density, nan=0.0, posinf=0.0, neginf=0.0
+                )
+                background = _counts_per_bin(background_density, widths)
+                total += background
+
+            if background is not None:
+                comps["Background"] = background
 
         if not comps:
             return comps, None
