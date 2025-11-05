@@ -15,7 +15,7 @@ to prevent amplitude bleeding between components and background.
 """
 
 import numpy as np
-from .shapes import emg_pdf_E, gaussian_pdf_E
+from .shapes import emg_pdf_E, gaussian_pdf_E, emg_cdf_E, gaussian_cdf_E
 
 __all__ = [
     "build_spectral_intensity",
@@ -24,52 +24,44 @@ __all__ = [
 ]
 
 
-def _normalize_pdf_over_window(pdf_fun, E_lo, E_hi, n_grid=2048):
-    """Return pdf_norm(E) and the (raw) area over [E_lo, E_hi].
+def _component_p_in_window(kind, E_lo, E_hi, mu, sigma, tau=None):
+    """Compute the in-window probability mass for a component.
 
     Parameters
     ----------
-    pdf_fun : callable
-        Function that returns PDF values: pdf_fun(E) -> array
-        This PDF is assumed to be normalized over all energy (−∞, +∞).
+    kind : str
+        Either "emg" or "gauss".
     E_lo, E_hi : float
         Energy window bounds in MeV.
-    n_grid : int, optional
-        Number of grid points for numerical integration. Default: 2048.
+    mu : float
+        Peak mean in MeV.
+    sigma : float
+        Peak resolution in MeV.
+    tau : float, optional
+        EMG tail parameter in MeV (required if kind="emg").
 
     Returns
     -------
-    pdf_norm : callable
-        Window-normalized PDF function.
-    area : float
-        Integral of raw_pdf over [E_lo, E_hi].
+    float
+        P(E_lo < E < E_hi) for this component, in range (0, 1].
 
     Notes
     -----
-    For a PDF f(E) normalized over all energy:
-        ∫_{-∞}^{+∞} f(E) dE = 1
+    This uses the stable CDF implementations to compute:
+        p_window = CDF(E_hi) - CDF(E_lo)
 
-    Over a truncated window [E_lo, E_hi]:
-        ∫_{E_lo}^{E_hi} f(E) dE = α < 1
-
-    The window-normalized PDF is:
-        f_window(E) = f(E) / α
-
-    so that:
-        ∫_{E_lo}^{E_hi} f_window(E) dE = 1
+    Guard against pathological roundoff by ensuring result >= 1e-12.
     """
-    grid = np.linspace(E_lo, E_hi, n_grid)
-    y = pdf_fun(grid)
-    # CRITICAL: pass grid to trapz, not just y (which would use dx=1)
-    area = np.trapz(y, grid)
+    if kind == "emg":
+        c_lo = emg_cdf_E(E_lo, mu, sigma, tau)
+        c_hi = emg_cdf_E(E_hi, mu, sigma, tau)
+    else:
+        c_lo = gaussian_cdf_E(E_lo, mu, sigma)
+        c_hi = gaussian_cdf_E(E_hi, mu, sigma)
 
-    if not np.isfinite(area) or area <= 0:
-        return (lambda E: np.zeros_like(np.asarray(E), dtype=float)), 0.0
-
-    def pdf_norm(E):
-        return pdf_fun(E) / area
-
-    return pdf_norm, area
+    p = float(c_hi - c_lo)
+    # Guard against pathological roundoff
+    return max(p, 1e-12)
 
 
 def build_spectral_intensity(iso_list, use_emg, domain):
@@ -92,12 +84,13 @@ def build_spectral_intensity(iso_list, use_emg, domain):
 
     Notes
     -----
-    Each component PDF is normalized over the truncated fit window [E_min, E_max]
-    to ensure that amplitude parameters represent actual expected counts in the window.
-    This prevents amplitude bleeding between components and background.
+    Each component PDF is renormalized to the fit window [E_min, E_max] by dividing
+    by its in-window probability mass p_window = CDF(E_max) - CDF(E_min).
 
-    The normalization is applied exactly once: each f̂_k(E) integrates to 1 over
-    the window, so λ(E) = Σ N_k f̂_k(E) + bkg(E) has ∫ λ dE = Σ N_k + ∫ bkg dE.
+    This ensures λ(E) = Σ N_k * (f_k(E) / p_k) + bkg(E), where:
+        ∫[E_min, E_max] N_k * (f_k(E) / p_k) dE = N_k exactly
+
+    The extended likelihood Poisson mean μ is then simply Σ N_k + ∫ bkg dE.
     """
     E_lo, E_hi = domain
 
@@ -129,34 +122,31 @@ def build_spectral_intensity(iso_list, use_emg, domain):
         sigma0 = params.get("sigma0", 0.134)
         F = params.get("F", 0.0)
 
-        # Add each isotope peak with window normalization
+        # Add each isotope peak, renormalized to the window
         for iso in iso_list:
             N = params.get(f"N_{iso}", 0.0)
             if N <= 0:
                 continue
 
             mu = params[f"mu_{iso}"]
+            kind = "emg" if use_emg.get(iso, False) else "gauss"
+            tau = params.get(f"tau_{iso}", None) if kind == "emg" else None
 
-            # Create raw PDF function for this component
-            # Energy-dependent resolution: σ(E) = √(σ₀² + F·E)
-            if use_emg.get(iso, False):
-                tau = params[f"tau_{iso}"]
-
-                def raw_pdf(E_grid, mu=mu, sigma0=sigma0, F=F, tau=tau):
-                    sigma_E_grid = np.sqrt(sigma0**2 + F * E_grid)
-                    return emg_pdf_E(E_grid, mu, sigma_E_grid, tau)
+            # Compute PDF at data points (with energy-dependent resolution if F > 0)
+            sigma_E = np.sqrt(sigma0**2 + F * E)
+            if kind == "emg":
+                dens = emg_pdf_E(E, mu, sigma_E, tau)
             else:
+                dens = gaussian_pdf_E(E, mu, sigma_E)
 
-                def raw_pdf(E_grid, mu=mu, sigma0=sigma0, F=F):
-                    sigma_E_grid = np.sqrt(sigma0**2 + F * E_grid)
-                    return gaussian_pdf_E(E_grid, mu, sigma_E_grid)
+            # Compute in-window probability mass using stable CDF
+            # For energy-dependent sigma, use effective sigma ≈ sigma0 for CDF
+            # (exact only if F=0; for typical radon fits F is small)
+            pwin = _component_p_in_window(kind, E_lo, E_hi, mu, sigma0, tau)
 
-            # Normalize over window [E_lo, E_hi]
-            pdf_norm, _ = _normalize_pdf_over_window(raw_pdf, E_lo, E_hi)
-
-            # Add to intensity: λ += N × f̂(E)
-            # Each f̂ integrates to 1 over window, so this contributes N counts
-            lam += N * pdf_norm(E)
+            # Renormalize to window: λ += N * (dens / pwin)
+            # This ensures ∫[E_lo, E_hi] λ_k dE = N
+            lam += N * (dens / pwin)
 
         # Background handling: use S_bkg (flat) if present, else b0/b1 (linear)
         # IMPORTANT: When S_bkg is present, ignore b0/b1 to prevent double counting

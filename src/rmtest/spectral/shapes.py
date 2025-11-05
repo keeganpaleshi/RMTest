@@ -14,7 +14,8 @@ to exactly N_k over the fit window.
 """
 
 import numpy as np
-from scipy.special import erfcx, erf  # erfcx for numerical stability
+from scipy.special import erf
+from scipy.stats import exponnorm
 
 __all__ = ["emg_pdf_E", "gaussian_pdf_E", "gaussian_cdf_E", "emg_cdf_E"]
 
@@ -99,13 +100,9 @@ def gaussian_cdf_E(E, mu, sigma):
 
 
 def emg_pdf_E(E, mu, sigma, tau):
-    """Unit-normalized exponentially modified Gaussian in energy (MeV^-1).
+    """Exponentially-modified Gaussian PDF in energy space.
 
-    Numerically stable implementation using erfcx (scaled complementary error
-    function) and log-domain assembly to avoid overflow/underflow.
-
-    Integrates to 1 over the entire energy domain. Handles both scalar and
-    vector sigma (energy-dependent resolution).
+    Uses SciPy's numerically stable exponnorm implementation.
 
     Parameters
     ----------
@@ -122,17 +119,13 @@ def emg_pdf_E(E, mu, sigma, tau):
     Returns
     -------
     array-like
-        EMG probability density values with units of MeV^-1. Integrates to 1.
+        EMG probability density values with units of MeV^-1.
+        This returns a unit-integral density over (-inf, inf).
 
     Notes
     -----
-    Uses erfcx for numerical stability. The standard EMG formula
-    f(E) = (1/(2*tau)) * exp(sigma^2/(2*tau^2) - (E-mu)/tau) * erfc(z)
-    overflows for moderate z values. Instead, we use log-domain assembly:
-
-        log f = -log(2τ) + 0.5*(σ/τ)^2 - (E-μ)/τ - z^2 + log(erfcx(z))
-
-    where erfcx(z) = exp(z^2) * erfc(z) is numerically stable.
+    In SciPy, exponnorm uses shape parameter K = tau/sigma, with loc=mu, scale=sigma.
+    This avoids the numerical overflow/underflow issues with hand-rolled exp*erfc formulas.
 
     For energy-dependent resolution:
         sigma_E = np.sqrt(sigma0**2 + F * E)
@@ -140,9 +133,7 @@ def emg_pdf_E(E, mu, sigma, tau):
 
     References
     ----------
-    Kalambet et al. (2011) "Reconstruction of chromatographic peaks using the
-    exponentially modified Gaussian function"
-    Wikipedia: Exponentially modified Gaussian distribution
+    SciPy documentation: scipy.stats.exponnorm
     """
     E = np.asarray(E, dtype=float)
     sigma = np.asarray(sigma, dtype=float)
@@ -153,33 +144,15 @@ def emg_pdf_E(E, mu, sigma, tau):
        or np.any(sigma <= 0) or np.any(tau <= 0):
         return np.zeros_like(E, dtype=float)
 
-    inv_tau = 1.0 / tau
-    E_mu = E - mu
-
-    # Argument to erfcx: z = (sigma/tau - (E-mu)/sigma) / sqrt(2)
-    z = (sigma * inv_tau - E_mu / sigma) / np.sqrt(2.0)
-
-    # Log-domain assembly for numerical stability
-    # log f = -log(2τ) + 0.5*(σ/τ)^2 - (E-μ)/τ - z^2 + log(erfcx(z))
-    log_pdf = (
-        -np.log(2.0 * tau)
-        + 0.5 * (sigma * inv_tau) ** 2
-        - E_mu * inv_tau
-        - z ** 2
-        + np.log(erfcx(z))
-    )
-
-    # Clamp for exp to avoid overflow/underflow warnings
-    log_pdf = np.where(np.isfinite(log_pdf), log_pdf, -np.inf)
-    out = np.exp(np.clip(log_pdf, -745.0, 709.0))
-
-    return out
+    # SciPy shape parameter: K = tau / sigma
+    K = tau / sigma
+    return exponnorm.pdf(E, K, loc=mu, scale=sigma)
 
 
 def emg_cdf_E(E, mu, sigma, tau):
     """Cumulative distribution function for exponentially modified Gaussian.
 
-    Returns the probability P(X ≤ E) for X ~ EMG(mu, sigma, tau).
+    Uses SciPy's stable implementation.
 
     Parameters
     ----------
@@ -199,31 +172,17 @@ def emg_cdf_E(E, mu, sigma, tau):
 
     Notes
     -----
-    The EMG CDF is given by:
-        F(E) = Φ(a) - exp(-b + c²/2) × Φ(a - c)
-
-    where:
-        a = (E - mu) / sigma
-        c = sigma / tau
-        b = (E - mu) / tau
-
     For truncated fits, use Z = CDF(E_max) - CDF(E_min) to get the in-window
     mass, then normalize: pdf_window(E) = pdf(E) / Z.
 
     References
     ----------
-    Grushka (1972) "Characterization of exponentially modified Gaussian peaks"
+    SciPy documentation: scipy.stats.exponnorm
     """
     E = np.asarray(E, dtype=float)
     sigma = max(float(sigma), 1e-12)  # Guard against zero
     tau = max(float(tau), 1e-12)
 
-    a = (E - mu) / sigma
-    c = sigma / tau
-    b = (E - mu) / tau
-
-    # F(E) = Φ(a) - exp(-b + c²/2) × Φ(a - c)
-    cdf = _phi(a) - np.exp(-b + 0.5 * c * c) * _phi(a - c)
-
-    # Clip to [0, 1] for numerical safety
-    return np.clip(cdf, 0.0, 1.0)
+    # SciPy shape parameter: K = tau / sigma
+    K = tau / sigma
+    return exponnorm.cdf(E, K, loc=mu, scale=sigma)
