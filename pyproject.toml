@@ -7,7 +7,16 @@ name = "rmtest"
 version = "0.1.0"
 description = "Radon measurement test package"
 requires-python = ">=3.8"
-dependencies = []
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.11",
+    "matplotlib>=3.8",
+    "pandas",
+    "iminuit",
+    "pyyaml",
+    "jsonschema",
+    "python-dateutil",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

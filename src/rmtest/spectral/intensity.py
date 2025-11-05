@@ -4,10 +4,27 @@ import numpy as np
 from .window_norm import normalize_pdf_to_window
 
 
-def build_spectral_intensity(iso_list, use_emg, domain):
+def build_spectral_intensity(iso_list, use_emg, domain, clip_floor=1e-300):
     """
     Returns spectral_intensity_E(E, params, domain, ...) that yields λ(E) in counts/MeV.
     Peaks are normalized to the fit window exactly once.
+
+    Parameters
+    ----------
+    iso_list : list
+        List of isotope names.
+    use_emg : bool or dict
+        Whether to use EMG tails for each isotope.
+    domain : tuple
+        Energy window (E_lo, E_hi) in MeV.
+    clip_floor : float, optional
+        Small positive floor applied to per-E PDFs to avoid log(0). Default 1e-300.
+        Values are clipped below clip_floor to keep log-likelihood finite.
+
+    Returns
+    -------
+    callable
+        Function that computes spectral intensity at given energies.
     """
     E_lo, E_hi = domain
     if isinstance(use_emg, Mapping):
@@ -61,7 +78,8 @@ def build_spectral_intensity(iso_list, use_emg, domain):
             width = max(E_hi - E_lo, 1e-12)
             lam += (S_bkg / width)
 
-        return lam
+        # Apply clipping floor to keep log-likelihood finite
+        return np.clip(lam, clip_floor, np.inf)
 
     return spectral_intensity_E
 
