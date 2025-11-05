@@ -15,9 +15,44 @@ from scipy.optimize import curve_fit
 
 _ORIG_CURVE_FIT = curve_fit
 from scipy.stats import chi2
-from calibration import emg_left, gaussian
 from constants import safe_exp as _safe_exp
 from math_utils import log_expm1_stable
+try:
+    from rmtest.spectral.shapes import (
+        emg_pdf_E as emg_left,
+        gaussian_pdf_E as gaussian,
+    )
+except ImportError:  # pragma: no cover - fallback for local scripts
+    import sys
+    from pathlib import Path
+
+    _src_root = Path(__file__).resolve().parent / "src"
+    if _src_root.is_dir():
+        sys.path.insert(0, str(_src_root))
+        from rmtest.spectral.shapes import (  # type: ignore
+            emg_pdf_E as emg_left,
+            gaussian_pdf_E as gaussian,
+        )
+    else:  # pragma: no cover - defensive fallback
+        raise
+try:
+    from rmtest.spectral.intensity import (
+        build_spectral_intensity,
+        integral_of_intensity,
+    )
+except ImportError:  # pragma: no cover - fallback for local scripts
+    import sys
+    from pathlib import Path
+
+    _src_root = Path(__file__).resolve().parent / "src"
+    if _src_root.is_dir():
+        sys.path.insert(0, str(_src_root))
+        from rmtest.spectral.intensity import (  # type: ignore
+            build_spectral_intensity,
+            integral_of_intensity,
+        )
+    else:  # pragma: no cover - defensive fallback
+        raise
 try:
     from rmtest.emg_constants import (
         clamp_tau as _clamp_tau,
@@ -499,23 +534,10 @@ def fit_spectrum(
     if "S_bkg" in priors or background_model == "loglin_unit":
         flags.setdefault("likelihood", "extended")
 
-    from feature_selectors import select_background_factory, select_neg_loglike
+    from feature_selectors import select_neg_loglike
 
     opts = SimpleNamespace(**flags)
-    bkg_factory = select_background_factory(opts, E_lo, E_hi)
     neg_loglike = select_neg_loglike(opts)
-
-    # Shared integration grid for background normalisation/integrals.
-    bkg_integral_grid = np.linspace(E_lo, E_hi, 1024)
-
-    def _integrate_background(params: Mapping[str, float]) -> float:
-        """Integrate the configured background density over the fit window."""
-
-        values = bkg_factory(bkg_integral_grid, params)
-        integral = float(np.trapz(values, bkg_integral_grid))
-        if not np.isfinite(integral):
-            return 0.0
-        return integral
 
     # Guard against NaNs/Infs arising from unstable histogramming or EMG evals
     if not unbinned and not np.isfinite(hist).all():
@@ -694,51 +716,52 @@ def fit_spectrum(
     if background_model == "loglin_unit" or "S_bkg" in priors:
         area_keys = area_keys + ["S_bkg"]
 
-    background_requires_integral = (
-        background_model != "loglin_unit" and "S_bkg" not in priors
-    )
+    domain = (E_lo, E_hi)
+    use_emg_map = {iso: bool(use_emg.get(iso, False)) for iso in iso_list}
+    spectral_intensity = build_spectral_intensity(iso_list, use_emg_map, domain)
+
+    def _build_raw_param_map(params):
+        p_map = dict(zip(param_order, params))
+        if fix_sigma0:
+            p_map.setdefault("sigma0", sigma0_val)
+        if fix_F:
+            p_map.setdefault("F", F_val)
+        return p_map
+
+    def _physical_params(raw_map: Mapping[str, float]) -> dict[str, float]:
+        params_dict: dict[str, float] = {}
+        params_dict["sigma0"] = float(raw_map.get("sigma0", sigma0_val))
+        params_dict["b0"] = float(raw_map["b0"])
+        params_dict["b1"] = float(raw_map["b1"])
+        if "F" in raw_map or not fix_F:
+            params_dict["F"] = float(raw_map.get("F", F_val))
+        for iso in iso_list:
+            params_dict[f"mu_{iso}"] = float(raw_map[f"mu_{iso}"])
+            S_val = float(_softplus(raw_map[f"S_{iso}"]))
+            params_dict[f"S_{iso}"] = S_val
+            params_dict[f"N_{iso}"] = S_val
+            tau_key = f"tau_{iso}"
+            if use_emg_map.get(iso, False) and tau_key in raw_map:
+                params_dict[tau_key] = float(raw_map[tau_key])
+        if "S_bkg" in raw_map:
+            params_dict["S_bkg"] = float(_softplus(raw_map["S_bkg"]))
+        return params_dict
+
+    def _finalize_signal_params(out_params: dict[str, float]) -> dict[str, float]:
+        for iso in iso_list:
+            n_key = f"N_{iso}"
+            s_key = f"S_{iso}"
+            if n_key in out_params:
+                out_params[s_key] = float(out_params[n_key])
+            elif s_key in out_params:
+                out_params[s_key] = float(out_params[s_key])
+        return out_params
 
     def _model_density(x, *params):
-        if fix_sigma0:
-            sigma0 = sigma0_val
-        else:
-            sigma0 = params[param_index["sigma0"]]
-        if fix_F:
-            F_current = F_val
-        else:
-            F_current = params[param_index["F"]]
-        y = np.zeros_like(x)
-        for iso in iso_list:
-            mu = params[param_index[f"mu_{iso}"]]
-            S_raw = params[param_index[f"S_{iso}"]]
-            S = _softplus(S_raw)
-            if use_emg[iso]:
-                tau = params[param_index[f"tau_{iso}"]]
-                sigma = np.sqrt(sigma0 ** 2 + F_current * x)
-                with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
-                    y_emg = emg_left(x, mu, sigma, tau)
-                y_emg = np.nan_to_num(y_emg, nan=0.0, posinf=0.0, neginf=0.0)
-                y += S * y_emg
-            else:
-                sigma = np.sqrt(sigma0 ** 2 + F_current * x)
-                y += S * gaussian(x, mu, sigma)
-        beta0 = params[param_index["b0"]]
-        beta1 = params[param_index["b1"]]
-        bkg_params = {"b0": beta0, "b1": beta1}
-        if "S_bkg" in priors:
-            bkg_params["S_bkg"] = params[param_index["S_bkg"]]
-        shape_params = {k: v for k, v in bkg_params.items() if k != "S_bkg"}
-        if background_model == "loglin_unit":
-            y += bkg_factory(x, bkg_params)
-        elif "S_bkg" in priors:
-            B = _softplus(bkg_params["S_bkg"])
-            norm = _integrate_background(shape_params)
-            if norm > 0:
-                base = bkg_factory(x, shape_params)
-                y += B * base / norm
-        else:
-            y += bkg_factory(x, shape_params)
-        return np.clip(y, 1e-300, np.inf)
+        raw_map = _build_raw_param_map(params)
+        physical = _physical_params(raw_map)
+        lam = spectral_intensity(x, physical, domain)
+        return np.clip(lam, 1e-300, np.inf)
 
     def _model_binned(x, *params):
         y = _model_density(x, *params)
@@ -786,43 +809,9 @@ def fit_spectrum(
         ndf = hist.size - len(param_order)
         out = {}
         param_index = {name: i for i, name in enumerate(param_order)}
-        if not m.valid:
-            out["fit_valid"] = False
-            for pname in param_order:
-                val = float(m.values[pname])
-                err = float(m.errors[pname]) if pname in m.errors else np.nan
-                if pname.startswith("S_"):
-                    out[pname] = float(_softplus(val))
-                    out["d" + pname] = (
-                        err * float(_sigmoid(val)) if np.isfinite(err) else np.nan
-                    )
-                else:
-                    out[pname] = val
-                    out["d" + pname] = err
-            if fix_sigma0:
-                out["sigma0"] = sigma0_val
-                out["dsigma0"] = 0.0
-            if fix_F:
-                out["F"] = F_val
-                out["dF"] = 0.0
-            cov = np.zeros((len(param_order), len(param_order)))
-            k = len(param_order)
-            out["nll"] = float(m.fval)
-            out["chi2"] = float(2 * m.fval)
-            out["chi2_ndf"] = out["chi2"] / ndf if ndf != 0 else np.nan
-            out["aic"] = float(2 * m.fval + 2 * k)
-            out["likelihood_path"] = likelihood_path
-            return FitResult(
-                out,
-                cov,
-                int(ndf),
-                param_index,
-                counts=int(n_events),
-                likelihood=likelihood_mode,
-            )
-
         m.hesse()
         cov_raw = m.covariance
+        covariance_available = cov_raw is not None
         if cov_raw is None:
             cov_raw = np.zeros((len(param_order), len(param_order)))
         pcov = np.array(cov_raw)
@@ -831,36 +820,52 @@ def fit_spectrum(
         if curve_fit is not _ORIG_CURVE_FIT and popt_cf is not None and pcov_cf is not None:
             pcov = np.array(pcov_cf)
             popt = np.array(popt_cf)
+            covariance_available = True
     else:
         def _intensity_fn(E_vals, p_map):
-            arr = [p_map[name] for name in param_order]
-            return _model_density(E_vals, *arr)
+            raw_map = dict(p_map)
+            if fix_sigma0:
+                raw_map.setdefault("sigma0", sigma0_val)
+            if fix_F:
+                raw_map.setdefault("F", F_val)
+            physical = _physical_params(raw_map)
+            return spectral_intensity(E_vals, physical, domain)
 
         if flags.get("likelihood") == "extended":
             def _nll(*params):
-                p_map = dict(zip(param_order, params))
-                bg_integral = None
-                if background_requires_integral:
-                    bkg_params_eval = {
-                        key: p_map[key]
-                        for key in ("b0", "b1", "S_bkg")
-                        if key in p_map
-                    }
-                    integral_val = _integrate_background(bkg_params_eval)
-                    if integral_val > 0:
-                        bg_integral = integral_val
+                raw_map = _build_raw_param_map(params)
+                physical = _physical_params(raw_map)
+                mu_total = integral_of_intensity(
+                    physical,
+                    domain,
+                    iso_list=iso_list,
+                    use_emg=use_emg_map,
+                )
+                area_sum = 0.0
+                for key in area_keys:
+                    if key in raw_map:
+                        area_sum += float(_softplus(raw_map[key]))
+                bg_integral = mu_total - area_sum
+                if not np.isfinite(bg_integral):
+                    bg_integral = None
+                else:
+                    bg_integral = max(bg_integral, 0.0)
+
+                def _intensity_cached(E_vals, _params):
+                    return spectral_intensity(E_vals, physical, domain)
+
                 return neg_loglike(
                     e,
-                    _intensity_fn,
-                    p_map,
+                    _intensity_cached,
+                    raw_map,
                     area_keys=area_keys,
                     background_model="loglin_unit" if background_model == "loglin_unit" else None,
                     background_integral=bg_integral,
                 )
         else:
             def _nll(*params):
-                p_map = dict(zip(param_order, params))
-                return neg_loglike(e, _intensity_fn, p_map)
+                raw_map = _build_raw_param_map(params)
+                return neg_loglike(e, _intensity_fn, raw_map)
 
         m = Minuit(_nll, *p0, name=param_order)
         m.errordef = Minuit.LIKELIHOOD
@@ -875,40 +880,9 @@ def fit_spectrum(
         ndf = e.size - len(param_order)
         out = {}
         param_index = {name: i for i, name in enumerate(param_order)}
-        if not m.valid:
-            out["fit_valid"] = False
-            for pname in param_order:
-                val = float(m.values[pname])
-                err = float(m.errors[pname]) if pname in m.errors else np.nan
-                if pname.startswith("S_"):
-                    out[pname] = float(_softplus(val))
-                    out["d" + pname] = (
-                        err * float(_sigmoid(val)) if np.isfinite(err) else np.nan
-                    )
-                else:
-                    out[pname] = val
-                    out["d" + pname] = err
-            if fix_sigma0:
-                out["sigma0"] = sigma0_val
-                out["dsigma0"] = 0.0
-            if fix_F:
-                out["F"] = F_val
-                out["dF"] = 0.0
-            cov = np.zeros((len(param_order), len(param_order)))
-            k = len(param_order)
-            out["aic"] = float(2 * m.fval + 2 * k)
-            out["likelihood_path"] = likelihood_path
-            return FitResult(
-                out,
-                cov,
-                int(ndf),
-                param_index,
-                counts=int(n_events),
-                likelihood=likelihood_mode,
-            )
-
         m.hesse()
         cov_raw = m.covariance
+        covariance_available = cov_raw is not None
         if cov_raw is None:
             cov = np.zeros((len(param_order), len(param_order)))
             perr = np.zeros(len(param_order))
@@ -920,9 +894,11 @@ def fit_spectrum(
                     g[i] = float(_sigmoid(m.values[pname]))
             cov = cov * (g[:, None] * g[None, :])
             perr = np.sqrt(np.clip(np.diag(cov), 0, None))
+        fit_valid = True
         try:
-            eigvals = np.linalg.eigvals(cov)
-            fit_valid = bool(np.all(eigvals > 0))
+            if covariance_available:
+                eigvals = np.linalg.eigvals(cov)
+                fit_valid = bool(np.all(eigvals >= 0))
         except np.linalg.LinAlgError:
             fit_valid = False
         if not fit_valid:
@@ -961,6 +937,7 @@ def fit_spectrum(
         k = len(param_order)
         out["aic"] = float(2 * m.fval + 2 * k)
         out["likelihood_path"] = likelihood_path
+        out = _finalize_signal_params(out)
         return FitResult(
             out,
             cov,
@@ -976,9 +953,11 @@ def fit_spectrum(
             g[i] = float(_sigmoid(popt[i]))
     pcov = pcov * (g[:, None] * g[None, :])
     perr = np.sqrt(np.clip(np.diag(pcov), 0, None))
+    fit_valid = True
     try:
-        eigvals = np.linalg.eigvals(pcov)
-        fit_valid = bool(np.all(eigvals > 0))
+        if covariance_available:
+            eigvals = np.linalg.eigvals(pcov)
+            fit_valid = bool(np.all(eigvals >= 0))
     except np.linalg.LinAlgError:
         fit_valid = False
 
@@ -1030,6 +1009,7 @@ def fit_spectrum(
     k = len(popt)
     out["aic"] = float(2 * nll_val + 2 * k)
     param_index = {name: i for i, name in enumerate(param_order)}
+    out = _finalize_signal_params(out)
     return FitResult(
         out,
         pcov,
@@ -1367,8 +1347,8 @@ def fit_time_series(
     cov = np.array(m.covariance)
     perr = np.sqrt(np.clip(np.diag(cov), 0, None))
     try:
-        eigvals = np.linalg.eigvals(cov)
-        fit_valid = bool(np.all(eigvals > 0))
+            eigvals = np.linalg.eigvals(cov)
+            fit_valid = bool(np.all(eigvals >= 0))
     except np.linalg.LinAlgError:
         fit_valid = False
     if not fit_valid:
