@@ -1,3 +1,6 @@
+spectral_fit:
+  clip_floor: 1e-300  # Small positive floor for per-E PDF values to avoid log(0)
+
 time_fit:
   fix_background_b_first_pass: true
   background_b_fixed_value: null

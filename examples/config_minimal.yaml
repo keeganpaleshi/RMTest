@@ -17,6 +17,7 @@ fitting:
   emg_stable_mode: scipy_safe
 
 spectral_fit:
+  clip_floor: 1e-300  # Small positive floor for per-E PDF values to avoid log(0)
   expected_peaks:
     Po210: 1250
     Po218: 1400
