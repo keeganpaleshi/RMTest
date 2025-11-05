@@ -518,6 +518,10 @@ tails on a per-isotope basis.
   when `peak_search_method` is `"cwt"`.
 - `unbinned_likelihood` – when `true` use an extended unbinned likelihood
   instead of the default χ² fit to histogrammed data.
+- `clip_floor` – numerical safety floor for per-energy PDF values to avoid
+  log(0) in likelihood computations. Type: float in (0, 1e-6], default 1e-300.
+  Only applied to the per-E density used in the likelihood. Integrals for the
+  extended term are computed on the unclipped model.
 - `emg_left` evaluations are wrapped in `np.errstate` and passed through
   `np.nan_to_num` for stability so that NaN or infinite values never
   reach `curve_fit`.

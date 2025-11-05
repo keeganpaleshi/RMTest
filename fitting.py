@@ -15,7 +15,14 @@ from scipy.optimize import curve_fit
 
 _ORIG_CURVE_FIT = curve_fit
 from scipy.stats import chi2
-from calibration import emg_left, gaussian
+
+# Single source of truth for shape PDFs, with a conservative fallback
+try:
+    from rmtest.calibration import emg_left, gaussian  # preferred
+except ImportError:  # pragma: no cover
+    # Fallback to legacy calibration module to keep environments unbroken.
+    from calibration import emg_left, gaussian
+
 from constants import safe_exp as _safe_exp
 from math_utils import log_expm1_stable
 try:
@@ -389,6 +396,7 @@ def fit_spectrum(
     strict=False,
     *,
     max_tau_ratio=None,
+    config=None,
 ):
     """Fit the radon spectrum using either χ² histogram or unbinned likelihood.
 
@@ -426,15 +434,23 @@ def fit_spectrum(
     max_tau_ratio : float, optional
         If given, enforce an upper bound ``tau <= max_tau_ratio * sigma0`` for
         EMG tail parameters.
+    config : dict, optional
+        Configuration dictionary containing spectral_fit.clip_floor.
 
     Returns
     -------
     dict
         Best fit values and uncertainties.
     """
-    
+
     if flags is None:
         flags = {}
+
+    # Extract clip_floor from config with safe default
+    clip_floor = 1e-300
+    if config is not None:
+        spectral_fit_cfg = config.get("spectral_fit", {})
+        clip_floor = float(spectral_fit_cfg.get("clip_floor", 1e-300))
     likelihood_mode = "unbinned" if unbinned else "binned_poisson"
     likelihood_path = "unbinned_extended" if unbinned else "binned_poisson"
     if flags.get("fix_sigma_E"):
@@ -699,6 +715,10 @@ def fit_spectrum(
     )
 
     def _model_density(x, *params):
+        """
+        Build per-energy density (peaks + background) clipped to avoid log(0).
+        Background integrals are computed separately from the unclipped model.
+        """
         if fix_sigma0:
             sigma0 = sigma0_val
         else:
@@ -738,7 +758,7 @@ def fit_spectrum(
                 y += B * base / norm
         else:
             y += bkg_factory(x, shape_params)
-        return np.clip(y, 1e-300, np.inf)
+        return np.clip(y, clip_floor, np.inf)
 
     def _model_binned(x, *params):
         y = _model_density(x, *params)
@@ -837,6 +857,10 @@ def fit_spectrum(
             return _model_density(E_vals, *arr)
 
         if flags.get("likelihood") == "extended":
+            # Extended model: mu_total = integral of (peaks + backgrounds) over [E_lo, E_hi].
+            # We obtain mu_total from the same intensity builder used for the per-E density
+            # (unclipped), then we recover the background integral by subtracting the peak
+            # integrals. This keeps the total mean consistent with the density we fit.
             def _nll(*params):
                 p_map = dict(zip(param_order, params))
                 bg_integral = None

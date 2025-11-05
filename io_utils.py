@@ -127,7 +127,15 @@ CONFIG_SCHEMA = {
         "analysis_isotope": {"type": "string", "enum": ["radon", "po218", "po214"]},
         "spectral_fit": {
             "type": "object",
-            "properties": {"expected_peaks": {"type": "object"}},
+            "properties": {
+                "expected_peaks": {"type": "object"},
+                "clip_floor": {
+                    "type": "number",
+                    "exclusiveMinimum": 0.0,
+                    "maximum": 1e-6,
+                    "description": "Small positive floor applied to per-E PDFs to avoid log(0); must be tiny.",
+                },
+            },
         },
         "time_fit": {
             "type": "object",
@@ -508,6 +516,12 @@ def load_config(config_path):
 
     if "analysis_isotope" not in cfg:
         cfg["analysis_isotope"] = "radon"
+
+    # Backstop default for clip_floor if older configs are loaded.
+    sf = cfg.setdefault("spectral_fit", {})
+    sf["clip_floor"] = float(sf.get("clip_floor", 1e-300))
+    if not (0.0 < sf["clip_floor"] <= 1e-6):
+        raise ValueError("spectral_fit.clip_floor must be in (0, 1e-6].")
 
     fit_cfg_raw = cfg.get("fitting")
     if fit_cfg_raw is None:
