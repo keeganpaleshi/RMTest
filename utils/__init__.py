@@ -246,16 +246,38 @@ def to_utc_datetime(value, tz="UTC") -> datetime:
 def parse_datetime(value):
     """Deprecated alias for :func:`utils.time_utils.parse_timestamp`."""
 
-    return parse_timestamp(value)
+    warnings.warn(
+        "parse_datetime is deprecated; use utils.time_utils.parse_timestamp",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _parse_timestamp(value)
 
 
 def to_seconds(series: pd.Series) -> np.ndarray:
-    """Return float seconds from a timestamp series."""
+    """Return float seconds from a timestamp series.
 
-    if not pd.api.types.is_datetime64_any_dtype(series):
-        return pd.to_numeric(series, errors="coerce").to_numpy(dtype=float)
-    series_utc = series.map(parse_timestamp)
-    return series_utc.map(to_epoch_seconds).to_numpy()
+    Behavior:
+        - numeric input -> pass-through as float
+        - datetime-like -> epoch seconds (UTC)
+        - string/object -> try datetime parse; if parse fails, numeric coercion
+    """
+    from pandas.api import types as pdt
+
+    # 1) Strict numeric -> identity (float)
+    if pdt.is_numeric_dtype(series):
+        return series.to_numpy(dtype=float)
+
+    # 2) Already datetime64 -> ensure UTC then convert to epoch seconds
+    if pdt.is_datetime64_any_dtype(series):
+        dt = series.dt.tz_convert("UTC") if series.dt.tz is not None else series.dt.tz_localize("UTC")
+        return (dt.view("int64") / 1e9).astype(float)
+
+    # 3) Object/strings: try datetime parse first; if it fails, fall back to numeric
+    dt = pd.to_datetime(series, errors="coerce", utc=True)
+    if dt.notna().any():
+        return (dt.view("int64") / 1e9).astype(float)
+    return pd.to_numeric(series, errors="coerce").to_numpy(dtype=float)
 
 
 def parse_timestamp(value):

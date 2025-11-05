@@ -185,8 +185,10 @@ def apply_baseline_subtraction(
     t1 = parse_timestamp(t_base1)
     ts_full = _to_datetime64(df_full)
     if ts_full.size > 0:
-        events_start = pd.Timestamp(ts_full.min(), tz="UTC")
-        events_end = pd.Timestamp(ts_full.max(), tz="UTC")
+        _min = pd.Timestamp(ts_full.min())
+        _max = pd.Timestamp(ts_full.max())
+        events_start = _min if _min.tzinfo is not None else _min.tz_localize("UTC")
+        events_end = _max if _max.tzinfo is not None else _max.tz_localize("UTC")
         if t1 < events_start or t0 > events_end:
             msg = "Baseline interval outside data range"
             logging.warning("%s – taking counts anyway", msg)
