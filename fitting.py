@@ -11,6 +11,7 @@ from typing import NotRequired, TypedDict
 import numpy as np
 import pandas as pd
 from iminuit import Minuit
+from scipy.integrate import quad
 from scipy.optimize import curve_fit
 
 _ORIG_CURVE_FIT = curve_fit
@@ -692,20 +693,38 @@ def fit_spectrum(
         else:
             F_current = params[param_index["F"]]
         y = np.zeros_like(x)
+        def _compute_peak_mass(mu_val, use_emg_peak, tau_val=None):
+            def integrand(E):
+                sigma_E = np.sqrt(sigma0**2 + F_current * E)
+                if use_emg_peak:
+                    val = emg_left(E, mu_val, sigma_E, tau_val)
+                else:
+                    val = gaussian(E, mu_val, sigma_E)
+                return float(np.nan_to_num(val, nan=0.0, posinf=0.0, neginf=0.0))
+
+            mass, _ = quad(integrand, E_lo, E_hi, limit=200, epsabs=1e-9, epsrel=1e-7)
+            return float(mass)
+
         for iso in iso_list:
             mu = params[param_index[f"mu_{iso}"]]
             S_raw = params[param_index[f"S_{iso}"]]
             S = _softplus(S_raw)
-            if use_emg[iso]:
+            use_emg_peak = use_emg[iso]
+
+            if use_emg_peak:
                 tau = params[param_index[f"tau_{iso}"]]
-                sigma = np.sqrt(sigma0 ** 2 + F_current * x)
+                sigma = np.sqrt(sigma0**2 + F_current * x)
                 with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
                     y_emg = emg_left(x, mu, sigma, tau)
                 y_emg = np.nan_to_num(y_emg, nan=0.0, posinf=0.0, neginf=0.0)
-                y += S * y_emg
+                mass = _compute_peak_mass(mu, True, tau)
+                mass = max(mass, 1e-300)
+                y += S * (y_emg / mass)
             else:
-                sigma = np.sqrt(sigma0 ** 2 + F_current * x)
-                y += S * gaussian(x, mu, sigma)
+                sigma = np.sqrt(sigma0**2 + F_current * x)
+                mass = _compute_peak_mass(mu, False)
+                mass = max(mass, 1e-300)
+                y += S * (gaussian(x, mu, sigma) / mass)
         beta0 = params[param_index["b0"]]
         beta1 = params[param_index["b1"]]
         bkg_params = {"b0": beta0, "b1": beta1}
