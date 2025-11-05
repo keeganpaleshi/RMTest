@@ -97,6 +97,7 @@ except ImportError:  # pragma: no cover - package may be unavailable at runtime
 
 
 _TAU_BOUND_EXPANSION = 10.0
+_WINDOW_NORM_POINTS = 2048
 
 
 EMG_STABLE_MODE: bool = _get_emg_stable_mode()
@@ -170,6 +171,58 @@ def make_linear_bkg(
 # Backward-compatible aliases
 _softplus = softplus
 _make_linear_bkg = make_linear_bkg
+
+
+def _peak_pdf(
+    x: np.ndarray,
+    mu: float,
+    sigma0: float,
+    F_current: float,
+    *,
+    use_emg: bool,
+    tau: float | None = None,
+) -> np.ndarray:
+    """Evaluate the peak PDF for the provided coordinates."""
+
+    sigma = np.sqrt(np.maximum(0.0, sigma0 ** 2 + F_current * x))
+    if use_emg:
+        if tau is None:
+            raise ValueError("tau must be provided when use_emg=True")
+        with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+            pdf = emg_left(x, mu, sigma, tau)
+        return np.nan_to_num(pdf, nan=0.0, posinf=0.0, neginf=0.0)
+    return gaussian(x, mu, sigma)
+
+
+def _window_normalization(
+    grid: np.ndarray,
+    mu: float,
+    sigma0: float,
+    F_current: float,
+    *,
+    use_emg: bool,
+    tau: float | None = None,
+) -> float:
+    """Return the area under the PDF within ``grid`` bounds."""
+
+    if grid.size == 0:
+        return 1.0
+    sigma_mu = float(np.sqrt(max(0.0, sigma0 ** 2 + F_current * mu)))
+    if not np.isfinite(sigma_mu) or sigma_mu <= 0.0:
+        sigma_mu = max(float(abs(sigma0)), 1e-6)
+    local_span = 8.0 * sigma_mu
+    local_lo = max(grid[0], mu - local_span)
+    local_hi = min(grid[-1], mu + local_span)
+    if local_hi > local_lo:
+        local_grid = np.linspace(local_lo, local_hi, max(32, grid.size // 4), dtype=float)
+        samples = np.unique(np.concatenate((grid, local_grid, np.asarray([mu], dtype=float))))
+    else:
+        samples = np.unique(np.concatenate((grid, np.asarray([mu], dtype=float))))
+    pdf_grid = _peak_pdf(samples, mu, sigma0, F_current, use_emg=use_emg, tau=tau)
+    norm = float(np.trapz(pdf_grid, samples))
+    if not np.isfinite(norm) or norm <= 0.0:
+        return 1.0
+    return norm
 
 
 # Use shared overflow guard for exponentiation
@@ -691,21 +744,37 @@ def fit_spectrum(
             F_current = F_val
         else:
             F_current = params[param_index["F"]]
-        y = np.zeros_like(x)
+
+        x_arr = np.asarray(x, dtype=float)
+        y = np.zeros_like(x_arr)
+        norm_grid = np.linspace(E_lo, E_hi, _WINDOW_NORM_POINTS, dtype=float)
+
         for iso in iso_list:
             mu = params[param_index[f"mu_{iso}"]]
             S_raw = params[param_index[f"S_{iso}"]]
             S = _softplus(S_raw)
             if use_emg[iso]:
                 tau = params[param_index[f"tau_{iso}"]]
-                sigma = np.sqrt(sigma0 ** 2 + F_current * x)
-                with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
-                    y_emg = emg_left(x, mu, sigma, tau)
-                y_emg = np.nan_to_num(y_emg, nan=0.0, posinf=0.0, neginf=0.0)
-                y += S * y_emg
             else:
-                sigma = np.sqrt(sigma0 ** 2 + F_current * x)
-                y += S * gaussian(x, mu, sigma)
+                tau = None
+
+            norm = _window_normalization(
+                norm_grid,
+                mu,
+                sigma0,
+                F_current,
+                use_emg=use_emg[iso],
+                tau=tau,
+            )
+            peak_pdf = _peak_pdf(
+                x_arr,
+                mu,
+                sigma0,
+                F_current,
+                use_emg=use_emg[iso],
+                tau=tau,
+            )
+            y += S * peak_pdf / norm
         beta0 = params[param_index["b0"]]
         beta1 = params[param_index["b1"]]
         bkg_params = {"b0": beta0, "b1": beta1}
