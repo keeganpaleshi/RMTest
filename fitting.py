@@ -505,6 +505,18 @@ def fit_spectrum(
     bkg_factory = select_background_factory(opts, E_lo, E_hi)
     neg_loglike = select_neg_loglike(opts)
 
+    # Shared integration grid for background normalisation/integrals.
+    bkg_integral_grid = np.linspace(E_lo, E_hi, 1024)
+
+    def _integrate_background(params: Mapping[str, float]) -> float:
+        """Integrate the configured background density over the fit window."""
+
+        values = bkg_factory(bkg_integral_grid, params)
+        integral = float(np.trapz(values, bkg_integral_grid))
+        if not np.isfinite(integral):
+            return 0.0
+        return integral
+
     # Guard against NaNs/Infs arising from unstable histogramming or EMG evals
     if not unbinned and not np.isfinite(hist).all():
         raise RuntimeError(
@@ -682,6 +694,10 @@ def fit_spectrum(
     if background_model == "loglin_unit" or "S_bkg" in priors:
         area_keys = area_keys + ["S_bkg"]
 
+    background_requires_integral = (
+        background_model != "loglin_unit" and "S_bkg" not in priors
+    )
+
     def _model_density(x, *params):
         if fix_sigma0:
             sigma0 = sigma0_val
@@ -711,16 +727,17 @@ def fit_spectrum(
         bkg_params = {"b0": beta0, "b1": beta1}
         if "S_bkg" in priors:
             bkg_params["S_bkg"] = params[param_index["S_bkg"]]
+        shape_params = {k: v for k, v in bkg_params.items() if k != "S_bkg"}
         if background_model == "loglin_unit":
             y += bkg_factory(x, bkg_params)
         elif "S_bkg" in priors:
             B = _softplus(bkg_params["S_bkg"])
-            norm = beta0 * (E_hi - E_lo) + 0.5 * beta1 * (E_hi**2 - E_lo**2)
+            norm = _integrate_background(shape_params)
             if norm > 0:
-                base = bkg_factory(x, {"b0": beta0, "b1": beta1})
+                base = bkg_factory(x, shape_params)
                 y += B * base / norm
         else:
-            y += bkg_factory(x, bkg_params)
+            y += bkg_factory(x, shape_params)
         return np.clip(y, 1e-300, np.inf)
 
     def _model_binned(x, *params):
@@ -822,12 +839,23 @@ def fit_spectrum(
         if flags.get("likelihood") == "extended":
             def _nll(*params):
                 p_map = dict(zip(param_order, params))
+                bg_integral = None
+                if background_requires_integral:
+                    bkg_params_eval = {
+                        key: p_map[key]
+                        for key in ("b0", "b1", "S_bkg")
+                        if key in p_map
+                    }
+                    integral_val = _integrate_background(bkg_params_eval)
+                    if integral_val > 0:
+                        bg_integral = integral_val
                 return neg_loglike(
                     e,
                     _intensity_fn,
                     p_map,
                     area_keys=area_keys,
                     background_model="loglin_unit" if background_model == "loglin_unit" else None,
+                    background_integral=bg_integral,
                 )
         else:
             def _nll(*params):

@@ -104,3 +104,30 @@ def test_extended_likelihood_missing_keys_via_selector():
         str(exc.value)
         == "likelihood=extended requires params {area, missing}; got: ['area']"
     )
+
+
+def test_extended_likelihood_background_integral_added():
+    from types import SimpleNamespace
+    from feature_selectors import select_neg_loglike
+
+    opts = SimpleNamespace(likelihood="extended")
+    neg_ll = select_neg_loglike(opts)
+
+    E = np.array([1.0, 2.0, 3.0])
+
+    def intensity(E_vals, params):
+        return np.ones_like(E_vals) * params.get("rate", 1.0)
+
+    params = {"rate": 1.0}
+
+    nll_no_bg = neg_ll(E, intensity, params, area_keys=())
+    nll_with_bg = neg_ll(
+        E,
+        intensity,
+        params,
+        area_keys=(),
+        background_integral=5.0,
+    )
+
+    assert nll_no_bg == pytest.approx(0.0)
+    assert nll_with_bg == pytest.approx(5.0)

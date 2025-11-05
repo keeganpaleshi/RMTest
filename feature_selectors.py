@@ -70,6 +70,7 @@ def select_neg_loglike(opts: Any) -> Callable:
             area_keys: Sequence[str],
             clip: float = 1e-300,
             background_model: str | None = None,
+            background_integral: float | None = None,
         ) -> float:
             missing = [k for k in area_keys if k not in params]
             if missing:
@@ -85,6 +86,7 @@ def select_neg_loglike(opts: Any) -> Callable:
                 area_keys=area_keys,
                 clip=clip,
                 background_model=background_model,
+                background_integral=background_integral,
             )
 
         return neg_loglike

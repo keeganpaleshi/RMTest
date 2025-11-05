@@ -9,7 +9,14 @@ def _softplus(x):
 
 
 def neg_loglike_extended(
-    E, intensity_fn, params, *, area_keys, clip=1e-300, background_model=None
+    E,
+    intensity_fn,
+    params,
+    *,
+    area_keys,
+    clip=1e-300,
+    background_model=None,
+    background_integral=None,
 ):
     """Extended unbinned negative log-likelihood.
 
@@ -31,6 +38,9 @@ def neg_loglike_extended(
     background_model : str, optional
         Name of the background model. When set to ``"loglin_unit"`` required
         background parameters are validated before evaluation.
+    background_integral : float, optional
+        Pre-computed integral of the background contribution over the fit
+        window. If provided it is added to the expected event count ``Nexp``.
 
     Returns
     -------
@@ -70,4 +80,8 @@ def neg_loglike_extended(
 
     lam = np.clip(intensity_fn(E, params), clip, np.inf)
     Nexp = float(sum(_softplus(params[k]) for k in area_keys))
+    if background_integral is not None:
+        bg = float(background_integral)
+        if np.isfinite(bg) and bg > 0:
+            Nexp += bg
     return float(-(np.sum(np.log(lam)) - Nexp))
