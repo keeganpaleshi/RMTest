@@ -1,11 +1,37 @@
 # src/rmtest/spectral/intensity.py
+"""
+Spectral intensity functions for window-normalized extended likelihood fitting.
+
+Parameter naming convention:
+- N_* / S_* : In-window counts (post window-renormalization), not densities
+- After window normalization, N_{iso} and S_{iso} both represent the total
+  expected counts for that isotope within the fit window [E_lo, E_hi]
+"""
 import numpy as np
 from .window_norm import normalize_pdf_to_window
 
 def build_spectral_intensity(iso_list, use_emg, domain):
     """
-    Returns spectral_intensity_E(E, params, domain, ...) that yields λ(E) in counts/MeV.
-    Peaks are normalized to the fit window exactly once.
+    Build spectral intensity function λ(E) in counts/MeV for extended likelihood.
+
+    Each peak is normalized to the fit window exactly once via CDF-based probability
+    mass calculation. The returned intensity function produces a density (counts/MeV)
+    that when integrated over the window equals the sum of peak yields plus background.
+
+    Parameters
+    ----------
+    iso_list : sequence of str
+        Isotope names (e.g., ["Po210", "Po218", "Po214"])
+    use_emg : bool
+        If True, use EMG tails where tau parameters are provided
+    domain : tuple of (E_lo, E_hi)
+        Energy window bounds in MeV
+
+    Returns
+    -------
+    spectral_intensity_E : callable
+        Function signature: spectral_intensity_E(E, params, domain, **kwargs)
+        Returns λ(E) in counts/MeV
     """
     E_lo, E_hi = domain
     kind = "emg" if use_emg else "gauss"

@@ -18,6 +18,9 @@ from scipy.stats import chi2
 from calibration import emg_left, gaussian
 from constants import safe_exp as _safe_exp
 from math_utils import log_expm1_stable
+# Window-normalized spectral functions (optional, for deterministic peak normalization)
+# Note: calibration.emg_left/gaussian are kept for legacy/fallback paths with energy-dependent
+# resolution (F != 0). Future refactoring may unify these shape function sources.
 try:
     from rmtest.spectral.window_norm import normalize_pdf_to_window
     from rmtest.spectral.shapes import emg_pdf_E, gaussian_pdf_E
@@ -710,6 +713,14 @@ def fit_spectrum(
     )
 
     def _model_density(x, *params):
+        """
+        Model intensity λ(E) in counts/MeV.
+
+        Parameter convention:
+        - S_{iso} / N_{iso}: In-window counts (post window-renormalization), not densities
+        - When window normalization is active (F~0), these represent total expected
+          counts for each isotope within [E_lo, E_hi]
+        """
         if fix_sigma0:
             sigma0 = sigma0_val
         else:
@@ -718,36 +729,31 @@ def fit_spectrum(
             F_current = F_val
         else:
             F_current = params[param_index["F"]]
+
+        # Use window-normalized peaks when sigma is constant (F ~ 0)
+        # This ensures deterministic normalization without per-iteration quadrature
+        use_window_norm = _HAS_WINDOW_NORM and abs(F_current) < 1e-9
         y = np.zeros_like(x)
-        # Use window-normalized peaks if available
-        if _HAS_WINDOW_NORM and abs(F_current) < 1e-9:
-            # Window normalization only when sigma is constant (F ~ 0)
-            for iso in iso_list:
-                mu = params[param_index[f"mu_{iso}"]]
-                S_raw = params[param_index[f"S_{iso}"]]
-                S = _softplus(S_raw)
-                if use_emg[iso]:
-                    tau = params[param_index[f"tau_{iso}"]]
+
+        for iso in iso_list:
+            mu = params[param_index[f"mu_{iso}"]]
+            S_raw = params[param_index[f"S_{iso}"]]
+            S = _softplus(S_raw)
+
+            if use_emg[iso]:
+                tau = params[param_index[f"tau_{iso}"]]
+                if use_window_norm:
                     pdf_win, _ = normalize_pdf_to_window("emg", mu, sigma0, E_lo, E_hi, tau=tau)
-                    y_peak = pdf_win(x)
-                    y += S * y_peak
+                    y += S * pdf_win(x)
                 else:
-                    pdf_win, _ = normalize_pdf_to_window("gauss", mu, sigma0, E_lo, E_hi)
-                    y_peak = pdf_win(x)
-                    y += S * y_peak
-        else:
-            # Fallback to legacy approach for energy-dependent resolution
-            for iso in iso_list:
-                mu = params[param_index[f"mu_{iso}"]]
-                S_raw = params[param_index[f"S_{iso}"]]
-                S = _softplus(S_raw)
-                if use_emg[iso]:
-                    tau = params[param_index[f"tau_{iso}"]]
                     sigma = np.sqrt(sigma0 ** 2 + F_current * x)
                     with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
                         y_emg = emg_left(x, mu, sigma, tau)
-                    y_emg = np.nan_to_num(y_emg, nan=0.0, posinf=0.0, neginf=0.0)
-                    y += S * y_emg
+                    y += S * np.nan_to_num(y_emg, nan=0.0, posinf=0.0, neginf=0.0)
+            else:
+                if use_window_norm:
+                    pdf_win, _ = normalize_pdf_to_window("gauss", mu, sigma0, E_lo, E_hi)
+                    y += S * pdf_win(x)
                 else:
                     sigma = np.sqrt(sigma0 ** 2 + F_current * x)
                     y += S * gaussian(x, mu, sigma)

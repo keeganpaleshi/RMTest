@@ -1,8 +1,13 @@
 # src/rmtest/spectral/window_norm.py
+"""
+Window normalization utilities for deterministic peak PDF normalization.
+
+This module provides functions to normalize peak PDFs to a specific energy window
+using CDF-based probability mass calculation, ensuring deterministic integration
+without per-iteration quadrature.
+"""
 import numpy as np
 from .shapes import emg_pdf_E, emg_cdf_E, gaussian_pdf_E, gaussian_cdf_E
-
-WINDOW_NORM_POINTS = 4096  # power-of-twoish; deterministic across runs
 
 def _component_p_in_window(kind, E_lo, E_hi, mu, sigma, tau=None):
     """Probability mass of a single component inside [E_lo, E_hi]."""

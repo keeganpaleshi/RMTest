@@ -2,8 +2,10 @@
 """Quick test runner for test_spectrum_tail_amplitude_stability without full conftest."""
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
+# Adjust path for scripts/ subdirectory
+repo_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(repo_root))
+sys.path.insert(0, str(repo_root / "src"))
 
 import numpy as np
 from fitting import fit_spectrum

@@ -2,8 +2,10 @@
 """Quick test runner for window normalization regression tests."""
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
+# Adjust path for scripts/ subdirectory
+repo_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(repo_root))
+sys.path.insert(0, str(repo_root / "src"))
 
 import numpy as np
 from rmtest.spectral.window_norm import normalize_pdf_to_window
