@@ -1,0 +1,67 @@
+# src/rmtest/spectral/intensity.py
+import numpy as np
+from .window_norm import normalize_pdf_to_window
+
+def build_spectral_intensity(iso_list, use_emg, domain):
+    """
+    Returns spectral_intensity_E(E, params, domain, ...) that yields λ(E) in counts/MeV.
+    Peaks are normalized to the fit window exactly once.
+    """
+    E_lo, E_hi = domain
+    kind = "emg" if use_emg else "gauss"
+
+    def spectral_intensity_E(E, params, domain, **kwargs):
+        E = np.asarray(E, dtype=float)
+        lam = np.zeros_like(E, dtype=float)
+
+        # Peaks
+        for iso in iso_list:
+            N = float(params.get(f"N_{iso}", params.get(f"S_{iso}", 0.0)))
+            if N <= 0.0:
+                continue
+            mu = float(params[f"mu_{iso}"])
+            sigma = float(params["sigma0"])
+            tau = float(params.get(f"tau_{iso}", 0.0)) if kind == "emg" else None
+
+            pdf_win, _ = normalize_pdf_to_window(kind, mu, sigma, E_lo, E_hi, tau=tau)
+            lam += N * pdf_win(E)
+
+        # Background density: b0 + b1*E (counts/MeV). If S_bkg is present, it is total counts in window.
+        b0 = float(params.get("b0", 0.0))
+        b1 = float(params.get("b1", 0.0))
+        lam += (b0 + b1 * E)
+
+        # If S_bkg is explicitly given, add it as a flat density over the window.
+        if "S_bkg" in params:
+            S_bkg = float(params["S_bkg"])
+            width = max(E_hi - E_lo, 1e-12)
+            lam += (S_bkg / width)
+
+        return lam
+
+    return spectral_intensity_E
+
+def integral_of_intensity(params, domain, iso_list=None, use_emg=False, **kwargs):
+    """
+    In-window expected counts μ = sum(N_iso) + background counts in [E_lo,E_hi].
+    """
+    E_lo, E_hi = domain
+    if iso_list is None:
+        iso_list = ("Po210", "Po218", "Po214")
+
+    mu_signal = 0.0
+    for iso in iso_list:
+        N = float(params.get(f"N_{iso}", params.get(f"S_{iso}", 0.0)))
+        if N > 0:
+            mu_signal += N
+
+    width = max(E_hi - E_lo, 1e-12)
+    # background from density b0 + b1*E
+    b0 = float(params.get("b0", 0.0))
+    b1 = float(params.get("b1", 0.0))
+    mu_bkg_shape = b0 * width + 0.5 * b1 * (E_hi**2 - E_lo**2)
+
+    # optional S_bkg (flat over window) is total counts, not a density
+    S_bkg = float(params.get("S_bkg", 0.0))
+
+    return mu_signal + mu_bkg_shape + S_bkg
