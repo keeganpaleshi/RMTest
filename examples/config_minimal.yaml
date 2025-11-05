@@ -21,6 +21,7 @@ spectral_fit:
     Po210: 1250
     Po218: 1400
     Po214: 1800
+  clip_floor: 1e-300
   use_emg:
     Po210: true
     Po218: false
