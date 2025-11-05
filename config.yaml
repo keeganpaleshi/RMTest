@@ -79,6 +79,7 @@ spectral_fit:
   mu_sigma: 0.005
   amp_prior_scale: 5.0
   bkg_mode: "loglin_unit"
+  clip_floor: 1e-300
   b0_prior:
     - 0.0
     - 2.0
