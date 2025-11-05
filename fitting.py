@@ -17,24 +17,30 @@ _ORIG_CURVE_FIT = curve_fit
 from scipy.stats import chi2
 from constants import safe_exp as _safe_exp
 from math_utils import log_expm1_stable
+
+# Single source of truth for shape PDFs, with a conservative fallback
 try:
     from rmtest.spectral.shapes import (
         emg_pdf_E as emg_left,
         gaussian_pdf_E as gaussian,
     )
-except ImportError:  # pragma: no cover - fallback for local scripts
-    import sys
-    from pathlib import Path
+except ImportError:  # pragma: no cover
+    # Fallback to legacy calibration module to keep environments unbroken.
+    try:
+        from calibration import emg_left, gaussian
+    except ImportError:
+        import sys
+        from pathlib import Path
 
-    _src_root = Path(__file__).resolve().parent / "src"
-    if _src_root.is_dir():
-        sys.path.insert(0, str(_src_root))
-        from rmtest.spectral.shapes import (  # type: ignore
-            emg_pdf_E as emg_left,
-            gaussian_pdf_E as gaussian,
-        )
-    else:  # pragma: no cover - defensive fallback
-        raise
+        _src_root = Path(__file__).resolve().parent / "src"
+        if _src_root.is_dir():
+            sys.path.insert(0, str(_src_root))
+            from rmtest.spectral.shapes import (  # type: ignore
+                emg_pdf_E as emg_left,
+                gaussian_pdf_E as gaussian,
+            )
+        else:  # pragma: no cover - defensive fallback
+            raise
 try:
     from rmtest.spectral.intensity import (
         build_spectral_intensity,
@@ -718,7 +724,13 @@ def fit_spectrum(
 
     domain = (E_lo, E_hi)
     use_emg_map = {iso: bool(use_emg.get(iso, False)) for iso in iso_list}
-    spectral_intensity = build_spectral_intensity(iso_list, use_emg_map, domain)
+
+    # Extract clip_floor from config with safe default
+    clip_floor = 1e-300
+    if cfg is not None:
+        clip_floor = float(cfg.get("spectral_fit", {}).get("clip_floor", 1e-300))
+
+    spectral_intensity = build_spectral_intensity(iso_list, use_emg_map, domain, clip_floor=clip_floor)
 
     def _build_raw_param_map(params):
         p_map = dict(zip(param_order, params))
@@ -758,10 +770,13 @@ def fit_spectrum(
         return out_params
 
     def _model_density(x, *params):
+        """
+        Per-energy density λ(E) in counts/MeV.
+        Clipping is applied inside spectral_intensity to the configured floor.
+        """
         raw_map = _build_raw_param_map(params)
         physical = _physical_params(raw_map)
-        lam = spectral_intensity(x, physical, domain)
-        return np.clip(lam, 1e-300, np.inf)
+        return spectral_intensity(x, physical, domain)
 
     def _model_binned(x, *params):
         y = _model_density(x, *params)
@@ -833,6 +848,10 @@ def fit_spectrum(
 
         if flags.get("likelihood") == "extended":
             def _nll(*params):
+                # Extended model: mu_total = integral of (peaks + backgrounds) over [E_lo, E_hi].
+                # We obtain mu_total from the same intensity builder used for the per-E density
+                # (unclipped), then we recover the background integral by subtracting the peak
+                # integrals. This keeps the total mean consistent with the density we fit.
                 raw_map = _build_raw_param_map(params)
                 physical = _physical_params(raw_map)
                 mu_total = integral_of_intensity(

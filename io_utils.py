@@ -127,7 +127,15 @@ CONFIG_SCHEMA = {
         "analysis_isotope": {"type": "string", "enum": ["radon", "po218", "po214"]},
         "spectral_fit": {
             "type": "object",
-            "properties": {"expected_peaks": {"type": "object"}},
+            "properties": {
+                "expected_peaks": {"type": "object"},
+                "clip_floor": {
+                    "type": "number",
+                    "exclusiveMinimum": 0.0,
+                    "maximum": 1e-6,
+                    "description": "Small positive floor applied to per-E PDFs to avoid log(0); must be tiny."
+                },
+            },
         },
         "time_fit": {
             "type": "object",
@@ -484,6 +492,20 @@ def load_config(config_path):
             raise ValueError("Config file must be YAML")
         with open(path, "r", encoding="utf-8") as f:
             cfg = yaml.load(f, Loader=_UniqueKeyLoader) or {}
+
+    # Pre-validate clip_floor so tests see a ValueError (not a schema error).
+    # Do this BEFORE jsonschema.validate, otherwise the schema's
+    # exclusiveMinimum/maximum will throw first.
+    sf = cfg.setdefault("spectral_fit", {})
+    if "clip_floor" in sf:
+        try:
+            sf["clip_floor"] = float(sf["clip_floor"])
+        except Exception:
+            raise ValueError("spectral_fit.clip_floor must be in (0, 1e-6].")
+        if not (0.0 < sf["clip_floor"] <= 1e-6):
+            raise ValueError("spectral_fit.clip_floor must be in (0, 1e-6].")
+    else:
+        sf["clip_floor"] = 1e-300
 
     validator = jsonschema.Draft7Validator(CONFIG_SCHEMA)
     missing = []

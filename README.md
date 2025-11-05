@@ -442,6 +442,7 @@ increasing.
 The `spectral_fit` section provides priors for the unbinned likelihood
 fit.  Important keys include:
 
+- `clip_floor` – small positive floor applied to per-energy PDF values to avoid log(0) in the likelihood. Type: `float` in `(0, 1e-6]`, default `1e-300`. Only applied to the per-E density used in the likelihood. Integrals for the extended term are computed on the unclipped model. This parameter ensures numerical safety in extreme tails without biasing fits in the physical energy window.
 - `fd_hist_bins` – number of histogram bins to use when the automatic [Freedman–Diaconis rule](https://en.wikipedia.org/wiki/Freedman%E2%80%93Diaconis_rule) fails.
 - `energy_bin_width` – width (MeV) of each histogram bin when `spectral_binning_mode` is `"energy"`.
 - `mu_sigma` – uncertainty applied to peak centroids.
