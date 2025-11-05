@@ -246,6 +246,11 @@ def to_utc_datetime(value, tz="UTC") -> datetime:
 def parse_datetime(value):
     """Deprecated alias for :func:`utils.time_utils.parse_timestamp`."""
 
+    warnings.warn(
+        "parse_datetime is deprecated; use utils.time_utils.parse_timestamp",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return _parse_timestamp(value)
 
 
@@ -253,9 +258,18 @@ def to_seconds(series: pd.Series) -> np.ndarray:
     """Return float seconds from a timestamp series."""
 
     if not pd.api.types.is_datetime64_any_dtype(series):
+        # Try fast path for non-datetime inputs
+        dt = pd.to_datetime(series, errors="coerce", utc=True)
+        if dt.notna().any():
+            return (dt.view("int64") / 1e9).astype(float)
+        # Fallback for pure numeric values
         return pd.to_numeric(series, errors="coerce").to_numpy(dtype=float)
-    series_utc = series.map(_parse_timestamp)
-    return series_utc.map(to_epoch_seconds).to_numpy()
+    # Already datetime64 -> ensure UTC and convert
+    if series.dt.tz is not None:
+        dt = series.dt.tz_convert("UTC")
+    else:
+        dt = series.dt.tz_localize("UTC")
+    return (dt.view("int64") / 1e9).astype(float)
 
 
 def parse_timestamp(value):
