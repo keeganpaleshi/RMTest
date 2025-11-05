@@ -493,6 +493,20 @@ def load_config(config_path):
         with open(path, "r", encoding="utf-8") as f:
             cfg = yaml.load(f, Loader=_UniqueKeyLoader) or {}
 
+    # Pre-validate clip_floor so tests see a ValueError (not a schema error).
+    # Do this BEFORE jsonschema.validate, otherwise the schema's
+    # exclusiveMinimum/maximum will throw first.
+    sf = cfg.setdefault("spectral_fit", {})
+    if "clip_floor" in sf:
+        try:
+            sf["clip_floor"] = float(sf["clip_floor"])
+        except Exception:
+            raise ValueError("spectral_fit.clip_floor must be in (0, 1e-6].")
+        if not (0.0 < sf["clip_floor"] <= 1e-6):
+            raise ValueError("spectral_fit.clip_floor must be in (0, 1e-6].")
+    else:
+        sf["clip_floor"] = 1e-300
+
     validator = jsonschema.Draft7Validator(CONFIG_SCHEMA)
     missing = []
     for err in validator.iter_errors(cfg):
@@ -513,12 +527,6 @@ def load_config(config_path):
     validate_radon_inference(cfg)
 
     cfg["nuclide_constants"] = load_nuclide_overrides(cfg)
-
-    # Backstop default for clip_floor if older configs are loaded.
-    sf = cfg.setdefault("spectral_fit", {})
-    sf["clip_floor"] = float(sf.get("clip_floor", 1e-300))
-    if not (0.0 < sf["clip_floor"] <= 1e-6):
-        raise ValueError("spectral_fit.clip_floor must be in (0, 1e-6].")
 
     if "analysis_isotope" not in cfg:
         cfg["analysis_isotope"] = "radon"
