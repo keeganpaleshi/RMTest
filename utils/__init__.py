@@ -246,7 +246,7 @@ def to_utc_datetime(value, tz="UTC") -> datetime:
 def parse_datetime(value):
     """Deprecated alias for :func:`utils.time_utils.parse_timestamp`."""
 
-    return parse_timestamp(value)
+    return _parse_timestamp(value)
 
 
 def to_seconds(series: pd.Series) -> np.ndarray:
@@ -254,7 +254,7 @@ def to_seconds(series: pd.Series) -> np.ndarray:
 
     if not pd.api.types.is_datetime64_any_dtype(series):
         return pd.to_numeric(series, errors="coerce").to_numpy(dtype=float)
-    series_utc = series.map(parse_timestamp)
+    series_utc = series.map(_parse_timestamp)
     return series_utc.map(to_epoch_seconds).to_numpy()
 
 

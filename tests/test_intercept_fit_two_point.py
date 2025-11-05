@@ -1,10 +1,8 @@
 import numpy as np
 import pytest
 
-from calibration import (
-    intercept_fit_two_point,
-    CalibrationResult,
-)
+from calibrate import intercept_fit_two_point
+from calibration import CalibrationResult
 
 
 def sample_cfg():
