@@ -19,6 +19,11 @@ from calibration import emg_left, gaussian
 from constants import safe_exp as _safe_exp
 from math_utils import log_expm1_stable
 try:
+    from rmtest.spectral.window_norm import normalize_pdf_to_window
+    _HAS_WINDOW_NORM = True
+except ImportError:
+    _HAS_WINDOW_NORM = False
+try:
     from rmtest.emg_constants import (
         clamp_tau as _clamp_tau,
         EMG_MIN_TAU as _EMG_FLOOR,
@@ -708,20 +713,38 @@ def fit_spectrum(
         else:
             F_current = params[param_index["F"]]
         y = np.zeros_like(x)
+
+        # Use window-normalized PDFs when F=0 (constant resolution) and module is available
+        use_window_norm = _HAS_WINDOW_NORM and abs(F_current) < 1e-10
+
         for iso in iso_list:
             mu = params[param_index[f"mu_{iso}"]]
             S_raw = params[param_index[f"S_{iso}"]]
             S = _softplus(S_raw)
             if use_emg[iso]:
                 tau = params[param_index[f"tau_{iso}"]]
-                sigma = np.sqrt(sigma0 ** 2 + F_current * x)
-                with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
-                    y_emg = emg_left(x, mu, sigma, tau)
-                y_emg = np.nan_to_num(y_emg, nan=0.0, posinf=0.0, neginf=0.0)
-                y += S * y_emg
+                if use_window_norm:
+                    # Window-normalized EMG PDF
+                    kind = "emg"
+                    pdf_win, _ = normalize_pdf_to_window(kind, mu, sigma0, E_lo, E_hi, tau=tau)
+                    y += S * pdf_win(x)
+                else:
+                    # Legacy global PDF
+                    sigma = np.sqrt(sigma0 ** 2 + F_current * x)
+                    with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+                        y_emg = emg_left(x, mu, sigma, tau)
+                    y_emg = np.nan_to_num(y_emg, nan=0.0, posinf=0.0, neginf=0.0)
+                    y += S * y_emg
             else:
-                sigma = np.sqrt(sigma0 ** 2 + F_current * x)
-                y += S * gaussian(x, mu, sigma)
+                if use_window_norm:
+                    # Window-normalized Gaussian PDF
+                    kind = "gauss"
+                    pdf_win, _ = normalize_pdf_to_window(kind, mu, sigma0, E_lo, E_hi, tau=None)
+                    y += S * pdf_win(x)
+                else:
+                    # Legacy global PDF
+                    sigma = np.sqrt(sigma0 ** 2 + F_current * x)
+                    y += S * gaussian(x, mu, sigma)
         beta0 = params[param_index["b0"]]
         beta1 = params[param_index["b1"]]
         bkg_params = {"b0": beta0, "b1": beta1}
@@ -805,6 +828,12 @@ def fit_spectrum(
             if fix_F:
                 out["F"] = F_val
                 out["dF"] = 0.0
+            # Ensure S_* parameters are set as physical yields
+            for iso in ("Po210", "Po218", "Po214"):
+                if f"N_{iso}" in out:
+                    out[f"S_{iso}"] = float(out[f"N_{iso}"])
+                elif f"S_{iso}" in out:
+                    out[f"S_{iso}"] = float(out[f"S_{iso}"])
             cov = np.zeros((len(param_order), len(param_order)))
             k = len(param_order)
             out["nll"] = float(m.fval)
@@ -894,6 +923,12 @@ def fit_spectrum(
             if fix_F:
                 out["F"] = F_val
                 out["dF"] = 0.0
+            # Ensure S_* parameters are set as physical yields
+            for iso in ("Po210", "Po218", "Po214"):
+                if f"N_{iso}" in out:
+                    out[f"S_{iso}"] = float(out[f"N_{iso}"])
+                elif f"S_{iso}" in out:
+                    out[f"S_{iso}"] = float(out[f"S_{iso}"])
             cov = np.zeros((len(param_order), len(param_order)))
             k = len(param_order)
             out["aic"] = float(2 * m.fval + 2 * k)
@@ -958,6 +993,12 @@ def fit_spectrum(
         if fix_F:
             out["F"] = F_val
             out["dF"] = 0.0
+        # Ensure S_* parameters are set as physical yields
+        for iso in ("Po210", "Po218", "Po214"):
+            if f"N_{iso}" in out:
+                out[f"S_{iso}"] = float(out[f"N_{iso}"])
+            elif f"S_{iso}" in out:
+                out[f"S_{iso}"] = float(out[f"S_{iso}"])
         k = len(param_order)
         out["aic"] = float(2 * m.fval + 2 * k)
         out["likelihood_path"] = likelihood_path
@@ -1014,6 +1055,13 @@ def fit_spectrum(
     if fix_F:
         out["F"] = F_val
         out["dF"] = 0.0
+
+    # Ensure S_* parameters are set as physical yields
+    for iso in ("Po210", "Po218", "Po214"):
+        if f"N_{iso}" in out:
+            out[f"S_{iso}"] = float(out[f"N_{iso}"])
+        elif f"S_{iso}" in out:
+            out[f"S_{iso}"] = float(out[f"S_{iso}"])
 
     out["fit_valid"] = fit_valid
     out["likelihood_path"] = likelihood_path
