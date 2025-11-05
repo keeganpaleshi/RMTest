@@ -1,5 +1,5 @@
 """Tests for clip_floor configuration loading and validation."""
-import json
+import yaml
 import pytest
 from io_utils import load_config
 
@@ -12,8 +12,8 @@ def test_clip_floor_default(tmp_path):
     cfg["time_fit"] = {}
     cfg["systematics"] = {"enable": False}
 
-    p = tmp_path / "cfg.json"
-    p.write_text(json.dumps(cfg))
+    p = tmp_path / "cfg.yaml"
+    p.write_text(yaml.safe_dump(cfg))
     loaded = load_config(str(p))
     assert 0.0 < loaded["spectral_fit"]["clip_floor"] <= 1e-6
     assert loaded["spectral_fit"]["clip_floor"] == 1e-300
@@ -30,8 +30,8 @@ def test_clip_floor_override(tmp_path):
     cfg["time_fit"] = {}
     cfg["systematics"] = {"enable": False}
 
-    p = tmp_path / "cfg.json"
-    p.write_text(json.dumps(cfg))
+    p = tmp_path / "cfg.yaml"
+    p.write_text(yaml.safe_dump(cfg))
     loaded = load_config(str(p))
     assert loaded["spectral_fit"]["clip_floor"] == 1e-200
 
@@ -47,9 +47,9 @@ def test_clip_floor_invalid_raises(tmp_path):
     cfg["time_fit"] = {}
     cfg["systematics"] = {"enable": False}
 
-    p = tmp_path / "cfg.json"
-    p.write_text(json.dumps(cfg))
-    with pytest.raises(ValueError, match="clip_floor must be in"):
+    p = tmp_path / "cfg.yaml"
+    p.write_text(yaml.safe_dump(cfg))
+    with pytest.raises(ValueError, match=r"spectral_fit\.clip_floor must be"):
         load_config(str(p))
 
 
@@ -64,7 +64,7 @@ def test_clip_floor_too_large_raises(tmp_path):
     cfg["time_fit"] = {}
     cfg["systematics"] = {"enable": False}
 
-    p = tmp_path / "cfg.json"
-    p.write_text(json.dumps(cfg))
-    with pytest.raises(ValueError, match="clip_floor must be in"):
+    p = tmp_path / "cfg.yaml"
+    p.write_text(yaml.safe_dump(cfg))
+    with pytest.raises(ValueError, match=r"spectral_fit\.clip_floor must be"):
         load_config(str(p))
