@@ -75,6 +75,8 @@ spectral_fit:
   do_spectral_fit: true
   spectral_binning_mode: energy
   energy_bin_width: 0.0130
+  # Optional: Explicit fit window (MeV). If not set, uses full histogram range.
+  # fit_energy_range: [4.8, 8.3]
   fd_hist_bins: 400
   mu_sigma: 0.005
   amp_prior_scale: 5.0
