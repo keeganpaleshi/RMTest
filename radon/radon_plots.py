@@ -226,46 +226,29 @@ def plot_volume_equiv_vs_time(
     setup_time_axis(ax1, times_mpl)
     ax1.yaxis.get_offset_text().set_visible(False)
 
-    # If equivalent flow data is present, reuse the same data points and simply
-    # expose a secondary axis so users can read the L/min values directly from
-    # the original scatter plot.
-    scale_factor: float | None = None
-    if volumes_lpm:
-        paired_len = min(len(volumes_lpm), len(volumes_m3))
-        if paired_len:
-            m3_arr = np.asarray(volumes_m3[:paired_len], dtype=float)
-            lpm_arr = np.asarray(volumes_lpm[:paired_len], dtype=float)
-            nonzero_mask = (m3_arr != 0) & np.isfinite(m3_arr) & np.isfinite(lpm_arr)
-            if np.any(nonzero_mask):
-                ratios = lpm_arr[nonzero_mask] / m3_arr[nonzero_mask]
-                reference = ratios[0]
-                if np.allclose(ratios, reference, rtol=1e-6, atol=1e-9):
-                    scale_factor = float(reference)
-                else:
-                    logger.info(
-                        "Skipping equivalent flow axis because the m³ to L/min scale is not constant",
-                    )
-            else:
-                logger.info("Skipping equivalent flow axis because no finite non-zero m³ values were found")
-
-    if scale_factor is not None:
-        ax2 = ax1.twinx()
-        ax2.set_ylabel("Equivalent flow [L/min]")
-        ax2.ticklabel_format(axis="y", style="plain")
-        ax2.yaxis.get_offset_text().set_visible(False)
-        ax2.grid(False)
-
-        def _sync_equivalent_flow_axis(ax: Axes) -> None:
-            y_low, y_high = ax.get_ylim()
-            ax2.set_ylim(y_low * scale_factor, y_high * scale_factor)
-
-        _sync_equivalent_flow_axis(ax1)
-        ax1.callbacks.connect("ylim_changed", _sync_equivalent_flow_axis)
-
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(out_dir / "equivalent_volume.png", dpi=300)
     plt.close(fig)
+
+    if volumes_lpm:
+        paired_len = min(len(times_mpl), len(volumes_lpm))
+        if paired_len == 0:
+            logger.info("Equivalent flow data present but no overlapping timestamps; skipping flow plot")
+        else:
+            times_flow = times_mpl[:paired_len]
+            volumes_flow = volumes_lpm[:paired_len]
+            fig_flow, ax_flow = plt.subplots(figsize=(8, 5))
+            ax_flow.plot(times_flow, volumes_flow, marker="o", linestyle="None", color="#ff7f0e")
+            ax_flow.set_ylabel("Equivalent flow [L/min]")
+            ax_flow.set_xlabel("Time (UTC)")
+            ax_flow.ticklabel_format(axis="y", style="plain")
+            setup_time_axis(ax_flow, times_flow)
+            ax_flow.yaxis.get_offset_text().set_visible(False)
+            fig_flow.autofmt_xdate()
+            fig_flow.tight_layout()
+            fig_flow.savefig(out_dir / "equivalent_flow.png", dpi=300)
+            plt.close(fig_flow)
 
     # Only create cumulative plot if data is present
     cumulative_series = radon_results.get("volume_cumulative")
