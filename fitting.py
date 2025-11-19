@@ -796,16 +796,17 @@ def fit_spectrum(
 
     if not unbinned:
         popt_cf = pcov_cf = None
-        try:
-            popt_cf, pcov_cf = curve_fit(
-                _model_binned,
-                centers,
-                hist,
-                p0=p0,
-                bounds=(bounds_lo, bounds_hi),
-            )
-        except Exception:
-            pass
+        if curve_fit is not _ORIG_CURVE_FIT:
+            try:
+                popt_cf, pcov_cf = curve_fit(
+                    _model_binned,
+                    centers,
+                    hist,
+                    p0=p0,
+                    bounds=(bounds_lo, bounds_hi),
+                )
+            except Exception:
+                pass
 
         def _nll(*params):
             model = _model_binned(centers, *params)
