@@ -78,6 +78,9 @@ spectral_fit:
   energy_bin_width: 0.0130
   fd_hist_bins: 400
   mu_sigma: 0.005
+  fit_energy_range:
+  - 4.8
+  - 8.3
   amp_prior_scale: 5.0
   bkg_mode: "loglin_unit"
   clip_floor: 1e-300
@@ -196,12 +199,11 @@ radon_inference:
 plotting:
   plot_spectrum_binsize_adc: 1
   plot_time_binning_mode: fixed
-  plot_time_bin_width_s: 3600
+  plot_time_bin_width_s: 14400
   plot_time_normalise_rate: true
   time_bins_fallback: 1
   plot_save_formats:
   - png
-  - pdf
   dump_time_series_json: true
   plot_time_style: lines
   overlay_isotopes: true
