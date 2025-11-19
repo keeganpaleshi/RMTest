@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Iterable, Mapping
 
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
 import numpy as np
 
 from plot_utils._time_utils import guard_mpl_times, setup_time_axis
@@ -225,13 +226,41 @@ def plot_volume_equiv_vs_time(
     setup_time_axis(ax1, times_mpl)
     ax1.yaxis.get_offset_text().set_visible(False)
 
+    # If equivalent flow data is present, reuse the same data points and simply
+    # expose a secondary axis so users can read the L/min values directly from
+    # the original scatter plot.
+    scale_factor: float | None = None
     if volumes_lpm:
+        paired_len = min(len(volumes_lpm), len(volumes_m3))
+        if paired_len:
+            m3_arr = np.asarray(volumes_m3[:paired_len], dtype=float)
+            lpm_arr = np.asarray(volumes_lpm[:paired_len], dtype=float)
+            nonzero_mask = (m3_arr != 0) & np.isfinite(m3_arr) & np.isfinite(lpm_arr)
+            if np.any(nonzero_mask):
+                ratios = lpm_arr[nonzero_mask] / m3_arr[nonzero_mask]
+                reference = ratios[0]
+                if np.allclose(ratios, reference, rtol=1e-6, atol=1e-9):
+                    scale_factor = float(reference)
+                else:
+                    logger.info(
+                        "Skipping equivalent flow axis because the m³ to L/min scale is not constant",
+                    )
+            else:
+                logger.info("Skipping equivalent flow axis because no finite non-zero m³ values were found")
+
+    if scale_factor is not None:
         ax2 = ax1.twinx()
-        ax2.plot(times_mpl, volumes_lpm, marker="s", linestyle="None", color="#ff7f0e")
         ax2.set_ylabel("Equivalent flow [L/min]")
         ax2.ticklabel_format(axis="y", style="plain")
         ax2.yaxis.get_offset_text().set_visible(False)
         ax2.grid(False)
+
+        def _sync_equivalent_flow_axis(ax: Axes) -> None:
+            y_low, y_high = ax.get_ylim()
+            ax2.set_ylim(y_low * scale_factor, y_high * scale_factor)
+
+        _sync_equivalent_flow_axis(ax1)
+        ax1.callbacks.connect("ylim_changed", _sync_equivalent_flow_axis)
 
     fig.autofmt_xdate()
     fig.tight_layout()
