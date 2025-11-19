@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 src_path = Path(__file__).resolve().parents[1] / "src"
 if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
-from fitting import fit_time_series, fit_spectrum, FitResult
+from fitting import FitResult, _WidthLookup, fit_spectrum, fit_time_series
 try:
     from rmtest.emg_constants import EMG_MIN_TAU as _TAU_MIN
 except ImportError:
@@ -95,6 +95,29 @@ def test_fit_time_series_time_window_config():
 
     assert count_narrow < count_full
     assert res_narrow.params["E_Po214"] < res_full.params["E_Po214"]
+
+
+def test_width_lookup_vectorized_matches_centers():
+    centers = np.array([1.0, 2.0, 3.0], dtype=float)
+    widths = np.array([0.1, 0.2, 0.3], dtype=float)
+    lookup = _WidthLookup(centers, widths)
+    y = np.array([10.0, 20.0, 30.0], dtype=float)
+
+    scaled = lookup.scale(centers, y)
+
+    assert np.allclose(scaled, y * widths)
+
+
+def test_width_lookup_errors_for_non_center():
+    centers = np.array([0.5, 1.5, 2.5], dtype=float)
+    widths = np.array([0.1, 0.2, 0.3], dtype=float)
+    lookup = _WidthLookup(centers, widths)
+
+    with pytest.raises(KeyError, match="not found in bin centers"):
+        lookup.scale(0.0, 1.0)
+
+    with pytest.raises(KeyError, match="configured histogram centers"):
+        lookup.scale(np.array([0.5, 0.75, 1.5]), np.ones(3))
 
 
 def test_analyze_time_fit_respects_efficiency(tmp_path, monkeypatch):
