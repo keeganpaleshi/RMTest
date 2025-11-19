@@ -1623,8 +1623,6 @@ def main(argv=None):
 
     args = parse_args(argv)
 
-    start_warning_capture()
-
     if args.reproduce:
         rep_path = Path(args.reproduce)
         try:
@@ -1903,6 +1901,8 @@ def main(argv=None):
     logging.basicConfig(
         level=numeric_level, format="%(levelname)s:%(name)s:%(message)s"
     )
+
+    start_warning_capture()
 
     seed = cfg.get("pipeline", {}).get("random_seed")
     seed_used = None
