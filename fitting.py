@@ -365,6 +365,42 @@ class FitResult:
         return self._cov_df
 
 
+class _WidthLookup:
+    """Vector-friendly helper to align bin widths with their centers."""
+
+    __slots__ = ("centers", "widths")
+
+    def __init__(self, centers: np.ndarray, widths: np.ndarray) -> None:
+        centers = np.asarray(centers, dtype=float)
+        widths = np.asarray(widths, dtype=float)
+        if centers.shape != widths.shape:
+            raise ValueError("centers and widths must share the same shape")
+        self.centers = centers
+        self.widths = widths
+
+    def scale(self, x, y):
+        """Scale density values ``y`` by the bin widths for ``x``."""
+
+        if np.isscalar(x):
+            key = float(x)
+            idx = int(np.searchsorted(self.centers, key))
+            if idx >= self.centers.size or self.centers[idx] != key:
+                raise KeyError(
+                    f"{x} not found in bin centers; model can only be evaluated at"
+                    " histogram centers"
+                )
+            return y * self.widths[idx]
+
+        x_arr = np.asarray(x)
+        if x_arr.shape == self.centers.shape and np.array_equal(x_arr, self.centers):
+            return y * self.widths
+
+        raise KeyError(
+            "Binned model is defined only for the configured histogram centers; "
+            "pass a scalar center value or the exact centers array"
+        )
+
+
 def fit_decay(times, priors, t0=0.0, t_end=None, flags=None):
     """Simple rate estimator used for unit tests.
 
@@ -510,7 +546,7 @@ def fit_spectrum(
     centers = 0.5 * (edges[:-1] + edges[1:])
     if widths.size != centers.size:
         raise RuntimeError("width and center size mismatch")
-    width_map = dict(zip(centers, widths))
+    width_lookup = _WidthLookup(centers, widths)
     if not unbinned:
         hist, _ = np.histogram(e, bins=edges)
 
@@ -780,19 +816,7 @@ def fit_spectrum(
 
     def _model_binned(x, *params):
         y = _model_density(x, *params)
-        if np.isscalar(x):
-            try:
-                return y * width_map[x]
-            except KeyError as exc:
-                raise KeyError(f"{x} not found in width_map") from exc
-        x = np.asarray(x)
-        out = np.empty_like(x, dtype=float)
-        for i, xi in enumerate(x):
-            try:
-                out[i] = y[i] * width_map[xi]
-            except KeyError as exc:
-                raise KeyError(f"{xi} not found in width_map") from exc
-        return out
+        return width_lookup.scale(x, y)
 
     if not unbinned:
         popt_cf = pcov_cf = None
