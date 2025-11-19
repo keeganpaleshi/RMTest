@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Iterable, Mapping
 
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
 import numpy as np
 
 from plot_utils._time_utils import guard_mpl_times, setup_time_axis
