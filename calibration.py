@@ -223,6 +223,38 @@ def _resolve_tau_bounds(cal_cfg: Mapping[str, object], iso: str) -> tuple[float,
     return lo, hi
 
 
+def _resolve_curve_fit_max_evals(cal_cfg: Mapping[str, object] | None) -> int:
+    """Return the max ``curve_fit`` evaluations requested by the configuration."""
+
+    if not isinstance(cal_cfg, Mapping):
+        return CURVE_FIT_MAX_EVALS
+
+    key_used = None
+    value = None
+    for key in ("curve_fit_max_evaluations", "curve_fit_max_evals"):
+        if cal_cfg.get(key) is not None:
+            key_used = key
+            value = cal_cfg[key]
+            break
+
+    if value is None:
+        return CURVE_FIT_MAX_EVALS
+
+    try:
+        max_evals = int(value)
+    except (TypeError, ValueError) as exc:  # pragma: no cover - safety net
+        raise ValueError(
+            f"calibration.{key_used} must be a positive integer, got {value!r}"
+        ) from exc
+
+    if max_evals <= 0:
+        raise ValueError(
+            f"calibration.{key_used} must be a positive integer, got {value!r}"
+        )
+
+    return max_evals
+
+
 @dataclass(init=False)
 class CalibrationResult:
     """Polynomial calibration coefficients and covariance.
@@ -417,6 +449,7 @@ def fixed_slope_calibration(adc_values, cfg):
     a = cfg["calibration"]["slope_MeV_per_ch"]
 
     cal_cfg = cfg.get("calibration", {})
+    max_curve_fit_evals = _resolve_curve_fit_max_evals(cal_cfg)
     expected = {"Po214": cal_cfg["nominal_adc"]["Po214"]}
     window = cal_cfg.get("peak_search_radius", 50)
     prominence = cal_cfg.get("peak_prominence", 0.0)
@@ -493,7 +526,14 @@ def fixed_slope_calibration(adc_values, cfg):
             [0, mu0 - fit_window, 1e-3, _TAU_MIN],
             [np.inf, mu0 + fit_window, 50.0, 200.0],
         )
-        popt, pcov = curve_fit(model_emg, x_slice, y_slice, p0=p0, bounds=bounds)
+        popt, pcov = curve_fit(
+            model_emg,
+            x_slice,
+            y_slice,
+            p0=p0,
+            bounds=bounds,
+            maxfev=max_curve_fit_evals,
+        )
         A_fit, mu_fit, sigma_fit, tau_fit = popt
     else:
         def model_gauss(x, A, mu, sigma):
@@ -501,7 +541,14 @@ def fixed_slope_calibration(adc_values, cfg):
 
         p0 = [amp0, mu0, sigma0]
         bounds = ([0, mu0 - fit_window, 1e-3], [np.inf, mu0 + fit_window, 50.0])
-        popt, pcov = curve_fit(model_gauss, x_slice, y_slice, p0=p0, bounds=bounds)
+        popt, pcov = curve_fit(
+            model_gauss,
+            x_slice,
+            y_slice,
+            p0=p0,
+            bounds=bounds,
+            maxfev=max_curve_fit_evals,
+        )
         A_fit, mu_fit, sigma_fit = popt
         tau_fit = 0.0
 
@@ -596,21 +643,24 @@ def calibrate_run(adc_values, config, hist_bins=None):
     # 2) Peak‐finding with SciPy:
     #    We look for up to 5 peaks (Po-210, Po-218, Po-214, maybe background bumps).
     #    Use config thresholds for prominence & width.
-    prom = config["calibration"]["peak_prominence"]
-    width_cfg = config["calibration"].get("peak_widths") or {}
-    wid_global = config["calibration"].get("peak_width")
+    cal_cfg = config.get("calibration", {})
+    max_curve_fit_evals = _resolve_curve_fit_max_evals(cal_cfg)
+
+    prom = cal_cfg["peak_prominence"]
+    width_cfg = cal_cfg.get("peak_widths") or {}
+    wid_global = cal_cfg.get("peak_width")
     peaks, props = find_peaks(hist, prominence=prom, width=wid_global)
 
     # 3) From the found peaks, pick the three that best match expected energies:
     #    Convert expected energy->ADC guess via last calibration or central ADC->MeV mapping if available.
     #    For the first run, use rough nominal ADC guesses from config:
     # e.g. {"Po210": 800, "Po218": 900, "Po214": 1200}
-    nominal_adc = config["calibration"]["nominal_adc"]
+    nominal_adc = cal_cfg["nominal_adc"]
 
     # Build a dictionary: { isotope : list of candidate indices within +/- radius }
     # radius (in ADC channels) to match found peaks to nominal guesses
     # 2024-03: renamed from ``peak_search_radius_adc`` to ``peak_search_radius``
-    radius = config["calibration"]["peak_search_radius"]
+    radius = cal_cfg["peak_search_radius"]
     candidates = {iso: [] for iso in ("Po210", "Po218", "Po214")}
     peak_widths_found = props.get("widths", np.zeros_like(peaks))
     for iso, adc_guess in nominal_adc.items():
@@ -635,8 +685,8 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
     # 4) For each chosen peak, perform a local fit with EMG or Gaussian:
     peak_fits = {}
-    window = config["calibration"]["fit_window_adc"]  # e.g. +/-50 ADC channels
-    use_emg = config["calibration"]["use_emg"]  # True/False
+    window = cal_cfg["fit_window_adc"]  # e.g. +/-50 ADC channels
+    use_emg = cal_cfg["use_emg"]  # True/False
     for iso, idx_center in chosen_idx.items():
         x0 = centers[idx_center]
         lo = x0 - window
@@ -653,23 +703,23 @@ def calibrate_run(adc_values, config, hist_bins=None):
         # Initial guesses:
         amp0 = float(np.max(y_slice))
         mu0 = float(x0)
-        sigma_cfg = config["calibration"].get("init_sigma_adc", 10.0)
+        sigma_cfg = cal_cfg.get("init_sigma_adc", 10.0)
         if isinstance(sigma_cfg, Mapping):
             sigma0 = sigma_cfg.get(iso, sigma_cfg.get("default", 10.0))
         else:
             sigma0 = sigma_cfg
 
-        sigma_E_cfg = config["calibration"].get("sigma_E_init")
+        sigma_E_cfg = cal_cfg.get("sigma_E_init")
         if sigma_E_cfg is not None:
             if isinstance(sigma_E_cfg, Mapping):
                 sigma_E_guess = sigma_E_cfg.get(iso, sigma_E_cfg.get("default"))
             else:
                 sigma_E_guess = sigma_E_cfg
-            slope_guess = config["calibration"].get("slope_MeV_per_ch")
+            slope_guess = cal_cfg.get("slope_MeV_per_ch")
             if slope_guess:
                 sigma0 = sigma_E_guess / slope_guess
 
-        tau_cfg = config["calibration"].get("init_tau_adc", 0.0)
+        tau_cfg = cal_cfg.get("init_tau_adc", 0.0)
         # Avoid zero or negative starting tau which can cause numerical issues
         tau0 = max(tau_cfg, _TAU_MIN) if use_emg else 0.0
 
@@ -679,7 +729,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
                 return A * emg_left(x, mu, sigma, tau)
 
             p0 = [amp0, mu0, sigma0, tau0]
-            tau_lo, tau_hi = _resolve_tau_bounds(config["calibration"], iso)
+            tau_lo, tau_hi = _resolve_tau_bounds(cal_cfg, iso)
             bounds = (
                 [0, mu0 - window, 1e-3, tau_lo],  # lower bounds
                 [np.inf, mu0 + window, 50.0, tau_hi],  # upper bounds (tunable)
@@ -690,7 +740,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
                 y_slice,
                 p0=p0,
                 bounds=bounds,
-                maxfev=CURVE_FIT_MAX_EVALS,
+                maxfev=max_curve_fit_evals,
             )
             A_fit, mu_fit, sigma_fit, tau_fit = popt
             peak_fits[iso] = {
@@ -713,7 +763,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
                 y_slice,
                 p0=p0,
                 bounds=bounds,
-                maxfev=CURVE_FIT_MAX_EVALS,
+                maxfev=max_curve_fit_evals,
             )
             A_fit, mu_fit, sigma_fit = popt
             peak_fits[iso] = {

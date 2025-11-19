@@ -210,6 +210,12 @@ peak energies must be to their known values.  The default of `0.5` MeV
 causes calibration to fail when any Po‑210, Po‑218 or Po‑214 centroid
 deviates by more than this amount.
 
+`curve_fit_max_evaluations` limits the number of function evaluations used
+by the per-peak SciPy `curve_fit` calls.  Increase it when especially broad
+or noisy peaks require more iterations; decrease it to fail fast when data
+quality is poor.  The default matches the historic hard-coded value of
+`10000` iterations.
+
 
 sigma_E_init — optional initial guess for the peak energy resolution (MeV).
 When present it is converted to an ADC width with the fixed calibration slope

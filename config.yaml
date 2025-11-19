@@ -62,6 +62,7 @@ calibration:
     Po218: 1399
     Po214: 1802
   fit_window_adc: 40
+  curve_fit_max_evaluations: 10000
   use_emg: true
   init_sigma_adc: 10.0
   sigma_E_init: null

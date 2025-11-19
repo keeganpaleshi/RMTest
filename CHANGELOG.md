@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 
 - New `spectral_fit.clip_floor` configuration parameter to control the minimum density floor for numerical stability (default: `1e-300`, valid range: `(0, 1e-6]`)
 - Added `clip_floor` to example YAML configurations for better discoverability
+- Added `calibration.curve_fit_max_evaluations` to control the SciPy `curve_fit` iteration limit used for Po-210/Po-218/Po-214 peak fits.
 
 ### Changed
 
