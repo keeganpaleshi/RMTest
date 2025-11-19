@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Iterable, Mapping
 
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
 import numpy as np
 
 from plot_utils._time_utils import guard_mpl_times, setup_time_axis
@@ -108,7 +109,7 @@ def plot_rn_inferred_vs_time(radon_results: Mapping[str, object], out_dir: Path)
     fig, ax = plt.subplots(figsize=(8, 5))
     times_mpl = guard_mpl_times(times=times)
     label = _legend_label(radon_results.get("meta"))
-    ax.plot(times_mpl, values, marker="o", linestyle="-", label=label)
+    ax.plot(times_mpl, values, marker="o", linestyle="None", label=label)
     ax.set_ylabel("Rn222 activity [Bq]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
@@ -162,7 +163,7 @@ def plot_ambient_rn_vs_time(radon_results: Mapping[str, object], out_dir: Path) 
 
     fig, ax = plt.subplots(figsize=(8, 5))
     times_mpl = guard_mpl_times(times=times)
-    ax.plot(times_mpl, values, marker="o", linestyle="-", color="#1f77b4")
+    ax.plot(times_mpl, values, marker="o", linestyle="None", color="#1f77b4")
     ax.set_ylabel("Ambient radon [Bq/m³]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
@@ -218,20 +219,48 @@ def plot_volume_equiv_vs_time(
     times_mpl = guard_mpl_times(times=times)
 
     fig, ax1 = plt.subplots(figsize=(8, 5))
-    ax1.plot(times_mpl, volumes_m3, marker="o", linestyle="-", color="#2ca02c")
+    ax1.plot(times_mpl, volumes_m3, marker="o", linestyle="None", color="#2ca02c")
     ax1.set_ylabel(f"Equivalent volume [{volume_units}]")
     ax1.set_xlabel("Time (UTC)")
     ax1.ticklabel_format(axis="y", style="plain")
     setup_time_axis(ax1, times_mpl)
     ax1.yaxis.get_offset_text().set_visible(False)
 
+    # If equivalent flow data is present, reuse the same data points and simply
+    # expose a secondary axis so users can read the L/min values directly from
+    # the original scatter plot.
+    scale_factor: float | None = None
     if volumes_lpm:
+        paired_len = min(len(volumes_lpm), len(volumes_m3))
+        if paired_len:
+            m3_arr = np.asarray(volumes_m3[:paired_len], dtype=float)
+            lpm_arr = np.asarray(volumes_lpm[:paired_len], dtype=float)
+            nonzero_mask = (m3_arr != 0) & np.isfinite(m3_arr) & np.isfinite(lpm_arr)
+            if np.any(nonzero_mask):
+                ratios = lpm_arr[nonzero_mask] / m3_arr[nonzero_mask]
+                reference = ratios[0]
+                if np.allclose(ratios, reference, rtol=1e-6, atol=1e-9):
+                    scale_factor = float(reference)
+                else:
+                    logger.info(
+                        "Skipping equivalent flow axis because the m³ to L/min scale is not constant",
+                    )
+            else:
+                logger.info("Skipping equivalent flow axis because no finite non-zero m³ values were found")
+
+    if scale_factor is not None:
         ax2 = ax1.twinx()
-        ax2.plot(times_mpl, volumes_lpm, marker="x", linestyle="--", color="#ff7f0e")
         ax2.set_ylabel("Equivalent flow [L/min]")
         ax2.ticklabel_format(axis="y", style="plain")
         ax2.yaxis.get_offset_text().set_visible(False)
         ax2.grid(False)
+
+        def _sync_equivalent_flow_axis(ax: Axes) -> None:
+            y_low, y_high = ax.get_ylim()
+            ax2.set_ylim(y_low * scale_factor, y_high * scale_factor)
+
+        _sync_equivalent_flow_axis(ax1)
+        ax1.callbacks.connect("ylim_changed", _sync_equivalent_flow_axis)
 
     fig.autofmt_xdate()
     fig.tight_layout()
@@ -245,7 +274,7 @@ def plot_volume_equiv_vs_time(
         if cum_times and cum_values:
             fig_cum, ax_cum = plt.subplots(figsize=(8, 5))
             times_mpl_cum = guard_mpl_times(times=cum_times)
-            ax_cum.plot(times_mpl_cum, cum_values, marker="o", linestyle="-", color="#9467bd")
+            ax_cum.plot(times_mpl_cum, cum_values, marker="o", linestyle="None", color="#9467bd")
             ax_cum.set_ylabel(f"Cumulative volume [{volume_units}]")
             ax_cum.set_xlabel("Time (UTC)")
             ax_cum.ticklabel_format(axis="y", style="plain")
