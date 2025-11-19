@@ -11,6 +11,7 @@ from constants import (
     DEFAULT_NOISE_CUTOFF,
     DEFAULT_NOMINAL_ADC,
     DEFAULT_KNOWN_ENERGIES,
+    CURVE_FIT_MAX_EVALS,
     safe_exp as _safe_exp,
 )
 try:
@@ -683,7 +684,14 @@ def calibrate_run(adc_values, config, hist_bins=None):
                 [0, mu0 - window, 1e-3, tau_lo],  # lower bounds
                 [np.inf, mu0 + window, 50.0, tau_hi],  # upper bounds (tunable)
             )
-            popt, pcov = curve_fit(model_emg, x_slice, y_slice, p0=p0, bounds=bounds)
+            popt, pcov = curve_fit(
+                model_emg,
+                x_slice,
+                y_slice,
+                p0=p0,
+                bounds=bounds,
+                maxfev=CURVE_FIT_MAX_EVALS,
+            )
             A_fit, mu_fit, sigma_fit, tau_fit = popt
             peak_fits[iso] = {
                 "centroid_adc": float(mu_fit),
@@ -699,7 +707,14 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
             p0 = [amp0, mu0, sigma0]
             bounds = ([0, mu0 - window, 1e-3], [np.inf, mu0 + window, 50.0])
-            popt, pcov = curve_fit(model_gauss, x_slice, y_slice, p0=p0, bounds=bounds)
+            popt, pcov = curve_fit(
+                model_gauss,
+                x_slice,
+                y_slice,
+                p0=p0,
+                bounds=bounds,
+                maxfev=CURVE_FIT_MAX_EVALS,
+            )
             A_fit, mu_fit, sigma_fit = popt
             peak_fits[iso] = {
                 "centroid_adc": float(mu_fit),
