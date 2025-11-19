@@ -689,14 +689,20 @@ def load_events(csv_path, *, start=None, end=None, column_map=None):
 
     # Parse timestamps directly to timezone-aware ``Timestamp`` values
     if "timestamp" in df.columns:
+        ts_raw = df["timestamp"]
 
-        def _safe_parse(val):
-            try:
-                return parse_timestamp(val)
-            except Exception:
-                return pd.NaT
+        # Fast path for numeric epoch seconds (either native numbers or strings)
+        ts_numeric = pd.to_numeric(ts_raw, errors="coerce")
+        parsed = pd.to_datetime(ts_numeric, unit="s", utc=True, errors="coerce")
 
-        df["timestamp"] = df["timestamp"].map(_safe_parse)
+        # ``pd.to_datetime`` with ``utc=True`` already handles naive or
+        # timezone-aware ISO strings. Only fall back to that slower parser for
+        # the subset of rows that were not numeric to begin with.
+        mask = ts_numeric.isna()
+        if mask.any():
+            parsed.loc[mask] = pd.to_datetime(ts_raw.loc[mask], utc=True, errors="coerce")
+
+        df["timestamp"] = parsed
 
     # Check required columns after renaming
     required_cols = ["fUniqueID", "fBits", "timestamp", "adc", "fchannel"]
