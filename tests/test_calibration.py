@@ -439,6 +439,25 @@ def _synth_adc_sample(seed: int) -> np.ndarray:
     )
 
 
+def test_calibration_uses_configured_curve_fit_evals(monkeypatch):
+    adc = _synth_adc_sample(12)
+    cfg = _synth_emg_calibration_cfg()
+    cfg["calibration"]["curve_fit_max_evaluations"] = 1234
+
+    recorded = []
+
+    def fake_curve_fit(func, xdata, ydata, p0=None, bounds=(-np.inf, np.inf), **kwargs):
+        recorded.append(kwargs.get("maxfev"))
+        return np.asarray(p0), np.eye(len(p0))
+
+    monkeypatch.setattr(calib_mod, "curve_fit", fake_curve_fit)
+
+    derive_calibration_constants(adc, cfg)
+
+    assert recorded  # ensure the fake was exercised
+    assert all(val == 1234 for val in recorded)
+
+
 def test_calibration_tau_bounds_defaults(monkeypatch):
     adc = _synth_adc_sample(10)
     cfg = _synth_emg_calibration_cfg()
