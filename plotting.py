@@ -62,7 +62,7 @@ def plot_radon_trend(ts, outdir):
         return
     fig, ax = plt.subplots()
     times_mpl = guard_mpl_times(times=times)
-    ax.plot(times_mpl, activity, "o-")
+    ax.plot(times_mpl, activity, "o")
     ax.set_ylabel("Radon activity [Bq]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
