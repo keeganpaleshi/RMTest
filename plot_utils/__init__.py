@@ -576,7 +576,7 @@ def plot_time_series(
 
             if style == "lines":
                 err_kwargs = {
-                    "fmt": "o-",
+                    "fmt": "o",
                     "color": color,
                     "capsize": 3,
                     "elinewidth": 1,
@@ -1338,7 +1338,7 @@ def plot_radon_trend_full(times, activity, out_png, config=None, *, fit_valid=Tr
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("radon_activity", "#9467bd")
-    ax.plot(times_mpl, activity, "o-", color=color)
+    ax.plot(times_mpl, activity, "o", color=color)
     ax.set_xlabel("Time (UTC)")
     ax.set_ylabel("Radon Concentration (Bq/L)")
     ax.set_title("Radon Concentration Trend")
