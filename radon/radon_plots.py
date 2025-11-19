@@ -108,7 +108,7 @@ def plot_rn_inferred_vs_time(radon_results: Mapping[str, object], out_dir: Path)
     fig, ax = plt.subplots(figsize=(8, 5))
     times_mpl = guard_mpl_times(times=times)
     label = _legend_label(radon_results.get("meta"))
-    ax.plot(times_mpl, values, marker="o", linestyle="-", label=label)
+    ax.plot(times_mpl, values, marker="o", linestyle="None", label=label)
     ax.set_ylabel("Rn222 activity [Bq]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
@@ -162,7 +162,7 @@ def plot_ambient_rn_vs_time(radon_results: Mapping[str, object], out_dir: Path) 
 
     fig, ax = plt.subplots(figsize=(8, 5))
     times_mpl = guard_mpl_times(times=times)
-    ax.plot(times_mpl, values, marker="o", linestyle="-", color="#1f77b4")
+    ax.plot(times_mpl, values, marker="o", linestyle="None", color="#1f77b4")
     ax.set_ylabel("Ambient radon [Bq/m³]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
@@ -218,25 +218,36 @@ def plot_volume_equiv_vs_time(
     times_mpl = guard_mpl_times(times=times)
 
     fig, ax1 = plt.subplots(figsize=(8, 5))
-    ax1.plot(times_mpl, volumes_m3, marker="o", linestyle="-", color="#2ca02c")
+    ax1.plot(times_mpl, volumes_m3, marker="o", linestyle="None", color="#2ca02c")
     ax1.set_ylabel(f"Equivalent volume [{volume_units}]")
     ax1.set_xlabel("Time (UTC)")
     ax1.ticklabel_format(axis="y", style="plain")
     setup_time_axis(ax1, times_mpl)
     ax1.yaxis.get_offset_text().set_visible(False)
 
-    if volumes_lpm:
-        ax2 = ax1.twinx()
-        ax2.plot(times_mpl, volumes_lpm, marker="x", linestyle="--", color="#ff7f0e")
-        ax2.set_ylabel("Equivalent flow [L/min]")
-        ax2.ticklabel_format(axis="y", style="plain")
-        ax2.yaxis.get_offset_text().set_visible(False)
-        ax2.grid(False)
-
     fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(out_dir / "equivalent_volume.png", dpi=300)
     plt.close(fig)
+
+    if volumes_lpm:
+        paired_len = min(len(times_mpl), len(volumes_lpm))
+        if paired_len == 0:
+            logger.info("Equivalent flow data present but no overlapping timestamps; skipping flow plot")
+        else:
+            times_flow = times_mpl[:paired_len]
+            volumes_flow = volumes_lpm[:paired_len]
+            fig_flow, ax_flow = plt.subplots(figsize=(8, 5))
+            ax_flow.plot(times_flow, volumes_flow, marker="o", linestyle="None", color="#ff7f0e")
+            ax_flow.set_ylabel("Equivalent flow [L/min]")
+            ax_flow.set_xlabel("Time (UTC)")
+            ax_flow.ticklabel_format(axis="y", style="plain")
+            setup_time_axis(ax_flow, times_flow)
+            ax_flow.yaxis.get_offset_text().set_visible(False)
+            fig_flow.autofmt_xdate()
+            fig_flow.tight_layout()
+            fig_flow.savefig(out_dir / "equivalent_flow.png", dpi=300)
+            plt.close(fig_flow)
 
     # Only create cumulative plot if data is present
     cumulative_series = radon_results.get("volume_cumulative")
@@ -245,7 +256,7 @@ def plot_volume_equiv_vs_time(
         if cum_times and cum_values:
             fig_cum, ax_cum = plt.subplots(figsize=(8, 5))
             times_mpl_cum = guard_mpl_times(times=cum_times)
-            ax_cum.plot(times_mpl_cum, cum_values, marker="o", linestyle="-", color="#9467bd")
+            ax_cum.plot(times_mpl_cum, cum_values, marker="o", linestyle="None", color="#9467bd")
             ax_cum.set_ylabel(f"Cumulative volume [{volume_units}]")
             ax_cum.set_xlabel("Time (UTC)")
             ax_cum.ticklabel_format(axis="y", style="plain")
