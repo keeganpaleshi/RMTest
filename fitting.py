@@ -884,7 +884,9 @@ def fit_spectrum(
         else:
             def _nll(*params):
                 raw_map = _build_raw_param_map(params)
-                return neg_loglike(e, _intensity_fn, raw_map)
+                physical = _physical_params(raw_map)
+                lam = spectral_intensity(e, physical, domain)
+                return float(-np.sum(np.log(lam)))
 
         m = Minuit(_nll, *p0, name=param_order)
         m.errordef = Minuit.LIKELIHOOD
@@ -954,6 +956,7 @@ def fit_spectrum(
             out["F"] = F_val
             out["dF"] = 0.0
         k = len(param_order)
+        out["nll"] = float(m.fval)
         out["aic"] = float(2 * m.fval + 2 * k)
         out["likelihood_path"] = likelihood_path
         out = _finalize_signal_params(out)
