@@ -8,7 +8,7 @@ allow_negative_baseline: false
 
 pipeline:
   log_level: INFO
-  random_seed: null
+  random_seed: 67
 analysis:
   analysis_start_time: '2023-06-14T00:00:00Z'
   analysis_end_time: '2025-02-23T23:59:59Z'
@@ -22,8 +22,8 @@ analysis:
   - - '2024-01-05T00:00:00Z'
     - '2024-01-10T23:59:59Z'
   radon_interval:
-  - '2024-01-05T06:00:00Z'
-  - '2024-01-06T18:00:00Z'
+  - '2023-06-14T00:00:00Z'
+  - '2025-02-23T23:59:59Z'
   ambient_concentration: null
 columns:
   timestamp: timestamps
