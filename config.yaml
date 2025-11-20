@@ -25,7 +25,7 @@ baseline:
   - '2024-09-28T00:00:00Z'
   - '2024-10-28T23:59:59Z'
   monitor_volume_l: 605.0
-  sample_volume_l: 10.0
+  sample_volume_l: 4196.0
   isotopes_to_subtract:
   - noise
 burst_filter:
@@ -102,7 +102,7 @@ spectral_fit:
     Po218: true
     Po214: true
   max_tau_ratio: 0.75
-  float_sigma_E: true
+  float_sigma_E: false
   peak_search_prominence: 30
   peak_search_width_adc: 3
   peak_search_method: prominence
@@ -175,14 +175,14 @@ radon_inference:
     Po214: 0.7
     Po218: 0.3
   detection_efficiency:
-    Po214: 0.12
-    Po218: 0.1
+    Po214: 0.19
+    Po218: 0.094
   transport_efficiency: 1.0
   retention_efficiency: 1.0
   chain_correction: none  # allowed: none, assume_equilibrium, forward_model
   external_rn:
     mode: constant  # allowed: constant, file
-    constant_bq_per_m3: 80.0
+    constant_bq_per_m3: 120.0
     file_path: mine_rn_timeseries.csv
     time_column: timestamp
     value_column: rn_bq_per_m3

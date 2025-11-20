@@ -37,14 +37,14 @@ radon_inference:
     Po214: 0.7
     Po218: 0.3
   detection_efficiency:
-    Po214: 0.12
-    Po218: 0.10
+    Po214: 0.19
+    Po218: 0.094
   transport_efficiency: 1.0
   retention_efficiency: 1.0
   chain_correction: none
   external_rn:
     mode: constant
-    constant_bq_per_m3: 80.0
+    constant_bq_per_m3: 120.0
 ```
 
 Set `mode: file` inside `external_rn` to point at a CSV with `timestamp` and

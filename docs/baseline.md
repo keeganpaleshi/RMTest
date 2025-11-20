@@ -65,7 +65,7 @@ baseline:
   b1_prior: [0.0, 0.1]
   range: ['2024-01-05T00:00:00Z', '2024-01-05T12:00:00Z']
   monitor_volume_l: 605.0
-  sample_volume_l: 10.0
+  sample_volume_l: 4196.0
   isotopes_to_subtract:
     - noise
 ```
