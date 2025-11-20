@@ -353,9 +353,9 @@ to `null`, the analysis uses the full available data without imposing time
 limits.
 
 `ambient_concentration` may also be specified here to record the ambient
-radon concentration in Bq/L used for the equivalent air plot.  The
-command-line option `--ambient-concentration` overrides this value.  The
-default configuration sets this key to `null`.  The template
+radon concentration in Bq/L (converted internally to Bq/m³) used for the
+equivalent air plot.  The command-line option `--ambient-concentration`
+overrides this value.  The default configuration sets this key to `null`.  The template
 `config.yaml` therefore includes
 ```yaml
 "ambient_concentration": null
@@ -396,9 +396,9 @@ When present the value is also written to `summary.json` under the
 `--ambient-file` may be supplied instead to account for a
 time-dependent background.  The option expects a two-column text file
 containing absolute timestamps (in seconds) and the corresponding
-ambient concentration in Bq/L.  These values are linearly interpolated
-to the radon-activity timestamps and override any constant value when
-calling `plot_equivalent_air`.
+ambient concentration in Bq/L.  These values are linearly interpolated,
+scaled by 1000 to Bq/m³ and override any constant value when calling
+`plot_equivalent_air`.
 
 `burst_filter` controls removal of short high-rate clusters.  The
 `burst_mode` key selects the default strategy which can be overridden by

@@ -666,6 +666,15 @@ def _safe_float(value: Any) -> float | None:
     return coerced
 
 
+def _ambient_to_bq_per_m3(value: Any) -> float | None:
+    """Convert an ambient concentration provided in Bq/L to Bq/m³."""
+
+    coerced = _safe_float(value)
+    if coerced is None:
+        return None
+    return coerced * 1000.0
+
+
 def _float_with_default(value: Any, default: float) -> float:
     """Return ``value`` as ``float`` or ``default`` when coercion fails."""
 
@@ -1582,12 +1591,19 @@ def parse_args(argv=None):
     )
     p.add_argument(
         "--ambient-file",
-        help=("Two-column text file of timestamp and ambient concentration in Bq/L"),
+        help=(
+            "Two-column text file of timestamp and ambient concentration in Bq/L "
+            "(converted internally to Bq/m³)"
+        ),
     )
     p.add_argument(
         "--ambient-concentration",
         type=float,
-        help="Ambient radon concentration in Bq per liter for equivalent air plot. Providing this option overrides `analysis.ambient_concentration` in config.yaml",
+        help=(
+            "Ambient radon concentration in Bq per liter (scaled to Bq/m³) for "
+            "equivalent air plot. Providing this option overrides "
+            "`analysis.ambient_concentration` in config.yaml"
+        ),
     )
     p.add_argument(
         "--seed",
@@ -1730,6 +1746,16 @@ def main(argv=None):
             logger.error("Could not load config '%s': %s", args.config, e)
             sys.exit(1)
 
+    analysis_cfg = cfg.get("analysis") if isinstance(cfg, Mapping) else None
+    if isinstance(analysis_cfg, Mapping):
+        converted_ambient = _ambient_to_bq_per_m3(
+            analysis_cfg.get("ambient_concentration")
+        )
+        if converted_ambient is not None:
+            analysis_cfg = dict(analysis_cfg)
+            analysis_cfg["ambient_concentration"] = converted_ambient
+            cfg["analysis"] = analysis_cfg
+
     def _log_override(section, key, new_val):
         prev = cfg.get(section, {}).get(key)
         if prev is not None and prev != new_val:
@@ -1765,14 +1791,19 @@ def main(argv=None):
         cfg.setdefault("pipeline", {})["random_seed"] = int(args.seed)
 
     if args.ambient_concentration is not None:
-        _log_override(
-            "analysis",
-            "ambient_concentration",
-            float(args.ambient_concentration),
-        )
-        cfg.setdefault("analysis", {})["ambient_concentration"] = float(
-            args.ambient_concentration
-        )
+        ambient_cli = _ambient_to_bq_per_m3(args.ambient_concentration)
+        if ambient_cli is None:
+            logger.warning(
+                "Ignoring ambient concentration override %r; could not convert to float",
+                args.ambient_concentration,
+            )
+        else:
+            _log_override(
+                "analysis",
+                "ambient_concentration",
+                ambient_cli,
+            )
+            cfg.setdefault("analysis", {})["ambient_concentration"] = ambient_cli
 
     if args.analysis_end_time is not None:
         _log_override("analysis", "analysis_end_time", args.analysis_end_time)
@@ -4899,19 +4930,21 @@ def main(argv=None):
                 )
 
         ambient = cfg.get("analysis", {}).get("ambient_concentration")
-        ambient_interp = None
+        ambient_interp_m3 = None
         if args.ambient_file:
             try:
                 dat = np.loadtxt(args.ambient_file, usecols=(0, 1))
-                ambient_interp = np.interp(activity_times, dat[:, 0], dat[:, 1])
+                ambient_interp_m3 = (
+                    np.interp(activity_times, dat[:, 0], dat[:, 1]) * 1000.0
+                )
             except Exception as e:
                 logger.warning(
                     "Could not read ambient file '%s': %s", args.ambient_file, e
                 )
 
-        if ambient_interp is not None:
-            vol_arr = activity_arr / ambient_interp
-            vol_err = err_arr / ambient_interp
+        if ambient_interp_m3 is not None:
+            vol_arr = activity_arr / ambient_interp_m3
+            vol_err = err_arr / ambient_interp_m3
             plot_equivalent_air(
                 activity_times,
                 vol_arr,
@@ -4923,8 +4956,8 @@ def main(argv=None):
             if A214 is not None:
                 plot_equivalent_air(
                     time_grid,
-                    A214 / ambient_interp,
-                    dA214 / ambient_interp,
+                    A214 / ambient_interp_m3,
+                    dA214 / ambient_interp_m3,
                     None,
                     Path(out_dir) / "equivalent_air_po214.png",
                     config=cfg.get("plotting", {}),

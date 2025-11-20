@@ -1263,7 +1263,7 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
     if conc is None:
         title = "Equivalent Air Volume vs. Time"
     else:
-        title = f"Equivalent Air Volume vs. Time (ambient {conc} Bq/L)"
+        title = f"Equivalent Air Volume vs. Time (ambient {conc} Bq/m³)"
     ax.set_title(title)
 
     setup_time_axis(ax, times_mpl)
