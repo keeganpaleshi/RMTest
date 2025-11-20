@@ -211,6 +211,8 @@ Key toggles in ``config.yaml`` include:
 - ``time_fit.do_time_fit`` - run time-series fits
 - ``systematics.enable`` - evaluate systematic uncertainties
 - ``plotting.plot_save_formats`` - image formats to write
+- ``plotting.save_individual_time_series_plots`` - when overlaying isotopes, also
+  emit per-isotope time-series plots alongside the combined view
 - ``burst_filter.burst_mode`` - method for burst rejection
 
 `nominal_adc` under the `calibration` section sets the expected raw ADC

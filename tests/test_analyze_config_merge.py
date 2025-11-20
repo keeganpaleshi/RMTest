@@ -106,6 +106,85 @@ def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
     assert received["config"]["overlay_isotopes"] is True
 
 
+def test_overlay_time_series_saves_individual(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "calibration": {},
+        "spectral_fit": {
+            "do_spectral_fit": False,
+            "expected_peaks": {"Po210": 1250, "Po218": 1400, "Po214": 1800},
+        },
+        "time_fit": {
+            "do_time_fit": True,
+            "window_po214": [7.5, 8.0],
+            "hl_po214": [1.0, 0.0],
+            "eff_po214": [1.0, 0.0],
+            "flags": {},
+        },
+        "systematics": {"enable": False},
+        "plotting": {
+            "plot_time_binning_mode": "fd",
+            "plot_save_formats": ["png"],
+            "overlay_isotopes": True,
+            "save_individual_time_series_plots": True,
+        },
+    }
+    cfg_path = tmp_path / "cfg.yaml"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    df = pd.DataFrame(
+        {
+            "fUniqueID": [1],
+            "fBits": [0],
+            "timestamp": [pd.Timestamp(1000, unit="s", tz="UTC")],
+            "adc": [7600],
+            "fchannel": [1],
+        }
+    )
+    data_path = tmp_path / "data.csv"
+    df.to_csv(data_path, index=False)
+
+    cal_mock = CalibrationResult(
+        coeffs=[0.0, 1.0],
+        cov=np.zeros((2, 2)),
+        peaks={},
+        sigma_E=1.0,
+        sigma_E_error=0.0,
+    )
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_mock)
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_mock)
+    monkeypatch.setattr(analyze, "fit_time_series", lambda *a, **k: FitResult(FitParams({}), np.zeros((0, 0)), 0))
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda *a, **k: None)
+    monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
+
+    outputs: list[Path] = []
+
+    def fake_plot_time_series(*args, **kwargs):
+        out = Path(kwargs["out_png"])
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.touch()
+        outputs.append(out)
+        return None
+
+    monkeypatch.setattr(analyze, "plot_time_series", fake_plot_time_series)
+
+    args = [
+        "analyze.py",
+        "--config",
+        str(cfg_path),
+        "--input",
+        str(data_path),
+        "--output_dir",
+        str(tmp_path),
+    ]
+    monkeypatch.setattr(sys, "argv", args)
+    analyze.main()
+
+    assert any(path.name.endswith("time_series_Po214_individual.png") for path in outputs)
+    assert any(path.name.endswith("time_series_Po214.png") for path in outputs)
+
 def test_analysis_start_time_applied(tmp_path, monkeypatch):
     cfg = {
         "pipeline": {"log_level": "INFO"},
