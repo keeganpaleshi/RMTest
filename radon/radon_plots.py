@@ -283,6 +283,26 @@ def plot_volume_equiv_vs_time(
             fig_cum.tight_layout()
             fig_cum.savefig(out_dir / "equivalent_volume_cumulative.png", dpi=300)
             plt.close(fig_cum)
+
+            # Also provide a liters-per-interval cumulative view
+            cum_values_liters = [val * 1000.0 for val in cum_values]
+            fig_cum_l, ax_cum_l = plt.subplots(figsize=(8, 5))
+            ax_cum_l.plot(
+                times_mpl_cum,
+                cum_values_liters,
+                marker="o",
+                linestyle="None",
+                color="#8c564b",
+            )
+            ax_cum_l.set_ylabel("Cumulative volume [L per interval]")
+            ax_cum_l.set_xlabel("Time (UTC)")
+            ax_cum_l.ticklabel_format(axis="y", style="plain")
+            setup_time_axis(ax_cum_l, times_mpl_cum)
+            fig_cum_l.autofmt_xdate()
+            ax_cum_l.yaxis.get_offset_text().set_visible(False)
+            fig_cum_l.tight_layout()
+            fig_cum_l.savefig(out_dir / "equivalent_volume_cumulative_liters.png", dpi=300)
+            plt.close(fig_cum_l)
         else:
             logger.info("No valid cumulative volume data for plotting")
     else:
