@@ -1,6 +1,7 @@
 import numpy as np
 from dataclasses import dataclass
 from collections.abc import Sequence, Mapping
+import logging
 from copy import deepcopy
 import warnings
 from scipy.signal import find_peaks
@@ -23,6 +24,8 @@ import constants as _constants_module
 from emg_stable import StableEMG, emg_left_stable
 
 _USE_STABLE_EMG_DEFAULT = True
+
+logger = logging.getLogger(__name__)
 
 
 _EMG_MODE_ALIASES = {
@@ -268,6 +271,7 @@ class CalibrationResult:
     peaks: dict | None = None
     sigma_E: float = 0.0
     sigma_E_error: float = 0.0
+    status: Mapping[str, str] | None = None
 
     def __init__(
         self,
@@ -277,6 +281,7 @@ class CalibrationResult:
         peaks=None,
         sigma_E=0.0,
         sigma_E_error=0.0,
+        status=None,
         covariance=None,
     ):
         if covariance is not None:
@@ -291,6 +296,7 @@ class CalibrationResult:
         self.peaks = peaks
         self.sigma_E = sigma_E
         self.sigma_E_error = sigma_E_error
+        self.status = status
         self.__post_init__()
 
     def __post_init__(self):
@@ -427,7 +433,7 @@ def two_point_calibration(adc_centroids, energies):
     return float(a), float(c)
 
 
-def fixed_slope_calibration(adc_values, cfg):
+def fixed_slope_calibration(adc_values, cfg, *, status=None):
     """Return calibration constants when the slope is fixed.
 
     Parameters
@@ -583,6 +589,7 @@ def fixed_slope_calibration(adc_values, cfg):
         peaks={"Po214": peak_info},
         sigma_E=float(sigma_E),
         sigma_E_error=dsigma_E,
+        status=status,
     )
     return result
 
@@ -605,6 +612,25 @@ def apply_calibration(adc_values, slope, intercept, quadratic_coeff=0.0):
 
     adc_arr = np.asarray(adc_values, dtype=float)
     return quadratic_coeff * adc_arr**2 + slope * adc_arr + intercept
+
+
+def _fallback_to_fixed_slope(adc_values, config, exc, warning_message=None):
+    if warning_message is not None:
+        warnings.warn(warning_message, RuntimeWarning)
+
+    logger.exception(
+        "Calibration failed with configured slope; using fixed-slope fallback (cause: %s)",
+        exc,
+        exc_info=exc,
+    )
+
+    cfg_fallback = deepcopy(config)
+    cfg_fallback.setdefault("calibration", {})
+    cfg_fallback["calibration"]["float_slope"] = False
+    cfg_fallback["calibration"]["use_two_point"] = False
+
+    status = {"fallback": "fixed_slope", "cause": str(exc)}
+    return fixed_slope_calibration(adc_values, cfg_fallback, status=status)
 
 
 def calibrate_run(adc_values, config, hist_bins=None):
@@ -952,15 +978,13 @@ def derive_calibration_constants(adc_values, config):
             try:
                 return _if2p(adc_values, config)
             except RuntimeError as exc:
+                warning_msg = None
                 if "No candidate peak found" in str(exc):
-                    warnings.warn(
-                        "Two-point calibration failed to find both peaks; falling back to one-point intercept-only",
-                        RuntimeWarning,
+                    warning_msg = (
+                        "Two-point calibration failed to find both peaks; "
+                        "falling back to one-point intercept-only"
                     )
-                    cfg_fallback = deepcopy(config)
-                    cfg_fallback.setdefault("calibration", {})["use_two_point"] = False
-                    return fixed_slope_calibration(adc_values, cfg_fallback)
-                raise
+                return _fallback_to_fixed_slope(adc_values, config, exc, warning_msg)
         return fixed_slope_calibration(adc_values, config)
 
     cfg = config if slope is None or not float_slope else deepcopy(config)
@@ -972,16 +996,14 @@ def derive_calibration_constants(adc_values, config):
     try:
         return calibrate_run(adc_values, cfg)
     except RuntimeError as exc:
-        if "No candidate peak found" in str(exc) and slope is not None:
-            warnings.warn(
-                "Two-point calibration failed to find both peaks; falling back to one-point intercept-only",
-                RuntimeWarning,
-            )
-            cfg_fallback = deepcopy(config)
-            cfg_fallback.setdefault("calibration", {})
-            cfg_fallback["calibration"]["float_slope"] = False
-            cfg_fallback["calibration"]["use_two_point"] = False
-            return fixed_slope_calibration(adc_values, cfg_fallback)
+        if slope is not None:
+            warning_msg = None
+            if "No candidate peak found" in str(exc):
+                warning_msg = (
+                    "Two-point calibration failed to find both peaks; "
+                    "falling back to one-point intercept-only"
+                )
+            return _fallback_to_fixed_slope(adc_values, config, exc, warning_msg)
         raise
 
 

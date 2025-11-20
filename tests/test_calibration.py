@@ -412,6 +412,31 @@ def test_two_point_fallback_to_one_point_warns():
     assert res.coeffs[0] == pytest.approx(expected_c, abs=0.02)
 
 
+def test_fixed_slope_fallback_records_status(monkeypatch, caplog):
+    adc = _synth_adc_sample(321)
+    cfg = _synth_emg_calibration_cfg()
+    cfg["calibration"].update(
+        {
+            "slope_MeV_per_ch": 0.00435,
+            "float_slope": True,
+            "use_two_point": True,
+        }
+    )
+
+    def fail_calibrate_run(*_, **__):
+        raise RuntimeError("curve_fit failed to converge")
+
+    monkeypatch.setattr(calib_mod, "calibrate_run", fail_calibrate_run)
+    caplog.set_level("ERROR", logger="calibration")
+
+    res = derive_calibration_constants(adc, cfg)
+
+    assert res.coeffs[1] == pytest.approx(0.00435)
+    assert res.status and res.status.get("fallback") == "fixed_slope"
+    assert "curve_fit failed" in res.status.get("cause", "")
+    assert any("curve_fit failed to converge" in rec.getMessage() for rec in caplog.records)
+
+
 def _synth_emg_calibration_cfg():
     return {
         "calibration": {
