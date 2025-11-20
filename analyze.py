@@ -4463,6 +4463,38 @@ def main(argv=None):
         )
         isotope_series_data: dict[str, list[dict[str, float]]] = {}
 
+        if overlay:
+            # Guarantee plotting payloads exist for both daughter isotopes even
+            # when the fit skipped one of them so the overlay consistently
+            # generates Po-214 and Po-218 images.
+            tf_cfg = cfg.get("time_fit", {})
+            ts_start = to_datetime_utc(t0_global)
+            for iso in ("Po218", "Po214"):
+                if iso in time_plot_data:
+                    continue
+
+                win_key = f"window_{iso.lower()}"
+                win_range = tf_cfg.get(win_key) if isinstance(tf_cfg, Mapping) else None
+                if win_range is None:
+                    continue
+
+                lo, hi = win_range
+                try:
+                    mask = (
+                        (df_analysis["energy_MeV"] >= lo)
+                        & (df_analysis["energy_MeV"] <= hi)
+                        & (df_analysis["timestamp"] >= ts_start)
+                        & (df_analysis["timestamp"] <= t_end_global)
+                    )
+                    iso_events = df_analysis.loc[mask]
+                except Exception:
+                    continue
+
+                time_plot_data[iso] = {
+                    "events_times": iso_events["timestamp"].values,
+                    "events_energy": iso_events["energy_MeV"].values,
+                }
+
         def _prepare_model_errors(
             ts_times: np.ndarray, plot_cfg: Mapping[str, Any], iso_names: list[str]
         ) -> dict[str, np.ndarray]:
@@ -4486,7 +4518,10 @@ def main(argv=None):
                     model_errs[iso_key] = sigma_arr
             return model_errs
 
-        for iso, pdata in time_plot_data.items():
+        for iso in ("Po218", "Po214", "Po210"):
+            pdata = time_plot_data.get(iso)
+            if pdata is None:
+                continue
             try:
                 plot_cfg = dict(cfg.get("time_fit", {}))
                 plot_cfg.update(cfg.get("plotting", {}))
