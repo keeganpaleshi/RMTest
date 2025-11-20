@@ -651,6 +651,46 @@ def test_fit_spectrum_unbinned_consistent():
     assert diff < 0.2
 
 
+def test_unbinned_defaults_to_extended_likelihood():
+    rng = np.random.default_rng(9)
+    energies = np.concatenate(
+        [
+            rng.normal(5.3, 0.05, 300),
+            rng.normal(6.0, 0.05, 300),
+            rng.normal(7.7, 0.05, 300),
+        ]
+    )
+
+    priors = {
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (300.0, 30.0),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (300.0, 30.0),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (300.0, 30.0),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+
+    result = fit_spectrum(energies, priors, unbinned=True)
+
+    # The fit should automatically select the extended unbinned path, which
+    # keeps the total signal counts near the observed sample size.
+    total_counts = (
+        result.params["S_Po210"]
+        + result.params["S_Po218"]
+        + result.params["S_Po214"]
+    )
+    assert result.params.get("likelihood_path") == "unbinned_extended"
+    assert np.isfinite(total_counts)
+    # The extended likelihood should prevent runaway areas; allow a generous
+    # band because the simple priors/background model can still shift the
+    # total slightly.
+    assert total_counts == pytest.approx(energies.size, rel=0.6)
+
+
 def test_fit_spectrum_fixed_resolution():
     rng = np.random.default_rng(42)
     energies = rng.normal(5.3, 0.05, 200)
