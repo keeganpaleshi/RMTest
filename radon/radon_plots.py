@@ -231,6 +231,22 @@ def plot_volume_equiv_vs_time(
     fig.savefig(out_dir / "equivalent_volume.png", dpi=300)
     plt.close(fig)
 
+    # Create an additional plot in liters per interval for convenience
+    volumes_liters = [v * 1000.0 for v in volumes_m3]
+    liters_units = "L per interval"
+    fig_l, ax_l = plt.subplots(figsize=(8, 5))
+    ax_l.plot(times_mpl, volumes_liters, marker="o", linestyle="None", color="#17becf")
+    ax_l.set_ylabel(f"Equivalent volume [{liters_units}]")
+    ax_l.set_xlabel("Time (UTC)")
+    ax_l.ticklabel_format(axis="y", style="plain")
+    setup_time_axis(ax_l, times_mpl)
+    ax_l.yaxis.get_offset_text().set_visible(False)
+
+    fig_l.autofmt_xdate()
+    fig_l.tight_layout()
+    fig_l.savefig(out_dir / "equivalent_volume_liters.png", dpi=300)
+    plt.close(fig_l)
+
     if volumes_lpm:
         paired_len = min(len(times_mpl), len(volumes_lpm))
         if paired_len == 0:
