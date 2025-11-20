@@ -196,6 +196,7 @@ plotting:
   plot_time_bin_width_s: 14400
   plot_time_normalise_rate: true
   time_bins_fallback: 1
+  save_individual_time_series_plots: false
   plot_save_formats:
   - png
   dump_time_series_json: true

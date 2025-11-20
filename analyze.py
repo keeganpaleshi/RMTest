@@ -4447,6 +4447,9 @@ def main(argv=None):
                 logger.warning("Could not create burst scan plot -> %s", e)
     
         overlay = cfg.get("plotting", {}).get("overlay_isotopes", False)
+        save_individual_ts = bool(
+            cfg.get("plotting", {}).get("save_individual_time_series_plots", False)
+        )
         isotope_series_data: dict[str, list[dict[str, float]]] = {}
     
         for iso, pdata in time_plot_data.items():
@@ -4510,6 +4513,46 @@ def main(argv=None):
                             continue
                         existing = isotope_series_data.setdefault(iso_key, [])
                         existing.extend(entries)
+
+                if overlay and save_individual_ts:
+                    try:
+                        indiv_cfg = dict(cfg.get("time_fit", {}))
+                        indiv_cfg.update(cfg.get("plotting", {}))
+                        if run_periods_cfg:
+                            indiv_cfg["run_periods"] = run_periods_cfg
+                        for other_iso in ("Po214", "Po218", "Po210"):
+                            if other_iso != iso:
+                                indiv_cfg[f"window_{other_iso.lower()}"] = None
+
+                        indiv_errs = {}
+                        sigma_arr = _model_uncertainty(
+                            centers,
+                            widths,
+                            time_fit_results.get(iso),
+                            iso,
+                            indiv_cfg,
+                            normalise,
+                        )
+                        if sigma_arr is not None:
+                            indiv_errs[iso] = sigma_arr
+
+                        plot_time_series(
+                            all_timestamps=pdata["events_times"],
+                            all_energies=pdata["events_energy"],
+                            fit_results=_fit_params(time_fit_results.get(iso)),
+                            t_start=t0_global.timestamp(),
+                            t_end=t_end_global_ts,
+                            config=indiv_cfg,
+                            out_png=Path(out_dir)
+                            / f"time_series_{iso}_individual.png",
+                            model_errors=indiv_errs,
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "Could not create individual time-series plot for %s -> %s",
+                            iso,
+                            e,
+                        )
             except Exception as e:
                 logger.warning("Could not create time-series plot for %s -> %s", iso, e)
     
