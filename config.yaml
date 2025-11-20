@@ -201,3 +201,4 @@ plotting:
   dump_time_series_json: true
   plot_time_style: lines
   overlay_isotopes: true
+  save_individual_time_series: false

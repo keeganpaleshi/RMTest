@@ -4447,9 +4447,70 @@ def main(argv=None):
                 logger.warning("Could not create burst scan plot -> %s", e)
     
         overlay = cfg.get("plotting", {}).get("overlay_isotopes", False)
+        save_individual_ts = bool(
+            cfg.get("plotting", {}).get("save_individual_time_series", False)
+        )
         isotope_series_data: dict[str, list[dict[str, float]]] = {}
-    
-        for iso, pdata in time_plot_data.items():
+
+        if overlay:
+            # Guarantee plotting payloads exist for both daughter isotopes even
+            # when the fit skipped one of them so the overlay consistently
+            # generates Po-214 and Po-218 images.
+            tf_cfg = cfg.get("time_fit", {})
+            ts_start = to_datetime_utc(t0_global)
+            for iso in ("Po218", "Po214"):
+                if iso in time_plot_data:
+                    continue
+
+                win_key = f"window_{iso.lower()}"
+                win_range = tf_cfg.get(win_key) if isinstance(tf_cfg, Mapping) else None
+                if win_range is None:
+                    continue
+
+                lo, hi = win_range
+                try:
+                    mask = (
+                        (df_analysis["energy_MeV"] >= lo)
+                        & (df_analysis["energy_MeV"] <= hi)
+                        & (df_analysis["timestamp"] >= ts_start)
+                        & (df_analysis["timestamp"] <= t_end_global)
+                    )
+                    iso_events = df_analysis.loc[mask]
+                except Exception:
+                    continue
+
+                time_plot_data[iso] = {
+                    "events_times": iso_events["timestamp"].values,
+                    "events_energy": iso_events["energy_MeV"].values,
+                }
+
+        def _prepare_model_errors(
+            ts_times: np.ndarray, plot_cfg: Mapping[str, Any], iso_names: list[str]
+        ) -> dict[str, np.ndarray]:
+            """Return model uncertainty arrays for the requested isotopes."""
+
+            centers, widths = _ts_bin_centers_widths(
+                ts_times, plot_cfg, t0_global.timestamp(), t_end_global_ts
+            )
+            normalise = bool(plot_cfg.get("plot_time_normalise_rate", False))
+            model_errs: dict[str, np.ndarray] = {}
+            for iso_key in iso_names:
+                sigma_arr = _model_uncertainty(
+                    centers,
+                    widths,
+                    time_fit_results.get(iso_key),
+                    iso_key,
+                    plot_cfg,
+                    normalise,
+                )
+                if sigma_arr is not None:
+                    model_errs[iso_key] = sigma_arr
+            return model_errs
+
+        for iso in ("Po218", "Po214", "Po210"):
+            pdata = time_plot_data.get(iso)
+            if pdata is None:
+                continue
             try:
                 plot_cfg = dict(cfg.get("time_fit", {}))
                 plot_cfg.update(cfg.get("plotting", {}))
@@ -4471,28 +4532,14 @@ def main(argv=None):
                         obj = time_fit_results.get(k)
                         if obj:
                             fit_dict.update(_fit_params(obj))
-    
-                centers, widths = _ts_bin_centers_widths(
-                    ts_times, plot_cfg, t0_global.timestamp(), t_end_global_ts
-                )
-                normalise = bool(plot_cfg.get("plot_time_normalise_rate", False))
-                model_errs = {}
+
                 iso_list_err = (
                     [iso]
                     if not overlay
                     else [i for i in ("Po214", "Po218", "Po210") if time_fit_results.get(i)]
                 )
-                for iso_key in iso_list_err:
-                    sigma_arr = _model_uncertainty(
-                        centers,
-                        widths,
-                        time_fit_results.get(iso_key),
-                        iso_key,
-                        plot_cfg,
-                        normalise,
-                    )
-                    if sigma_arr is not None:
-                        model_errs[iso_key] = sigma_arr
+                model_errs = _prepare_model_errors(ts_times, plot_cfg, iso_list_err)
+
                 ts_info = plot_time_series(
                     all_timestamps=ts_times,
                     all_energies=ts_energy,
@@ -4510,6 +4557,26 @@ def main(argv=None):
                             continue
                         existing = isotope_series_data.setdefault(iso_key, [])
                         existing.extend(entries)
+
+                if overlay and save_individual_ts:
+                    indiv_cfg = dict(plot_cfg)
+                    for other_iso in ("Po214", "Po218", "Po210"):
+                        if other_iso != iso:
+                            indiv_cfg[f"window_{other_iso.lower()}"] = None
+                    indiv_times = pdata["events_times"]
+                    indiv_energy = pdata["events_energy"]
+                    indiv_errs = _prepare_model_errors(indiv_times, indiv_cfg, [iso])
+                    indiv_fit_dict = _fit_params(time_fit_results.get(iso))
+                    _ = plot_time_series(
+                        all_timestamps=indiv_times,
+                        all_energies=indiv_energy,
+                        fit_results=indiv_fit_dict,
+                        t_start=t0_global.timestamp(),
+                        t_end=t_end_global_ts,
+                        config=indiv_cfg,
+                        out_png=Path(out_dir) / f"time_series_{iso}_individual.png",
+                        model_errors=indiv_errs,
+                    )
             except Exception as e:
                 logger.warning("Could not create time-series plot for %s -> %s", iso, e)
     
