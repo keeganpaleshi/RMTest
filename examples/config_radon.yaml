@@ -20,7 +20,7 @@ columns:
 baseline:
   range: ['2024-01-05T00:00:00Z', '2024-01-05T12:00:00Z']
   monitor_volume_l: 605.0
-  sample_volume_l: 10.0
+  sample_volume_l: 4196.0
   isotopes_to_subtract:
     - noise
 
@@ -71,7 +71,7 @@ spectral_fit:
   b0_prior: [0.0, 2.0]
   b1_prior: [0.0, 2.0]
   sigma_E_prior_source: calibration
-  float_sigma_E: true
+  float_sigma_E: false
   expected_peaks:
     Po210: 1250
     Po218: 1400
@@ -90,8 +90,8 @@ radon_inference:
     - Po214
     - Po218
   detection_efficiency:
-    Po214: 0.12
-    Po218: 0.10
+    Po214: 0.19
+    Po218: 0.094
   source_weights:
     Po214: 0.7
     Po218: 0.3
