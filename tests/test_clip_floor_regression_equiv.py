@@ -90,3 +90,37 @@ def test_clip_floor_background_model():
     expected_min = params["b0"] + params["S_bkg"] / width
     # In the window, density should be at least background level (clipped)
     assert np.min(y) >= min(expected_min, clip_floor)
+
+
+def test_clip_floor_log_safety_extreme_tails():
+    """Ensure clipping prevents log(0) when evaluating far outside the peak region."""
+    try:
+        from rmtest.spectral.intensity import build_spectral_intensity
+    except ImportError:
+        pytest.skip("Cannot import build_spectral_intensity")
+
+    # Energy values far from the domain still produce positive densities via clipping
+    x = np.array([-1e6, 0.0, 1e6])
+
+    iso_list = ["Po214"]
+    use_emg = {"Po214": False}
+    domain = (4.8, 8.3)
+    clip_floor = 1e-120
+
+    spectral_intensity = build_spectral_intensity(
+        iso_list, use_emg, domain, clip_floor=clip_floor
+    )
+
+    params = {
+        "mu_Po214": 7.7,
+        "sigma0": 0.05,
+        "S_Po214": 300.0,
+        "b0": 0.0,
+        "b1": 0.0,
+    }
+
+    y = spectral_intensity(x, params, domain)
+
+    # The clip floor guarantees densities remain positive and log-safe
+    log_y = np.log(y)
+    assert np.all(np.isfinite(log_y)), "log(y) contains non-finite values"
