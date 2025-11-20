@@ -175,7 +175,20 @@ def _softplus_inv(y: np.ndarray | float) -> np.ndarray | float:
 
 def _sigmoid(x: np.ndarray | float) -> np.ndarray | float:
     x = np.asarray(x, dtype=float)
-    return 1.0 / (1.0 + np.exp(-x))
+    # Use a numerically stable formulation to avoid overflow in ``exp`` when
+    # ``x`` is very negative.
+    out = np.empty_like(x)
+    pos_mask = x >= 0
+
+    # For non-negative ``x``, the original expression is stable.
+    out[pos_mask] = 1.0 / (1.0 + np.exp(-x[pos_mask]))
+
+    # For negative ``x``, rewrite the sigmoid to keep the exponent bounded:
+    #   sigmoid(x) = exp(x) / (1 + exp(x))
+    exp_x = np.exp(x[~pos_mask])
+    out[~pos_mask] = exp_x / (1.0 + exp_x)
+
+    return out
 
 
 def make_linear_bkg(
