@@ -467,7 +467,8 @@ def _synth_adc_sample(seed: int) -> np.ndarray:
 def test_calibration_uses_configured_curve_fit_evals(monkeypatch):
     adc = _synth_adc_sample(12)
     cfg = _synth_emg_calibration_cfg()
-    cfg["calibration"]["curve_fit_max_evaluations"] = 1234
+    cfg["calibration"]["fit_maxfev"] = 1234
+    cfg["calibration"]["curve_fit_max_evaluations"] = 9999
 
     recorded = []
 

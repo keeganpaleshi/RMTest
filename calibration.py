@@ -1,3 +1,4 @@
+import logging
 import numpy as np
 from dataclasses import dataclass
 from collections.abc import Sequence, Mapping
@@ -24,6 +25,7 @@ import constants as _constants_module
 from emg_stable import StableEMG, emg_left_stable
 
 _USE_STABLE_EMG_DEFAULT = True
+_LOGGER = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 
@@ -234,7 +236,7 @@ def _resolve_curve_fit_max_evals(cal_cfg: Mapping[str, object] | None) -> int:
 
     key_used = None
     value = None
-    for key in ("curve_fit_max_evaluations", "curve_fit_max_evals"):
+    for key in ("fit_maxfev", "curve_fit_max_evaluations", "curve_fit_max_evals"):
         if cal_cfg.get(key) is not None:
             key_used = key
             value = cal_cfg[key]
@@ -256,6 +258,33 @@ def _resolve_curve_fit_max_evals(cal_cfg: Mapping[str, object] | None) -> int:
         )
 
     return max_evals
+
+
+def _resolve_retry_window(
+    cal_cfg: Mapping[str, object] | None, default_window: float
+) -> float:
+    """Return the retry window size for peak fits."""
+
+    if not isinstance(cal_cfg, Mapping):
+        return default_window
+
+    retry_window = cal_cfg.get("fit_retry_window")
+    if retry_window is None:
+        return default_window
+
+    try:
+        window_val = float(retry_window)
+    except (TypeError, ValueError) as exc:  # pragma: no cover - safety net
+        raise ValueError(
+            f"calibration.fit_retry_window must be positive, got {retry_window!r}"
+        ) from exc
+
+    if window_val <= 0:
+        raise ValueError(
+            f"calibration.fit_retry_window must be positive, got {retry_window!r}"
+        )
+
+    return window_val
 
 
 @dataclass(init=False)
@@ -418,6 +447,115 @@ def gaussian(x, mu, sigma):
     return _safe_exp(expo) / (sigma * np.sqrt(2 * np.pi))
 
 
+def _build_peak_slice(iso: str, centers, hist, x0: float, window: float):
+    """Return histogram slices for a peak centered at ``x0`` within ``window``."""
+
+    lo = x0 - window
+    hi = x0 + window
+    mask = (centers >= lo) & (centers <= hi)
+    x_slice = centers[mask]
+    y_slice = hist[mask].astype(float)
+
+    if len(x_slice) < 5:
+        raise RuntimeError(
+            f"Not enough points to fit peak for {iso} (only {len(x_slice)} bins)."
+        )
+
+    return x_slice, y_slice
+
+
+def _fit_gaussian_peak(
+    iso: str,
+    centers,
+    hist,
+    x0: float,
+    window: float,
+    sigma0: float,
+    maxfev: int,
+    retry_window: float | None,
+):
+    """Fit a Gaussian peak with one retry using a larger window."""
+
+    def _attempt(window_size: float):
+        x_slice, y_slice = _build_peak_slice(iso, centers, hist, x0, window_size)
+        amp_guess = float(np.max(y_slice))
+        # Prefer the configured width guess; a broad slice std can drag the
+        # optimizer to window edges when the spectrum is sparse (e.g., the
+        # pipeline smoke test input).
+        sigma_guess = float(max(sigma0, 1e-3))
+
+        def model_gauss(x, A, mu, sigma):
+            return A * gaussian(x, mu, sigma)
+
+        p0 = [amp_guess, float(x0), sigma_guess]
+        bounds = ([0, x0 - window_size, 1e-3], [np.inf, x0 + window_size, 100.0])
+        popt, pcov = curve_fit(
+            model_gauss, x_slice, y_slice, p0=p0, bounds=bounds, maxfev=maxfev
+        )
+        return popt, pcov
+
+    try:
+        return _attempt(window)
+    except RuntimeError as exc:
+        retry_size = retry_window if retry_window is not None else window
+        if retry_size == window:
+            raise
+        _LOGGER.warning(
+            "Gaussian fit for %s failed (%s); retrying with window %.3g", iso, exc, retry_size
+        )
+        return _attempt(retry_size)
+
+
+def _fit_emg_peak(
+    iso: str,
+    centers,
+    hist,
+    x0: float,
+    window: float,
+    sigma0: float,
+    tau0: float,
+    tau_bounds: tuple[float, float],
+    maxfev: int,
+    retry_window: float | None,
+):
+    """Fit an EMG peak with a Gaussian retry fallback."""
+
+    tau_lo, tau_hi = tau_bounds
+
+    def _attempt(window_size: float):
+        x_slice, y_slice = _build_peak_slice(iso, centers, hist, x0, window_size)
+        amp_guess = float(np.max(y_slice))
+        # Keep EMG starting width aligned with configuration; using the slice
+        # std can overly broaden the initial guess on small spectra.
+        sigma_guess = float(max(sigma0, 1e-3))
+
+        def model_emg(x, A, mu, sigma, tau):
+            return A * emg_left(x, mu, sigma, tau)
+
+        p0 = [amp_guess, float(x0), sigma_guess, tau0]
+        bounds = ([0, x0 - window_size, 1e-3, tau_lo], [np.inf, x0 + window_size, 50.0, tau_hi])
+        popt, pcov = curve_fit(
+            model_emg, x_slice, y_slice, p0=p0, bounds=bounds, maxfev=maxfev
+        )
+        return popt, pcov
+
+    try:
+        return _attempt(window)
+    except RuntimeError as exc:
+        retry_size = retry_window if retry_window is not None else window
+        _LOGGER.warning(
+            "EMG fit for %s failed (%s); retrying with Gaussian fallback (window %.3g)",
+            iso,
+            exc,
+            retry_size,
+        )
+        popt_gauss, pcov_gauss = _fit_gaussian_peak(
+            iso, centers, hist, x0, retry_size, sigma0, maxfev, None
+        )
+        popt = np.concatenate([popt_gauss, [0.0]])
+        pcov = np.zeros((4, 4))
+        pcov[:3, :3] = pcov_gauss
+        return popt, pcov
 def two_point_calibration(adc_centroids, energies):
     """
     Given two reference points (adc_centroids = [adc1, adc2], energies = [E1, E2]),
@@ -455,7 +593,7 @@ def fixed_slope_calibration(adc_values, cfg, *, status=None):
     a = cfg["calibration"]["slope_MeV_per_ch"]
 
     cal_cfg = cfg.get("calibration", {})
-    max_curve_fit_evals = _resolve_curve_fit_max_evals(cal_cfg)
+    fit_maxfev = _resolve_curve_fit_max_evals(cal_cfg)
     expected = {"Po214": cal_cfg["nominal_adc"]["Po214"]}
     window = cal_cfg.get("peak_search_radius", 50)
     prominence = cal_cfg.get("peak_prominence", 0.0)
@@ -485,19 +623,10 @@ def fixed_slope_calibration(adc_values, cfg, *, status=None):
     centers = 0.5 * (edges[:-1] + edges[1:])
 
     fit_window = cal_cfg.get("fit_window_adc", 50)
+    retry_window = _resolve_retry_window(cal_cfg, fit_window)
     use_emg = cal_cfg.get("use_emg", False)
-    lo = adc_peak - fit_window
-    hi = adc_peak + fit_window
-    mask = (centers >= lo) & (centers <= hi)
-    x_slice = centers[mask]
-    y_slice = hist[mask].astype(float)
-    if len(x_slice) < 5:
-        raise RuntimeError(
-            f"Not enough points to fit peak for Po214 (only {len(x_slice)} bins)."
-        )
 
     # Initial guesses
-    amp0 = float(np.max(y_slice))
     mu0 = float(adc_peak)
 
     # Base ADC-space width guess
@@ -524,36 +653,22 @@ def fixed_slope_calibration(adc_values, cfg, *, status=None):
     tau0 = max(tau_cfg, _TAU_MIN) if use_emg else 0.0
 
     if use_emg:
-        def model_emg(x, A, mu, sigma, tau):
-            return A * emg_left(x, mu, sigma, tau)
-
-        p0 = [amp0, mu0, sigma0, tau0]
-        bounds = (
-            [0, mu0 - fit_window, 1e-3, _TAU_MIN],
-            [np.inf, mu0 + fit_window, 50.0, 200.0],
-        )
-        popt, pcov = curve_fit(
-            model_emg,
-            x_slice,
-            y_slice,
-            p0=p0,
-            bounds=bounds,
-            maxfev=max_curve_fit_evals,
+        popt, pcov = _fit_emg_peak(
+            "Po214",
+            centers,
+            hist,
+            mu0,
+            fit_window,
+            sigma0,
+            tau0,
+            (_TAU_MIN, 200.0),
+            fit_maxfev,
+            retry_window,
         )
         A_fit, mu_fit, sigma_fit, tau_fit = popt
     else:
-        def model_gauss(x, A, mu, sigma):
-            return A * gaussian(x, mu, sigma)
-
-        p0 = [amp0, mu0, sigma0]
-        bounds = ([0, mu0 - fit_window, 1e-3], [np.inf, mu0 + fit_window, 50.0])
-        popt, pcov = curve_fit(
-            model_gauss,
-            x_slice,
-            y_slice,
-            p0=p0,
-            bounds=bounds,
-            maxfev=max_curve_fit_evals,
+        popt, pcov = _fit_gaussian_peak(
+            "Po214", centers, hist, mu0, fit_window, sigma0, fit_maxfev, retry_window
         )
         A_fit, mu_fit, sigma_fit = popt
         tau_fit = 0.0
@@ -670,7 +785,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
     #    We look for up to 5 peaks (Po-210, Po-218, Po-214, maybe background bumps).
     #    Use config thresholds for prominence & width.
     cal_cfg = config.get("calibration", {})
-    max_curve_fit_evals = _resolve_curve_fit_max_evals(cal_cfg)
+    fit_maxfev = _resolve_curve_fit_max_evals(cal_cfg)
 
     prom = cal_cfg["peak_prominence"]
     width_cfg = cal_cfg.get("peak_widths") or {}
@@ -712,22 +827,10 @@ def calibrate_run(adc_values, config, hist_bins=None):
     # 4) For each chosen peak, perform a local fit with EMG or Gaussian:
     peak_fits = {}
     window = cal_cfg["fit_window_adc"]  # e.g. +/-50 ADC channels
+    retry_window = _resolve_retry_window(cal_cfg, window)
     use_emg = cal_cfg["use_emg"]  # True/False
     for iso, idx_center in chosen_idx.items():
         x0 = centers[idx_center]
-        lo = x0 - window
-        hi = x0 + window
-        # Extract local slice:
-        mask = (centers >= lo) & (centers <= hi)
-        x_slice = centers[mask]
-        y_slice = hist[mask].astype(float)
-        if len(x_slice) < 5:
-            raise RuntimeError(
-                f"Not enough points to fit peak for {iso} (only {len(x_slice)} bins)."
-            )
-
-        # Initial guesses:
-        amp0 = float(np.max(y_slice))
         mu0 = float(x0)
         sigma_cfg = cal_cfg.get("init_sigma_adc", 10.0)
         if isinstance(sigma_cfg, Mapping):
@@ -750,55 +853,33 @@ def calibrate_run(adc_values, config, hist_bins=None):
         tau0 = max(tau_cfg, _TAU_MIN) if use_emg else 0.0
 
         if use_emg and iso in ("Po210", "Po218"):
-            # Fit EMG: parameters [amp, mu, sigma, tau]
-            def model_emg(x, A, mu, sigma, tau):
-                return A * emg_left(x, mu, sigma, tau)
-
-            p0 = [amp0, mu0, sigma0, tau0]
-            tau_lo, tau_hi = _resolve_tau_bounds(cal_cfg, iso)
-            bounds = (
-                [0, mu0 - window, 1e-3, tau_lo],  # lower bounds
-                [np.inf, mu0 + window, 50.0, tau_hi],  # upper bounds (tunable)
-            )
-            popt, pcov = curve_fit(
-                model_emg,
-                x_slice,
-                y_slice,
-                p0=p0,
-                bounds=bounds,
-                maxfev=max_curve_fit_evals,
+            tau_bounds = _resolve_tau_bounds(cal_cfg, iso)
+            popt, pcov = _fit_emg_peak(
+                iso,
+                centers,
+                hist,
+                mu0,
+                window,
+                sigma0,
+                tau0,
+                tau_bounds,
+                fit_maxfev,
+                retry_window,
             )
             A_fit, mu_fit, sigma_fit, tau_fit = popt
-            peak_fits[iso] = {
-                "centroid_adc": float(mu_fit),
-                "sigma_adc": float(sigma_fit),
-                "tau_adc": float(tau_fit),
-                "amplitude": float(A_fit),
-                "covariance": pcov.tolist(),
-            }
         else:
-            # Fit pure Gaussian: [A, mu, sigma]
-            def model_gauss(x, A, mu, sigma):
-                return A * gaussian(x, mu, sigma)
-
-            p0 = [amp0, mu0, sigma0]
-            bounds = ([0, mu0 - window, 1e-3], [np.inf, mu0 + window, 50.0])
-            popt, pcov = curve_fit(
-                model_gauss,
-                x_slice,
-                y_slice,
-                p0=p0,
-                bounds=bounds,
-                maxfev=max_curve_fit_evals,
+            popt, pcov = _fit_gaussian_peak(
+                iso, centers, hist, mu0, window, sigma0, fit_maxfev, retry_window
             )
             A_fit, mu_fit, sigma_fit = popt
-            peak_fits[iso] = {
-                "centroid_adc": float(mu_fit),
-                "sigma_adc": float(sigma_fit),
-                "tau_adc": 0.0,
-                "amplitude": float(A_fit),
-                "covariance": pcov.tolist(),
-            }
+            tau_fit = 0.0
+        peak_fits[iso] = {
+            "centroid_adc": float(mu_fit),
+            "sigma_adc": float(sigma_fit),
+            "tau_adc": float(tau_fit),
+            "amplitude": float(A_fit),
+            "covariance": pcov.tolist(),
+        }
 
     # 5) Calibration coefficients
     adc210 = peak_fits["Po210"]["centroid_adc"]
