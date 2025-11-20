@@ -624,6 +624,10 @@ overlaying multiple isotopes so one does not obscure the other.
 when invoking `plot_time_series`.  When set to `true` the analysis does
 not clear the other window, allowing Po-214 and Po-218 to be plotted
 together on a single overlay.
+Set `save_individual_time_series` to `true` when overlaying to also
+save per-isotope plots (`time_series_<iso>_individual.png`) that isolate
+each window.  This is useful for visually inspecting the individual
+channels while keeping the combined overlay enabled.
 Specifying `window_po210` (and optional `eff_po210`) adds a Po-210
 histogram to the time-series plots. The model curve appears only when
 fit results for Po-210 are available.
