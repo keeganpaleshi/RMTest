@@ -252,7 +252,13 @@ def run_radon_inference(
                 {"t": bin_entry.t, "rn_bq_per_m3": ambient_val, "dt": dt}
             )
             if ambient_val > 0:
-                volume_m3 = radon_bq * dt / ambient_val
+                # The equivalent volume for a bin should be based on the
+                # inferred activity and the ambient concentration.  The
+                # activity ``rn_bq`` is already a rate (decays/sec), so
+                # multiplying by ``dt`` would over-count by the bin
+                # duration.  Instead, compute the volume directly from the
+                # ratio and then derive flow using the elapsed minutes.
+                volume_m3 = radon_bq / ambient_val
                 dt_minutes = dt / 60.0 if dt > 0 else np.nan
                 if dt_minutes > 0:
                     volume_lpm = volume_m3 * 1000.0 / dt_minutes
