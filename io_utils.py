@@ -324,7 +324,7 @@ CONFIG_SCHEMA = {
                     },
                 },
                 "radon_interval": {
-                    "type": "array",
+                    "type": ["array", "null"],
                     "items": {"type": ["string", "number"]},
                     "minItems": 2,
                     "maxItems": 2,
