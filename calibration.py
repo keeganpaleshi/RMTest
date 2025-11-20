@@ -473,7 +473,10 @@ def _fit_gaussian_peak(
     def _attempt(window_size: float):
         x_slice, y_slice = _build_peak_slice(iso, centers, hist, x0, window_size)
         amp_guess = float(np.max(y_slice))
-        sigma_guess = float(max(np.std(x_slice), sigma0, 1e-3))
+        # Prefer the configured width guess; a broad slice std can drag the
+        # optimizer to window edges when the spectrum is sparse (e.g., the
+        # pipeline smoke test input).
+        sigma_guess = float(max(sigma0, 1e-3))
 
         def model_gauss(x, A, mu, sigma):
             return A * gaussian(x, mu, sigma)
@@ -516,7 +519,9 @@ def _fit_emg_peak(
     def _attempt(window_size: float):
         x_slice, y_slice = _build_peak_slice(iso, centers, hist, x0, window_size)
         amp_guess = float(np.max(y_slice))
-        sigma_guess = float(max(np.std(x_slice), sigma0, 1e-3))
+        # Keep EMG starting width aligned with configuration; using the slice
+        # std can overly broaden the initial guess on small spectra.
+        sigma_guess = float(max(sigma0, 1e-3))
 
         def model_emg(x, A, mu, sigma, tau):
             return A * emg_left(x, mu, sigma, tau)
