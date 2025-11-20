@@ -355,8 +355,8 @@ limits.
 `ambient_concentration` may also be specified here to record the ambient
 radon concentration in Bq/L used for the equivalent air plot.  The
 command-line option `--ambient-concentration` overrides this value.  The
-default configuration sets this key to `null`.  The template
-`config.yaml` therefore includes
+default configuration sets this key to `null`.  The template `config.yaml`
+therefore includes
 ```yaml
 "ambient_concentration": null
 ```
@@ -397,8 +397,7 @@ When present the value is also written to `summary.json` under the
 time-dependent background.  The option expects a two-column text file
 containing absolute timestamps (in seconds) and the corresponding
 ambient concentration in Bq/L.  These values are linearly interpolated
-to the radon-activity timestamps and override any constant value when
-calling `plot_equivalent_air`.
+and override any constant value when calling `plot_equivalent_air`.
 
 `burst_filter` controls removal of short high-rate clusters.  The
 `burst_mode` key selects the default strategy which can be overridden by
@@ -558,7 +557,8 @@ tails on a per-isotope basis.
 
 - `float_sigma_E` - when `true`, allow the common detector energy
   resolution parameter `sigma_E` to float instead of freezing it to the
-  calibration result.
+  calibration result. The default is `false` to prefer the calibrated
+  resolution unless explicitly relaxed.
 - `sigma_E_prior_source` - either `"calibration"` or a numeric
   two-tuple.  `"calibration"` applies the calibration value and its
   one-sigma uncertainty as a Gaussian prior so the spectrum fit can
@@ -974,8 +974,8 @@ radon_inference:
   enabled: true
   source_isotopes: ["Po214", "Po218"]
   detection_efficiency:
-    Po214: 0.12
-    Po218: 0.10
+    Po214: 0.19
+    Po218: 0.094
   transport_efficiency: 1.0
   retention_efficiency: 1.0
   external_rn:
@@ -983,7 +983,7 @@ radon_inference:
     file_path: "ambient_radon.csv"
     interpolation: ffill
     allowed_skew_seconds: 300
-    constant_bq_per_m3: 100.0
+    constant_bq_per_m3: 120.0
 ```
 
 ## Efficiency Calculations
