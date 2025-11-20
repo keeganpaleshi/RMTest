@@ -666,15 +666,6 @@ def _safe_float(value: Any) -> float | None:
     return coerced
 
 
-def _ambient_to_bq_per_m3(value: Any) -> float | None:
-    """Convert an ambient concentration provided in Bq/L to Bq/m³."""
-
-    coerced = _safe_float(value)
-    if coerced is None:
-        return None
-    return coerced * 1000.0
-
-
 def _float_with_default(value: Any, default: float) -> float:
     """Return ``value`` as ``float`` or ``default`` when coercion fails."""
 
@@ -1592,15 +1583,14 @@ def parse_args(argv=None):
     p.add_argument(
         "--ambient-file",
         help=(
-            "Two-column text file of timestamp and ambient concentration in Bq/L "
-            "(converted internally to Bq/m³)"
+            "Two-column text file of timestamp and ambient concentration in Bq/L"
         ),
     )
     p.add_argument(
         "--ambient-concentration",
         type=float,
         help=(
-            "Ambient radon concentration in Bq per liter (scaled to Bq/m³) for "
+            "Ambient radon concentration in Bq per liter for "
             "equivalent air plot. Providing this option overrides "
             "`analysis.ambient_concentration` in config.yaml"
         ),
@@ -1746,16 +1736,6 @@ def main(argv=None):
             logger.error("Could not load config '%s': %s", args.config, e)
             sys.exit(1)
 
-    analysis_cfg = cfg.get("analysis") if isinstance(cfg, Mapping) else None
-    if isinstance(analysis_cfg, Mapping):
-        converted_ambient = _ambient_to_bq_per_m3(
-            analysis_cfg.get("ambient_concentration")
-        )
-        if converted_ambient is not None:
-            analysis_cfg = dict(analysis_cfg)
-            analysis_cfg["ambient_concentration"] = converted_ambient
-            cfg["analysis"] = analysis_cfg
-
     def _log_override(section, key, new_val):
         prev = cfg.get(section, {}).get(key)
         if prev is not None and prev != new_val:
@@ -1791,7 +1771,7 @@ def main(argv=None):
         cfg.setdefault("pipeline", {})["random_seed"] = int(args.seed)
 
     if args.ambient_concentration is not None:
-        ambient_cli = _ambient_to_bq_per_m3(args.ambient_concentration)
+        ambient_cli = _safe_float(args.ambient_concentration)
         if ambient_cli is None:
             logger.warning(
                 "Ignoring ambient concentration override %r; could not convert to float",
@@ -4934,9 +4914,7 @@ def main(argv=None):
         if args.ambient_file:
             try:
                 dat = np.loadtxt(args.ambient_file, usecols=(0, 1))
-                ambient_interp_m3 = (
-                    np.interp(activity_times, dat[:, 0], dat[:, 1]) * 1000.0
-                )
+                ambient_interp_m3 = np.interp(activity_times, dat[:, 0], dat[:, 1])
             except Exception as e:
                 logger.warning(
                     "Could not read ambient file '%s': %s", args.ambient_file, e
