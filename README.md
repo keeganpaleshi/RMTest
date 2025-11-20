@@ -58,6 +58,19 @@ python analyze.py [--config config.yaml] --input merged_data.csv \
     [--hierarchical-summary OUT.json]
 ```
 
+### Diagnostics
+
+- `--allow-negative-activity` keeps negative total radon values instead of the
+  default clamp to zero. Use it when probing edge cases such as very short live
+  times or aggressive burst vetoes that can drive statistical fluctuations
+  negative. The option overrides the usual non‑negative floor even if the
+  configuration requests the legacy behaviour.
+- `--reproduce SUMMARY` loads the `config_used.json` and stored random seed from
+  a previous run’s `summary.json` so you can exactly recreate published or
+  shared results. Command-line overrides (for example, different time windows)
+  still apply on top, but defaults from your local `config.yaml` and default
+  seed are replaced by the archived values.
+
 ### Opt-in background & extended likelihood
 
 These analysis modes are experimental and opt-in. Defaults remain the legacy linear background and the current unextended likelihood.
@@ -395,6 +408,16 @@ the command-line option `--burst-mode`.  `none` disables the filter,
 rolling-median threshold (`burst_window_size_s`, `rolling_median_window`,
 `burst_multiplier`) and `both` applies the micro filter followed by the
 rate veto.
+
+The exploratory `--burst-sensitivity-scan` mode (or setting
+`burst_sensitivity_scan: true` in the CLI overrides) sweeps a small grid of
+`burst_window_size_s` and `burst_multiplier` values around the current
+configuration, computes the resulting radon activity from the calibrated
+events and writes a `burst_scan.png` heatmap. Use it to visualise how the burst
+veto parameters influence the inferred activity before finalising your
+configuration. The scan relies on the existing calibration and `time_fit`
+windows to count Po‑218/Po‑214 events and uses the same inputs as a standard
+analysis run.
 
 Example snippet:
 
