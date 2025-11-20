@@ -871,6 +871,9 @@ def _spectral_fit_with_check(
         "priors": priors_mapped,
         "flags": flags,
     }
+    max_tau_ratio = cfg.get("spectral_fit", {}).get("max_tau_ratio")
+    if max_tau_ratio is not None:
+        fit_kwargs["max_tau_ratio"] = max_tau_ratio
     if bins is not None or bin_edges is not None:
         fit_kwargs.update({"bins": bins, "bin_edges": bin_edges})
     if bounds:
