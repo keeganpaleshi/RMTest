@@ -253,11 +253,12 @@ def run_radon_inference(
             )
             if ambient_val > 0:
                 # The equivalent volume for a bin is derived from the
-                # inferred activity over the elapsed interval and the
-                # ambient concentration.  Convert the activity rate to the
-                # total decays for the bin (``rn_bq * dt``) before dividing
-                # by the ambient value to get the sampled volume.
-                volume_m3 = (radon_bq * dt) / ambient_val
+                # inferred activity and the ambient concentration.  Since the
+                # activity ``radon_bq`` is already a decay rate (Bq), dividing
+                # by the ambient concentration (Bq/m³) directly yields the
+                # sampled volume in m³.  Multiplying by ``dt`` would
+                # double-count the elapsed time and inflate volumes.
+                volume_m3 = radon_bq / ambient_val
                 dt_minutes = dt / 60.0 if dt > 0 else np.nan
                 if dt_minutes > 0:
                     volume_lpm = volume_m3 * 1000.0 / dt_minutes
