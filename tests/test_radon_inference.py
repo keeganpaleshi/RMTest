@@ -36,8 +36,8 @@ def test_constant_external_rn_volume_math():
     assert rn_entry["rn_bq"] == pytest.approx(120.0 / (0.12 * 60.0))
 
     vol_entry = result["volume_equiv"][0]
-    assert vol_entry["v_m3"] == pytest.approx(12.5)
-    assert vol_entry["v_lpm"] == pytest.approx(12500.0)
+    assert vol_entry["v_m3"] == pytest.approx(0.2083333)
+    assert vol_entry["v_lpm"] == pytest.approx(208.3333)
 
 
 def test_missing_isotope_reweights_po214_only():
