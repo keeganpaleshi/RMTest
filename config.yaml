@@ -10,20 +10,12 @@ pipeline:
   log_level: INFO
   random_seed: 67
 analysis:
-  analysis_start_time: '2023-06-14T00:00:00Z'
-  analysis_end_time: '2025-02-23T23:59:59Z'
-  spike_end_time: '2023-07-31T00:10:00Z'
-  spike_periods:
-  - - '2023-11-12T00:00:00Z'
-    - '2023-11-13T12:00:00Z'
-  run_periods:
-  - - '2023-09-28T00:00:00Z'
-    - '2023-10-28T23:59:59Z'
-  - - '2024-01-05T00:00:00Z'
-    - '2024-01-10T23:59:59Z'
-  radon_interval:
-  - '2023-06-14T00:00:00Z'
-  - '2025-02-23T23:59:59Z'
+  analysis_start_time: null
+  analysis_end_time: null
+  spike_end_time: null
+  spike_periods: []
+  run_periods: []
+  radon_interval: null
   ambient_concentration: null
 columns:
   timestamp: timestamps

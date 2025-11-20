@@ -335,7 +335,9 @@ set with the corresponding CLI options.
 `run_periods` specifies the intervals of valid data to keep after spike
 filtering.  Events falling outside all provided periods are discarded.
 `radon_interval` sets two timestamps used to compute the change in radon
-activity between them.
+activity between them. If any of these values are left unspecified or set
+to `null`, the analysis uses the full available data without imposing time
+limits.
 
 `ambient_concentration` may also be specified here to record the ambient
 radon concentration in Bq/L used for the equivalent air plot.  The
