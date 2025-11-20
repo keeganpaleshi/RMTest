@@ -95,3 +95,52 @@ def test_sigma_E_prior_mapping(monkeypatch):
     assert "F" in captured["priors"]
     assert "sigma_E" not in captured["priors"]
     assert res.params["sigma_E"] == pytest.approx(0.05)
+
+
+def test_max_tau_ratio_passed_through(monkeypatch):
+    captured = {}
+
+    def fake_fit_spectrum(*args, **kwargs):
+        captured["max_tau_ratio"] = kwargs.get("max_tau_ratio")
+        return FitResult(
+            FitParams(
+                {
+                    "sigma0": 0.05,
+                    "F": 0.0,
+                    "mu_Po210": 5.3,
+                    "S_Po210": 1.0,
+                    "mu_Po218": 6.0,
+                    "S_Po218": 1.0,
+                    "mu_Po214": 7.7,
+                    "S_Po214": 1.0,
+                    "b0": 0.0,
+                    "b1": 0.0,
+                }
+            ),
+            np.zeros((10, 10)),
+            0,
+        )
+
+    monkeypatch.setattr(analyze, "fit_spectrum", fake_fit_spectrum)
+
+    energies = np.array([5.3, 6.0, 7.7])
+    priors = {
+        "sigma_E": (0.05, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (1.0, 0.1),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (1.0, 0.1),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (1.0, 0.1),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+
+    cfg = {
+        "calibration": {"known_energies": {"Po214": 7.7}},
+        "spectral_fit": {"max_tau_ratio": 0.5},
+    }
+
+    analyze._spectral_fit_with_check(energies, priors, {}, cfg)
+
+    assert captured["max_tau_ratio"] == 0.5
