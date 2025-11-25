@@ -6,11 +6,18 @@ from constants import safe_exp as _safe_exp
 from .window_norm import normalize_pdf_to_window
 
 
-def _loglin_unit_shape(E, beta0, beta1, Emin, Emax, *, n_norm=512):
-    """Return a unit-area log-linear background shape."""
+LOG_LIN_UNIT_NORM_SAMPLES = 512
 
-    if n_norm <= 0:
-        n_norm = 512
+
+def _loglin_unit_shape(E, beta0, beta1, Emin, Emax, *, n_norm=None):
+    """Unit-area log-linear background shape.
+
+    The profile is ``exp(beta0 + beta1 * (E - Eref))`` normalized over
+    ``[Emin, Emax]`` where ``Eref`` is the window midpoint.
+    """
+
+    if n_norm is None or n_norm <= 0:
+        n_norm = LOG_LIN_UNIT_NORM_SAMPLES
     Eref = 0.5 * (Emin + Emax)
     grid = np.linspace(Emin, Emax, int(n_norm))
     exp_grid = _safe_exp(beta0 + beta1 * (grid - Eref))
@@ -28,6 +35,7 @@ def build_spectral_intensity(
     clip_floor=1e-300,
     *,
     background_model=None,
+    loglin_n_norm=None,
 ):
     """
     Returns spectral_intensity_E(E, params, domain, ...) that yields λ(E) in counts/MeV.
@@ -63,8 +71,9 @@ def build_spectral_intensity(
     E_lo, E_hi = domain
 
     if str(background_model).lower() == "loglin_unit":
+        # loglin_unit = exp(beta0 + beta1 * (E - Eref)), normalized to unit area on [E_lo, E_hi]
         background_shape = lambda E, beta0, beta1: _loglin_unit_shape(
-            E, beta0, beta1, E_lo, E_hi
+            E, beta0, beta1, E_lo, E_hi, n_norm=loglin_n_norm
         )
     else:
         background_shape = None

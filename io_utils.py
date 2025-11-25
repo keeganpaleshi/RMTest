@@ -18,6 +18,7 @@ import numpy as np
 from utils import to_native
 from utils.time_utils import parse_timestamp, to_epoch_seconds, tz_convert_utc
 import jsonschema
+import warnings
 from reporting import DEFAULT_DIAGNOSTICS
 from config.validation import validate_radon_inference
 
@@ -106,6 +107,10 @@ class Summary(Mapping[str, Any]):
 
     def __setitem__(self, key: str, value: Any) -> None:
         setattr(self, key, value)
+
+
+_DEFAULT_LOGLIN_NORM_SAMPLES = 512
+_DEFAULT_MAX_B1_SIGMA = 10.0
 
 
 CONFIG_SCHEMA = {
@@ -506,6 +511,42 @@ def load_config(config_path):
             raise ValueError("spectral_fit.clip_floor must be in (0, 1e-6].")
     else:
         sf["clip_floor"] = 1e-300
+
+    if "loglin_n_norm" in sf:
+        try:
+            sf["loglin_n_norm"] = int(sf["loglin_n_norm"])
+        except Exception as exc:
+            raise ValueError("spectral_fit.loglin_n_norm must be a positive integer") from exc
+        if sf["loglin_n_norm"] <= 0:
+            raise ValueError("spectral_fit.loglin_n_norm must be a positive integer")
+    else:
+        sf["loglin_n_norm"] = _DEFAULT_LOGLIN_NORM_SAMPLES
+
+    max_b1_sigma = sf.get("max_b1_sigma", _DEFAULT_MAX_B1_SIGMA)
+    try:
+        max_b1_sigma = float(max_b1_sigma)
+    except Exception as exc:  # pragma: no cover - defensive
+        raise ValueError("spectral_fit.max_b1_sigma must be positive") from exc
+    if max_b1_sigma <= 0:
+        raise ValueError("spectral_fit.max_b1_sigma must be positive")
+    sf["max_b1_sigma"] = max_b1_sigma
+
+    if "b1_prior" in sf:
+        prior = sf["b1_prior"]
+        if not isinstance(prior, (list, tuple)) or len(prior) < 2:
+            raise ValueError("spectral_fit.b1_prior must be [mean, sigma]")
+        mean, sigma = prior[0], prior[1]
+        sigma = float(sigma)
+        mean = float(mean)
+        if sigma <= 0:
+            raise ValueError("spectral_fit.b1_prior sigma must be positive")
+        if sigma > max_b1_sigma:
+            warnings.warn(
+                "spectral_fit.b1_prior sigma exceeds max_b1_sigma; clamping to limit",
+                RuntimeWarning,
+            )
+            sigma = max_b1_sigma
+        sf["b1_prior"] = (mean, sigma)
 
     validator = jsonschema.Draft7Validator(CONFIG_SCHEMA)
     missing = []

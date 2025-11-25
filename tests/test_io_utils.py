@@ -3,6 +3,7 @@ from pathlib import Path
 import sys
 import logging
 import jsonschema
+import warnings
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -66,6 +67,27 @@ def test_load_config_missing_section(tmp_path):
         json.dump(cfg, f)
     with pytest.raises(ValueError):
         load_config(p)
+
+
+def test_loglin_n_norm_defaults_and_validation(tmp_path):
+    cfg = _base_config()
+    loaded = _write_and_load(tmp_path, cfg)
+    assert loaded["spectral_fit"]["loglin_n_norm"] == 512
+
+    cfg_bad = _base_config()
+    cfg_bad["spectral_fit"]["loglin_n_norm"] = 0
+    with pytest.raises(ValueError, match="loglin_n_norm"):
+        _write_and_load(tmp_path, cfg_bad)
+
+
+def test_b1_prior_sigma_clamped(tmp_path):
+    cfg = _base_config()
+    cfg["spectral_fit"]["b1_prior"] = [0.0, 20.0]
+    cfg["spectral_fit"]["max_b1_sigma"] = 5.0
+    with warnings.catch_warnings(record=True) as caught:
+        loaded = _write_and_load(tmp_path, cfg)
+    assert loaded["spectral_fit"]["b1_prior"] == (0.0, 5.0)
+    assert any("b1_prior" in str(w.message) for w in caught)
 
 
 def test_load_config_resolution_conflict(tmp_path):

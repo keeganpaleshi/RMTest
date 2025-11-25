@@ -481,6 +481,10 @@ fit.  Important keys include:
   while `"manual"` uses the `b0_prior` / `b1_prior` values.
 - `b0_prior` / `b1_prior` - `[mean, sigma]` priors for the linear
   continuum terms.
+- `max_b1_sigma` - optional positive cap applied to `b1_prior` sigma to
+  avoid runaway log-linear curvature; defaults to `10.0`.
+- `loglin_n_norm` - number of integration samples for the unit-area
+  log-linear background shape ("loglin_unit"), default `512`.
 - `tau_{iso}_prior_mean` and `tau_{iso}_prior_sigma` - mean and
   uncertainty for the exponential tail constant of each isotope when
   an exponentially modified Gaussian (EMG) tail is enabled.  Use a
