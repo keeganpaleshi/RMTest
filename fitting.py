@@ -525,6 +525,16 @@ def fit_spectrum(
     
     if flags is None:
         flags = {}
+
+    # The spectral intensity returned by ``build_spectral_intensity`` is an
+    # event *intensity* (counts/MeV), not a unit-normalised PDF.  In unbinned
+    # mode this requires an extended likelihood so that the total expected
+    # counts appear in the objective.  Otherwise the optimiser can drive the
+    # signal areas to arbitrarily large values with no penalty.  Default to the
+    # extended path unless the caller explicitly overrides the likelihood.
+    if unbinned:
+        flags.setdefault("likelihood", "extended")
+
     likelihood_mode = "unbinned" if unbinned else "binned_poisson"
     likelihood_path = "unbinned_extended" if unbinned else "binned_poisson"
     if flags.get("fix_sigma_E"):
