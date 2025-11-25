@@ -148,11 +148,12 @@ def integral_of_intensity(
         if N > 0:
             mu_signal += N
 
+    width = max(E_hi - E_lo, 1e-12)
+
     if str(background_model).lower() == "loglin_unit":
-        S_bkg = float(params.get("S_bkg", 0.0))
-        mu_bkg_shape = S_bkg
+        # log-linear background is unit-area; S_bkg is total background counts
+        mu_bkg = float(params.get("S_bkg", 0.0))
     else:
-        width = max(E_hi - E_lo, 1e-12)
         # background from density b0 + b1*E
         b0 = float(params.get("b0", 0.0))
         b1 = float(params.get("b1", 0.0))
@@ -160,5 +161,6 @@ def integral_of_intensity(
 
         # optional S_bkg (flat over window) is total counts, not a density
         S_bkg = float(params.get("S_bkg", 0.0))
+        mu_bkg = mu_bkg_shape + S_bkg
 
-    return mu_signal + mu_bkg_shape + S_bkg
+    return mu_signal + mu_bkg
