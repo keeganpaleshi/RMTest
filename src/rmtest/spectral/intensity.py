@@ -1,10 +1,42 @@
 from collections.abc import Mapping
 
 import numpy as np
+
+from constants import safe_exp as _safe_exp
 from .window_norm import normalize_pdf_to_window
 
 
-def build_spectral_intensity(iso_list, use_emg, domain, clip_floor=1e-300):
+LOG_LIN_UNIT_NORM_SAMPLES = 512
+
+
+def _loglin_unit_shape(E, beta0, beta1, Emin, Emax, *, n_norm=None):
+    """Unit-area log-linear background shape.
+
+    The profile is ``exp(beta0 + beta1 * (E - Eref))`` normalized over
+    ``[Emin, Emax]`` where ``Eref`` is the window midpoint.
+    """
+
+    if n_norm is None or n_norm <= 0:
+        n_norm = LOG_LIN_UNIT_NORM_SAMPLES
+    Eref = 0.5 * (Emin + Emax)
+    grid = np.linspace(Emin, Emax, int(n_norm))
+    exp_grid = _safe_exp(beta0 + beta1 * (grid - Eref))
+    Z = np.trapz(exp_grid, grid)
+    Z = max(Z, 1e-300)
+
+    E = np.asarray(E, dtype=float)
+    return _safe_exp(beta0 + beta1 * (E - Eref)) / Z
+
+
+def build_spectral_intensity(
+    iso_list,
+    use_emg,
+    domain,
+    clip_floor=1e-300,
+    *,
+    background_model=None,
+    loglin_n_norm=None,
+):
     """
     Returns spectral_intensity_E(E, params, domain, ...) that yields λ(E) in counts/MeV.
     Peaks are normalized to the fit window exactly once.
@@ -35,6 +67,16 @@ def build_spectral_intensity(iso_list, use_emg, domain, clip_floor=1e-300):
 
         def kind_for_iso(_iso):
             return kind
+
+    E_lo, E_hi = domain
+
+    if str(background_model).lower() == "loglin_unit":
+        # loglin_unit = exp(beta0 + beta1 * (E - Eref)), normalized to unit area on [E_lo, E_hi]
+        background_shape = lambda E, beta0, beta1: _loglin_unit_shape(
+            E, beta0, beta1, E_lo, E_hi, n_norm=loglin_n_norm
+        )
+    else:
+        background_shape = None
 
     def spectral_intensity_E(E, params, domain, **kwargs):
         E = np.asarray(E, dtype=float)
@@ -67,16 +109,22 @@ def build_spectral_intensity(iso_list, use_emg, domain, clip_floor=1e-300):
             )
             lam += N * pdf_win(E)
 
-        # Background density: b0 + b1*E (counts/MeV). If S_bkg is present, it is total counts in window.
-        b0 = float(params.get("b0", 0.0))
-        b1 = float(params.get("b1", 0.0))
-        lam += (b0 + b1 * E)
+        if background_shape is not None:
+            beta0 = float(params.get("b0", 0.0))
+            beta1 = float(params.get("b1", 0.0))
+            S_bkg = float(params.get("S_bkg", 0.0))
+            lam += S_bkg * background_shape(E, beta0, beta1)
+        else:
+            # Background density: b0 + b1*E (counts/MeV). If S_bkg is present, it is total counts in window.
+            b0 = float(params.get("b0", 0.0))
+            b1 = float(params.get("b1", 0.0))
+            lam += (b0 + b1 * E)
 
-        # If S_bkg is explicitly given, add it as a flat density over the window.
-        if "S_bkg" in params:
-            S_bkg = float(params["S_bkg"])
-            width = max(E_hi - E_lo, 1e-12)
-            lam += (S_bkg / width)
+            # If S_bkg is explicitly given, add it as a flat density over the window.
+            if "S_bkg" in params:
+                S_bkg = float(params["S_bkg"])
+                width = max(E_hi - E_lo, 1e-12)
+                lam += (S_bkg / width)
 
         # Apply clipping floor to keep log-likelihood finite
         return np.clip(lam, clip_floor, np.inf)
@@ -84,7 +132,9 @@ def build_spectral_intensity(iso_list, use_emg, domain, clip_floor=1e-300):
     return spectral_intensity_E
 
 
-def integral_of_intensity(params, domain, iso_list=None, use_emg=False, **kwargs):
+def integral_of_intensity(
+    params, domain, iso_list=None, use_emg=False, *, background_model=None, **kwargs
+):
     """
     In-window expected counts μ = sum(N_iso) + background counts in [E_lo,E_hi].
     """
@@ -98,13 +148,18 @@ def integral_of_intensity(params, domain, iso_list=None, use_emg=False, **kwargs
         if N > 0:
             mu_signal += N
 
-    width = max(E_hi - E_lo, 1e-12)
-    # background from density b0 + b1*E
-    b0 = float(params.get("b0", 0.0))
-    b1 = float(params.get("b1", 0.0))
-    mu_bkg_shape = b0 * width + 0.5 * b1 * (E_hi**2 - E_lo**2)
+    if str(background_model).lower() == "loglin_unit":
+        # log-linear background is unit-area; S_bkg is total background counts
+        mu_bkg = float(params.get("S_bkg", 0.0))
+    else:
+        # background from density b0 + b1*E
+        b0 = float(params.get("b0", 0.0))
+        b1 = float(params.get("b1", 0.0))
+        width = max(E_hi - E_lo, 1e-12)
+        mu_bkg_shape = b0 * width + 0.5 * b1 * (E_hi**2 - E_lo**2)
 
-    # optional S_bkg (flat over window) is total counts, not a density
-    S_bkg = float(params.get("S_bkg", 0.0))
+        # optional S_bkg (flat over window) is total counts, not a density
+        S_bkg = float(params.get("S_bkg", 0.0))
+        mu_bkg = mu_bkg_shape + S_bkg
 
-    return mu_signal + mu_bkg_shape + S_bkg
+    return mu_signal + mu_bkg

@@ -789,7 +789,18 @@ def fit_spectrum(
     if cfg is not None:
         clip_floor = float(cfg.get("spectral_fit", {}).get("clip_floor", 1e-300))
 
-    spectral_intensity = build_spectral_intensity(iso_list, use_emg_map, domain, clip_floor=clip_floor)
+    loglin_n_norm = None
+    if cfg is not None:
+        loglin_n_norm = cfg.get("spectral_fit", {}).get("loglin_n_norm")
+
+    spectral_intensity = build_spectral_intensity(
+        iso_list,
+        use_emg_map,
+        domain,
+        clip_floor=clip_floor,
+        background_model=background_model,
+        loglin_n_norm=loglin_n_norm,
+    )
 
     def _build_raw_param_map(params):
         p_map = dict(zip(param_order, params))
@@ -907,6 +918,7 @@ def fit_spectrum(
                     domain,
                     iso_list=iso_list,
                     use_emg=use_emg_map,
+                    background_model=background_model,
                 )
                 area_sum = 0.0
                 for key in area_keys:
