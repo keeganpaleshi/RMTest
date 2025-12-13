@@ -43,6 +43,52 @@ def test_radon_joint_estimator_combination():
     assert abs(est - A_true) <= sigma
 
 
+def test_radon_joint_estimator_joint_equilibrium_fit():
+    A_true = 0.012
+    eff218 = 0.9
+    eff214 = 0.8
+    f218 = 1.0
+    f214 = 0.5
+
+    live_time218 = 3600.0
+    live_time214 = 5400.0
+
+    coeff_sum = eff218 * f218 * live_time218 + eff214 * f214 * live_time214
+    counts_total = round(A_true * coeff_sum)
+
+    # Split counts unevenly to ensure the joint fit really ties the isotopes
+    N218 = round(counts_total * 0.65)
+    N214 = counts_total - N218
+
+    result = estimate_radon_activity(
+        N218,
+        eff218,
+        f218,
+        N214,
+        eff214,
+        f214,
+        live_time218_s=live_time218,
+        live_time214_s=live_time214,
+        joint_equilibrium=True,
+    )
+
+    assert result["isotope_mode"] == "radon"
+    assert result.get("joint_equilibrium") is True
+
+    est = result["Rn_activity_Bq"]
+    sigma = result["stat_unc_Bq"]
+    assert abs(est - A_true) <= 2 * sigma
+
+    comp218 = result["components"]["from_po218"]
+    comp214 = result["components"]["from_po214"]
+    assert comp218["activity_Bq"] == pytest.approx(est)
+    assert comp214["activity_Bq"] == pytest.approx(est)
+
+    expected_variance = counts_total / (coeff_sum**2)
+    assert comp218["variance"] == pytest.approx(expected_variance)
+    assert comp214["variance"] == pytest.approx(expected_variance)
+
+
 def test_counts_without_live_time_raises():
     with pytest.raises(ValueError):
         estimate_radon_activity(

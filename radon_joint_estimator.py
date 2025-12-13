@@ -26,6 +26,7 @@ def estimate_radon_activity(
     rate218: float | None = None,
     err218: float | None = None,
     analysis_isotope: str = "radon",
+    joint_equilibrium: bool = False,
     nuclide_constants: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Estimate radon activity from Po-218/Po-214 counts.
@@ -43,6 +44,12 @@ def estimate_radon_activity(
         counts. Required whenever the respective ``N`` value is provided.
     analysis_isotope : {"radon", "po218", "po214"}
         Determines whether to combine the estimates or return a single isotope.
+    joint_equilibrium : bool, optional
+        When ``True`` and both Po-218 and Po-214 counts are provided, fit a
+        single radon activity parameter shared by both isotopes instead of
+        independently estimating each daughter.  This enforces physical
+        consistency under the assumption of secular equilibrium.  Defaults to
+        ``False``.
     nuclide_constants : mapping, optional
         Overrides for nuclide half-lives.  Must contain ``Rn222``, ``Po218`` and
         ``Po214`` entries compatible with :mod:`constants`.
@@ -216,6 +223,38 @@ def estimate_radon_activity(
             "Rn_activity_Bq": rn,
             "stat_unc_Bq": math.sqrt(var),
             "components": components,
+        }
+
+    if joint_equilibrium and res218 and res214 and mode == "radon":
+        coeff218 = epsilon218 * f218 * live_time218_s  # type: ignore[arg-type]
+        coeff214 = epsilon214 * f214 * live_time214_s  # type: ignore[arg-type]
+        coeff_sum = coeff218 + coeff214
+        counts_sum = (N218 or 0) + (N214 or 0)
+        if coeff_sum <= 0:
+            raise ValueError("live_time and efficiency products must be positive")
+        rn = counts_sum / coeff_sum
+        if counts_sum == 0:
+            var = math.inf
+        else:
+            var = counts_sum / (coeff_sum**2)
+
+        components["from_po218"] = {
+            "counts": N218,
+            "activity_Bq": rn,
+            "variance": var,
+        }
+        components["from_po214"] = {
+            "counts": N214,
+            "activity_Bq": rn,
+            "variance": var,
+        }
+
+        return {
+            "isotope_mode": "radon",
+            "Rn_activity_Bq": rn,
+            "stat_unc_Bq": math.sqrt(var) if math.isfinite(var) else math.inf,
+            "components": components,
+            "joint_equilibrium": True,
         }
 
     # Combine both when possible
