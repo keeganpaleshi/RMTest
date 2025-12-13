@@ -199,7 +199,7 @@ def test_rate_shortcut_single_isotope_preserves_rn_key():
     assert res_po214["activity_Bq"] == pytest.approx(0.31)
 
 
-def test_single_isotope_po218_zero_counts_returns_zero_with_inf_uncertainty():
+def test_single_isotope_po218_zero_counts_returns_zero_with_nan_uncertainty():
     result = estimate_radon_activity(
         N218=0,
         epsilon218=0.5,
@@ -214,17 +214,17 @@ def test_single_isotope_po218_zero_counts_returns_zero_with_inf_uncertainty():
 
     assert result["isotope_mode"] == "po218"
     assert result["Rn_activity_Bq"] == pytest.approx(0.0)
-    assert math.isinf(result["stat_unc_Bq"])
+    assert math.isnan(result["stat_unc_Bq"])
     assert result["gaussian_uncertainty_valid"] is False
 
     comp218 = result["components"]["from_po218"]
     assert comp218["counts"] == 0
     assert comp218["activity_Bq"] == pytest.approx(0.0)
-    assert math.isinf(comp218["variance"])
+    assert math.isnan(comp218["variance"])
     assert comp218["gaussian_uncertainty_valid"] is False
 
 
-def test_single_isotope_po214_zero_counts_returns_zero_with_inf_uncertainty():
+def test_single_isotope_po214_zero_counts_returns_zero_with_nan_uncertainty():
     result = estimate_radon_activity(
         N218=30,
         epsilon218=0.5,
@@ -239,12 +239,37 @@ def test_single_isotope_po214_zero_counts_returns_zero_with_inf_uncertainty():
 
     assert result["isotope_mode"] == "po214"
     assert result["Rn_activity_Bq"] == pytest.approx(0.0)
-    assert math.isinf(result["stat_unc_Bq"])
+    assert math.isnan(result["stat_unc_Bq"])
     assert result["gaussian_uncertainty_valid"] is False
 
     comp214 = result["components"]["from_po214"]
     assert comp214["counts"] == 0
     assert comp214["activity_Bq"] == pytest.approx(0.0)
-    assert math.isinf(comp214["variance"])
+    assert math.isnan(comp214["variance"])
     assert comp214["gaussian_uncertainty_valid"] is False
+
+
+def test_joint_equilibrium_zero_counts_returns_nan_uncertainty_and_note():
+    result = estimate_radon_activity(
+        N218=0,
+        epsilon218=0.5,
+        f218=1.0,
+        N214=0,
+        epsilon214=0.6,
+        f214=1.0,
+        live_time218_s=3600.0,
+        live_time214_s=3600.0,
+        joint_equilibrium=True,
+    )
+
+    assert result["isotope_mode"] == "radon"
+    assert math.isnan(result["stat_unc_Bq"])
+    assert result["gaussian_uncertainty_valid"] is False
+
+    comp218 = result["components"]["from_po218"]
+    comp214 = result["components"]["from_po214"]
+    assert math.isnan(comp218["variance"])
+    assert math.isnan(comp214["variance"])
+    assert comp218["note"] == "joint pooled estimator"
+    assert comp214["note"] == "joint pooled estimator"
 

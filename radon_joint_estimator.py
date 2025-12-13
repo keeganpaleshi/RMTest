@@ -57,7 +57,7 @@ def estimate_radon_activity(
     Notes
     -----
     When either isotope records zero counts, the returned variance is set to
-    ``math.inf`` to explicitly signal that a Gaussian approximation to the
+    ``math.nan`` to explicitly signal that a Gaussian approximation to the
     uncertainty is not valid in that regime.  Components include a
     ``gaussian_uncertainty_valid`` flag to make this behavior explicit.
     """
@@ -133,31 +133,36 @@ def estimate_radon_activity(
     if has214 and f214 <= 0:
         raise ValueError("fractions must be positive")
 
-    # Handle the special case when both counts are zero.  This avoids
-    # propagating NaNs further down in the calculation and signals that the
-    # activity is unconstrained.
+    # Handle the special case when both counts are zero.  This signals that the
+    # activity is unconstrained under a Gaussian approximation.
     if (N218 or 0) + (N214 or 0) == 0:
         components: dict[str, Any] = {}
+        note = "joint pooled estimator" if joint_equilibrium and has218 and has214 else None
         if N218 is not None:
             components["from_po218"] = {
                 "counts": N218,
                 "activity_Bq": 0.0,
-                "variance": math.inf,
+                "variance": math.nan,
                 "gaussian_uncertainty_valid": False,
             }
+            if note:
+                components["from_po218"]["note"] = note
         if N214 is not None:
             components["from_po214"] = {
                 "counts": N214,
                 "activity_Bq": 0.0,
-                "variance": math.inf,
+                "variance": math.nan,
                 "gaussian_uncertainty_valid": False,
             }
+            if note:
+                components["from_po214"]["note"] = note
         return {
             "isotope_mode": analysis_isotope.lower(),
             "Rn_activity_Bq": 0.0,
-            "stat_unc_Bq": float("inf"),
+            "stat_unc_Bq": math.nan,
             "gaussian_uncertainty_valid": False,
             "components": components,
+            "joint_equilibrium": joint_equilibrium,
         }
 
     consts = load_nuclide_overrides(nuclide_constants)
@@ -184,7 +189,7 @@ def estimate_radon_activity(
         if counts == 0:
             if live_time is not None and live_time < 0:
                 raise ValueError(f"live_time for {label} must be non-negative")
-            return 0.0, math.inf, False
+            return 0.0, math.nan, False
         if live_time is None or live_time <= 0:
             raise ValueError(f"live_time for {label} must be positive")
         rn = counts / (eff * frac * live_time)
@@ -248,7 +253,7 @@ def estimate_radon_activity(
             raise ValueError("live_time and efficiency products must be positive")
         rn = counts_sum / coeff_sum
         if counts_sum == 0:
-            var = math.inf
+            var = math.nan
             gaussian_valid = False
         else:
             var = counts_sum / (coeff_sum**2)
@@ -259,18 +264,20 @@ def estimate_radon_activity(
             "activity_Bq": rn,
             "variance": var,
             "gaussian_uncertainty_valid": gaussian_valid,
+            "note": "joint pooled estimator",
         }
         components["from_po214"] = {
             "counts": N214,
             "activity_Bq": rn,
             "variance": var,
             "gaussian_uncertainty_valid": gaussian_valid,
+            "note": "joint pooled estimator",
         }
 
         return {
             "isotope_mode": "radon",
             "Rn_activity_Bq": rn,
-            "stat_unc_Bq": math.sqrt(var) if math.isfinite(var) else math.inf,
+            "stat_unc_Bq": math.sqrt(var) if math.isfinite(var) else math.nan,
             "gaussian_uncertainty_valid": gaussian_valid and math.isfinite(var),
             "components": components,
             "joint_equilibrium": True,
@@ -280,16 +287,22 @@ def estimate_radon_activity(
     if res218 and res214:
         rn218, var218, gaussian_ok218 = res218
         rn214, var214, gaussian_ok214 = res214
-        w218 = 1.0 / var218
-        w214 = 1.0 / var214
-        rn_comb = (w218 * rn218 + w214 * rn214) / (w218 + w214)
-        sigma = 1.0 / math.sqrt(w218 + w214)
-        rn = rn_comb
-        var = sigma ** 2
-        gaussian_valid = (
-            (gaussian_ok218 and math.isfinite(var218))
-            or (gaussian_ok214 and math.isfinite(var214))
-        )
+        w218 = 1.0 / var218 if math.isfinite(var218) else 0.0
+        w214 = 1.0 / var214 if math.isfinite(var214) else 0.0
+        denom = w218 + w214
+        if denom > 0:
+            rn_comb = (w218 * rn218 + w214 * rn214) / denom
+            sigma = 1.0 / math.sqrt(denom)
+            rn = rn_comb
+            var = sigma**2
+            gaussian_valid = (
+                (gaussian_ok218 and math.isfinite(var218))
+                or (gaussian_ok214 and math.isfinite(var214))
+            )
+        else:
+            rn = 0.0
+            var = math.nan
+            gaussian_valid = False
     elif res218:
         rn, var, gaussian_valid = res218
     elif res214:
