@@ -10,7 +10,8 @@ This repository provides a complete pipeline to analyze electrostatic radon moni
 - `config.yaml`: YAML configuration file containing thresholds and options used by default.
 - `io_utils.py`: Functions to load raw data and write outputs.
 - `calibration.py`: Peak-finding and energy calibration routines.
-- `fitting.py`: Unbinned likelihood fit for Po-214 (and optional Po-218).
+- `fitting.py`: Unbinned spectral fit covering Po-218, Po-214, and Po-210,
+  plus time fits for Po-218 and Po-214 (both enabled by default).
 - `efficiency.py`: Efficiency calculations and BLUE combination helpers.
 - `systematics.py`: Scan for systematic uncertainties (optional).
 - `plot_utils.py`: Plotting routines for spectrum and time-series.
