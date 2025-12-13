@@ -53,6 +53,13 @@ def estimate_radon_activity(
     nuclide_constants : mapping, optional
         Overrides for nuclide half-lives.  Must contain ``Rn222``, ``Po218`` and
         ``Po214`` entries compatible with :mod:`constants`.
+
+    Notes
+    -----
+    When either isotope records zero counts, the returned variance is set to
+    ``math.inf`` to explicitly signal that a Gaussian approximation to the
+    uncertainty is not valid in that regime.  Components include a
+    ``gaussian_uncertainty_valid`` flag to make this behavior explicit.
     """
     if rate214 is not None or rate218 is not None:
         comp: dict[str, Any] = {}
@@ -136,17 +143,20 @@ def estimate_radon_activity(
                 "counts": N218,
                 "activity_Bq": 0.0,
                 "variance": math.inf,
+                "gaussian_uncertainty_valid": False,
             }
         if N214 is not None:
             components["from_po214"] = {
                 "counts": N214,
                 "activity_Bq": 0.0,
                 "variance": math.inf,
+                "gaussian_uncertainty_valid": False,
             }
         return {
             "isotope_mode": analysis_isotope.lower(),
             "Rn_activity_Bq": 0.0,
             "stat_unc_Bq": float("inf"),
+            "gaussian_uncertainty_valid": False,
             "components": components,
         }
 
@@ -164,7 +174,7 @@ def estimate_radon_activity(
         frac: float | None,
         live_time: float | None,
         label: str,
-    ):
+    ) -> tuple[float, float, bool] | None:
         if counts is None:
             return None
         if eff is None or frac is None:
@@ -174,30 +184,32 @@ def estimate_radon_activity(
         if counts == 0:
             if live_time is not None and live_time < 0:
                 raise ValueError(f"live_time for {label} must be non-negative")
-            return 0.0, math.inf
+            return 0.0, math.inf, False
         if live_time is None or live_time <= 0:
             raise ValueError(f"live_time for {label} must be positive")
         rn = counts / (eff * frac * live_time)
         var = counts / (eff**2 * frac**2 * live_time**2)
-        return rn, var
+        return rn, var, True
 
     res218 = _estimate(N218, epsilon218, f218, live_time218_s, "Po-218")
     res214 = _estimate(N214, epsilon214, f214, live_time214_s, "Po-214")
 
     components: dict[str, Any] = {}
     if res218:
-        rn218, var218 = res218
+        rn218, var218, gaussian_ok218 = res218
         components["from_po218"] = {
             "counts": N218,
             "activity_Bq": rn218,
             "variance": var218,
+            "gaussian_uncertainty_valid": gaussian_ok218,
         }
     if res214:
-        rn214, var214 = res214
+        rn214, var214, gaussian_ok214 = res214
         components["from_po214"] = {
             "counts": N214,
             "activity_Bq": rn214,
             "variance": var214,
+            "gaussian_uncertainty_valid": gaussian_ok214,
         }
 
     mode = analysis_isotope.lower()
@@ -207,21 +219,23 @@ def estimate_radon_activity(
     if mode == "po218":
         if not res218:
             raise ValueError("Po-218 counts unavailable for requested analysis_isotope='po218'")
-        rn, var = res218
+        rn, var, gaussian_valid = res218
         return {
             "isotope_mode": "po218",
             "Rn_activity_Bq": rn,
             "stat_unc_Bq": math.sqrt(var),
+            "gaussian_uncertainty_valid": gaussian_valid and math.isfinite(var),
             "components": components,
         }
     if mode == "po214":
         if not res214:
             raise ValueError("Po-214 counts unavailable for requested analysis_isotope='po214'")
-        rn, var = res214
+        rn, var, gaussian_valid = res214
         return {
             "isotope_mode": "po214",
             "Rn_activity_Bq": rn,
             "stat_unc_Bq": math.sqrt(var),
+            "gaussian_uncertainty_valid": gaussian_valid and math.isfinite(var),
             "components": components,
         }
 
@@ -235,49 +249,60 @@ def estimate_radon_activity(
         rn = counts_sum / coeff_sum
         if counts_sum == 0:
             var = math.inf
+            gaussian_valid = False
         else:
             var = counts_sum / (coeff_sum**2)
+            gaussian_valid = True
 
         components["from_po218"] = {
             "counts": N218,
             "activity_Bq": rn,
             "variance": var,
+            "gaussian_uncertainty_valid": gaussian_valid,
         }
         components["from_po214"] = {
             "counts": N214,
             "activity_Bq": rn,
             "variance": var,
+            "gaussian_uncertainty_valid": gaussian_valid,
         }
 
         return {
             "isotope_mode": "radon",
             "Rn_activity_Bq": rn,
             "stat_unc_Bq": math.sqrt(var) if math.isfinite(var) else math.inf,
+            "gaussian_uncertainty_valid": gaussian_valid and math.isfinite(var),
             "components": components,
             "joint_equilibrium": True,
         }
 
     # Combine both when possible
     if res218 and res214:
-        rn218, var218 = res218
-        rn214, var214 = res214
+        rn218, var218, gaussian_ok218 = res218
+        rn214, var214, gaussian_ok214 = res214
         w218 = 1.0 / var218
         w214 = 1.0 / var214
         rn_comb = (w218 * rn218 + w214 * rn214) / (w218 + w214)
         sigma = 1.0 / math.sqrt(w218 + w214)
         rn = rn_comb
         var = sigma ** 2
+        gaussian_valid = (
+            (gaussian_ok218 and math.isfinite(var218))
+            or (gaussian_ok214 and math.isfinite(var214))
+        )
     elif res218:
-        rn, var = res218
+        rn, var, gaussian_valid = res218
     elif res214:
-        rn, var = res214
+        rn, var, gaussian_valid = res214
     else:
         rn = 0.0
         var = math.nan
+        gaussian_valid = False
 
     return {
         "isotope_mode": "radon",
         "Rn_activity_Bq": rn,
         "stat_unc_Bq": math.sqrt(var) if not math.isnan(var) else math.nan,
+        "gaussian_uncertainty_valid": gaussian_valid and math.isfinite(var),
         "components": components,
     }

@@ -40,6 +40,7 @@ def test_radon_joint_estimator_combination():
     assert result["isotope_mode"] == "radon"
     est = result["Rn_activity_Bq"]
     sigma = result["stat_unc_Bq"]
+    assert result["gaussian_uncertainty_valid"] is True
     assert abs(est - A_true) <= sigma
 
 
@@ -74,6 +75,7 @@ def test_radon_joint_estimator_joint_equilibrium_fit():
 
     assert result["isotope_mode"] == "radon"
     assert result.get("joint_equilibrium") is True
+    assert result["gaussian_uncertainty_valid"] is True
 
     est = result["Rn_activity_Bq"]
     sigma = result["stat_unc_Bq"]
@@ -113,6 +115,7 @@ def test_single_isotope_po218_only_requires_matching_metadata():
     assert result["isotope_mode"] == "po218"
     assert "from_po218" in result["components"]
     assert "from_po214" not in result["components"]
+    assert result["gaussian_uncertainty_valid"] is True
 
 
 def test_single_isotope_po214_only_requires_matching_metadata():
@@ -127,6 +130,7 @@ def test_single_isotope_po214_only_requires_matching_metadata():
     assert result["isotope_mode"] == "po214"
     assert "from_po214" in result["components"]
     assert "from_po218" not in result["components"]
+    assert result["gaussian_uncertainty_valid"] is True
 
 
 def test_single_isotope_po218_missing_counts_raises():
@@ -211,11 +215,13 @@ def test_single_isotope_po218_zero_counts_returns_zero_with_inf_uncertainty():
     assert result["isotope_mode"] == "po218"
     assert result["Rn_activity_Bq"] == pytest.approx(0.0)
     assert math.isinf(result["stat_unc_Bq"])
+    assert result["gaussian_uncertainty_valid"] is False
 
     comp218 = result["components"]["from_po218"]
     assert comp218["counts"] == 0
     assert comp218["activity_Bq"] == pytest.approx(0.0)
     assert math.isinf(comp218["variance"])
+    assert comp218["gaussian_uncertainty_valid"] is False
 
 
 def test_single_isotope_po214_zero_counts_returns_zero_with_inf_uncertainty():
@@ -234,9 +240,11 @@ def test_single_isotope_po214_zero_counts_returns_zero_with_inf_uncertainty():
     assert result["isotope_mode"] == "po214"
     assert result["Rn_activity_Bq"] == pytest.approx(0.0)
     assert math.isinf(result["stat_unc_Bq"])
+    assert result["gaussian_uncertainty_valid"] is False
 
     comp214 = result["components"]["from_po214"]
     assert comp214["counts"] == 0
     assert comp214["activity_Bq"] == pytest.approx(0.0)
     assert math.isinf(comp214["variance"])
+    assert comp214["gaussian_uncertainty_valid"] is False
 
