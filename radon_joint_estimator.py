@@ -134,7 +134,8 @@ def estimate_radon_activity(
         raise ValueError("fractions must be positive")
 
     # Handle the special case when both counts are zero.  This signals that the
-    # activity is unconstrained under a Gaussian approximation.
+    # activity is unconstrained under a Gaussian approximation and is better
+    # represented as an upper limit than as a Gaussian sigma.
     if (N218 or 0) + (N214 or 0) == 0:
         components: dict[str, Any] = {}
         note = "joint pooled estimator" if joint_equilibrium and has218 and has214 else None
@@ -156,7 +157,15 @@ def estimate_radon_activity(
             }
             if note:
                 components["from_po214"]["note"] = note
-        return {
+
+        coeff_sum = 0.0
+        if has218 and live_time218_s and live_time218_s > 0:
+            coeff_sum += epsilon218 * f218 * live_time218_s
+        if has214 and live_time214_s and live_time214_s > 0:
+            coeff_sum += epsilon214 * f214 * live_time214_s
+        rn_ul95 = 3.0 / coeff_sum if coeff_sum > 0 else None
+
+        result: dict[str, Any] = {
             "isotope_mode": analysis_isotope.lower(),
             "Rn_activity_Bq": 0.0,
             "stat_unc_Bq": math.nan,
@@ -164,6 +173,9 @@ def estimate_radon_activity(
             "components": components,
             "joint_equilibrium": joint_equilibrium,
         }
+        if rn_ul95 is not None:
+            result["Rn_activity_UL95_Bq"] = rn_ul95
+        return result
 
     consts = load_nuclide_overrides(nuclide_constants)
     # Accessing the constants keeps API compatibility for callers that expect
@@ -179,7 +191,7 @@ def estimate_radon_activity(
         frac: float | None,
         live_time: float | None,
         label: str,
-    ) -> tuple[float, float, bool] | None:
+    ) -> tuple[float, float, bool, float | None] | None:
         if counts is None:
             return None
         if eff is None or frac is None:
@@ -189,33 +201,39 @@ def estimate_radon_activity(
         if counts == 0:
             if live_time is not None and live_time < 0:
                 raise ValueError(f"live_time for {label} must be non-negative")
-            return 0.0, math.nan, False
+            coeff = eff * frac * live_time if live_time and live_time > 0 else None
+            ul95 = 3.0 / coeff if coeff else None
+            return 0.0, math.nan, False, ul95
         if live_time is None or live_time <= 0:
             raise ValueError(f"live_time for {label} must be positive")
         rn = counts / (eff * frac * live_time)
         var = counts / (eff**2 * frac**2 * live_time**2)
-        return rn, var, True
+        return rn, var, True, None
 
     res218 = _estimate(N218, epsilon218, f218, live_time218_s, "Po-218")
     res214 = _estimate(N214, epsilon214, f214, live_time214_s, "Po-214")
 
     components: dict[str, Any] = {}
     if res218:
-        rn218, var218, gaussian_ok218 = res218
+        rn218, var218, gaussian_ok218, ul95_218 = res218
         components["from_po218"] = {
             "counts": N218,
             "activity_Bq": rn218,
             "variance": var218,
             "gaussian_uncertainty_valid": gaussian_ok218,
         }
+        if ul95_218 is not None:
+            components["from_po218"]["Rn_activity_UL95_Bq"] = ul95_218
     if res214:
-        rn214, var214, gaussian_ok214 = res214
+        rn214, var214, gaussian_ok214, ul95_214 = res214
         components["from_po214"] = {
             "counts": N214,
             "activity_Bq": rn214,
             "variance": var214,
             "gaussian_uncertainty_valid": gaussian_ok214,
         }
+        if ul95_214 is not None:
+            components["from_po214"]["Rn_activity_UL95_Bq"] = ul95_214
 
     mode = analysis_isotope.lower()
     if mode not in {"radon", "po218", "po214"}:
@@ -224,25 +242,31 @@ def estimate_radon_activity(
     if mode == "po218":
         if not res218:
             raise ValueError("Po-218 counts unavailable for requested analysis_isotope='po218'")
-        rn, var, gaussian_valid = res218
-        return {
+        rn, var, gaussian_valid, ul95 = res218
+        result = {
             "isotope_mode": "po218",
             "Rn_activity_Bq": rn,
             "stat_unc_Bq": math.sqrt(var),
             "gaussian_uncertainty_valid": gaussian_valid and math.isfinite(var),
             "components": components,
         }
+        if ul95 is not None:
+            result["Rn_activity_UL95_Bq"] = ul95
+        return result
     if mode == "po214":
         if not res214:
             raise ValueError("Po-214 counts unavailable for requested analysis_isotope='po214'")
-        rn, var, gaussian_valid = res214
-        return {
+        rn, var, gaussian_valid, ul95 = res214
+        result = {
             "isotope_mode": "po214",
             "Rn_activity_Bq": rn,
             "stat_unc_Bq": math.sqrt(var),
             "gaussian_uncertainty_valid": gaussian_valid and math.isfinite(var),
             "components": components,
         }
+        if ul95 is not None:
+            result["Rn_activity_UL95_Bq"] = ul95
+        return result
 
     if joint_equilibrium and res218 and res214 and mode == "radon":
         coeff218 = epsilon218 * f218 * live_time218_s  # type: ignore[arg-type]
@@ -255,9 +279,11 @@ def estimate_radon_activity(
         if counts_sum == 0:
             var = math.nan
             gaussian_valid = False
+            rn_ul95 = 3.0 / coeff_sum
         else:
             var = counts_sum / (coeff_sum**2)
             gaussian_valid = True
+            rn_ul95 = None
 
         components["from_po218"] = {
             "counts": N218,
@@ -274,7 +300,7 @@ def estimate_radon_activity(
             "note": "joint pooled estimator",
         }
 
-        return {
+        result = {
             "isotope_mode": "radon",
             "Rn_activity_Bq": rn,
             "stat_unc_Bq": math.sqrt(var) if math.isfinite(var) else math.nan,
@@ -282,11 +308,14 @@ def estimate_radon_activity(
             "components": components,
             "joint_equilibrium": True,
         }
+        if rn_ul95 is not None:
+            result["Rn_activity_UL95_Bq"] = rn_ul95
+        return result
 
     # Combine both when possible
     if res218 and res214:
-        rn218, var218, gaussian_ok218 = res218
-        rn214, var214, gaussian_ok214 = res214
+        rn218, var218, gaussian_ok218, _ = res218
+        rn214, var214, gaussian_ok214, _ = res214
         w218 = 1.0 / var218 if math.isfinite(var218) else 0.0
         w214 = 1.0 / var214 if math.isfinite(var214) else 0.0
         denom = w218 + w214
