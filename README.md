@@ -903,12 +903,12 @@ sigmas = cal.uncertainty([1500, 1700])
 
 After the decay fits a weighted average of the Po-218 and Po-214 rates is
 converted to an instantaneous radon activity for the counting cell.  Dividing
-by the monitor volume yields the radon concentration (Bq/L) reported in
-`summary.json` under `radon_results` alongside the total amount of radon in the
-sample volume.  The file `radon_activity.png` visualises this concentration over
-time using Bq/L on the vertical axis.  The companion `total_radon.png` plot
-uses the same timestamps but reports the total activity contained in the
-combined monitor+sample volume.  When either `--ambient-file` or
+by the combined monitor + sample volume yields the radon concentration (Bq/L)
+reported in `summary.json` under `radon_results` alongside the total amount of
+radon in the sampled air.  The file `radon_activity.png` visualises this
+concentration over time using Bq/L on the vertical axis.  The companion
+`total_radon.png` plot uses the same timestamps but reports the total activity
+contained in the combined monitor+sample volume.  When either `--ambient-file` or
 `--ambient-concentration` is supplied an additional plot
 `equivalent_air.png` shows the volume of ambient air containing the same
 activity.
