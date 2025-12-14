@@ -221,16 +221,17 @@ def compute_total_radon(
     Returns
     -------
     concentration : float
-        Radon concentration referenced to the sampled air volume when
-        ``sample_volume`` is positive (Bq/L when the volumes are given in
-        liters).  When ``sample_volume`` is zero the concentration is reported
-        per unit of the monitor volume.
+        Radon concentration referenced to the combined counting volume of the
+        monitor and sampled air (Bq/L when the volumes are given in liters).
+        When ``sample_volume`` is zero the concentration is reported per unit of
+        the monitor volume because the total and monitor volumes are the same.
     sigma_conc : float
         Uncertainty on the concentration.
     total_bq : float
-        Total radon present in the sampled air.  When ``sample_volume`` is
-        positive the fitted activity already represents the total radon inferred
-        from the sample and is returned without additional scaling.  For
+        Total radon present in the sampled air.  The fitted activity is taken as
+        the total activity in the counting chamber and is reported directly.
+        When ``sample_volume`` is positive the returned total reflects the
+        radon contained in the combined monitor plus sample volume.  For
         background runs with ``sample_volume`` equal to zero, the activity
         measured in the counting chamber is reported instead.
     sigma_total : float
@@ -243,7 +244,7 @@ def compute_total_radon(
     Examples
     --------
     >>> compute_total_radon(5.0, 0.5, 10.0, 20.0)
-    (0.25, 0.025, 5.0, 0.5)
+    (0.16666666666666666, 0.016666666666666666, 5.0, 0.5)
     """
     if monitor_volume <= 0:
         raise ValueError("monitor_volume must be positive")
@@ -264,14 +265,9 @@ def compute_total_radon(
         activity_bq, err_bq = clamp_non_negative(activity_bq, err_bq)
     if math.isnan(activity_bq):
         raise ValueError("activity_bq must not be NaN")
-    if sample_volume > 0:
-        total_volume = sample_volume
-        total_bq = activity_bq
-        sigma_total = err_bq
-    else:
-        total_volume = monitor_volume + sample_volume
-        total_bq = activity_bq
-        sigma_total = err_bq
+    total_volume = monitor_volume + sample_volume
+    total_bq = activity_bq
+    sigma_total = err_bq
 
     conc = activity_bq / total_volume
     sigma_conc = err_bq / total_volume
