@@ -163,8 +163,12 @@ def estimate_radon_activity(
 
         coeff_sum = 0.0
         if has218 and live_time218_s and live_time218_s > 0:
+            if epsilon218 is None or f218 is None:
+                raise ValueError("counts mode requires efficiencies and fractions")
             coeff_sum += epsilon218 * f218 * live_time218_s
         if has214 and live_time214_s and live_time214_s > 0:
+            if epsilon214 is None or f214 is None:
+                raise ValueError("counts mode requires efficiencies and fractions")
             coeff_sum += epsilon214 * f214 * live_time214_s
         rn_ul95 = UL95_POISSON_MEAN / coeff_sum if coeff_sum > 0 else None
 
