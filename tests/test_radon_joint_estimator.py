@@ -330,7 +330,9 @@ def test_zero_counts_short_circuit_preserves_requested_mode_po214():
 
 
 def test_zero_counts_short_circuit_requires_efficiencies_and_fractions():
-    with pytest.raises(ValueError, match="counts mode requires efficiencies and fractions"):
+    with pytest.raises(
+        ValueError, match="UL95 computation requires efficiencies and fractions"
+    ):
         estimate_radon_activity(
             N218=0,
             epsilon218=None,
@@ -338,7 +340,9 @@ def test_zero_counts_short_circuit_requires_efficiencies_and_fractions():
             live_time218_s=3600.0,
         )
 
-    with pytest.raises(ValueError, match="counts mode requires efficiencies and fractions"):
+    with pytest.raises(
+        ValueError, match="UL95 computation requires efficiencies and fractions"
+    ):
         estimate_radon_activity(
             N214=0,
             epsilon214=None,
