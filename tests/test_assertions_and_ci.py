@@ -41,6 +41,19 @@ def test_run_assertions_zero_uncertainty_allowed():
     run_assertions(summary, constants, config)
 
 
+def test_run_assertions_allows_nan_uncertainty_when_flagged_invalid():
+    summary = {
+        "radon": {
+            "Rn_activity_Bq": 0.0,
+            "stat_unc_Bq": float("nan"),
+            "gaussian_uncertainty_valid": False,
+        }
+    }
+    constants = {"Po214": {"half_life_s": 0.000164}}
+    config = {"baseline": {"sample_volume_l": 1.0}}
+    run_assertions(summary, constants, config)
+
+
 def test_run_assertions_without_baseline_block():
     summary = {"radon": {"Rn_activity_Bq": 1.0, "stat_unc_Bq": 0.1}}
     constants = {"Po214": {"half_life_s": 0.000164}}

@@ -4246,7 +4246,8 @@ def main(argv=None):
         else:
             ts_points = [float(ts_start)]
     
-        stat_unc = radon.get("stat_unc_Bq")
+        gaussian_ok = bool(radon.get("gaussian_uncertainty_valid", True))
+        stat_unc = radon.get("stat_unc_Bq") if gaussian_ok else float("nan")
         try:
             stat_unc_val = float(stat_unc) if stat_unc is not None else float("nan")
         except (TypeError, ValueError):
