@@ -286,3 +286,45 @@ def test_joint_equilibrium_zero_counts_returns_nan_uncertainty_and_note():
     assert comp218["note"] == "joint pooled estimator"
     assert comp214["note"] == "joint pooled estimator"
 
+
+def test_zero_counts_short_circuit_preserves_requested_mode_po218():
+    result = estimate_radon_activity(
+        N218=0,
+        epsilon218=0.4,
+        f218=1.0,
+        N214=0,
+        epsilon214=0.3,
+        f214=1.0,
+        live_time218_s=1800.0,
+        live_time214_s=1200.0,
+        analysis_isotope="po218",
+    )
+
+    assert result["isotope_mode"] == "po218"
+    assert math.isnan(result["stat_unc_Bq"])
+    assert result.get("gaussian_uncertainty_valid") is False
+    assert result["Rn_activity_UL95_Bq"] == pytest.approx(
+        UL95_ZERO_COUNTS / ((0.4 * 1800.0) + (0.3 * 1200.0))
+    )
+
+
+def test_zero_counts_short_circuit_preserves_requested_mode_po214():
+    result = estimate_radon_activity(
+        N218=0,
+        epsilon218=0.4,
+        f218=1.0,
+        N214=0,
+        epsilon214=0.3,
+        f214=1.0,
+        live_time218_s=1800.0,
+        live_time214_s=1200.0,
+        analysis_isotope="po214",
+    )
+
+    assert result["isotope_mode"] == "po214"
+    assert math.isnan(result["stat_unc_Bq"])
+    assert result.get("gaussian_uncertainty_valid") is False
+    assert result["Rn_activity_UL95_Bq"] == pytest.approx(
+        UL95_ZERO_COUNTS / ((0.4 * 1800.0) + (0.3 * 1200.0))
+    )
+
