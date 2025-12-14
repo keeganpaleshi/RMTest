@@ -10,6 +10,9 @@ from radon_activity import compute_radon_activity
 
 __all__ = ["estimate_radon_activity"]
 
+# One-sided 95% upper limit on the Poisson mean for zero observed counts.
+UL95_POISSON_MEAN = -math.log(0.05)
+
 
 def estimate_radon_activity(
     N218: int | None = None,
@@ -163,7 +166,7 @@ def estimate_radon_activity(
             coeff_sum += epsilon218 * f218 * live_time218_s
         if has214 and live_time214_s and live_time214_s > 0:
             coeff_sum += epsilon214 * f214 * live_time214_s
-        rn_ul95 = 3.0 / coeff_sum if coeff_sum > 0 else None
+        rn_ul95 = UL95_POISSON_MEAN / coeff_sum if coeff_sum > 0 else None
 
         result: dict[str, Any] = {
             "isotope_mode": analysis_isotope.lower(),
@@ -202,7 +205,7 @@ def estimate_radon_activity(
             if live_time is not None and live_time < 0:
                 raise ValueError(f"live_time for {label} must be non-negative")
             coeff = eff * frac * live_time if live_time and live_time > 0 else None
-            ul95 = 3.0 / coeff if coeff else None
+            ul95 = UL95_POISSON_MEAN / coeff if coeff else None
             return 0.0, math.nan, False, ul95
         if live_time is None or live_time <= 0:
             raise ValueError(f"live_time for {label} must be positive")
@@ -279,7 +282,7 @@ def estimate_radon_activity(
         if counts_sum == 0:
             var = math.nan
             gaussian_valid = False
-            rn_ul95 = 3.0 / coeff_sum
+            rn_ul95 = UL95_POISSON_MEAN / coeff_sum
         else:
             var = counts_sum / (coeff_sum**2)
             gaussian_valid = True

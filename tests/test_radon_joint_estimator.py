@@ -9,6 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from radon_joint_estimator import estimate_radon_activity
 from constants import load_nuclide_overrides
 
+UL95_ZERO_COUNTS = -math.log(0.05)
+
 
 def test_radon_joint_estimator_combination():
     consts = load_nuclide_overrides(None)
@@ -217,7 +219,9 @@ def test_single_isotope_po218_zero_counts_returns_zero_with_nan_uncertainty():
     assert math.isnan(result["stat_unc_Bq"])
     assert result["gaussian_uncertainty_valid"] is False
     assert "Rn_activity_UL95_Bq" in result
-    assert result["Rn_activity_UL95_Bq"] == pytest.approx(3.0 / (0.5 * 1.0 * 3600.0))
+    assert result["Rn_activity_UL95_Bq"] == pytest.approx(
+        UL95_ZERO_COUNTS / (0.5 * 1.0 * 3600.0)
+    )
 
     comp218 = result["components"]["from_po218"]
     assert comp218["counts"] == 0
@@ -244,7 +248,9 @@ def test_single_isotope_po214_zero_counts_returns_zero_with_nan_uncertainty():
     assert math.isnan(result["stat_unc_Bq"])
     assert result["gaussian_uncertainty_valid"] is False
     assert "Rn_activity_UL95_Bq" in result
-    assert result["Rn_activity_UL95_Bq"] == pytest.approx(3.0 / (0.6 * 1.0 * 3600.0))
+    assert result["Rn_activity_UL95_Bq"] == pytest.approx(
+        UL95_ZERO_COUNTS / (0.6 * 1.0 * 3600.0)
+    )
 
     comp214 = result["components"]["from_po214"]
     assert comp214["counts"] == 0
@@ -269,7 +275,9 @@ def test_joint_equilibrium_zero_counts_returns_nan_uncertainty_and_note():
     assert result["isotope_mode"] == "radon"
     assert math.isnan(result["stat_unc_Bq"])
     assert result["gaussian_uncertainty_valid"] is False
-    assert result["Rn_activity_UL95_Bq"] == pytest.approx(3.0 / ((0.5 + 0.6) * 3600.0))
+    assert result["Rn_activity_UL95_Bq"] == pytest.approx(
+        UL95_ZERO_COUNTS / ((0.5 + 0.6) * 3600.0)
+    )
 
     comp218 = result["components"]["from_po218"]
     comp214 = result["components"]["from_po214"]
