@@ -71,8 +71,15 @@ def _load_file_series(cfg_external: dict, target_index: pd.DatetimeIndex) -> pd.
     if not file_path:
         raise ValueError("external radon config missing 'file_path'")
 
+    # Validate file extension
+    file_path_obj = Path(file_path).expanduser()
+    if file_path_obj.suffix.lower() not in ['.csv', '.txt']:
+        raise ValueError(
+            f"external radon file must be CSV format, got {file_path_obj.suffix} for {file_path!r}"
+        )
+
     try:
-        df = pd.read_csv(Path(file_path).expanduser())
+        df = pd.read_csv(file_path_obj)
     except FileNotFoundError as exc:
         raise FileNotFoundError(
             "external radon file not found; check "
@@ -101,7 +108,13 @@ def _load_file_series(cfg_external: dict, target_index: pd.DatetimeIndex) -> pd.
     if timestamps.isna().any():
         raise ValueError("external radon time column contains unparsable timestamps")
 
-    series = pd.Series(df[value_column].to_numpy(dtype="float64"), index=timestamps)
+    # Validate that value column is numeric before conversion
+    values = pd.to_numeric(df[value_column], errors="coerce")
+    if values.isna().any() and not df[value_column].isna().any():
+        raise ValueError(
+            f"external radon value column {value_column!r} contains non-numeric values"
+        )
+    series = pd.Series(values.to_numpy(dtype="float64"), index=timestamps)
     idx = pd.DatetimeIndex(series.index)
     if idx.tz is None:
         if tz_name:

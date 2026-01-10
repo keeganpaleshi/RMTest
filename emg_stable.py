@@ -91,6 +91,10 @@ class StableEMG:
             # Fall back to pure Gaussian for negligible tail
             return amplitude * norm.pdf(x, mu, sigma)
 
+        # Validate sigma before division
+        if sigma <= 0:
+            raise ValueError(f"sigma must be positive, got {sigma}")
+
         # Ensure arrays for vectorized operations
         x = np.asarray(x)
 
@@ -286,7 +290,10 @@ def _emg_strategy_erfcx_exact(
     x = np.asarray(x, dtype=float)
 
     # Check for degenerate case
-    if tau <= _get_tau_min() or sigma <= 0:
+    if sigma <= 0:
+        raise ValueError(f"sigma must be positive, got {sigma}")
+
+    if tau <= _get_tau_min():
         # Fall back to Gaussian
         expo = -0.5 * ((x - mu) / sigma) ** 2
         return amplitude * np.exp(np.clip(expo, -700, 700)) / (sigma * np.sqrt(2 * np.pi))

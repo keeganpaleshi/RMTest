@@ -165,12 +165,13 @@ def softplus(x: np.ndarray | float) -> np.ndarray | float:
 
 
 def _softplus_inv(y: np.ndarray | float) -> np.ndarray | float:
+    was_scalar = np.isscalar(y)
     y = np.asarray(y, dtype=float)
     out = np.empty_like(y)
     mask = y > 0
     out[mask] = log_expm1_stable(y[mask])
     out[~mask] = -20.0
-    return out
+    return float(out) if was_scalar else out
 
 
 def _sigmoid(x: np.ndarray | float) -> np.ndarray | float:
@@ -213,7 +214,9 @@ def make_linear_bkg(
 
     def shape(E, beta0, beta1):
         exp_grid = _safe_exp(beta0 + beta1 * (grid - Eref))
-        Z = np.trapz(exp_grid, grid)
+        # Use np.trapezoid (NumPy 2.0+) or fall back to np.trapz
+        trapz_func = getattr(np, 'trapezoid', np.trapz)
+        Z = trapz_func(exp_grid, grid)
         Z = max(Z, 1e-300)
         E = np.asarray(E, dtype=float)
         return _safe_exp(beta0 + beta1 * (E - Eref)) / Z
@@ -795,9 +798,9 @@ def fit_spectrum(
         bounds_lo.append(lo)
         bounds_hi.append(hi)
 
+    # area_keys contains only peak integrals, not background
+    # (background integral is recovered by subtraction in extended likelihood)
     area_keys = [f"S_{iso}" for iso in iso_list]
-    if background_model == "loglin_unit" or "S_bkg" in priors:
-        area_keys = area_keys + ["S_bkg"]
 
     domain = (E_lo, E_hi)
     use_emg_map = {iso: bool(use_emg.get(iso, False)) for iso in iso_list}
@@ -1146,7 +1149,7 @@ def _integral_model(E, N0, B, lam, eff, T):
     """
     if lam <= 0:
         # In principle lam should never be <=0; return a large number to penalize
-        return 1e50
+        return 1e10  # Large penalty to avoid numerical overflow
     if T < 0:
         raise ValueError(
             f"_integral_model called with negative time interval T={T}. "
@@ -1203,7 +1206,7 @@ def _neg_log_likelihood_time(
         if eff is None:
             eff = p[f"eff_{iso}"]
         if eff <= 0:
-            return 1e50
+            return 1e10  # Large penalty to avoid numerical overflow
 
         # Extract parameters (some may be fixed to specific values):
         E_iso = p[f"E_{iso}"]
@@ -1248,7 +1251,7 @@ def _neg_log_likelihood_time(
             )
             # If any rate_vals   0, penalize heavily:
             if np.any(rate_vals <= 0):
-                return 1e50
+                return 1e10  # Large penalty to avoid numerical overflow
             if weights is None:
                 nll -= np.sum(np.log(rate_vals))
             else:

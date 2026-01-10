@@ -125,7 +125,7 @@ def initialize_baseline_record(
     scales = baseline_info.get("scales")
     if isinstance(scales, Mapping):
         record["scale_factors"] = {
-            str(iso): (_maybe_float(val) if _maybe_float(val) is not None else 0.0)
+            str(iso): (float_val if (float_val := _maybe_float(val)) is not None else 0.0)
             for iso, val in scales.items()
         }
 
