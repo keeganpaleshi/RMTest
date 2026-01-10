@@ -115,6 +115,9 @@ def two_pass_time_fit(
         return _LEGACY_CALLBACK_VERSION
 
     callback_version = _normalize_version(_resolve_attr(fit_func, _CALLBACK_VERSION_ATTR))
+    # Ensure both versions are valid 2-tuples before comparison
+    if not (isinstance(callback_version, tuple) and len(callback_version) == 2):
+        callback_version = _LEGACY_CALLBACK_VERSION
     supports_extra_kwargs = callback_version >= TIME_FIT_CALLBACK_VERSION
 
     def _callable_keywords(func) -> tuple[set[str], bool]:

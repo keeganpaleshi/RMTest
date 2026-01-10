@@ -125,7 +125,8 @@ def initialize_baseline_record(
     scales = baseline_info.get("scales")
     if isinstance(scales, Mapping):
         record["scale_factors"] = {
-            str(iso): _maybe_float(val) or 0.0 for iso, val in scales.items()
+            str(iso): (_maybe_float(val) if _maybe_float(val) is not None else 0.0)
+            for iso, val in scales.items()
         }
 
     centroid_mev, sigma_val = _extract_calibration_energy(calibration)
@@ -235,7 +236,7 @@ def get_fixed_background_for_time_fit(
         scale = cfg_scale if cfg_scale is not None else 1.0
 
     background_rate = base_rate * scale
-    background_unc = (base_sigma or 0.0) * scale if base_sigma is not None else 0.0
+    background_unc = base_sigma * scale if base_sigma is not None else 0.0
 
     result = {
         "background_rate_Bq": float(background_rate),

@@ -111,8 +111,9 @@ def compute_radon_activity(
         else:
             values.append(rate218)
             if err218 is not None and err218 >= 0:
-                if err218 == 0:
-                    weights.append(float("inf"))
+                if abs(err218) < 1e-15:
+                    # Very small error: treat as perfectly known, use large weight
+                    weights.append(1e30)
                 elif math.isfinite(err218):
                     weights.append(1.0 / err218**2)
                 else:
@@ -128,8 +129,9 @@ def compute_radon_activity(
         else:
             values.append(rate214)
             if err214 is not None and err214 >= 0:
-                if err214 == 0:
-                    weights.append(float("inf"))
+                if abs(err214) < 1e-15:
+                    # Very small error: treat as perfectly known, use large weight
+                    weights.append(1e30)
                 elif math.isfinite(err214):
                     weights.append(1.0 / err214**2)
                 else:
@@ -179,9 +181,12 @@ def compute_radon_activity(
             return A, math.nan
         # All remaining cases should correspond to invalid uncertainties for both
         # isotopes; fall back to reporting the combined statistical spread.
-        e218 = err218 if err218 is not None and err218 >= 0 else 0.0
-        e214 = err214 if err214 is not None and err214 >= 0 else 0.0
+        e218 = err218 if err218 is not None and err218 >= 0 and math.isfinite(err218) else 0.0
+        e214 = err214 if err214 is not None and err214 >= 0 and math.isfinite(err214) else 0.0
         sigma = math.sqrt(e218**2 + e214**2) / 2.0
+        # Ensure sigma is finite
+        if not math.isfinite(sigma):
+            sigma = math.nan
         return A, sigma
 
     # Only one valid value or missing errors

@@ -25,6 +25,7 @@ from emg_stable import StableEMG, emg_left_stable
 
 _USE_STABLE_EMG_DEFAULT = True
 _LOGGER = logging.getLogger(__name__)
+_MIN_PEAK_SEPARATION_ADC = 10.0  # Minimum ADC channels separation for peak fitting
 
 logger = logging.getLogger(__name__)
 
@@ -567,8 +568,10 @@ def two_point_calibration(adc_centroids, energies):
     """
     x1, x2 = adc_centroids
     E1, E2 = energies
-    if x1 == x2:
+    if abs(x1 - x2) < 1e-10:
         raise ValueError("ADC centroids must be distinct for calibration")
+    if abs(E1 - E2) < 1e-10:
+        raise ValueError("Energies must be distinct for calibration")
     a = (E2 - E1) / (x2 - x1)
     c = E1 - a * x1
     return float(a), float(c)
@@ -854,7 +857,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
                 sigma_E_guess = sigma_E_cfg
             slope_guess = cal_cfg.get("slope_MeV_per_ch")
             if slope_guess is not None:
-                if slope_guess == 0:
+                if abs(slope_guess) < 1e-15:
                     raise ValueError("slope_MeV_per_ch must be nonzero for sigma_E_init conversion")
                 sigma0 = abs(sigma_E_guess) / abs(slope_guess)
 
@@ -969,9 +972,15 @@ def calibrate_run(adc_values, config, hist_bins=None):
             )
 
     # 7) Propagate centroid uncertainties to calibration coefficients
-    mu_err_210 = float(np.sqrt(peak_fits["Po210"]["covariance"][1][1]))
-    mu_err_214 = float(np.sqrt(peak_fits["Po214"]["covariance"][1][1]))
-    mu_err_218 = float(np.sqrt(peak_fits["Po218"]["covariance"][1][1]))
+    def _extract_centroid_error(iso_name):
+        cov = peak_fits[iso_name].get("covariance")
+        if cov is None or len(cov) < 2 or len(cov[1]) < 2:
+            raise ValueError(f"Invalid covariance matrix for {iso_name} peak fit")
+        return float(np.sqrt(cov[1][1]))
+
+    mu_err_210 = _extract_centroid_error("Po210")
+    mu_err_214 = _extract_centroid_error("Po214")
+    mu_err_218 = _extract_centroid_error("Po218")
 
     if quadratic:
 
@@ -1005,9 +1014,10 @@ def calibrate_run(adc_values, config, hist_bins=None):
     else:
         delta = adc214 - adc210
         # Check for sufficient peak separation to avoid numerical instability
-        if abs(delta) < 10.0:  # Minimum 10 ADC channels separation
+        if abs(delta) < _MIN_PEAK_SEPARATION_ADC:
             raise ValueError(
-                f"Insufficient peak separation: Po214-Po210 delta = {delta:.1f} ADC channels (minimum 10 required)"
+                f"Insufficient peak separation: Po214-Po210 delta = {delta:.1f} ADC channels "
+                f"(minimum {_MIN_PEAK_SEPARATION_ADC:.1f} required)"
             )
         var_a = (a / delta) ** 2 * (mu_err_210**2 + mu_err_214**2)
         var_c = (a * adc214 / delta) ** 2 * mu_err_210**2 + (
