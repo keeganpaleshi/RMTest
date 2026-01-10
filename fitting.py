@@ -397,7 +397,7 @@ class _WidthLookup:
         if np.isscalar(x):
             key = float(x)
             idx = int(np.searchsorted(self.centers, key))
-            if idx >= self.centers.size or self.centers[idx] != key:
+            if idx >= self.centers.size or not np.isclose(self.centers[idx], key, rtol=1e-10, atol=1e-10):
                 raise KeyError(
                     f"{x} not found in bin centers; model can only be evaluated at"
                     " histogram centers"
@@ -455,7 +455,8 @@ def fit_decay(times, priors, t0=0.0, t_end=None, flags=None):
     else:
         T = float(t_end) - float(t0)
 
-    eff = float(priors.get("eff", (1.0, 0.0))[0])
+    eff_prior = priors.get("eff", (1.0, 0.0))
+    eff = float(eff_prior[0] if isinstance(eff_prior, (tuple, list)) and len(eff_prior) > 0 else 1.0)
 
     count = len(t)
     rate = count / (T * eff) if (T > 0 and eff > 0) else 0.0
@@ -581,8 +582,10 @@ def fit_spectrum(
     priors = dict(priors)
     if background_model == "loglin_unit":
         if "S_bkg" not in priors:
-            b0_mu = priors.get("b0", (0.0, 1.0))[0]
-            b1_mu = priors.get("b1", (0.0, 1.0))[0]
+            b0_prior = priors.get("b0", (0.0, 1.0))
+            b1_prior = priors.get("b1", (0.0, 1.0))
+            b0_mu = b0_prior[0] if isinstance(b0_prior, (tuple, list)) and len(b0_prior) > 0 else 0.0
+            b1_mu = b1_prior[0] if isinstance(b1_prior, (tuple, list)) and len(b1_prior) > 0 else 0.0
             # For exp(b0 + b1*(E - Eref)), calculate integral over [E_lo, E_hi]
             Eref = 0.5 * (E_lo + E_hi)
             if abs(b1_mu) > 1e-10:
@@ -747,7 +750,7 @@ def fit_spectrum(
         # Enforce a strictly positive initial tau to avoid singular EMG tails
         if name.startswith("tau_"):
             mean = _clamp_tau(mean, None, min_tau=_EMG_FLOOR)
-        is_fixed = flags.get(f"fix_{name}", False) or sig == 0
+        is_fixed = flags.get(f"fix_{name}", False) or abs(sig) < 1e-15
         if is_fixed:
             # Optimiser requires lower < upper; use a tiny width around fixed values
             lo = mean - eps
@@ -940,11 +943,16 @@ def fit_spectrum(
                 for key in area_keys:
                     if key in raw_map:
                         area_sum += float(_softplus(raw_map[key]))
-                bg_integral = mu_total - area_sum
-                if not np.isfinite(bg_integral):
+
+                # Check for NaN/inf before subtraction to prevent propagation
+                if not np.isfinite(mu_total) or not np.isfinite(area_sum):
                     bg_integral = None
                 else:
-                    bg_integral = max(bg_integral, 0.0)
+                    bg_integral = mu_total - area_sum
+                    if not np.isfinite(bg_integral):
+                        bg_integral = None
+                    else:
+                        bg_integral = max(bg_integral, 0.0)
 
                 def _intensity_cached(E_vals, _params):
                     return spectral_intensity(E_vals, physical, domain)
@@ -1442,8 +1450,13 @@ def fit_time_series(
         return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
 
     m.hesse()  # compute uncertainties
-    cov = np.array(m.covariance)
-    perr = np.sqrt(np.clip(np.diag(cov), 0, None))
+    if m.covariance is None:
+        # Fallback to zero covariance if hesse() failed
+        cov = np.zeros((len(ordered_params), len(ordered_params)))
+        perr = np.zeros(len(ordered_params))
+    else:
+        cov = np.array(m.covariance)
+        perr = np.sqrt(np.clip(np.diag(cov), 0, None))
     try:
             eigvals = np.linalg.eigvals(cov)
             fit_valid = bool(np.all(eigvals >= 0))

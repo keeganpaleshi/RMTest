@@ -219,6 +219,10 @@ def _eff_prior(eff_cfg: Any) -> tuple[float, float]:
     if eff_cfg in (None, "null"):
         return (1.0, 1e6)
     if isinstance(eff_cfg, (list, tuple)):
+        if len(eff_cfg) != 2:
+            raise ValueError(
+                f"Efficiency prior must be a 2-tuple (mean, sigma), got {len(eff_cfg)} elements"
+            )
         return tuple(eff_cfg)
     val = float(eff_cfg)
     return (val, 0.05 * val)
@@ -230,6 +234,8 @@ def _roi_diff(pre: np.ndarray, post: np.ndarray, cfg: Mapping[str, Any]) -> dict
     for iso in ("Po210", "Po218", "Po214"):
         win = cfg.get("time_fit", {}).get(f"window_{iso.lower()}")
         if win is None:
+            continue
+        if not isinstance(win, (list, tuple)) or len(win) != 2:
             continue
         lo, hi = win
         c_pre = int(((pre >= lo) & (pre <= hi)).sum())
@@ -285,13 +291,13 @@ def _burst_sensitivity_scan(
             eff214 = cfg.get("time_fit", {}).get("eff_po214")
             eff214 = (
                 eff214[0]
-                if isinstance(eff214, list)
+                if isinstance(eff214, list) and len(eff214) > 0
                 else (eff214 if eff214 is not None else 1.0)
             )
             eff218 = cfg.get("time_fit", {}).get("eff_po218")
             eff218 = (
                 eff218[0]
-                if isinstance(eff218, list)
+                if isinstance(eff218, list) and len(eff218) > 0
                 else (eff218 if eff218 is not None else 1.0)
             )
             est = estimate_radon_activity(
@@ -304,7 +310,9 @@ def _burst_sensitivity_scan(
                 live_time218_s=live_time_s,
                 live_time214_s=live_time_s,
             )
-            results[(m, w)] = float(est.get("Rn_activity_Bq", 0.0))
+            results[(m, w)] = float(
+                est.get("Rn_activity_Bq", 0.0) if isinstance(est, dict) else 0.0
+            )
 
     mean_val = np.nanmean(list(results.values())) if results else 0.0
     best = (

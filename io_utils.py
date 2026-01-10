@@ -552,7 +552,13 @@ def load_config(config_path):
     missing = []
     for err in validator.iter_errors(cfg):
         if err.validator == "required":
-            key = err.message.split("'")[1]
+            # Safely extract key from error message
+            parts = err.message.split("'")
+            if len(parts) >= 2:
+                key = parts[1]
+            else:
+                # Fallback: extract from the message or use a placeholder
+                key = err.message.split()[-1] if err.message else "unknown"
             dotted = ".".join(list(err.absolute_path) + [key])
             missing.append(dotted)
     if missing:
@@ -766,7 +772,8 @@ def load_events(csv_path, *, start=None, end=None, column_map=None):
         raise KeyError(f"Input CSV is missing required columns: {missing}")
 
     # Convert numeric columns explicitly
-    df["adc"] = pd.to_numeric(df.get("adc"), errors="coerce")
+    # Note: "adc" column existence already validated above
+    df["adc"] = pd.to_numeric(df["adc"], errors="coerce")
 
     start_len = len(df)
 
