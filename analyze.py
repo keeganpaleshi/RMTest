@@ -177,6 +177,7 @@ from time_fitting import two_pass_time_fit
 from config.validation import validate_baseline_window
 from pipeline_init import init_pipeline
 from data_loading import load_and_filter_events, setup_time_windows
+from calibration_stage import run_energy_calibration
 
 
 def main(argv=None):
