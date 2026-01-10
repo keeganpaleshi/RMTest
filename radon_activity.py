@@ -157,6 +157,10 @@ def compute_radon_activity(
         else:
             weight_sum = w1 + w2
             if weight_sum <= 0:
+                logging.warning(
+                    f"Invalid weight sum ({weight_sum}) in weighted average; "
+                    f"falling back to unweighted mean. weights: [{w1}, {w2}]"
+                )
                 A = (values[0] + values[1]) / 2.0
                 sigma = math.nan
             else:
@@ -190,6 +194,10 @@ def compute_radon_activity(
         return A, sigma
 
     # Only one valid value or missing errors
+    if len(values) < 1:
+        raise RuntimeError(
+            f"Internal error: expected at least one value but got {len(values)}"
+        )
     A = values[0]
     if weights[0] is None:
         sigma = math.nan
@@ -266,6 +274,12 @@ def compute_total_radon(
     if math.isnan(activity_bq):
         raise ValueError("activity_bq must not be NaN")
     total_volume = monitor_volume + sample_volume
+    # Explicit validation to prevent division by zero (should never happen given input constraints)
+    if total_volume <= 0:
+        raise ValueError(
+            f"total_volume must be positive (monitor_volume={monitor_volume}, "
+            f"sample_volume={sample_volume})"
+        )
     total_bq = activity_bq
     sigma_total = err_bq
 

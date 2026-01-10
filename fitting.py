@@ -1022,15 +1022,21 @@ def fit_spectrum(
                 perr = np.sqrt(np.clip(np.diag(cov), 0, None))
             except np.linalg.LinAlgError:
                 pass
+        # Validate that perr and param_order have matching sizes
+        if len(perr) != len(param_order):
+            raise RuntimeError(
+                f"Internal error: perr length ({len(perr)}) does not match "
+                f"param_order length ({len(param_order)})"
+            )
         out["fit_valid"] = fit_valid
         for i, pname in enumerate(param_order):
             val = float(m.values[pname])
             if pname.startswith("S_"):
                 out[pname] = float(_softplus(val))
-                out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
+                out["d" + pname] = float(perr[i])
             else:
                 out[pname] = val
-                out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)
+                out["d" + pname] = float(perr[i])
         if fix_sigma0:
             out["sigma0"] = sigma0_val
             out["dsigma0"] = 0.0
@@ -1080,6 +1086,12 @@ def fit_spectrum(
             perr = np.sqrt(np.clip(np.diag(pcov), 0, None))
         except np.linalg.LinAlgError:
             pass
+    # Validate that perr and param_order have matching sizes
+    if len(perr) != len(param_order):
+        raise RuntimeError(
+            f"Internal error: perr length ({len(perr)}) does not match "
+            f"param_order length ({len(param_order)})"
+        )
     out = {}
     for i, name in enumerate(param_order):
         val = float(popt[i])
@@ -1101,9 +1113,11 @@ def fit_spectrum(
     out["likelihood_path"] = likelihood_path
 
     model_counts = _model_binned(centers, *popt)
+    # Protect against division by zero: ensure model_counts is always positive
+    safe_model_counts = np.maximum(model_counts, 1e-10)
     with np.errstate(divide="ignore", invalid="ignore"):
         chi2 = 2 * np.sum(
-            model_counts - hist + hist * np.log(np.where(hist > 0, hist / model_counts, 1.0))
+            model_counts - hist + hist * np.log(np.where(hist > 0, hist / safe_model_counts, 1.0))
         )
     out["chi2"] = float(chi2)
     ndf = max(1, hist.size - len(popt))
@@ -1178,6 +1192,8 @@ def _neg_log_likelihood_time(
     # Build a dict for this iteration s parameter values:
     p = {}
     for pname, idx in param_indices.items():
+        if idx >= len(params):
+            raise ValueError(f"Parameter index {idx} for '{pname}' is out of range (params length: {len(params)})")
         p[pname] = params[idx]
 
     # For each isotope, compute its contribution to NLL:
@@ -1443,9 +1459,9 @@ def fit_time_series(
                     out[key] = float(val)
                     out["d" + key] = 0.0
         cov = np.zeros((len(ordered_params), len(ordered_params)))
-        if "E_Po214" in ordered_params and "N0_Po214" in ordered_params:
-            i1 = ordered_params.index("E_Po214")
-            i2 = ordered_params.index("N0_Po214")
+        if "E_Po214" in param_index and "N0_Po214" in param_index:
+            i1 = param_index["E_Po214"]
+            i2 = param_index["N0_Po214"]
             out["cov_E_Po214_N0_Po214"] = float(cov[i1, i2])
         return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
 
@@ -1458,8 +1474,8 @@ def fit_time_series(
         cov = np.array(m.covariance)
         perr = np.sqrt(np.clip(np.diag(cov), 0, None))
     try:
-            eigvals = np.linalg.eigvals(cov)
-            fit_valid = bool(np.all(eigvals >= 0))
+        eigvals = np.linalg.eigvals(cov)
+        fit_valid = bool(np.all(eigvals >= 0))
     except np.linalg.LinAlgError:
         fit_valid = False
     if not fit_valid:
@@ -1523,9 +1539,9 @@ def fit_time_series(
                 out[key] = float(val)
                 out["d" + key] = 0.0
 
-    if "E_Po214" in ordered_params and "N0_Po214" in ordered_params:
-        i1 = ordered_params.index("E_Po214")
-        i2 = ordered_params.index("N0_Po214")
+    if "E_Po214" in param_index and "N0_Po214" in param_index:
+        i1 = param_index["E_Po214"]
+        i2 = param_index["N0_Po214"]
         out["cov_E_Po214_N0_Po214"] = float(cov[i1, i2])
 
     return FitResult(out, cov, int(ndf), param_index, counts=int(n_events))
