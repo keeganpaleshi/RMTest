@@ -356,7 +356,7 @@ class FitResult:
                 f"Parameter(s) missing in covariance: {name1}, {name2}"
             ) from exc
 
-        if self.cov.ndim >= 2 and i1 < self.cov.shape[0] and i2 < self.cov.shape[1]:
+        if self.cov.ndim >= 2 and 0 <= i1 < self.cov.shape[0] and 0 <= i2 < self.cov.shape[1]:
             return float(self.cov[i1, i2])
 
         raise KeyError(f"Parameter(s) missing in covariance: {name1}, {name2}")
@@ -880,7 +880,7 @@ def fit_spectrum(
         if not m.valid:
             m.simplex()
             m.migrad()
-        ndf = hist.size - len(param_order)
+        ndf = max(1, hist.size - len(param_order))
         out = {}
         param_index = {name: i for i, name in enumerate(param_order)}
         m.hesse()
@@ -956,7 +956,7 @@ def fit_spectrum(
         if not m.valid:
             m.simplex()
             m.migrad()
-        ndf = e.size - len(param_order)
+        ndf = max(1, e.size - len(param_order))
         out = {}
         param_index = {name: i for i, name in enumerate(param_order)}
         m.hesse()
@@ -1082,8 +1082,8 @@ def fit_spectrum(
             model_counts - hist + hist * np.log(np.where(hist > 0, hist / model_counts, 1.0))
         )
     out["chi2"] = float(chi2)
-    ndf = hist.size - len(popt)
-    out["chi2_ndf"] = chi2 / ndf if ndf != 0 else np.nan
+    ndf = max(1, hist.size - len(popt))
+    out["chi2_ndf"] = chi2 / ndf if ndf > 0 else np.nan
     out["nll"] = float(nll_val)
     k = len(popt)
     out["aic"] = float(2 * nll_val + 2 * k)
@@ -1284,7 +1284,7 @@ def fit_time_series(
         min_counts = max(1, int(total_counts))
 
     if total_counts < min_counts:
-        logger.info(
+        logging.info(
             "fit_time_series: skipping fit, only %.0f events (< %d)",
             total_counts,
             min_counts,
@@ -1397,7 +1397,7 @@ def fit_time_series(
         m.migrad()
 
     n_events = sum(len(np.asarray(times_dict.get(iso, []))) for iso in iso_list)
-    ndf = n_events - len(ordered_params)
+    ndf = max(1, n_events - len(ordered_params))
 
     out = {}
     param_index = dict(param_indices)

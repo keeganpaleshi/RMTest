@@ -257,7 +257,7 @@ def compute_total_radon(
         if allow_negative_activity:
             pass
         else:
-            clamp_non_negative(activity_bq, err_bq)
+            activity_bq, err_bq = clamp_non_negative(activity_bq, err_bq)
             raise RuntimeError(
                 "Negative activity encountered. Re-run with --allow_negative_activity to override"
             )

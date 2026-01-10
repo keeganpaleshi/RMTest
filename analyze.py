@@ -951,8 +951,8 @@ def window_prob(E, sigma, lo, hi):
 
     if np.any(sigma < 0):
         raise ValueError("negative sigma in window_prob")
-    lo_val = float(lo) if np.isscalar(lo) else float(lo)
-    hi_val = float(hi) if np.isscalar(hi) else float(hi)
+    lo_val = float(lo)
+    hi_val = float(hi)
 
     prob = np.empty_like(E, dtype=float)
     zero_mask = sigma == 0

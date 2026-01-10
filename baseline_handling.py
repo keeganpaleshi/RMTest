@@ -361,12 +361,10 @@ def assess_baseline_drift(
     ):
         warn = True
 
-    if baseline_sigma and current_sigma:
-        denom = baseline_sigma if baseline_sigma != 0 else None
-        if denom:
-            frac_diff = abs(current_sigma - baseline_sigma) / abs(denom)
-            if frac_diff > sigma_tol:
-                warn = True
+    if baseline_sigma is not None and current_sigma is not None and baseline_sigma != 0:
+        frac_diff = abs(current_sigma - baseline_sigma) / abs(baseline_sigma)
+        if frac_diff > sigma_tol:
+            warn = True
 
     if warn:
         return True, "baseline spectral shape drifted relative to assay run"

@@ -159,7 +159,10 @@ def blue_combine(
             warnings.warn("negative BLUE weights encountered")
         else:
             raise ValueError("negative BLUE weights encountered")
-    weights /= weights.sum()
+    w_sum = weights.sum()
+    if w_sum == 0:
+        raise ValueError("BLUE weights sum to zero - cannot normalize")
+    weights /= w_sum
     estimate = float(weights @ vals)
     variance = 1.0 / norm
     return estimate, math.sqrt(variance), weights

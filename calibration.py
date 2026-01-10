@@ -845,7 +845,9 @@ def calibrate_run(adc_values, config, hist_bins=None):
             else:
                 sigma_E_guess = sigma_E_cfg
             slope_guess = cal_cfg.get("slope_MeV_per_ch")
-            if slope_guess:
+            if slope_guess is not None:
+                if slope_guess == 0:
+                    raise ValueError("slope_MeV_per_ch must be nonzero for sigma_E_init conversion")
                 sigma0 = sigma_E_guess / slope_guess
 
         tau_cfg = cal_cfg.get("init_tau_adc", 0.0)
