@@ -340,9 +340,9 @@ def estimate_radon_activity(
             var = math.nan
             gaussian_valid = False
     elif res218:
-        rn, var, gaussian_valid = res218
+        rn, var, gaussian_valid, _ = res218
     elif res214:
-        rn, var, gaussian_valid = res214
+        rn, var, gaussian_valid, _ = res214
     else:
         rn = 0.0
         var = math.nan
