@@ -138,32 +138,17 @@ from plot_utils import (
     plot_spectrum,
     plot_time_series,
     plot_equivalent_air,
-    plot_radon_activity_full,
-    plot_total_radon_full,
-    plot_radon_trend_full,
     plot_spectrum_comparison,
     plot_activity_grid,
 )
 
-from plot_utils.radon import (
-    plot_radon_activity as _plot_radon_activity,
-    plot_radon_trend as _plot_radon_trend,
+from plotting_wrappers import (
+    plot_radon_activity_dict,
+    plot_radon_trend_dict,
+    plot_radon_activity,
+    plot_total_radon,
+    plot_radon_trend,
 )
-
-
-def plot_radon_activity_dict(ts_dict, outdir, maybe_outdir=None, *_, **__):
-    """Compatibility wrapper for tests expecting three arguments with dict input."""
-    target = maybe_outdir or outdir
-    Path(target).mkdir(parents=True, exist_ok=True)
-    return _plot_radon_activity(ts_dict, target)
-
-
-def plot_radon_trend_dict(ts_dict, outdir, maybe_outdir=None, *_, **__):
-    """Compatibility wrapper for tests expecting three arguments with dict input."""
-    target = maybe_outdir or outdir
-    Path(target).mkdir(parents=True, exist_ok=True)
-    return _plot_radon_trend(ts_dict, target)
-
 
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
@@ -190,587 +175,70 @@ import baseline
 import baseline_handling
 from time_fitting import two_pass_time_fit
 from config.validation import validate_baseline_window
-from cli_parser import parse_args
-
-
-def plot_radon_activity(
-    times,
-    activity,
-    out_png,
-    errors=None,
-    *,
-    config=None,
-    sample_volume_l=None,
-    background_mode=None,
-):
-    """Wrapper used by tests expecting output path as third argument."""
-
-    return plot_radon_activity_full(
-        times,
-        activity,
-        errors,
-        out_png,
-        config=config,
-        sample_volume_l=sample_volume_l,
-        background_mode=background_mode,
-    )
-
-
-def plot_total_radon(
-    times,
-    total_bq,
-    out_png,
-    errors=None,
-    *,
-    config=None,
-    background_mode=None,
-):
-    """Wrapper used by tests expecting output path as third argument."""
-
-    return plot_total_radon_full(
-        times,
-        total_bq,
-        errors,
-        out_png,
-        config=config,
-        background_mode=background_mode,
-    )
-
-
-def plot_radon_trend(times, activity, out_png, *, config=None, fit_valid=True):
-    """Wrapper used by tests expecting output path as third argument."""
-    return plot_radon_trend_full(times, activity, out_png, config=config, fit_valid=fit_valid)
+from pipeline_init import init_pipeline
+from data_loading import load_and_filter_events, setup_time_windows
+from calibration_stage import run_energy_calibration
 
 
 def main(argv=None):
-    cli_args = [sys.argv[0]] + (list(argv) if argv is not None else sys.argv[1:])
-    cli_sha256 = hashlib.sha256(" ".join(cli_args).encode("utf-8")).hexdigest()
-    try:
-        commit = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], encoding="utf-8"
-        ).strip()
-    except Exception:
-        commit = "unknown"
+    # Initialize pipeline: parse args, load config, apply overrides, setup logging & random seed
+    args, cfg, timer, tzinfo, metadata = init_pipeline(argv)
 
-    try:
-        req_path = Path(__file__).resolve().parent / "requirements.txt"
-        with open(req_path, "rb") as f:
-            requirements_sha256 = hashlib.sha256(f.read()).hexdigest()
-    except Exception:
-        requirements_sha256 = "unknown"
+    # Unpack metadata
+    cli_sha256 = metadata["cli_sha256"]
+    commit = metadata["commit"]
+    requirements_sha256 = metadata["requirements_sha256"]
+    cfg_sha256 = metadata["cfg_sha256"]
+    seed_used = metadata["seed_used"]
+    now_str = metadata["timestamp"]
 
-    args = parse_args(argv)
-    timer = PipelineTimer(logging.getLogger("analyze.timer"))
-
-    if args.reproduce:
-        rep_path = Path(args.reproduce)
-        try:
-            with open(rep_path, "r", encoding="utf-8") as f:
-                rep_summary = json.load(f)
-        except Exception as e:
-            logger.error("Could not load summary '%s': %s", args.reproduce, e)
-            sys.exit(1)
-        args.config = rep_path.parent / "config_used.json"
-        args.seed = rep_summary.get("random_seed")
-
-    # Convert CLI paths to Path objects
-    args.config = Path(args.config)
-    args.input = Path(args.input)
-    args.output_dir = Path(args.output_dir)
-    if args.efficiency_json:
-        args.efficiency_json = Path(args.efficiency_json)
-    if args.systematics_json:
-        args.systematics_json = Path(args.systematics_json)
-    if args.ambient_file:
-        args.ambient_file = Path(args.ambient_file)
-    if args.hierarchical_summary:
-        args.hierarchical_summary = Path(args.hierarchical_summary)
-
+    # Initialize variables for pipeline
     pre_spec_energies = np.array([])
     post_spec_energies = np.array([])
     roi_diff = {}
     scan_results = {}
     best_params = None
 
-    # Resolve timezone for subsequent time parsing
-    tzinfo = gettz(args.timezone)
-    if tzinfo is None:
-        logger.error("Unknown timezone '%s'", args.timezone)
+    # ────────────────────────────────────────────────────────────
+    # 2. Load event data and apply filters
+    # ────────────────────────────────────────────────────────────
+    try:
+        events_all, events_filtered, n_removed_noise, n_removed_burst = load_and_filter_events(
+            args.input, cfg, args, timer
+        )
+    except Exception:
         sys.exit(1)
 
-    if args.baseline_range:
-        args.baseline_range = [
-            parse_time_arg(t, tz=tzinfo) for t in args.baseline_range
-        ]
-    if args.analysis_end_time is not None:
-        args.analysis_end_time = parse_time_arg(args.analysis_end_time, tz=tzinfo)
-    if args.analysis_start_time is not None:
-        args.analysis_start_time = parse_time_arg(args.analysis_start_time, tz=tzinfo)
-    if args.spike_start_time is not None:
-        args.spike_start_time = parse_time_arg(args.spike_start_time, tz=tzinfo)
-    if args.spike_end_time is not None:
-        args.spike_end_time = parse_time_arg(args.spike_end_time, tz=tzinfo)
-    if args.spike_period:
-        args.spike_period = [
-            [parse_time_arg(s, tz=tzinfo), parse_time_arg(e, tz=tzinfo)]
-            for s, e in args.spike_period
-        ]
-    if args.run_period:
-        args.run_period = [
-            [parse_time_arg(s, tz=tzinfo), parse_time_arg(e, tz=tzinfo)]
-            for s, e in args.run_period
-        ]
-    if args.radon_interval:
-        args.radon_interval = [
-            parse_time_arg(args.radon_interval[0], tz=tzinfo),
-            parse_time_arg(args.radon_interval[1], tz=tzinfo),
-        ]
-
-    # ────────────────────────────────────────────────────────────
-    # 1. Load configuration
-    # ────────────────────────────────────────────────────────────
-    with timer.section("load_config"):
-        try:
-            cfg = load_config(args.config)
-        except Exception as e:
-            logger.error("Could not load config '%s': %s", args.config, e)
-            sys.exit(1)
-
-    def _log_override(section, key, new_val):
-        prev = cfg.get(section, {}).get(key)
-        if prev is not None and prev != new_val:
-            logging.info(
-                f"Overriding {section}.{key}={prev!r} with {new_val!r} from CLI"
-            )
-
-    # Apply optional overrides from command-line arguments
-    if args.efficiency_json:
-        try:
-            with open(args.efficiency_json, "r", encoding="utf-8") as f:
-                cfg["efficiency"] = json.load(f)
-        except Exception as e:
-            logger.error(
-                "Could not load efficiency JSON '%s': %s", args.efficiency_json, e
-            )
-            sys.exit(1)
-
-    if args.systematics_json:
-        try:
-            with open(args.systematics_json, "r", encoding="utf-8") as f:
-                cfg["systematics"] = json.load(f)
-        except Exception as e:
-            logger.error(
-                "Could not load systematics JSON '%s': %s",
-                args.systematics_json,
-                e,
-            )
-            sys.exit(1)
-
-    if args.seed is not None:
-        _log_override("pipeline", "random_seed", int(args.seed))
-        cfg.setdefault("pipeline", {})["random_seed"] = int(args.seed)
-
-    if args.ambient_concentration is not None:
-        ambient_cli = _safe_float(args.ambient_concentration)
-        if ambient_cli is None:
-            logger.warning(
-                "Ignoring ambient concentration override %r; could not convert to float",
-                args.ambient_concentration,
-            )
-        else:
-            _log_override(
-                "analysis",
-                "ambient_concentration",
-                ambient_cli,
-            )
-            cfg.setdefault("analysis", {})["ambient_concentration"] = ambient_cli
-
-    if args.analysis_end_time is not None:
-        _log_override("analysis", "analysis_end_time", args.analysis_end_time)
-        cfg.setdefault("analysis", {})["analysis_end_time"] = args.analysis_end_time
-
-    if args.analysis_start_time is not None:
-        _log_override("analysis", "analysis_start_time", args.analysis_start_time)
-        cfg.setdefault("analysis", {})["analysis_start_time"] = args.analysis_start_time
-
-    if args.spike_start_time is not None:
-        _log_override("analysis", "spike_start_time", args.spike_start_time)
-        cfg.setdefault("analysis", {})["spike_start_time"] = args.spike_start_time
-
-    if args.spike_end_time is not None:
-        _log_override("analysis", "spike_end_time", args.spike_end_time)
-        cfg.setdefault("analysis", {})["spike_end_time"] = args.spike_end_time
-
-    if args.spike_period:
-        _log_override("analysis", "spike_periods", args.spike_period)
-        cfg.setdefault("analysis", {})["spike_periods"] = [
-            [s, e] for s, e in args.spike_period
-        ]
-
-    if args.run_period:
-        _log_override("analysis", "run_periods", args.run_period)
-        cfg.setdefault("analysis", {})["run_periods"] = [
-            [s, e] for s, e in args.run_period
-        ]
-
-    if args.radon_interval:
-        _log_override("analysis", "radon_interval", args.radon_interval)
-        cfg.setdefault("analysis", {})["radon_interval"] = [
-            args.radon_interval[0],
-            args.radon_interval[1],
-        ]
-
-    if args.background_model is not None:
-        _log_override("analysis", "background_model", args.background_model)
-        cfg.setdefault("analysis", {})["background_model"] = args.background_model
-
-    if args.likelihood is not None:
-        _log_override("analysis", "likelihood", args.likelihood)
-        cfg.setdefault("analysis", {})["likelihood"] = args.likelihood
-
-    if args.settle_s is not None:
-        _log_override("analysis", "settle_s", float(args.settle_s))
-        cfg.setdefault("analysis", {})["settle_s"] = float(args.settle_s)
-
-    if args.hl_po214 is not None:
-        tf = cfg.setdefault("time_fit", {})
-        sig = 0.0
-        current = tf.get("hl_po214")
-        if isinstance(current, list) and len(current) > 1:
-            sig = current[1]
-        _log_override("time_fit", "hl_po214", [float(args.hl_po214), sig])
-        tf["hl_po214"] = [float(args.hl_po214), sig]
-
-    if args.hl_po218 is not None:
-        tf = cfg.setdefault("time_fit", {})
-        sig = 0.0
-        current = tf.get("hl_po218")
-        if isinstance(current, list) and len(current) > 1:
-            sig = current[1]
-        _log_override("time_fit", "hl_po218", [float(args.hl_po218), sig])
-        tf["hl_po218"] = [float(args.hl_po218), sig]
-
-    if args.time_bin_mode:
-        _log_override("plotting", "plot_time_binning_mode", args.time_bin_mode)
-        cfg.setdefault("plotting", {})["plot_time_binning_mode"] = args.time_bin_mode
-    if args.time_bin_width is not None:
-        _log_override(
-            "plotting",
-            "plot_time_bin_width_s",
-            float(args.time_bin_width),
-        )
-        cfg.setdefault("plotting", {})["plot_time_bin_width_s"] = float(
-            args.time_bin_width
-        )
-    if args.dump_ts_json:
-        cfg.setdefault("plotting", {})["dump_time_series_json"] = True
-
-    if args.burst_mode is not None:
-        _log_override("burst_filter", "burst_mode", args.burst_mode)
-        cfg.setdefault("burst_filter", {})["burst_mode"] = args.burst_mode
-
-    if (
-        args.spike_count is not None
-        or args.spike_count_err is not None
-        or args.spike_activity is not None
-        or args.spike_duration is not None
-        or args.no_spike
-    ):
-        eff_sec = cfg.setdefault("efficiency", {}).setdefault("spike", {})
-        if args.spike_count is not None:
-            eff_sec["counts"] = float(args.spike_count)
-        if args.spike_count_err is not None:
-            eff_sec["error"] = float(args.spike_count_err)
-        if args.spike_activity is not None:
-            eff_sec["activity_bq"] = float(args.spike_activity)
-        if args.spike_duration is not None:
-            eff_sec["live_time_s"] = float(args.spike_duration)
-        if args.no_spike:
-            eff_sec["enabled"] = False
-
-    if args.slope is not None:
-        _log_override("systematics", "adc_drift_rate", float(args.slope))
-        cfg.setdefault("systematics", {})["adc_drift_rate"] = float(args.slope)
-
-    if args.noise_cutoff is not None:
-        _log_override(
-            "calibration",
-            "noise_cutoff",
-            int(args.noise_cutoff),
-        )
-        cfg.setdefault("calibration", {})["noise_cutoff"] = int(args.noise_cutoff)
-
-    if args.calibration_slope is not None:
-        _log_override(
-            "calibration",
-            "slope_MeV_per_ch",
-            float(args.calibration_slope),
-        )
-        cfg.setdefault("calibration", {})["slope_MeV_per_ch"] = float(args.calibration_slope)
-
-    if args.float_slope:
-        cfg.setdefault("calibration", {})["float_slope"] = True
-
-    if args.iso is not None:
-        prev = cfg.get("analysis_isotope")
-        if prev is not None and prev != args.iso:
-            logging.info(
-                f"Overriding analysis_isotope={prev!r} with {args.iso!r} from CLI"
-            )
-        cfg["analysis_isotope"] = args.iso
-    assert cfg.get("analysis_isotope", "radon") in {"radon", "po218", "po214"}
-
-    if args.calibration_method is not None:
-        _log_override("calibration", "method", args.calibration_method)
-        cfg.setdefault("calibration", {})["method"] = args.calibration_method
-
-    if args.allow_negative_baseline:
-        cfg["allow_negative_baseline"] = True
-
-    if args.debug:
-        cfg.setdefault("pipeline", {})["log_level"] = "DEBUG"
-
-    if args.palette:
-        cfg.setdefault("plotting", {})["palette"] = args.palette
-
-    # Timestamp for this analysis run
-    now_str = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-
-    base_cfg_sha = hashlib.sha256(
-        json.dumps(to_native(cfg), sort_keys=True).encode("utf-8")
-    ).hexdigest()
-
-    # Configure logging as early as possible
-    log_level = cfg.get("pipeline", {}).get("log_level", "INFO")
-    numeric_level = getattr(logging, log_level.upper(), logging.INFO)
-    logging.basicConfig(
-        level=numeric_level, format="%(levelname)s:%(name)s:%(message)s"
-    )
-
-    start_warning_capture()
-
-    seed = cfg.get("pipeline", {}).get("random_seed")
-    seed_used = None
-    if seed is not None:
-        try:
-            seed_int = int(seed)
-            np.random.seed(seed_int)
-            random.seed(seed_int)
-            seed_used = seed_int
-        except Exception:
-            logging.warning(f"Invalid random_seed '{seed}' ignored")
-    else:
-        derived_seed = int(
-            hashlib.sha256((base_cfg_sha + now_str).encode("utf-8")).hexdigest()[:8],
-            16,
-        )
-        np.random.seed(derived_seed)
-        random.seed(derived_seed)
-        seed_used = derived_seed
-        cfg.setdefault("pipeline", {})["random_seed"] = derived_seed
-
-    cfg_sha256 = hashlib.sha256(
-        json.dumps(to_native(cfg), sort_keys=True).encode("utf-8")
-    ).hexdigest()
-
-    # ────────────────────────────────────────────────────────────
-    # 2. Load event data
-    # ────────────────────────────────────────────────────────────
-    with timer.section("load_events"):
-        try:
-            events_all = load_events(args.input, column_map=cfg.get("columns"))
-
-            # Parse timestamps to UTC ``Timestamp`` objects
-            events_all["timestamp"] = events_all["timestamp"].map(parse_timestamp)
-
-        except Exception as e:
-            logger.error("Could not load events from '%s': %s", args.input, e)
-            sys.exit(1)
-
     if events_all.empty:
-        logger.info("No events found in the input CSV. Exiting.")
         sys.exit(0)
 
-    # ``load_events()`` already returns timezone-aware ``datetime64`` values.
-    # Timestamps are kept in this form and converted to epoch seconds only for
-    # numerical operations.
-
-    # ───────────────────────────────────────────────
-    # 2a. Pedestal / electronic-noise cut (integer ADC)
-    # ───────────────────────────────────────────────
-    noise_thr = cfg.get("calibration", {}).get("noise_cutoff")
-    n_removed_noise = 0
-    noise_thr_val = None
-    events_filtered = events_all.copy()
-    with timer.section("noise_cut"):
-        if noise_thr is not None:
-            try:
-                noise_thr_val = int(noise_thr)
-            except (ValueError, TypeError):
-                logging.warning(
-                    f"Invalid noise_cutoff '{noise_thr}' - skipping noise cut"
-                )
-                noise_thr_val = None
-            else:
-                before = len(events_filtered)
-                events_filtered = events_filtered[
-                    events_filtered["adc"] > noise_thr_val
-                ].reset_index(drop=True)
-                n_removed_noise = before - len(events_filtered)
-                if before > 0:
-                    frac_removed_noise = n_removed_noise / before
-                    logging.info(
-                        f"Noise cut removed {n_removed_noise} events ({frac_removed_noise:.1%})"
-                    )
-                else:
-                    logging.info(f"Noise cut removed {n_removed_noise} events")
-
-        _ensure_events(events_filtered, "noise cut")
-
     events_after_noise = events_filtered.copy()
+    events_after_burst = events_filtered.copy()
 
-    # Optional burst filter to remove high-rate clusters
-    with timer.section("burst_filter"):
-        total_span = (
-            events_filtered["timestamp"].max() - events_filtered["timestamp"].min()
-        )
-        if isinstance(total_span, (np.timedelta64, pd.Timedelta)):
-            total_span = total_span / np.timedelta64(1, "s")
-        rate_cps = len(events_filtered) / max(float(total_span), 1e-9)
-        if args.burst_mode is None:
-            current_mode = cfg.get("burst_filter", {}).get("burst_mode", "rate")
-            if current_mode == "rate" and rate_cps < 0.1:
-                cfg.setdefault("burst_filter", {})["burst_mode"] = "none"
+    # Determine burst mode for summary
+    burst_mode = (
+        args.burst_mode
+        if args.burst_mode is not None
+        else cfg.get("burst_filter", {}).get("burst_mode", "rate")
+    )
 
-        burst_mode = (
-            args.burst_mode
-            if args.burst_mode is not None
-            else cfg.get("burst_filter", {}).get("burst_mode", "rate")
-        )
-
-        n_before_burst = len(events_filtered)
-        events_filtered, n_removed_burst = apply_burst_filter(
-            events_filtered, cfg, mode=burst_mode
-        )
-        events_after_burst = events_filtered.copy()
-        if n_before_burst > 0:
-            frac_removed = n_removed_burst / n_before_burst
-            logging.info(
-                f"Burst filter removed {n_removed_burst} events ({frac_removed:.1%})"
-            )
-            if frac_removed > 0.5:
-                logging.warning(
-                    f"More than half of events vetoed by burst filter ({frac_removed:.1%})"
-                )
-
-        _ensure_events(events_filtered, "burst filtering")
-
-    # Global t₀ reference
-    t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
-    if t0_cfg is not None:
-        try:
-            t0_global = to_utc_datetime(t0_cfg)
-            t0_cfg = t0_global
-            cfg.setdefault("analysis", {})["analysis_start_time"] = t0_global
-        except Exception:
-            logging.warning(
-                f"Invalid analysis_start_time '{t0_cfg}' - using first event"
-            )
-            t0_global = to_utc_datetime(events_filtered["timestamp"].min())
-    else:
-        t0_global = to_utc_datetime(events_filtered["timestamp"].min())
-        t0_cfg = t0_global
-
-    t_end_cfg = cfg.get("analysis", {}).get("analysis_end_time")
-    t_end_global = None
-    t_end_global_ts = None
-    if t_end_cfg is not None:
-        try:
-            t_end_dt = to_utc_datetime(t_end_cfg)
-            t_end_global = t_end_dt
-            t_end_global_ts = t_end_dt.timestamp()
-            t_end_cfg = t_end_dt
-            cfg.setdefault("analysis", {})["analysis_end_time"] = t_end_dt
-        except Exception:
-            logging.warning(
-                f"Invalid analysis_end_time '{t_end_cfg}' - using last event"
-            )
-            t_end_global = None
-            t_end_global_ts = None
-
-    spike_start_cfg = cfg.get("analysis", {}).get("spike_start_time")
-    t_spike_start = None
-    if spike_start_cfg is not None:
-        try:
-            t_spike_start_dt = to_utc_datetime(spike_start_cfg)
-            t_spike_start = t_spike_start_dt
-            cfg.setdefault("analysis", {})["spike_start_time"] = t_spike_start_dt
-        except Exception:
-            logging.warning(f"Invalid spike_start_time '{spike_start_cfg}' - ignoring")
-            t_spike_start = None
-
-    spike_end_cfg = cfg.get("analysis", {}).get("spike_end_time")
-    t_spike_end = None
-    if spike_end_cfg is not None:
-        try:
-            t_spike_end_dt = to_utc_datetime(spike_end_cfg)
-            t_spike_end = t_spike_end_dt
-            cfg.setdefault("analysis", {})["spike_end_time"] = t_spike_end_dt
-        except Exception:
-            logging.warning(f"Invalid spike_end_time '{spike_end_cfg}' - ignoring")
-            t_spike_end = None
-
-    spike_periods_cfg = cfg.get("analysis", {}).get("spike_periods", [])
-    if spike_periods_cfg is None:
-        spike_periods_cfg = []
-    spike_periods = []
-    for period in spike_periods_cfg:
-        try:
-            start, end = period
-            start_ts = to_utc_datetime(start)
-            end_ts = to_utc_datetime(end)
-            if end_ts <= start_ts:
-                raise ValueError("end <= start")
-            spike_periods.append([start_ts, end_ts])
-        except Exception as e:
-            logging.warning(f"Invalid spike_period {period} -> {e}")
-    if spike_periods:
-        cfg.setdefault("analysis", {})["spike_periods"] = spike_periods
-        spike_periods_cfg = spike_periods
-
-    run_periods_cfg = cfg.get("analysis", {}).get("run_periods", [])
-    if run_periods_cfg is None:
-        run_periods_cfg = []
-    run_periods = []
-    for period in run_periods_cfg:
-        try:
-            start, end = period
-            start_ts = to_utc_datetime(start)
-            end_ts = to_utc_datetime(end)
-            if end_ts <= start_ts:
-                raise ValueError("end <= start")
-            run_periods.append([start_ts, end_ts])
-        except Exception as e:
-            logging.warning(f"Invalid run_period {period} -> {e}")
-    if run_periods:
-        cfg.setdefault("analysis", {})["run_periods"] = run_periods
-        run_periods_cfg = run_periods
-
-    radon_interval_cfg = cfg.get("analysis", {}).get("radon_interval")
-    radon_interval = None
-    if radon_interval_cfg:
-        try:
-            start_r, end_r = radon_interval_cfg
-            start_r_dt = to_utc_datetime(start_r)
-            end_r_dt = to_utc_datetime(end_r)
-            if end_r_dt <= start_r_dt:
-                raise ValueError("end <= start")
-            radon_interval = [start_r_dt, end_r_dt]
-            cfg.setdefault("analysis", {})["radon_interval"] = radon_interval
-            radon_interval_cfg = radon_interval
-        except Exception as e:
-            logging.warning(f"Invalid radon_interval {radon_interval_cfg} -> {e}")
-            radon_interval = None
+    # Setup time windows and parse time periods
+    time_windows = setup_time_windows(cfg, events_filtered)
+    t0_global = time_windows["t0_global"]
+    t0_cfg = time_windows["t0_cfg"]
+    t_end_global = time_windows["t_end_global"]
+    t_end_global_ts = time_windows["t_end_global_ts"]
+    t_end_cfg = time_windows["t_end_cfg"]
+    t_spike_start = time_windows["t_spike_start"]
+    spike_start_cfg = time_windows["spike_start_cfg"]
+    t_spike_end = time_windows["t_spike_end"]
+    spike_end_cfg = time_windows["spike_end_cfg"]
+    spike_periods = time_windows["spike_periods"]
+    spike_periods_cfg = time_windows["spike_periods_cfg"]
+    run_periods = time_windows["run_periods"]
+    run_periods_cfg = time_windows["run_periods_cfg"]
+    radon_interval = time_windows["radon_interval"]
+    radon_interval_cfg = time_windows["radon_interval_cfg"]
 
     with timer.section("prepare_analysis_df"):
         (
