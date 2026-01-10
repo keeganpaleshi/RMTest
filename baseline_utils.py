@@ -276,6 +276,8 @@ def subtract(
         # helpers treat them as Poisson variances using their absolute value to
         # avoid unphysical negative uncertainties, so mirror that behaviour
         # here.
+        # WARNING: Using abs(counts_bl) violates Poisson statistics when counts_bl < 0
+        # and may underestimate uncertainties. This is a known limitation.
         var = counts_an + (scale**2) * np.abs(counts_bl)
         err_hist = np.sqrt(var)
 

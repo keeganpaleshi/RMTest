@@ -85,10 +85,10 @@ def _read_yaml_defaults() -> dict:
 _YAML_DEFAULTS = _read_yaml_defaults()
 
 PO214 = NuclideConst(
-    half_life_s=float(_YAML_DEFAULTS.get("Po214", {}).get("half_life_s", 1.64e-4))
+    half_life_s=float(_YAML_DEFAULTS.get("Po214", {}).get("half_life_s", 1.643e-4))
 )
 PO218 = NuclideConst(
-    half_life_s=float(_YAML_DEFAULTS.get("Po218", {}).get("half_life_s", 183.0))
+    half_life_s=float(_YAML_DEFAULTS.get("Po218", {}).get("half_life_s", 185.88))
 )
 PO210 = NuclideConst(
     half_life_s=float(
@@ -96,7 +96,7 @@ PO210 = NuclideConst(
     )
 )
 RN222 = NuclideConst(
-    half_life_s=float(_YAML_DEFAULTS.get("Rn222", {}).get("half_life_s", 3.8 * 86400.0))
+    half_life_s=float(_YAML_DEFAULTS.get("Rn222", {}).get("half_life_s", 3.8235 * 86400.0))
 )
 
 

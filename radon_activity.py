@@ -319,7 +319,7 @@ def radon_activity_curve(
     variance = (dA_dE * dE) ** 2 + (dA_dN0 * dN0) ** 2
     if cov_en0:
         variance += 2.0 * dA_dE * dA_dN0 * cov_en0
-    sigma = np.sqrt(variance)
+    sigma = np.sqrt(np.maximum(variance, 0.0))
     return activity, sigma
 
 
@@ -355,7 +355,7 @@ def radon_delta(
     variance = (d_delta_dE * dE) ** 2 + (d_delta_dN0 * dN0) ** 2
     if cov_en0:
         variance += 2.0 * d_delta_dE * d_delta_dN0 * cov_en0
-    sigma = math.sqrt(variance)
+    sigma = math.sqrt(max(variance, 0.0))
     return delta, sigma
 
 

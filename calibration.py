@@ -442,6 +442,8 @@ def emg_left(x, mu, sigma, tau):
 
 def gaussian(x, mu, sigma):
     """Standard Gaussian PDF (unit area)."""
+    if np.any(sigma <= 0):
+        raise ValueError(f"sigma must be positive, got {sigma}")
     expo = -0.5 * ((x - mu) / sigma) ** 2
     return _safe_exp(expo) / (sigma * np.sqrt(2 * np.pi))
 
@@ -487,7 +489,8 @@ def _fit_gaussian_peak(
             return A * gaussian(x, mu, sigma)
 
         p0 = [amp_guess, float(x0), sigma_guess]
-        bounds = ([0, x0 - window_size, 1e-3], [np.inf, x0 + window_size, 100.0])
+        # Upper sigma bound: generous limit to avoid constraining wide peaks
+        bounds = ([0, x0 - window_size, 1e-3], [np.inf, x0 + window_size, 500.0])
         popt, pcov = curve_fit(
             model_gauss, x_slice, y_slice, p0=p0, bounds=bounds, maxfev=maxfev
         )
@@ -532,7 +535,8 @@ def _fit_emg_peak(
             return A * emg_left(x, mu, sigma, tau)
 
         p0 = [amp_guess, float(x0), sigma_guess, tau0]
-        bounds = ([0, x0 - window_size, 1e-3, tau_lo], [np.inf, x0 + window_size, 50.0, tau_hi])
+        # Upper sigma bound: generous limit to avoid constraining wide peaks
+        bounds = ([0, x0 - window_size, 1e-3, tau_lo], [np.inf, x0 + window_size, 250.0, tau_hi])
         popt, pcov = curve_fit(
             model_emg, x_slice, y_slice, p0=p0, bounds=bounds, maxfev=maxfev
         )
@@ -789,7 +793,12 @@ def calibrate_run(adc_values, config, hist_bins=None):
     prom = cal_cfg["peak_prominence"]
     width_cfg = cal_cfg.get("peak_widths") or {}
     wid_global = cal_cfg.get("peak_width")
-    peaks, props = find_peaks(hist, prominence=prom, width=wid_global)
+    # If per-isotope widths are specified but no global width, use minimal width
+    # to ensure find_peaks calculates widths for filtering
+    width_for_peaks = wid_global
+    if wid_global is None and isinstance(width_cfg, Mapping) and width_cfg:
+        width_for_peaks = 0  # Minimal width to trigger width calculation
+    peaks, props = find_peaks(hist, prominence=prom, width=width_for_peaks)
 
     # 3) From the found peaks, pick the three that best match expected energies:
     #    Convert expected energy->ADC guess via last calibration or central ADC->MeV mapping if available.
@@ -847,7 +856,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
             if slope_guess is not None:
                 if slope_guess == 0:
                     raise ValueError("slope_MeV_per_ch must be nonzero for sigma_E_init conversion")
-                sigma0 = sigma_E_guess / slope_guess
+                sigma0 = abs(sigma_E_guess) / abs(slope_guess)
 
         tau_cfg = cal_cfg.get("init_tau_adc", 0.0)
         # Avoid zero or negative starting tau which can cause numerical issues
@@ -978,10 +987,12 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
         mus = np.array([adc210, adc218, adc214], dtype=float)
         coeff0 = np.array([a2, a, c], dtype=float)
-        eps = 1.0e-6
+        # Use relative epsilon scaled to ADC magnitude for better numerical precision
+        eps_rel = 1.0e-6
         J = np.zeros((3, 3))
         for i in range(3):
             m_step = mus.copy()
+            eps = max(abs(mus[i]) * eps_rel, 1.0e-6)  # Relative epsilon with floor
             m_step[i] += eps
             J[:, i] = (solve_coeff(m_step) - coeff0) / eps
 
@@ -993,6 +1004,11 @@ def calibrate_run(adc_values, config, hist_bins=None):
         cov_a2_c = cov_coeff[0, 2]
     else:
         delta = adc214 - adc210
+        # Check for sufficient peak separation to avoid numerical instability
+        if abs(delta) < 10.0:  # Minimum 10 ADC channels separation
+            raise ValueError(
+                f"Insufficient peak separation: Po214-Po210 delta = {delta:.1f} ADC channels (minimum 10 required)"
+            )
         var_a = (a / delta) ** 2 * (mu_err_210**2 + mu_err_214**2)
         var_c = (a * adc214 / delta) ** 2 * mu_err_210**2 + (
             a * adc210 / delta
@@ -1011,6 +1027,8 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
     var_slope_local = var_a + (2 * adc214) ** 2 * var_a2 + 2 * (2 * adc214) * cov_a_a2
     var_sigma_adc = peak_fits["Po214"]["covariance"][2][2]
+    # Note: This approximation assumes slope_local and sigma_adc are uncorrelated.
+    # A more rigorous treatment would include cov(slope_local, sigma_adc).
     var_sigma_E = (sigma_adc214**2) * var_slope_local + (
         slope_local**2
     ) * var_sigma_adc
@@ -1072,8 +1090,9 @@ def derive_calibration_constants(adc_values, config):
     cfg = config if slope is None or not float_slope else deepcopy(config)
     if slope is not None and float_slope:
         energies = {**DEFAULT_KNOWN_ENERGIES, **cal_cfg.get("known_energies", {})}
+        intercept = cal_cfg.get("intercept_MeV", 0.0)
         cfg.setdefault("calibration", {})["nominal_adc"] = {
-            iso: int(round(energies[iso] / slope)) for iso in ("Po210", "Po218", "Po214")
+            iso: int(round((energies[iso] - intercept) / slope)) for iso in ("Po210", "Po218", "Po214")
         }
     try:
         return calibrate_run(adc_values, cfg)
