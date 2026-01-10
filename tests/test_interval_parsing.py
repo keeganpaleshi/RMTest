@@ -5,6 +5,7 @@ from datetime import datetime, timezone, timedelta
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import analyze
+import cli_parser
 from utils import parse_time_arg
 from utils.time_utils import parse_timestamp
 from dateutil.tz import gettz
@@ -12,7 +13,7 @@ import pandas as pd
 
 
 def test_cli_interval_parsing_to_datetime():
-    args = analyze.parse_args([
+    args = cli_parser.parse_args([
         "--config", "cfg.yaml",
         "--input", "data.csv",
         "--output_dir", "out",
@@ -41,7 +42,7 @@ def test_config_interval_parsing_to_datetime():
         assert dt.tzinfo.utcoffset(dt) == timedelta(0)
 
 def test_parse_allow_negative_activity():
-    args = analyze.parse_args([
+    args = cli_parser.parse_args([
         "--config", "cfg.yaml",
         "--input", "data.csv",
         "--output_dir", "out",

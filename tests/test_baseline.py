@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import types
 sys.modules.setdefault("pymc", types.ModuleType("pymc"))
 import analyze
+import analysis_helpers
 import baseline_noise
 from dataclasses import asdict
 from calibration import CalibrationResult
@@ -981,7 +982,7 @@ def test_sigma_rate_uses_weighted_counts(tmp_path, monkeypatch):
             return np.full_like(arr, 2.0)
         return np.ones_like(arr)
 
-    monkeypatch.setattr(analyze, "window_prob", fake_window_prob)
+    monkeypatch.setattr(analysis_helpers, "window_prob", fake_window_prob)
 
     captured = {}
 

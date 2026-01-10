@@ -18,6 +18,7 @@ except ImportError:
     from fitting import _TAU_MIN
 from io_utils import load_config
 import analyze
+import analysis_helpers
 
 
 def simulate_decay(E_true, eff, T, n_events=1000):
@@ -905,8 +906,8 @@ def test_model_uncertainty_uses_covariance():
     fr = FitResult(params, cov, 0)
     fr_nc = FitResult(params, np.zeros((3, 3)), 0)
     cfg = {"time_fit": {"hl_po214": [10.0], "eff_po214": [1.0]}}
-    with_cov = analyze._model_uncertainty(centers, widths, fr, "Po214", cfg, True)
-    no_cov = analyze._model_uncertainty(centers, widths, fr_nc, "Po214", cfg, True)
+    with_cov = analysis_helpers._model_uncertainty(centers, widths, fr, "Po214", cfg, True)
+    no_cov = analysis_helpers._model_uncertainty(centers, widths, fr_nc, "Po214", cfg, True)
     assert np.any(with_cov > no_cov)
 
 
@@ -927,8 +928,8 @@ def test_model_uncertainty_nan_covariance():
     fr_nan = FitResult(params, cov_nan, 0)
     fr_zero = FitResult(params, np.zeros((3, 3)), 0)
     cfg = {"time_fit": {"hl_po214": [10.0], "eff_po214": [1.0]}}
-    sigma_nan = analyze._model_uncertainty(centers, widths, fr_nan, "Po214", cfg, True)
-    sigma_zero = analyze._model_uncertainty(centers, widths, fr_zero, "Po214", cfg, True)
+    sigma_nan = analysis_helpers._model_uncertainty(centers, widths, fr_nan, "Po214", cfg, True)
+    sigma_zero = analysis_helpers._model_uncertainty(centers, widths, fr_zero, "Po214", cfg, True)
     assert np.all(np.isfinite(sigma_nan))
     assert np.allclose(sigma_nan, sigma_zero)
 

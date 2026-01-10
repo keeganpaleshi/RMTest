@@ -7,6 +7,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import analyze
+import analysis_helpers
 from fitting import FitParams, FitResult
 from time_fitting import two_pass_time_fit
 
@@ -21,7 +22,7 @@ def test_default_time_bin_count():
     t_end = 5 * 3600 + 123.0
     times = np.linspace(t_start, t_end, num=10)
 
-    centers, _ = analyze._ts_bin_centers_widths(times, plot_cfg, t_start, t_end)
+    centers, _ = analysis_helpers._ts_bin_centers_widths(times, plot_cfg, t_start, t_end)
     expected = math.floor((t_end - t_start) / plot_cfg["plot_time_bin_width_s"])
     assert len(centers) == expected
 

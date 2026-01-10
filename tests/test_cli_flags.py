@@ -1,5 +1,6 @@
 import numpy as np
 import analyze
+import analysis_helpers
 from fitting import FitResult, FitParams
 
 
@@ -29,7 +30,7 @@ def test_analysis_flags_threaded(monkeypatch):
     spec_flags["background_model"] = cfg["analysis"]["background_model"]
     spec_flags["likelihood"] = cfg["analysis"]["likelihood"]
 
-    analyze._spectral_fit_with_check(energies, priors, spec_flags, cfg)
+    analysis_helpers._spectral_fit_with_check(energies, priors, spec_flags, cfg)
 
     assert captured["background_model"] == "loglin_unit"
     assert captured["likelihood"] == "extended"
