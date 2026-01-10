@@ -747,6 +747,8 @@ def load_events(csv_path, *, start=None, end=None, column_map=None):
         # the subset of rows that were not numeric to begin with.
         mask = ts_numeric.isna()
         if mask.any():
+            # Use .copy() to avoid SettingWithCopyWarning
+            parsed = parsed.copy()
             parsed.loc[mask] = pd.to_datetime(ts_raw.loc[mask], utc=True, errors="coerce")
 
         # Validate timestamp range to catch incorrect unit assumptions
@@ -773,7 +775,13 @@ def load_events(csv_path, *, start=None, end=None, column_map=None):
 
     # Convert numeric columns explicitly
     # Note: "adc" column existence already validated above
+    adc_before = df["adc"].copy()
     df["adc"] = pd.to_numeric(df["adc"], errors="coerce")
+
+    # Warn if any ADC values became NaN due to conversion
+    num_invalid_adc = df["adc"].isna().sum() - adc_before.isna().sum()
+    if num_invalid_adc > 0:
+        logger.warning(f"Found {num_invalid_adc} non-numeric ADC values that were converted to NaN")
 
     start_len = len(df)
 
@@ -877,6 +885,12 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
 
             t_min = times.min()
             t_max = times.max()
+
+            # Validate timestamps are finite before converting to int
+            if not (np.isfinite(t_min) and np.isfinite(t_max)):
+                logger.warning("Timestamps contain NaN or infinity, skipping burst filter")
+                return out_df, removed_total
+
             t_min_int = int(np.floor(t_min))
             t_max_int = int(np.ceil(t_max))
             hist, edges = np.histogram(times, bins=np.arange(t_min_int, t_max_int + 2))
@@ -890,11 +904,15 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
                 burst_bins = np.zeros_like(hist, dtype=bool)
                 for i, c in enumerate(counts):
                     if c >= thr:
-                        burst_bins[i : i + win] = True
+                        # Clip slice to array bounds
+                        end_idx = min(i + win, len(burst_bins))
+                        burst_bins[i:end_idx] = True
             else:
                 burst_bins = np.zeros_like(hist, dtype=bool)
 
             bin_idx = np.searchsorted(edges, times, side="right") - 1
+            # Clip indices to valid range [0, len(burst_bins)-1]
+            bin_idx = np.clip(bin_idx, 0, len(burst_bins) - 1)
             to_remove = burst_bins[bin_idx]
 
             removed_total += int(to_remove.sum())

@@ -12,6 +12,8 @@ from radon.baseline import (
     subtract_baseline_rate,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class BaselineError(RuntimeError):
     """Raised when baseline subtraction diagnostics fail."""
@@ -132,6 +134,8 @@ def rate_histogram(df: pd.DataFrame, bins) -> tuple[np.ndarray, float]:
     on the underlying integer nanoseconds to avoid issues with mixed
     time zones.
     """
+    if len(bins) < 2:
+        raise ValueError(f"bins must have at least 2 elements, got {len(bins)}")
 
     if df.empty:
         return np.zeros(len(bins) - 1, dtype=float), 0.0
@@ -238,6 +242,8 @@ def subtract(
     baseline interval contains no events a warning is logged and
     ``df_analysis`` is returned unchanged.
     """
+    if len(bins) < 2:
+        raise ValueError(f"bins must have at least 2 elements, got {len(bins)}")
 
     df_corr, hist = apply_baseline_subtraction(
         df_analysis,
@@ -278,6 +284,11 @@ def subtract(
         # here.
         # WARNING: Using abs(counts_bl) violates Poisson statistics when counts_bl < 0
         # and may underestimate uncertainties. This is a known limitation.
+        if np.any(counts_bl < 0):
+            logger.warning(
+                "Negative baseline counts detected. Using abs() for uncertainty propagation, "
+                "which may underestimate uncertainties and violates Poisson statistics."
+            )
         var = counts_an + (scale**2) * np.abs(counts_bl)
         err_hist = np.sqrt(var)
 

@@ -173,4 +173,6 @@ def blue_combine(
         )
     estimate = float(weights @ vals)
     variance = 1.0 / norm
+    # Ensure variance is non-negative (protect against tiny numerical errors)
+    variance = max(variance, 0.0)
     return estimate, math.sqrt(variance), weights

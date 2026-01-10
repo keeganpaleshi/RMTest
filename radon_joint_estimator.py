@@ -253,7 +253,7 @@ def estimate_radon_activity(
         result = {
             "isotope_mode": "po218",
             "Rn_activity_Bq": rn,
-            "stat_unc_Bq": math.sqrt(var),
+            "stat_unc_Bq": math.sqrt(var) if not math.isnan(var) else math.nan,
             "gaussian_uncertainty_valid": gaussian_valid and math.isfinite(var),
             "components": components,
         }
@@ -267,7 +267,7 @@ def estimate_radon_activity(
         result = {
             "isotope_mode": "po214",
             "Rn_activity_Bq": rn,
-            "stat_unc_Bq": math.sqrt(var),
+            "stat_unc_Bq": math.sqrt(var) if not math.isnan(var) else math.nan,
             "gaussian_uncertainty_valid": gaussian_valid and math.isfinite(var),
             "components": components,
         }
@@ -275,9 +275,19 @@ def estimate_radon_activity(
             result["Rn_activity_UL95_Bq"] = ul95
         return result
 
-    if joint_equilibrium and res218 and res214 and mode == "radon":
-        coeff218 = epsilon218 * f218 * live_time218_s  # type: ignore[arg-type]
-        coeff214 = epsilon214 * f214 * live_time214_s  # type: ignore[arg-type]
+    # For joint equilibrium, both live times must be valid (not None and positive)
+    if (
+        joint_equilibrium
+        and res218
+        and res214
+        and mode == "radon"
+        and live_time218_s is not None
+        and live_time218_s > 0
+        and live_time214_s is not None
+        and live_time214_s > 0
+    ):
+        coeff218 = epsilon218 * f218 * live_time218_s
+        coeff214 = epsilon214 * f214 * live_time214_s
         coeff_sum = coeff218 + coeff214
         counts_sum = (N218 or 0) + (N214 or 0)
         if coeff_sum <= 0:

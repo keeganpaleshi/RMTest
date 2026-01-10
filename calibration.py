@@ -856,7 +856,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
             else:
                 sigma_E_guess = sigma_E_cfg
             slope_guess = cal_cfg.get("slope_MeV_per_ch")
-            if slope_guess is not None:
+            if slope_guess is not None and sigma_E_guess is not None:
                 if abs(slope_guess) < 1e-15:
                     raise ValueError("slope_MeV_per_ch must be nonzero for sigma_E_init conversion")
                 sigma0 = abs(sigma_E_guess) / abs(slope_guess)
@@ -1023,8 +1023,9 @@ def calibrate_run(adc_values, config, hist_bins=None):
         var_c = (a * adc214 / delta) ** 2 * mu_err_210**2 + (
             a * adc210 / delta
         ) ** 2 * mu_err_214**2
+        # Covariance from error propagation: second term should be subtracted
         cov_ac = (a**2 / delta**2) * (
-            adc214 * mu_err_210**2 + adc210 * mu_err_214**2
+            adc214 * mu_err_210**2 - adc210 * mu_err_214**2
         )
         var_a2 = 0.0
         cov_a_a2 = 0.0
@@ -1039,8 +1040,9 @@ def calibrate_run(adc_values, config, hist_bins=None):
     var_sigma_adc = peak_fits["Po214"]["covariance"][2][2]
     # Note: This approximation assumes slope_local and sigma_adc are uncorrelated.
     # A more rigorous treatment would include cov(slope_local, sigma_adc).
+    # Use abs(slope_local)**2 for consistency with sigma_E = abs(slope_local) * sigma_adc214
     var_sigma_E = (sigma_adc214**2) * var_slope_local + (
-        slope_local**2
+        abs(slope_local)**2
     ) * var_sigma_adc
     dsigma_E = float(np.sqrt(max(var_sigma_E, 0.0)))
 
@@ -1099,6 +1101,8 @@ def derive_calibration_constants(adc_values, config):
 
     cfg = config if slope is None or not float_slope else deepcopy(config)
     if slope is not None and float_slope:
+        if abs(slope) < 1e-15:
+            raise ValueError("slope_MeV_per_ch must be nonzero when float_slope is enabled")
         energies = {**DEFAULT_KNOWN_ENERGIES, **cal_cfg.get("known_energies", {})}
         intercept = cal_cfg.get("intercept_MeV", 0.0)
         cfg.setdefault("calibration", {})["nominal_adc"] = {

@@ -154,7 +154,12 @@ def _hl_value(cfg: Mapping[str, Any], iso: str) -> float:
         val = val[0] if val else None
     if val is None:
         consts = cfg.get("nuclide_constants", {})
-        val = consts.get(iso, NUCLIDES[iso]).half_life_s
+        if iso in consts:
+            val = consts[iso].half_life_s
+        elif iso in NUCLIDES:
+            val = NUCLIDES[iso].half_life_s
+        else:
+            raise ValueError(f"Unknown isotope '{iso}' - not in config or NUCLIDES dictionary")
     return float(val)
 
 
@@ -2272,8 +2277,12 @@ def main(argv=None):
             cov = np.array([[c_sig**2, 0.0], [0.0, a_sig**2]])
     
             if "ac_covariance" in obj:
-                cov_ac = float(np.asarray(obj["ac_covariance"], dtype=float)[0][1])
-                cov[0, 1] = cov[1, 0] = cov_ac
+                cov_matrix = np.asarray(obj["ac_covariance"], dtype=float)
+                if cov_matrix.shape >= (2, 2):
+                    cov_ac = float(cov_matrix[0][1])
+                    cov[0, 1] = cov[1, 0] = cov_ac
+                else:
+                    logger.warning(f"ac_covariance matrix has invalid shape {cov_matrix.shape}, expected at least (2,2)")
     
             if "a2" in obj:
                 coeffs.append(a2)
@@ -2309,9 +2318,9 @@ def main(argv=None):
     
             assert isinstance(cal_params, CalibrationResult)
             idx = {exp: i for i, exp in enumerate(cal_params._exponents)}
-            c = cal_params.coeffs[idx.get(0, 0)] if 0 in idx else 0.0
-            a = cal_params.coeffs[idx.get(1, 0)] if 1 in idx else 0.0
-            a2 = cal_params.coeffs[idx.get(2, 0)] if 2 in idx else 0.0
+            c = cal_params.coeffs[idx[0]] if 0 in idx else 0.0
+            a = cal_params.coeffs[idx[1]] if 1 in idx else 0.0
+            a2 = cal_params.coeffs[idx[2]] if 2 in idx else 0.0
             sigE_mean = cal_params.sigma_E
             sigE_sigma = cal_params.sigma_E_error
             try:
@@ -2613,8 +2622,8 @@ def main(argv=None):
                         int(np.ceil((E_all.max() - E_all.min()) / float(fd_width))),
                     )
                 else:
-                    nbins = default_bins
-    
+                    nbins = default_bins if default_bins is not None else 100
+
                 bins = nbins
                 bin_edges = None
             elif method == "energy":
