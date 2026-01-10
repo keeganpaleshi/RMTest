@@ -855,7 +855,9 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
 
             t_min = times.min()
             t_max = times.max()
-            hist, edges = np.histogram(times, bins=np.arange(t_min, t_max + 2))
+            t_min_int = int(np.floor(t_min))
+            t_max_int = int(np.ceil(t_max))
+            hist, edges = np.histogram(times, bins=np.arange(t_min_int, t_max_int + 2))
             hist = hist.astype(int)
 
             win = int(micro_win)
@@ -906,7 +908,10 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
             )
 
             counts = bins.value_counts().sort_index()
-            full_index = range(counts.index.min(), counts.index.max() + 1)
+            if counts.empty:
+                full_index = range(0)
+            else:
+                full_index = range(counts.index.min(), counts.index.max() + 1)
             counts_full = counts.reindex(full_index, fill_value=0)
 
             med = counts_full.rolling(int(roll), center=True, min_periods=1).median()
