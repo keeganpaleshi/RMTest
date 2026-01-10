@@ -1,6 +1,7 @@
 import numpy as np
 
 import analyze
+import analysis_helpers
 import radon_activity
 
 
@@ -31,10 +32,10 @@ def test_radon_activity_curve_uses_defaults_for_missing_uncertainties(monkeypatc
         "dN0_Po218": None,
     }
 
-    act214, err214 = analyze._radon_activity_curve_from_fit(
+    act214, err214 = analysis_helpers._radon_activity_curve_from_fit(
         "Po214", {}, fit_po214, t_rel, cfg
     )
-    act218, err218 = analyze._radon_activity_curve_from_fit(
+    act218, err218 = analysis_helpers._radon_activity_curve_from_fit(
         "Po218", {}, fit_po218, t_rel, cfg
     )
 

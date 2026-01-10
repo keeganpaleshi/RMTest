@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from analyze import _normalise_mu_bounds
+from analysis_helpers import _normalise_mu_bounds
 from calibration import apply_calibration
 
 
