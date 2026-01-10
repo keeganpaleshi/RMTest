@@ -107,9 +107,15 @@ def initialize_baseline_record(
     if start is not None or end is not None:
         timestamp_range = [_isoformat(start), _isoformat(end)]
 
+    live_time = _maybe_float(baseline_info.get("live_time"))
+    if live_time is None or live_time <= 0:
+        raise ValueError(
+            f"baseline live_time must be positive, got {baseline_info.get('live_time')}"
+        )
+
     record: dict[str, Any] = {
         "timestamp_range": timestamp_range,
-        "live_time_s": _maybe_float(baseline_info.get("live_time")) or 0.0,
+        "live_time_s": live_time,
         "dilution_factor": _maybe_float(baseline_info.get("dilution_factor")),
         "rates_Bq": {},
         "rate_unc_Bq": {},
@@ -261,7 +267,8 @@ def _normalize_background_mode(mode: str | None) -> str | None:
         return None
 
     if not isinstance(mode, str):
-        return mode
+        # Convert non-string modes to string to maintain type contract
+        return str(mode) if mode is not None else None
 
     canonical = mode.strip()
     lowered = canonical.lower().replace(" ", "")

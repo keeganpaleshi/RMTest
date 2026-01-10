@@ -583,7 +583,18 @@ def fit_spectrum(
         if "S_bkg" not in priors:
             b0_mu = priors.get("b0", (0.0, 1.0))[0]
             b1_mu = priors.get("b1", (0.0, 1.0))[0]
-            mu = b0_mu * (E_hi - E_lo) + 0.5 * b1_mu * (E_hi**2 - E_lo**2)
+            # For exp(b0 + b1*(E - Eref)), calculate integral over [E_lo, E_hi]
+            Eref = 0.5 * (E_lo + E_hi)
+            if abs(b1_mu) > 1e-10:
+                # ∫exp(b0 + b1*(E-Eref))dE = exp(b0)/b1 * [exp(b1*(E_hi-Eref)) - exp(b1*(E_lo-Eref))]
+                from constants import safe_exp
+                exp_hi = safe_exp(b0_mu + b1_mu * (E_hi - Eref))
+                exp_lo = safe_exp(b0_mu + b1_mu * (E_lo - Eref))
+                mu = (exp_hi - exp_lo) / b1_mu
+            else:
+                # For b1 ~ 0, use exp(b0) * (E_hi - E_lo)
+                from constants import safe_exp
+                mu = safe_exp(b0_mu) * (E_hi - E_lo)
             mu = max(mu, 0.0)
             sig = max(abs(mu) * 0.1, 1.0)
             priors["S_bkg"] = (mu, sig)
@@ -771,6 +782,10 @@ def fit_spectrum(
         if name in ("sigma0", "F"):
             lo = max(lo, 0.0)
         if hi <= lo:
+            logging.warning(
+                f"Parameter {name}: upper bound ({hi}) <= lower bound ({lo}). "
+                f"Adjusting upper bound to {lo + eps}."
+            )
             hi = lo + eps
         mean = np.clip(mean, lo, hi)
         p0.append(mean)
@@ -868,7 +883,8 @@ def fit_spectrum(
 
         def _nll(*params):
             model = _model_binned(centers, *params)
-            return float(np.sum(model - hist * np.log(model)))
+            model_safe = np.maximum(model, 1e-300)  # Floor to prevent log(0)
+            return float(np.sum(model_safe - hist * np.log(model_safe)))
 
         m = Minuit(_nll, *p0, name=param_order)
         m.errordef = Minuit.LIKELIHOOD
@@ -1110,8 +1126,10 @@ def _integral_model(E, N0, B, lam, eff, T):
         # In principle lam should never be <=0; return a large number to penalize
         return 1e50
     if T < 0:
-        logging.debug("_integral_model called with negative T; using |T|")
-        T = abs(T)
+        raise ValueError(
+            f"_integral_model called with negative time interval T={T}. "
+            "This indicates an error in time window calculation."
+        )
     # Term1 = E * (T - (1 - e^{-lam T})/lam )
     exp_term = _safe_exp(-lam * T)
     decay_term = (1.0 - exp_term) / lam
@@ -1190,8 +1208,9 @@ def _neg_log_likelihood_time(
             # Calculate rate r(t_i_rel) at each observed time:
             t_rel = times_iso - t_start
             if np.any(t_rel < 0):
-                logging.debug(
-                    "fit_time_series: negative relative times detected; check t_start"
+                raise ValueError(
+                    f"fit_time_series: negative relative times detected for {iso}. "
+                    f"t_start={t_start}, min(times)={times_iso.min()}. Check t_start parameter."
                 )
             # r_iso(t_rel) = eff * [ E*(1 - exp(-lam*t_rel)) + lam*N0*exp(-lam*t_rel) ] + B
             exp_term = _safe_exp(-lam * t_rel)
@@ -1280,8 +1299,8 @@ def fit_time_series(
     if cfg_min_counts is not None and int(cfg_min_counts) > 0:
         min_counts = int(cfg_min_counts)
     else:
-        # Require at least one event by default; otherwise use the observed count
-        min_counts = max(1, int(total_counts))
+        # Require at least one event by default
+        min_counts = 1
 
     if total_counts < min_counts:
         logging.info(
@@ -1476,8 +1495,10 @@ def fit_time_series(
         crit = chi2.ppf(0.95, df=len(iso_list))
     except Exception:
         crit = 0.0
-    fit_valid = fit_valid and ts_val >= crit
-    out["fit_valid"] = fit_valid
+    # Separate technical validity from statistical significance
+    signal_detected = ts_val >= crit
+    out["signal_detected"] = signal_detected
+    out["fit_valid"] = fit_valid  # Technical validity only (convergence, etc.)
     for i, pname in enumerate(ordered_params):
         out[pname] = float(m.values[pname])
         out["d" + pname] = float(perr[i] if i < len(perr) else np.nan)

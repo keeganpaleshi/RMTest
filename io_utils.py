@@ -743,6 +743,20 @@ def load_events(csv_path, *, start=None, end=None, column_map=None):
         if mask.any():
             parsed.loc[mask] = pd.to_datetime(ts_raw.loc[mask], utc=True, errors="coerce")
 
+        # Validate timestamp range to catch incorrect unit assumptions
+        # (e.g., milliseconds instead of seconds)
+        if not parsed.isna().all():
+            min_ts = parsed.min()
+            max_ts = parsed.max()
+            # Reasonable range: 1970-01-01 to 2100-01-01
+            reasonable_min = pd.Timestamp("1970-01-01", tz="UTC")
+            reasonable_max = pd.Timestamp("2100-01-01", tz="UTC")
+            if min_ts < reasonable_min or max_ts > reasonable_max:
+                logger.warning(
+                    f"Timestamp range [{min_ts}, {max_ts}] outside reasonable bounds. "
+                    "Check that numeric timestamps are in seconds (not milliseconds/microseconds)."
+                )
+
         df["timestamp"] = parsed
 
     # Check required columns after renaming
@@ -769,8 +783,9 @@ def load_events(csv_path, *, start=None, end=None, column_map=None):
     # Convert types
     df["adc"] = df["adc"].astype(float)
 
-    # Sort by timestamp
-    df = df.sort_values("timestamp").reset_index(drop=True)
+    # Sort by timestamp with secondary sort key for deterministic ordering
+    # when multiple events have identical timestamps
+    df = df.sort_values(["timestamp", "fUniqueID"]).reset_index(drop=True)
 
     if start is not None:
         start_dt = parse_timestamp(start)
@@ -901,6 +916,7 @@ def apply_burst_filter(df, cfg=None, mode="rate"):
             and roll is not None
             and mult is not None
             and len(out_df) > 0
+            and float(win) > 0
         ):
             t0 = times_sec.min()
             bins = pd.Series(
