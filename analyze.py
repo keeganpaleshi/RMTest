@@ -52,7 +52,6 @@ import random
 import time
 
 logger = logging.getLogger(__name__)
-random.seed(0)
 from datetime import datetime, timezone, timedelta
 import subprocess
 import hashlib
@@ -413,15 +412,15 @@ from plot_utils.radon import (
 )
 
 
-def plot_radon_activity(ts_dict, outdir, maybe_outdir=None, *_, **__):
-    """Compatibility wrapper for tests expecting three arguments."""
+def plot_radon_activity_dict(ts_dict, outdir, maybe_outdir=None, *_, **__):
+    """Compatibility wrapper for tests expecting three arguments with dict input."""
     target = maybe_outdir or outdir
     Path(target).mkdir(parents=True, exist_ok=True)
     return _plot_radon_activity(ts_dict, target)
 
 
-def plot_radon_trend(ts_dict, outdir, maybe_outdir=None, *_, **__):
-    """Compatibility wrapper for tests expecting three arguments."""
+def plot_radon_trend_dict(ts_dict, outdir, maybe_outdir=None, *_, **__):
+    """Compatibility wrapper for tests expecting three arguments with dict input."""
     target = maybe_outdir or outdir
     Path(target).mkdir(parents=True, exist_ok=True)
     return _plot_radon_trend(ts_dict, target)

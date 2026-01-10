@@ -153,16 +153,19 @@ def blue_combine(
         raise ValueError("covariance matrix is not invertible") from exc
     ones = np.ones(vals.size)
     norm = float(ones @ Vinv @ ones)
+    # BLUE weights formula: by definition these sum to 1.0
     weights = (Vinv @ ones) / norm
     if np.any(weights < 0):
         if allow_negative:
             warnings.warn("negative BLUE weights encountered")
         else:
             raise ValueError("negative BLUE weights encountered")
+    # Numerical stability check: verify weights sum to unity
     w_sum = weights.sum()
-    if w_sum == 0:
-        raise ValueError("BLUE weights sum to zero - cannot normalize")
-    weights /= w_sum
+    if not np.isclose(w_sum, 1.0, atol=1e-10):
+        raise ValueError(
+            f"BLUE weights sum to {w_sum:.10e} instead of 1.0; numerical instability detected"
+        )
     estimate = float(weights @ vals)
     variance = 1.0 / norm
     return estimate, math.sqrt(variance), weights

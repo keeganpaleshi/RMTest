@@ -2,7 +2,6 @@ import logging
 import numpy as np
 from dataclasses import dataclass
 from collections.abc import Sequence, Mapping
-import logging
 from copy import deepcopy
 import warnings
 from scipy.signal import find_peaks

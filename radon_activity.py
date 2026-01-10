@@ -254,15 +254,10 @@ def compute_total_radon(
         raise ValueError("err_bq must be non-negative")
 
     if activity_bq < 0:
-        if allow_negative_activity:
-            pass
-        else:
-            activity_bq, err_bq = clamp_non_negative(activity_bq, err_bq)
+        if not allow_negative_activity:
             raise RuntimeError(
                 "Negative activity encountered. Re-run with --allow_negative_activity to override"
             )
-    else:
-        activity_bq, err_bq = clamp_non_negative(activity_bq, err_bq)
     if math.isnan(activity_bq):
         raise ValueError("activity_bq must not be NaN")
     total_volume = monitor_volume + sample_volume
