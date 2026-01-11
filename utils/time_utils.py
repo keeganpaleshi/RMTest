@@ -4,9 +4,6 @@ from typing import Union
 import pandas as pd
 from pandas.api.types import is_datetime64_any_dtype
 
-# Import to_utc_datetime from parent utils module for backwards compatibility
-from utils import to_utc_datetime
-
 __all__ = [
     "to_datetime_utc",
     "tz_localize_utc",
@@ -95,4 +92,12 @@ def to_epoch_seconds(ts: Union[pd.Timestamp, str, int, float]) -> float:
 
     ts_parsed = parse_timestamp(ts)
     return ts_parsed.timestamp()
+
+
+def __getattr__(name):
+    """Deferred import to avoid circular dependency with parent utils module."""
+    if name == "to_utc_datetime":
+        from utils import to_utc_datetime as func
+        return func
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
