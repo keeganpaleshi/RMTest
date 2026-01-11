@@ -45,9 +45,11 @@ To run (without baseline) for a single merged CSV:
 """
 
 
+import argparse
 import sys
 import logging
 import random
+import time
 
 logger = logging.getLogger(__name__)
 from datetime import datetime, timezone, timedelta
@@ -56,11 +58,13 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence, cast
+from contextlib import contextmanager
 
 import math
 import numpy as np
 import pandas as pd
+from scipy.stats import norm
 from dateutil.tz import UTC, gettz
 import radon_activity
 
@@ -90,65 +94,350 @@ from calibration import (
     apply_calibration,
 )
 
-from fitting import fit_spectrum, fit_time_series, FitResult
+from fitting import fit_spectrum, fit_time_series, FitResult, FitParams
 from reporting import build_diagnostics, start_warning_capture
 
 from constants import (
     DEFAULT_NOISE_CUTOFF,
     NEGATIVE_ACTIVITY_CLAMP_UNCERTAINTY_BQ,
+    PO210,
+    PO214,
+    PO218,
+    RN222,
     DEFAULT_ADC_CENTROIDS,
     DEFAULT_KNOWN_ENERGIES,
 )
 
-from analysis_helpers import (
-    PipelineTimer,
-    _burst_sensitivity_scan,
-    _config_efficiency,
-    _cov_lookup,
-    _eff_prior,
-    _ensure_events,
-    _fallback_uncertainty,
-    _fit_efficiency,
-    _fit_params,
-    _float_with_default,
-    _hl_value,
-    _model_uncertainty,
-    _normalise_mu_bounds,
-    _radon_activity_curve_from_fit,
-    _radon_background_mode,
-    _radon_time_window,
-    _regrid_series,
-    _resolved_efficiency,
-    _roi_diff,
-    _save_stub_spectrum_plot,
-    _spectral_fit_with_check,
-    _total_radon_series,
-    _ts_bin_centers_widths,
-    _segments_to_isotope_series,
-    _safe_float,
-    auto_expand_window,
-    dedupe_isotope_series,
-    get_spike_efficiency,
-    prepare_analysis_df,
-    window_prob,
-)
+NUCLIDES = {
+    "Po210": PO210,
+    "Po214": PO214,
+    "Po218": PO218,
+    "Rn222": RN222,
+}
+
+
+class PipelineTimer:
+    """Simple helper to time major sections of the analysis pipeline."""
+
+    def __init__(self, logger: logging.Logger | None = None):
+        self.logger = logger or logging.getLogger(__name__)
+        self._start = time.perf_counter()
+        self._sections: list[tuple[str, float]] = []
+
+    @contextmanager
+    def section(self, name: str):
+        start = time.perf_counter()
+        try:
+            yield
+        finally:
+            duration = time.perf_counter() - start
+            self._sections.append((name, duration))
+            self.logger.info("⏱️ %s took %.2f s", name, duration)
+
+    def report(self):
+        if not self._sections:
+            return
+        total = time.perf_counter() - self._start
+        lines = [f"Pipeline timing summary (total {total:.2f} s):"]
+        lines.extend(f"  • {name}: {duration:.2f} s" for name, duration in self._sections)
+        self.logger.info("\n".join(lines))
+
+
+def _hl_value(cfg: Mapping[str, Any], iso: str) -> float:
+    """Return the half-life in seconds for ``iso`` using configuration ``cfg``.
+
+    When the configuration does not specify a value or it is ``None`` the
+    constant from :mod:`constants` is used.
+    """
+    val = cfg.get("time_fit", {}).get(f"hl_{iso.lower()}")
+    if isinstance(val, list):
+        val = val[0] if val else None
+    if val is None:
+        consts = cfg.get("nuclide_constants", {})
+        if iso in consts:
+            val = consts[iso].half_life_s
+        elif iso in NUCLIDES:
+            val = NUCLIDES[iso].half_life_s
+        else:
+            raise ValueError(f"Unknown isotope '{iso}' - not in config or NUCLIDES dictionary")
+    return float(val)
+
+
+def _radon_background_mode(
+    cfg: Mapping[str, Any],
+    time_fit_results: Mapping[str, Any],
+) -> str | None:
+    """Infer the background treatment used by the time-series fit."""
+
+    tf_cfg = cfg.get("time_fit")
+    if not isinstance(tf_cfg, Mapping):
+        tf_cfg = {}
+
+    flags = tf_cfg.get("flags")
+    if not isinstance(flags, Mapping):
+        flags = {}
+
+    if flags.get("fix_background_b"):
+        return "fixed_from_baseline"
+
+    iso_candidates = ("Po214", "Po218")
+    for iso in iso_candidates:
+        fit_obj = time_fit_results.get(iso)
+        if fit_obj is None:
+            continue
+
+        param_index = None
+        params: Mapping[str, Any] | None = None
+
+        if isinstance(fit_obj, FitResult):
+            param_index = getattr(fit_obj, "param_index", None)
+            params = getattr(fit_obj, "params", None)
+        elif isinstance(fit_obj, Mapping):
+            param_index = fit_obj.get("param_index")
+            params = fit_obj
+
+        key = f"B_{iso}"
+        if isinstance(param_index, Mapping) and key in param_index:
+            return "floated"
+
+        if isinstance(params, Mapping):
+            err_key = f"d{key}"
+            val = params.get(err_key)
+            if val is not None:
+                try:
+                    if not np.isclose(float(val), 0.0):
+                        return "floated"
+                except (TypeError, ValueError):
+                    return "floated"
+            if key in params:
+                return "fixed_from_baseline"
+
+    return "floated"
+
+
+def _eff_prior(eff_cfg: Any) -> tuple[float, float]:
+    """Return efficiency prior ``(mean, sigma)`` from configuration.
+
+    ``None`` or the string ``"null"`` yields a flat prior ``(1.0, 1e6)``.
+    Lists or tuples are returned as-is. Numeric values get a 5 % width.
+    """
+    if eff_cfg in (None, "null"):
+        return (1.0, 1e6)
+    if isinstance(eff_cfg, (list, tuple)):
+        if len(eff_cfg) != 2:
+            raise ValueError(
+                f"Efficiency prior must be a 2-tuple (mean, sigma), got {len(eff_cfg)} elements"
+            )
+        return tuple(eff_cfg)
+    val = float(eff_cfg)
+    return (val, 0.05 * val)
+
+
+def _roi_diff(pre: np.ndarray, post: np.ndarray, cfg: Mapping[str, Any]) -> dict:
+    """Return counts difference per ROI between post and pre arrays."""
+    diff = {}
+    for iso in ("Po210", "Po218", "Po214"):
+        win = cfg.get("time_fit", {}).get(f"window_{iso.lower()}")
+        if win is None:
+            continue
+        if not isinstance(win, (list, tuple)) or len(win) != 2:
+            continue
+        lo, hi = win
+        c_pre = int(((pre >= lo) & (pre <= hi)).sum())
+        c_post = int(((post >= lo) & (post <= hi)).sum())
+        diff[iso] = c_post - c_pre
+    return diff
+
+
+def _burst_sensitivity_scan(
+    events: pd.DataFrame, cfg: Mapping[str, Any], cal_result
+) -> tuple[dict, tuple[int, int]]:
+    """Evaluate radon activity over a grid of burst parameters."""
+    from radon_joint_estimator import estimate_radon_activity
+
+    mult0 = int(cfg.get("burst_filter", {}).get("burst_multiplier", 5))
+    win0 = int(cfg.get("burst_filter", {}).get("burst_window_size_s", 60))
+    mult_values = [max(1, mult0 - 2), mult0, mult0 + 2]
+    win_values = [max(1, win0 // 2), win0, win0 * 2]
+
+    results = {}
+    for m in mult_values:
+        for w in win_values:
+            local_cfg = {
+                "burst_filter": {"burst_window_size_s": w, "burst_multiplier": m}
+            }
+            filtered, _ = apply_burst_filter(events, local_cfg, mode="rate")
+            if filtered.empty:
+                results[(m, w)] = 0.0
+                continue
+            timestamps = pd.to_datetime(filtered["timestamp"], utc=True, errors="coerce")
+            if timestamps.isna().all():
+                results[(m, w)] = 0.0
+                continue
+            t_min = timestamps.min()
+            t_max = timestamps.max()
+            if pd.isna(t_min) or pd.isna(t_max):
+                results[(m, w)] = 0.0
+                continue
+            live_time_s = (t_max - t_min).total_seconds()
+            if not np.isfinite(live_time_s) or live_time_s <= 0:
+                results[(m, w)] = 0.0
+                continue
+            energies = cal_result.predict(filtered["adc"])
+            counts = {}
+            for iso in ("Po218", "Po214"):
+                win = cfg.get("time_fit", {}).get(f"window_{iso.lower()}")
+                if win is None:
+                    counts[iso] = 0
+                else:
+                    counts[iso] = int(
+                        ((energies >= win[0]) & (energies <= win[1])).sum()
+                    )
+            eff214 = cfg.get("time_fit", {}).get("eff_po214")
+            eff214 = (
+                eff214[0]
+                if isinstance(eff214, list) and len(eff214) > 0
+                else (eff214 if eff214 is not None else 1.0)
+            )
+            eff218 = cfg.get("time_fit", {}).get("eff_po218")
+            eff218 = (
+                eff218[0]
+                if isinstance(eff218, list) and len(eff218) > 0
+                else (eff218 if eff218 is not None else 1.0)
+            )
+            est = estimate_radon_activity(
+                N218=counts.get("Po218"),
+                epsilon218=eff218,
+                f218=1.0,
+                N214=counts.get("Po214"),
+                epsilon214=eff214,
+                f214=1.0,
+                live_time218_s=live_time_s,
+                live_time214_s=live_time_s,
+            )
+            results[(m, w)] = float(
+                est.get("Rn_activity_Bq", 0.0) if isinstance(est, dict) else 0.0
+            )
+
+    mean_val = np.nanmean(list(results.values())) if results else 0.0
+    best = (
+        min(results.items(), key=lambda kv: abs(kv[1] - mean_val))[0]
+        if results
+        else (mult0, win0)
+    )
+    return results, best
+
+
+def _save_stub_spectrum_plot(
+    energies: Sequence[float] | np.ndarray,
+    out_png: Path,
+    *,
+    bins: int | None = None,
+    bin_edges: Sequence[float] | np.ndarray | None = None,
+    config: Mapping[str, Any] | None = None,
+) -> Path:
+    """Write a fallback spectrum plot when the spectral fit is unavailable."""
+
+    try:
+        import matplotlib.pyplot as plt
+    except Exception as exc:  # pragma: no cover - matplotlib import guard
+        raise RuntimeError("matplotlib is required to save spectrum plots") from exc
+
+    energies_arr = np.asarray(energies, dtype=float)
+    if energies_arr.size == 0:
+        # ``np.histogram`` handles empty arrays but benefits from a finite range.
+        energies_arr = np.asarray([0.0], dtype=float)
+
+    if bin_edges is not None:
+        hist, edges = np.histogram(energies_arr, bins=np.asarray(bin_edges, dtype=float))
+    else:
+        hist, edges = np.histogram(
+            energies_arr,
+            bins=bins if bins is not None else 400,
+        )
+
+    width = np.diff(edges)
+    centers = edges[:-1] + width / 2.0
+
+    hist_color = "#808080"
+    if isinstance(config, Mapping):
+        from color_schemes import COLOR_SCHEMES
+
+        palette_name = str(config.get("palette", "default"))
+        palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
+        hist_color = palette.get("hist", hist_color)
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    if hist.size:
+        draw_width = width if width.size else 1.0
+        ax.bar(
+            centers,
+            hist,
+            width=draw_width,
+            color=hist_color,
+            alpha=0.7,
+            label="Data",
+        )
+
+    ax.set_title("Energy Spectrum")
+    ax.set_xlabel("Energy [MeV]")
+    ax.set_ylabel("Counts per bin")
+    ax.text(
+        0.5,
+        0.85,
+        "Spectral fit unavailable",
+        transform=ax.transAxes,
+        ha="center",
+        va="center",
+        fontsize=14,
+        fontweight="bold",
+        color="#aa0000",
+        bbox={"facecolor": "white", "alpha": 0.85, "edgecolor": "#aa0000"},
+    )
+
+    fig.tight_layout()
+
+    out_path = Path(out_png)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=300)
+
+    plt.close(fig)
+
+    return out_path
 
 
 from plot_utils import (
     plot_spectrum,
     plot_time_series,
     plot_equivalent_air,
+    plot_radon_activity_full,
+    plot_total_radon_full,
+    plot_radon_trend_full,
     plot_spectrum_comparison,
     plot_activity_grid,
+    _resolve_run_periods,
+    _build_time_segments,
 )
 
-from plotting_wrappers import (
-    plot_radon_activity_dict,
-    plot_radon_trend_dict,
-    plot_radon_activity,
-    plot_total_radon,
-    plot_radon_trend,
+from plot_utils.radon import (
+    plot_radon_activity as _plot_radon_activity,
+    plot_radon_trend as _plot_radon_trend,
 )
+
+
+def plot_radon_activity_dict(ts_dict, outdir, maybe_outdir=None, *_, **__):
+    """Compatibility wrapper for tests expecting three arguments with dict input."""
+    target = maybe_outdir or outdir
+    Path(target).mkdir(parents=True, exist_ok=True)
+    return _plot_radon_activity(ts_dict, target)
+
+
+def plot_radon_trend_dict(ts_dict, outdir, maybe_outdir=None, *_, **__):
+    """Compatibility wrapper for tests expecting three arguments with dict input."""
+    target = maybe_outdir or outdir
+    Path(target).mkdir(parents=True, exist_ok=True)
+    return _plot_radon_trend(ts_dict, target)
+
 
 from systematics import scan_systematics, apply_linear_adc_shift
 from visualize import cov_heatmap, efficiency_bar
@@ -175,70 +464,1725 @@ import baseline
 import baseline_handling
 from time_fitting import two_pass_time_fit
 from config.validation import validate_baseline_window
-from pipeline_init import init_pipeline
-from data_loading import load_and_filter_events, setup_time_windows
-from calibration_stage import run_energy_calibration
+
+
+def plot_radon_activity(
+    times,
+    activity,
+    out_png,
+    errors=None,
+    *,
+    config=None,
+    sample_volume_l=None,
+    background_mode=None,
+):
+    """Wrapper used by tests expecting output path as third argument."""
+
+    return plot_radon_activity_full(
+        times,
+        activity,
+        errors,
+        out_png,
+        config=config,
+        sample_volume_l=sample_volume_l,
+        background_mode=background_mode,
+    )
+
+
+def plot_total_radon(
+    times,
+    total_bq,
+    out_png,
+    errors=None,
+    *,
+    config=None,
+    background_mode=None,
+):
+    """Wrapper used by tests expecting output path as third argument."""
+
+    return plot_total_radon_full(
+        times,
+        total_bq,
+        errors,
+        out_png,
+        config=config,
+        background_mode=background_mode,
+    )
+
+
+def plot_radon_trend(times, activity, out_png, *, config=None, fit_valid=True):
+    """Wrapper used by tests expecting output path as third argument."""
+    return plot_radon_trend_full(times, activity, out_png, config=config, fit_valid=fit_valid)
+
+
+def _total_radon_series(activity, errors, monitor_volume, sample_volume):
+    """Return total radon Bq and uncertainties for a time series."""
+
+    activity_arr = np.asarray(activity, dtype=float)
+    err_arr = None if errors is None else np.asarray(errors, dtype=float)
+
+    total = np.empty_like(activity_arr, dtype=float)
+    total_err = None if err_arr is None else np.empty_like(err_arr, dtype=float)
+
+    for idx, value in enumerate(activity_arr):
+        err_val = 0.0 if err_arr is None else float(err_arr[idx])
+        try:
+            _, _, total_bq, sigma_total = radon_activity.compute_total_radon(
+                float(value),
+                float(err_val),
+                float(monitor_volume),
+                float(sample_volume),
+                allow_negative_activity=True,
+            )
+        except Exception:
+            total_bq = float(value)
+            sigma_total = float(err_val)
+
+        total[idx] = total_bq
+        if total_err is not None:
+            total_err[idx] = sigma_total
+
+    return total, total_err
+
+
+def _as_timestamp(value: Any) -> float:
+    """Return ``value`` as a UTC timestamp in seconds."""
+
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, np.generic):  # NumPy scalar
+        return float(value)
+    return to_utc_datetime(value).timestamp()
+
+
+def _radon_time_window(
+    start, end, radon_interval: Sequence[Any] | None
+) -> tuple[float, float]:
+    """Determine the plotting window for radon time-series outputs."""
+
+    start_ts = _as_timestamp(start)
+    end_ts = _as_timestamp(end)
+
+    if radon_interval and len(radon_interval) == 2:
+        try:
+            interval_start = max(start_ts, _as_timestamp(radon_interval[0]))
+            interval_end = min(end_ts, _as_timestamp(radon_interval[1]))
+        except Exception:
+            interval_start = interval_end = float("nan")
+        else:
+            if math.isfinite(interval_start) and math.isfinite(interval_end):
+                if interval_end > interval_start:
+                    return interval_start, interval_end
+                if interval_end == interval_start:
+                    return interval_start, interval_end
+
+    return start_ts, end_ts
+
+
+def _regrid_series(
+    source_times: np.ndarray,
+    source_values: np.ndarray | None,
+    target_times: np.ndarray,
+    fill_value: float,
+) -> np.ndarray:
+    """Project ``source_values`` sampled at ``source_times`` onto ``target_times``."""
+
+    if source_values is None or source_values.size == 0 or source_times.size == 0:
+        return np.full_like(target_times, float(fill_value), dtype=float)
+
+    if source_values.size != source_times.size:
+        return np.full_like(target_times, float(fill_value), dtype=float)
+
+    times = np.asarray(source_times, dtype=float)
+    values = np.asarray(source_values, dtype=float)
+    mask = np.isfinite(times) & np.isfinite(values)
+    if not np.any(mask):
+        return np.full_like(target_times, float(fill_value), dtype=float)
+
+    times = times[mask]
+    values = values[mask]
+    if times.size == 1:
+        return np.full_like(target_times, float(values[0]), dtype=float)
+
+    order = np.argsort(times, kind="mergesort")
+    times = times[order]
+    values = values[order]
+    first = float(values[0])
+    last = float(values[-1])
+    return np.interp(target_times, times, values, left=first, right=last)
+
+
+def _fit_params(obj: FitResult | Mapping[str, float] | None) -> FitParams:
+    """Return fit parameters mapping from a ``FitResult`` or dictionary."""
+    if isinstance(obj, FitResult):
+        return cast(FitParams, obj.params)
+    if isinstance(obj, Mapping):
+        return obj  # type: ignore[return-value]
+    return {}
+
+
+def _config_efficiency(cfg: Mapping[str, Any], iso: str) -> float:
+    """Return the prior efficiency for ``iso`` from ``cfg``."""
+
+    eff_cfg = cfg.get("time_fit", {}).get(f"eff_{iso.lower()}")
+    if isinstance(eff_cfg, (list, tuple)):
+        return float(eff_cfg[0]) if eff_cfg else 1.0
+    if eff_cfg is None or eff_cfg == "null":
+        return 1.0
+    try:
+        return float(eff_cfg)
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def _fit_efficiency(params: Mapping[str, Any] | None, iso: str) -> float | None:
+    """Return fitted efficiency for ``iso`` if present in ``params``."""
+
+    if not params:
+        return None
+
+    keys = ("eff", f"eff_{iso}", f"eff_{iso.lower()}")
+    for key in keys:
+        val = params.get(key)
+        if val is None:
+            continue
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _resolved_efficiency(
+    cfg: Mapping[str, Any], iso: str, params: Mapping[str, Any] | None
+) -> float:
+    """Return efficiency for ``iso`` preferring fitted values over priors."""
+
+    fitted = _fit_efficiency(params, iso)
+    if fitted is not None and fitted > 0:
+        return fitted
+    return _config_efficiency(cfg, iso)
+
+
+def _safe_float(value: Any) -> float | None:
+    """Return ``value`` coerced to ``float`` when it is finite."""
+
+    try:
+        if value is None:
+            return None
+        coerced = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(coerced):
+        return None
+    return coerced
+
+
+def _float_with_default(value: Any, default: float) -> float:
+    """Return ``value`` as ``float`` or ``default`` when coercion fails."""
+
+    coerced = _safe_float(value)
+    return default if coerced is None else coerced
+
+
+def _radon_activity_curve_from_fit(
+    iso: str,
+    fit_result: FitResult | Mapping[str, Any] | None,
+    fit_params: Mapping[str, Any],
+    t_rel: Sequence[float] | np.ndarray,
+    cfg: Mapping[str, Any],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return radon activity curve using sanitized fit parameters."""
+
+    raw_E = fit_params.get("E_corrected")
+    if _safe_float(raw_E) is None:
+        raw_E = fit_params.get(f"E_{iso}")
+    E = _float_with_default(raw_E, 0.0)
+
+    raw_dE = fit_params.get("dE_corrected")
+    if _safe_float(raw_dE) is None:
+        raw_dE = fit_params.get(f"dE_{iso}", 0.0)
+    dE = _float_with_default(raw_dE, 0.0)
+    N0 = _float_with_default(fit_params.get(f"N0_{iso}", 0.0), 0.0)
+    dN0 = _float_with_default(fit_params.get(f"dN0_{iso}", 0.0), 0.0)
+    hl = _hl_value(cfg, iso)
+    cov = _cov_lookup(fit_result, f"E_{iso}", f"N0_{iso}")
+    return radon_activity.radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
+
+
+def _cov_lookup(
+    fit_result: FitResult | Mapping[str, float] | None, name1: str, name2: str
+) -> float:
+    """Return covariance between two parameters if present."""
+    if isinstance(fit_result, FitResult):
+        try:
+            return float(fit_result.cov_df.loc[name1, name2])
+        except KeyError:
+            try:
+                return float(fit_result.get_cov(name1, name2))
+            except KeyError:
+                return 0.0
+    if isinstance(fit_result, Mapping):
+        return float(fit_result.get(f"cov_{name1}_{name2}", 0.0))
+    return 0.0
+
+
+def _fallback_uncertainty(
+    rate: float | None, fit_result: FitResult | Mapping[str, float] | None, param: str
+) -> float:
+    """Return uncertainty from covariance or a Poisson estimate."""
+
+    def _try_var(value: Any) -> float | None:
+        try:
+            var_val = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(var_val) or var_val <= 0:
+            return None
+        return var_val
+
+    candidates: list[Any] = []
+    if isinstance(fit_result, FitResult):
+        if fit_result.cov is not None and fit_result.param_index is not None:
+            idx = fit_result.param_index.get(param)
+            if idx is not None and idx < fit_result.cov.shape[0]:
+                candidates.append(fit_result.cov[idx, idx])
+        candidates.append(fit_result.params.get(f"cov_{param}_{param}"))
+    elif isinstance(fit_result, Mapping):
+        candidates.append(fit_result.get(f"cov_{param}_{param}"))
+
+    for cand in candidates:
+        var = _try_var(cand)
+        if var is not None:
+            return math.sqrt(var)
+
+    try:
+        rate_val = float(rate) if rate is not None else None
+    except (TypeError, ValueError):
+        rate_val = None
+
+    if rate_val is None or not math.isfinite(rate_val):
+        return 0.0
+
+    return math.sqrt(abs(rate_val))
+
+
+def _ensure_events(events: pd.DataFrame, stage: str) -> None:
+    """Exit if ``events`` is empty, printing a helpful message."""
+    if len(events) == 0:
+        logger.error("No events remaining after %s. Exiting.", stage)
+        sys.exit(1)
+
+
+def _centroid_deviation(
+    params: Mapping[str, float], known: Mapping[str, float]
+) -> dict[str, float]:
+    """Return |mu_fit - E_known| for each isotope present in ``params``."""
+    dev: dict[str, float] = {}
+    for iso, e_known in known.items():
+        key = f"mu_{iso}"
+        if key in params:
+            dev[iso] = abs(float(params[key]) - float(e_known))
+    return dev
+
+
+def _normalise_mu_bounds(
+    bounds_cfg: Mapping[str, Sequence[float] | None] | None,
+    *,
+    units: str,
+    slope: float,
+    intercept: float,
+    quadratic_coeff: float,
+) -> dict[str, tuple[float, float]]:
+    """Return spectral centroid bounds expressed in MeV.
+
+    ``bounds_cfg`` maps isotope names to lower/upper limits.  The
+    ``units`` flag specifies whether those values are already in MeV or
+    given in raw ADC channels.  When ADC bounds are provided they are
+    converted to MeV using the supplied calibration coefficients so that
+    downstream spectral fits, which operate in MeV, use consistent
+    limits.
+    """
+
+    if not bounds_cfg:
+        return {}
+
+    units_norm = str(units).lower()
+    if units_norm not in {"mev", "adc"}:
+        raise ValueError(
+            "mu_bounds_units must be either 'mev' or 'adc'"
+        )
+
+    normalised: dict[str, tuple[float, float]] = {}
+    for iso, bounds in bounds_cfg.items():
+        if bounds is None:
+            continue
+        if isinstance(bounds, (str, bytes)) or not isinstance(bounds, Sequence):
+            raise ValueError(
+                f"mu_bounds for {iso} must be a sequence of two numbers"
+            )
+        if len(bounds) != 2:
+            raise ValueError(
+                f"mu_bounds for {iso} must contain exactly two elements"
+            )
+        try:
+            lo_raw = float(bounds[0])
+            hi_raw = float(bounds[1])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"mu_bounds for {iso} must be numeric; got {bounds}"
+            ) from exc
+        if not lo_raw < hi_raw:
+            raise ValueError(f"mu_bounds for {iso} require lower < upper")
+
+        if units_norm == "adc":
+            energies = apply_calibration(
+                np.asarray([lo_raw, hi_raw], dtype=float),
+                slope,
+                intercept,
+                quadratic_coeff=quadratic_coeff,
+            )
+            lo_val = float(np.min(energies))
+            hi_val = float(np.max(energies))
+        else:
+            lo_val = float(lo_raw)
+            hi_val = float(hi_raw)
+
+        normalised[iso] = (lo_val, hi_val)
+
+    return normalised
+
+
+def _spectral_fit_with_check(
+    energies: np.ndarray,
+    priors: Mapping[str, tuple[float, float]],
+    flags: Mapping[str, bool],
+    cfg: Mapping[str, Any],
+    *,
+    bins: int | None = None,
+    bin_edges: np.ndarray | None = None,
+    bounds: Mapping[str, tuple[float | None, float | None]] | None = None,
+    unbinned: bool = False,
+    strict: bool = False,
+) -> tuple[FitResult | dict[str, float], dict[str, float]]:
+    """Run :func:`fit_spectrum` and apply centroid consistency checks."""
+
+    priors_mapped = dict(priors)
+    if "sigma_E" in priors_mapped:
+        mean, sig = priors_mapped.pop("sigma_E")
+        priors_mapped.setdefault("sigma0", (mean, sig))
+        priors_mapped.setdefault("F", (0.0, sig))
+
+    # If F is fixed but no explicit prior is supplied, keep it near zero to
+    # avoid unphysical broadening from a large default.
+    if flags.get("fix_F", False) and "F" not in priors:
+        priors_mapped["F"] = (0.0, 0.01)
+
+    fit_kwargs = {
+        "energies": energies,
+        "priors": priors_mapped,
+        "flags": flags,
+    }
+    max_tau_ratio = cfg.get("spectral_fit", {}).get("max_tau_ratio")
+    if max_tau_ratio is not None:
+        fit_kwargs["max_tau_ratio"] = max_tau_ratio
+    if bins is not None or bin_edges is not None:
+        fit_kwargs.update({"bins": bins, "bin_edges": bin_edges})
+    if bounds:
+        fit_kwargs["bounds"] = bounds
+    if unbinned:
+        fit_kwargs["unbinned"] = True
+    if strict:
+        fit_kwargs["strict"] = True
+
+    result = fit_spectrum(**fit_kwargs)
+    params = result.params if isinstance(result, FitResult) else result
+    known = cfg.get("calibration", {}).get("known_energies", DEFAULT_KNOWN_ENERGIES)
+    if isinstance(result, FitResult) and "sigma0" in params and "F" in params:
+        e_ref = float(known.get("Po214", 0.0))
+        sigma0 = float(params["sigma0"])
+        F_val = float(params["F"])
+        sigma_E_val = math.sqrt(max(sigma0**2 + F_val * e_ref, 0.0))
+        result.params["sigma_E"] = sigma_E_val
+        if result.cov is not None and sigma_E_val > 0.0:
+            param_index = getattr(result, "param_index", None) or {}
+            has_sigma0 = "sigma0" in param_index
+            has_F = "F" in param_index
+
+            var = 0.0
+            if has_sigma0:
+                var += (sigma0 / sigma_E_val) ** 2 * result.get_cov("sigma0", "sigma0")
+            if has_F:
+                var += (0.5 * e_ref / sigma_E_val) ** 2 * result.get_cov("F", "F")
+            if has_sigma0 and has_F:
+                var += (
+                    2
+                    * (sigma0 / sigma_E_val)
+                    * (0.5 * e_ref / sigma_E_val)
+                    * result.get_cov("sigma0", "F")
+                )
+
+            if has_sigma0 or has_F:
+                result.params["dsigma_E"] = float(np.sqrt(max(var, 0.0)))
+    tol = cfg.get("spectral_fit", {}).get("spectral_peak_tolerance_mev", 0.2)
+    dev = _centroid_deviation(params, known)
+
+    for iso, dval in dev.items():
+        if dval > tol:
+            logging.warning(
+                f"{iso} centroid deviates by {dval:.3f} MeV from calibration"
+            )
+
+    if any(d > 0.5 * tol for d in dev.values()):
+        new_bounds = dict(bounds or {})
+        for iso, dval in dev.items():
+            if dval > 0.5 * tol:
+                e_known = known[iso]
+                new_bounds[f"mu_{iso}"] = (e_known - 0.5 * tol, e_known + 0.5 * tol)
+        fit_kwargs["bounds"] = new_bounds
+        refit = fit_spectrum(**fit_kwargs)
+        ref_params = refit.params if isinstance(refit, FitResult) else refit
+        ref_dev = _centroid_deviation(ref_params, known)
+        if max(ref_dev.values(), default=0.0) < max(dev.values(), default=0.0):
+            result, dev = refit, ref_dev
+
+    return result, dev
+
+
+def window_prob(E, sigma, lo, hi):
+    """Return probability that each ``E`` lies in [lo, hi].
+
+    Elements with ``sigma == 0`` are evaluated via a simple range check instead
+    of calling :func:`scipy.stats.norm.cdf` with ``scale=0``.
+    Parameters may be scalar or array-like and are broadcast element-wise.
+    """
+
+    E = np.asarray(E, dtype=float)
+    sigma = np.asarray(sigma, dtype=float)
+    E, sigma = np.broadcast_arrays(E, sigma)
+
+    if np.any(sigma < 0):
+        raise ValueError("negative sigma in window_prob")
+    lo_val = float(lo)
+    hi_val = float(hi)
+
+    prob = np.empty_like(E, dtype=float)
+    zero_mask = sigma == 0
+
+    if np.any(zero_mask):
+        prob[zero_mask] = ((E[zero_mask] >= lo_val) & (E[zero_mask] <= hi_val)).astype(
+            float
+        )
+
+    if np.any(~zero_mask):
+        nz = ~zero_mask
+        prob[nz] = norm.cdf(hi_val, loc=E[nz], scale=sigma[nz]) - norm.cdf(
+            lo_val, loc=E[nz], scale=sigma[nz]
+        )
+
+    if prob.ndim == 0:
+        return float(prob)
+    return prob
+
+
+def auto_expand_window(df, window, threshold, step=0.05, max_width=1.0):
+    """Return events within an expanded energy window.
+
+    The window is symmetrically expanded in ``step`` increments until the
+    number of selected events meets ``threshold`` or the width reaches
+    ``max_width``.
+    """
+
+    lo, hi = map(float, window)
+    energies = df["energy_MeV"].values
+    sigma = df["denergy_MeV"].values
+
+    while True:
+        probs = window_prob(energies, sigma, lo, hi)
+        count = np.sum(probs > 0)
+        if count >= threshold or (hi - lo) >= max_width:
+            mask = probs > 0
+            out = df[mask].copy()
+            out["weight"] = probs[mask]
+            return out, (lo, hi)
+        lo -= float(step)
+        hi += float(step)
+
+
+_spike_eff_cache = {}
+
+
+def get_spike_efficiency(spike_cfg):
+    """Return spike efficiency using :func:`calc_spike_efficiency` with caching."""
+
+    counts = spike_cfg.get("counts")
+    activity = spike_cfg.get("activity_bq")
+    live_time = spike_cfg.get("live_time_s")
+
+    key = (counts, activity, live_time)
+    if key not in _spike_eff_cache:
+        from efficiency import calc_spike_efficiency
+
+        _spike_eff_cache[key] = calc_spike_efficiency(key[0], key[1], key[2])
+    return _spike_eff_cache[key]
+
+
+def prepare_analysis_df(
+    df: pd.DataFrame,
+    spike_start: pd.Timestamp | None,
+    spike_end: pd.Timestamp | None,
+    spike_periods: list[tuple[pd.Timestamp, pd.Timestamp]],
+    run_periods: list[tuple[pd.Timestamp, pd.Timestamp]],
+    analysis_end: pd.Timestamp | int | float | None,
+    *,
+    t0_global: datetime,
+    cfg: dict,
+    args,
+) -> tuple[
+    pd.DataFrame,
+    datetime,
+    datetime,
+    float,
+    float,
+    str | None,
+    Any,
+]:
+    """Apply time window cuts and derive drift parameters."""
+
+    df_analysis = df.copy()
+    ts = df_analysis["timestamp"]
+    if not pd.api.types.is_datetime64_any_dtype(ts):
+        df_analysis["timestamp"] = ts.map(parse_timestamp)
+    else:
+        if ts.dt.tz is None:
+            df_analysis["timestamp"] = ts.map(parse_timestamp)
+        else:
+            df_analysis["timestamp"] = tz_convert_utc(ts)
+
+    if spike_start is not None and spike_end is not None:
+        mask = (df_analysis["timestamp"] >= spike_start) & (
+            df_analysis["timestamp"] < spike_end
+        )
+        if mask.any():
+            df_analysis = df_analysis[~mask].reset_index(drop=True)
+    elif spike_start is not None:
+        df_analysis = df_analysis[df_analysis["timestamp"] <= spike_start].reset_index(
+            drop=True
+        )
+    elif spike_end is not None:
+        df_analysis = df_analysis[df_analysis["timestamp"] >= spike_end].reset_index(
+            drop=True
+        )
+
+    for start_ts, end_ts in spike_periods:
+        mask = (df_analysis["timestamp"] >= start_ts) & (
+            df_analysis["timestamp"] < end_ts
+        )
+        if mask.any():
+            df_analysis = df_analysis[~mask].reset_index(drop=True)
+
+    if run_periods:
+        keep_mask = np.zeros(len(df_analysis), dtype=bool)
+        for start_ts, end_ts in run_periods:
+            keep_mask |= (df_analysis["timestamp"] >= start_ts) & (
+                df_analysis["timestamp"] < end_ts
+            )
+        df_analysis = df_analysis[keep_mask].reset_index(drop=True)
+        if analysis_end is None and len(df_analysis) > 0:
+            analysis_end = df_analysis["timestamp"].max()
+
+    if analysis_end is not None:
+        df_analysis = df_analysis[df_analysis["timestamp"] <= analysis_end].reset_index(
+            drop=True
+        )
+    else:
+        analysis_end = df_analysis["timestamp"].max()
+
+    if not isinstance(analysis_end, (int, float)):
+        t_end_global_ts = to_utc_datetime(analysis_end).timestamp()
+    else:
+        t_end_global_ts = float(analysis_end)
+    analysis_end_dt = datetime.fromtimestamp(t_end_global_ts, tz=timezone.utc)
+
+    _ensure_events(df_analysis, "time-window selection")
+
+    analysis_start = to_utc_datetime(t0_global)
+
+    drift_cfg = cfg.get("systematics", {})
+    drift_rate = (
+        float(args.slope)
+        if args.slope is not None
+        else float(drift_cfg.get("adc_drift_rate", 0.0))
+    )
+    drift_mode = (
+        "linear"
+        if args.slope is not None
+        else drift_cfg.get("adc_drift_mode", "linear")
+    )
+    drift_params = drift_cfg.get("adc_drift_params")
+
+    return (
+        df_analysis,
+        analysis_start,
+        analysis_end_dt,
+        t_end_global_ts,
+        drift_rate,
+        drift_mode,
+        drift_params,
+    )
+
+
+def _ts_bin_centers_widths(times, cfg, t_start, t_end):
+    """Return bin centers and widths matching :func:`plot_time_series`."""
+    arr = np.asarray(times)
+    if np.issubdtype(arr.dtype, "datetime64"):
+        arr = arr.astype("int64") / 1e9
+    elif np.issubdtype(arr.dtype, np.object_):
+        if arr.size > 0 and isinstance(arr.flat[0], datetime):
+            arr = np.array([dt.timestamp() for dt in arr], dtype=float)
+        else:
+            arr = arr.astype(float)
+    else:
+        arr = arr.astype(float)
+
+    if isinstance(t_start, datetime):
+        t_start = t_start.timestamp()
+    elif isinstance(t_start, np.datetime64):
+        t_start = float(t_start.astype("int64") / 1e9)
+    if isinstance(t_end, datetime):
+        t_end = t_end.timestamp()
+    elif isinstance(t_end, np.datetime64):
+        t_end = float(t_end.astype("int64") / 1e9)
+
+    bin_mode = str(
+        cfg.get("plot_time_binning_mode", cfg.get("time_bin_mode", "fixed"))
+    ).lower()
+    bin_width_s = float(cfg.get("plot_time_bin_width_s", cfg.get("time_bin_s", 3600.0)))
+    time_bins_fallback = int(cfg.get("time_bins_fallback", 1))
+
+    periods = _resolve_run_periods(cfg, t_start, t_end)
+    segments = _build_time_segments(
+        arr,
+        periods=periods,
+        bin_mode=bin_mode,
+        bin_width_s=bin_width_s,
+        time_bins_fallback=time_bins_fallback,
+        t_start=t_start,
+    )
+    if not segments:
+        segments = _build_time_segments(
+            arr,
+            periods=[(float(t_start), float(t_end))],
+            bin_mode=bin_mode,
+            bin_width_s=bin_width_s,
+            time_bins_fallback=time_bins_fallback,
+            t_start=t_start,
+        )
+
+    centers_lists = [
+        seg["centers_rel_global"] for seg in segments if seg["centers_rel_global"].size
+    ]
+    width_lists = [seg["bin_widths"] for seg in segments if seg["bin_widths"].size]
+
+    centers = (
+        np.concatenate(centers_lists) if centers_lists else np.array([], dtype=float)
+    )
+    widths = np.concatenate(width_lists) if width_lists else np.array([], dtype=float)
+    return centers, widths
+
+
+def _segments_to_isotope_series(ts_metadata):
+    """Convert plot_time_series metadata to per-isotope count entries."""
+
+    if not isinstance(ts_metadata, Mapping):
+        return {}
+
+    segments = ts_metadata.get("segments") or []
+    iso_map: dict[str, list[dict[str, float]]] = {}
+    for seg_idx, seg in enumerate(segments):
+        counts_map = seg.get("counts") or {}
+        centers = np.asarray(seg.get("centers_abs", []), dtype=float)
+        widths = np.asarray(seg.get("bin_widths", []), dtype=float)
+        for iso, counts in counts_map.items():
+            counts_arr = np.asarray(counts, dtype=float)
+            n = min(counts_arr.size, centers.size, widths.size)
+            if n == 0:
+                continue
+            entries = iso_map.setdefault(iso, [])
+            for idx in range(n):
+                t_val = float(centers[idx]) if np.isfinite(centers[idx]) else None
+                dt_val = float(widths[idx]) if np.isfinite(widths[idx]) else None
+                if t_val is None or dt_val is None or dt_val <= 0:
+                    continue
+                entries.append(
+                    {
+                        "t": t_val,
+                        "counts": float(counts_arr[idx]),
+                        "dt": dt_val,
+                        "segment_index": seg_idx,
+                        "bin_index": idx,
+                    }
+                )
+
+    for entries in iso_map.values():
+        entries.sort(key=lambda row: row["t"])
+
+    return iso_map
+
+
+def dedupe_isotope_series(isotope_series_data, tol_seconds=0.5):
+    """
+    Remove duplicate time bins from isotope series data.
+
+    Input:
+        isotope_series_data: {"Po214": [{"t": ...,"counts": ...,"dt": ...}, ...], ...}
+        tol_seconds: tolerance for considering timestamps equal (default 0.5 seconds)
+
+    Output:
+        Same shape as input, but with duplicate time bins removed.
+        Duplicates are defined as entries with the same isotope where:
+        - |t1 - t2| < tol_seconds
+        - counts are equal
+        - dt are equal
+
+    The first occurrence of each unique entry is kept.
+    """
+    if not isinstance(isotope_series_data, dict):
+        return isotope_series_data
+
+    deduplicated = {}
+
+    for isotope, entries in isotope_series_data.items():
+        if not entries:
+            deduplicated[isotope] = []
+            continue
+
+        # Sort by timestamp to ensure stable deduplication
+        sorted_entries = sorted(entries, key=lambda row: row.get("t", 0.0))
+
+        unique_entries = []
+        for entry in sorted_entries:
+            t_val = entry.get("t")
+            counts_val = entry.get("counts")
+            dt_val = entry.get("dt")
+
+            if t_val is None or counts_val is None or dt_val is None:
+                # Keep entries with missing values
+                unique_entries.append(entry)
+                continue
+
+            # Check if this entry is a duplicate of any already-added entry
+            is_duplicate = False
+            for existing in unique_entries:
+                existing_t = existing.get("t")
+                existing_counts = existing.get("counts")
+                existing_dt = existing.get("dt")
+
+                if existing_t is None or existing_counts is None or existing_dt is None:
+                    continue
+
+                # Check if timestamps are within tolerance and counts/dt match
+                if (abs(existing_t - t_val) < tol_seconds and
+                    existing_counts == counts_val and
+                    existing_dt == dt_val):
+                    is_duplicate = True
+                    break
+
+            if not is_duplicate:
+                unique_entries.append(entry)
+
+        deduplicated[isotope] = unique_entries
+
+    return deduplicated
+
+
+def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
+    """Propagate fit parameter errors to the model curve."""
+    if fit_obj is None:
+        return None
+    params = _fit_params(fit_obj)
+    hl = _hl_value(cfg, iso)
+    eff_cfg = cfg.get("time_fit", {}).get(f"eff_{iso.lower()}")
+    if isinstance(eff_cfg, list):
+        eff = eff_cfg[0]
+    else:
+        eff = eff_cfg if eff_cfg is not None else 1.0
+    lam = math.log(2.0) / float(hl)
+    dE = params.get("dE_corrected", params.get(f"dE_{iso}", 0.0))
+    dN0 = params.get(f"dN0_{iso}", 0.0)
+    dB = params.get(f"dB_{iso}", params.get("dB", 0.0))
+    cov = _cov_lookup(fit_obj, f"E_{iso}", f"N0_{iso}")
+    t = np.asarray(centers, dtype=float)
+    exp_term = np.exp(-lam * t)
+    dR_dE = eff * (1.0 - exp_term)
+    dR_dN0 = eff * lam * exp_term
+    dR_dB = 1.0
+    var = (dR_dE * dE) ** 2 + (dR_dN0 * dN0) ** 2 + (dR_dB * dB) ** 2
+    if cov and np.isfinite(cov):
+        var += 2.0 * dR_dE * dR_dN0 * cov
+    sigma_rate = np.sqrt(var)
+    return sigma_rate if normalise else sigma_rate * widths
+
+
+def parse_args(argv=None):
+    """Parse command line arguments."""
+    p = argparse.ArgumentParser(
+        description="Full Radon Monitor Analysis Pipeline",
+        epilog=(
+            "See the README's Opt-in section for details on experimental flags "
+            "such as background_model=loglin_unit and likelihood=extended."
+        ),
+    )
+    default_cfg = Path(__file__).resolve().with_name("config.yaml")
+    p.add_argument(
+        "--config",
+        "-c",
+        default=str(default_cfg),
+        help="Path to YAML or JSON configuration file (default: config.yaml)",
+    )
+    default_input = Path.cwd() / "merged_output.csv"
+    p.add_argument(
+        "--input",
+        "-i",
+        default=str(default_input),
+        help=(
+            "CSV of merged event data (must contain at least: timestamp, adc) "
+            f"(default: {default_input})"
+        ),
+    )
+    p.add_argument(
+        "--output_dir",
+        "-o",
+        default="results",
+        help=(
+            "Directory under which to create a timestamped analysis folder "
+            "(override with --job-id; default: results)"
+        ),
+    )
+    p.add_argument(
+        "--timezone",
+        default="UTC",
+        help="Timezone for naive input timestamps (default: UTC)",
+    )
+    p.add_argument(
+        "--baseline_range",
+        nargs=2,
+        metavar=("TSTART", "TEND"),
+        type=str,
+        help=(
+            "Optional baseline-run interval. Providing this option overrides `baseline.range` in config.yaml. Provide two values (either ISO strings or epoch floats). If set, those events are extracted (same energy cuts) and listed in `baseline` of the summary."
+        ),
+    )
+    p.add_argument(
+        "--baseline-mode",
+        choices=["none", "electronics", "radon", "all"],
+        default="all",
+        help="Background removal strategy (default: all)",
+    )
+    p.add_argument(
+        "--iso",
+        choices=["radon", "po218", "po214"],
+        help=(
+            "Select which progeny drives the radon estimate "
+            "(overrides analysis_isotope in config.yaml)"
+        ),
+    )
+    p.add_argument(
+        "--allow-negative-baseline",
+        action="store_true",
+        help="Allow negative baseline-corrected rates",
+    )
+    p.add_argument(
+        "--allow-negative-activity",
+        action="store_true",
+        help="Continue if radon activity is negative",
+    )
+    p.add_argument(
+        "--check-baseline-only",
+        action="store_true",
+        help="Exit after printing baseline diagnostics",
+    )
+    p.add_argument(
+        "--burst-mode",
+        choices=["none", "micro", "rate", "both"],
+        help="Burst filtering mode to pass to apply_burst_filter. Providing this option overrides `burst_filter.burst_mode` in config.yaml",
+    )
+    p.add_argument(
+        "--burst-sensitivity-scan",
+        action="store_true",
+        help="Scan burst parameters and plot activity vs burst window/multiplier",
+    )
+    p.add_argument(
+        "--job-id",
+        help="Optional identifier used for the results folder instead of the timestamp",
+    )
+    p.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing results folder if it already exists",
+    )
+    p.add_argument(
+        "--efficiency-json",
+        help="Path to a JSON file containing efficiency inputs to merge into the configuration",
+    )
+    p.add_argument(
+        "--systematics-json",
+        help="Path to a JSON file with systematics settings overriding the config",
+    )
+    p.add_argument(
+        "--spike-count",
+        type=float,
+        help="Counts observed during a spike run for efficiency",
+    )
+    p.add_argument(
+        "--spike-count-err",
+        type=float,
+        help="Uncertainty on spike counts",
+    )
+    p.add_argument(
+        "--spike-activity",
+        type=float,
+        help="Known spike activity in Bq",
+    )
+    p.add_argument(
+        "--spike-duration",
+        type=float,
+        help="Duration of the spike run in seconds",
+    )
+    p.add_argument(
+        "--no-spike",
+        action="store_true",
+        help="Disable spike efficiency",
+    )
+    p.add_argument(
+        "--analysis-end-time",
+        type=str,
+        help="Ignore events occurring after this ISO timestamp. Providing this option overrides `analysis.analysis_end_time` in config.yaml",
+    )
+    p.add_argument(
+        "--analysis-start-time",
+        type=str,
+        help="Reference start time of the analysis (ISO string or epoch). Overrides `analysis.analysis_start_time` in config.yaml",
+    )
+    p.add_argument(
+        "--background-model",
+        choices=["linear", "loglin_unit"],
+        help="Experimental (opt-in) background model. Defaults keep legacy behavior.",
+    )
+    p.add_argument(
+        "--likelihood",
+        choices=["current", "extended"],
+        help="Experimental (opt-in) likelihood. Defaults keep legacy behavior.",
+    )
+    p.add_argument(
+        "--spike-start-time",
+        help="Discard events after this ISO timestamp. Providing this option overrides `analysis.spike_start_time` in config.yaml",
+    )
+    p.add_argument(
+        "--spike-end-time",
+        help="Discard events before this ISO timestamp. Providing this option overrides `analysis.spike_end_time` in config.yaml",
+    )
+    p.add_argument(
+        "--spike-period",
+        nargs=2,
+        action="append",
+        metavar=("START", "END"),
+        help="Discard events between START and END (can be given multiple times). Providing this option overrides `analysis.spike_periods` in config.yaml",
+    )
+    p.add_argument(
+        "--run-period",
+        nargs=2,
+        action="append",
+        metavar=("START", "END"),
+        help="Keep events between START and END (can be given multiple times). Providing this option overrides `analysis.run_periods` in config.yaml",
+    )
+    p.add_argument(
+        "--radon-interval",
+        nargs=2,
+        metavar=("START", "END"),
+        help="Time interval to evaluate radon delta. Providing this option overrides `analysis.radon_interval` in config.yaml",
+    )
+    p.add_argument(
+        "--slope",
+        type=float,
+        help="Apply a linear ADC drift correction with the given slope. Providing this option overrides `systematics.adc_drift_rate` in config.yaml",
+    )
+    p.add_argument(
+        "--noise-cutoff",
+        type=int,
+        help=(
+            "ADC threshold for the noise cut. Providing this option overrides "
+            "`calibration.noise_cutoff` in config.yaml"
+        ),
+    )
+    p.add_argument(
+        "--calibration-slope",
+        type=float,
+        help=(
+            "Fixed MeV per ADC conversion slope. Providing this option overrides "
+            "`calibration.slope_MeV_per_ch` in config.yaml"
+        ),
+    )
+    p.add_argument(
+        "--float-slope",
+        action="store_true",
+        help="Allow provided calibration slope to float during the two-point fit",
+    )
+    p.add_argument(
+        "--calibration-method",
+        choices=["two-point", "auto"],
+        help=(
+            "Energy calibration method. Providing this option overrides "
+            "`calibration.method` in config.yaml"
+        ),
+    )
+    p.add_argument(
+        "--settle-s",
+        type=float,
+        help="Discard events occurring this many seconds after the start",
+    )
+    p.add_argument(
+        "--hl-po214",
+        type=float,
+        help=(
+            "Half-life to use for Po-214 in seconds. "
+            "Providing this option overrides `time_fit.hl_po214` in config.yaml"
+        ),
+    )
+    p.add_argument(
+        "--hl-po218",
+        type=float,
+        help=(
+            "Half-life to use for Po-218 in seconds. "
+            "Providing this option overrides `time_fit.hl_po218` in config.yaml"
+        ),
+    )
+    p.add_argument(
+        "--eff-fixed",
+        action="store_true",
+        help="Fix all efficiencies to exactly 1.0 (no prior)",
+    )
+    p.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug logging. Providing this option overrides `pipeline.log_level` in config.yaml",
+    )
+    p.add_argument(
+        "--plot-time-binning-mode",
+        dest="time_bin_mode_new",
+        choices=["auto", "fd", "fixed"],
+        help="Time-series binning mode. Providing this option overrides `plotting.plot_time_binning_mode` in config.yaml",
+    )
+    p.add_argument(
+        "--time-bin-mode",
+        dest="time_bin_mode_old",
+        choices=["auto", "fd", "fixed"],
+        help="DEPRECATED alias for --plot-time-binning-mode",
+    )
+    p.add_argument(
+        "--plot-time-bin-width",
+        dest="time_bin_width",
+        type=float,
+        help="Fixed time bin width in seconds. Providing this option overrides `plotting.plot_time_bin_width_s` in config.yaml",
+    )
+    p.add_argument(
+        "--dump-ts-json",
+        "--dump-time-series-json",
+        dest="dump_ts_json",
+        action="store_true",
+        help="Write *_ts.json files containing binned time-series data",
+    )
+    p.add_argument(
+        "--ambient-file",
+        help=(
+            "Two-column text file of timestamp and ambient concentration in Bq/L"
+        ),
+    )
+    p.add_argument(
+        "--ambient-concentration",
+        type=float,
+        help=(
+            "Ambient radon concentration in Bq per liter for "
+            "equivalent air plot. Providing this option overrides "
+            "`analysis.ambient_concentration` in config.yaml"
+        ),
+    )
+    p.add_argument(
+        "--seed",
+        type=int,
+        help="Override random seed used by analysis algorithms. Providing this option overrides `pipeline.random_seed` in config.yaml",
+    )
+    p.add_argument(
+        "--palette",
+        help="Color palette for plots. Providing this option overrides `plotting.palette` in config.yaml",
+    )
+    p.add_argument(
+        "--strict-covariance",
+        action="store_true",
+        help="Fail if fit covariance matrices are not positive definite",
+    )
+    p.add_argument(
+        "--hierarchical-summary",
+        metavar="OUTFILE",
+        help=(
+            "Combine half-life and calibration results from previous runs and "
+            "write a hierarchical fit summary to OUTFILE"
+        ),
+    )
+    p.add_argument(
+        "--reproduce",
+        metavar="SUMMARY",
+        help="Load config and seed from SUMMARY to reproduce a previous run",
+    )
+
+    args = p.parse_args(argv)
+
+    if args.time_bin_mode_new is not None and args.time_bin_mode_old is not None:
+        if args.time_bin_mode_new != args.time_bin_mode_old:
+            p.error(
+                "--plot-time-binning-mode conflicts with deprecated --time-bin-mode"
+            )
+
+    args.time_bin_mode = (
+        args.time_bin_mode_new
+        if args.time_bin_mode_new is not None
+        else args.time_bin_mode_old
+    )
+    del args.time_bin_mode_new
+    del args.time_bin_mode_old
+
+    return args
 
 
 def main(argv=None):
-    # Initialize pipeline: parse args, load config, apply overrides, setup logging & random seed
-    args, cfg, timer, tzinfo, metadata = init_pipeline(argv)
+    cli_args = [sys.argv[0]] + (list(argv) if argv is not None else sys.argv[1:])
+    cli_sha256 = hashlib.sha256(" ".join(cli_args).encode("utf-8")).hexdigest()
+    try:
+        commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], encoding="utf-8"
+        ).strip()
+    except Exception:
+        commit = "unknown"
 
-    # Unpack metadata
-    cli_sha256 = metadata["cli_sha256"]
-    commit = metadata["commit"]
-    requirements_sha256 = metadata["requirements_sha256"]
-    cfg_sha256 = metadata["cfg_sha256"]
-    seed_used = metadata["seed_used"]
-    now_str = metadata["timestamp"]
+    try:
+        req_path = Path(__file__).resolve().parent / "requirements.txt"
+        with open(req_path, "rb") as f:
+            requirements_sha256 = hashlib.sha256(f.read()).hexdigest()
+    except Exception:
+        requirements_sha256 = "unknown"
 
-    # Initialize variables for pipeline
+    args = parse_args(argv)
+    timer = PipelineTimer(logging.getLogger("analyze.timer"))
+
+    if args.reproduce:
+        rep_path = Path(args.reproduce)
+        try:
+            with open(rep_path, "r", encoding="utf-8") as f:
+                rep_summary = json.load(f)
+        except Exception as e:
+            logger.error("Could not load summary '%s': %s", args.reproduce, e)
+            sys.exit(1)
+        args.config = rep_path.parent / "config_used.json"
+        args.seed = rep_summary.get("random_seed")
+
+    # Convert CLI paths to Path objects
+    args.config = Path(args.config)
+    args.input = Path(args.input)
+    args.output_dir = Path(args.output_dir)
+    if args.efficiency_json:
+        args.efficiency_json = Path(args.efficiency_json)
+    if args.systematics_json:
+        args.systematics_json = Path(args.systematics_json)
+    if args.ambient_file:
+        args.ambient_file = Path(args.ambient_file)
+    if args.hierarchical_summary:
+        args.hierarchical_summary = Path(args.hierarchical_summary)
+
     pre_spec_energies = np.array([])
     post_spec_energies = np.array([])
     roi_diff = {}
     scan_results = {}
     best_params = None
 
-    # ────────────────────────────────────────────────────────────
-    # 2. Load event data and apply filters
-    # ────────────────────────────────────────────────────────────
-    try:
-        events_all, events_filtered, n_removed_noise, n_removed_burst = load_and_filter_events(
-            args.input, cfg, args, timer
-        )
-    except Exception:
+    # Resolve timezone for subsequent time parsing
+    tzinfo = gettz(args.timezone)
+    if tzinfo is None:
+        logger.error("Unknown timezone '%s'", args.timezone)
         sys.exit(1)
 
-    if events_all.empty:
-        sys.exit(0)
+    if args.baseline_range:
+        args.baseline_range = [
+            parse_time_arg(t, tz=tzinfo) for t in args.baseline_range
+        ]
+    if args.analysis_end_time is not None:
+        args.analysis_end_time = parse_time_arg(args.analysis_end_time, tz=tzinfo)
+    if args.analysis_start_time is not None:
+        args.analysis_start_time = parse_time_arg(args.analysis_start_time, tz=tzinfo)
+    if args.spike_start_time is not None:
+        args.spike_start_time = parse_time_arg(args.spike_start_time, tz=tzinfo)
+    if args.spike_end_time is not None:
+        args.spike_end_time = parse_time_arg(args.spike_end_time, tz=tzinfo)
+    if args.spike_period:
+        args.spike_period = [
+            [parse_time_arg(s, tz=tzinfo), parse_time_arg(e, tz=tzinfo)]
+            for s, e in args.spike_period
+        ]
+    if args.run_period:
+        args.run_period = [
+            [parse_time_arg(s, tz=tzinfo), parse_time_arg(e, tz=tzinfo)]
+            for s, e in args.run_period
+        ]
+    if args.radon_interval:
+        args.radon_interval = [
+            parse_time_arg(args.radon_interval[0], tz=tzinfo),
+            parse_time_arg(args.radon_interval[1], tz=tzinfo),
+        ]
 
-    events_after_noise = events_filtered.copy()
-    events_after_burst = events_filtered.copy()
+    # ────────────────────────────────────────────────────────────
+    # 1. Load configuration
+    # ────────────────────────────────────────────────────────────
+    with timer.section("load_config"):
+        try:
+            cfg = load_config(args.config)
+        except Exception as e:
+            logger.error("Could not load config '%s': %s", args.config, e)
+            sys.exit(1)
 
-    # Determine burst mode for summary
-    burst_mode = (
-        args.burst_mode
-        if args.burst_mode is not None
-        else cfg.get("burst_filter", {}).get("burst_mode", "rate")
+    def _log_override(section, key, new_val):
+        prev = cfg.get(section, {}).get(key)
+        if prev is not None and prev != new_val:
+            logging.info(
+                f"Overriding {section}.{key}={prev!r} with {new_val!r} from CLI"
+            )
+
+    # Apply optional overrides from command-line arguments
+    if args.efficiency_json:
+        try:
+            with open(args.efficiency_json, "r", encoding="utf-8") as f:
+                cfg["efficiency"] = json.load(f)
+        except Exception as e:
+            logger.error(
+                "Could not load efficiency JSON '%s': %s", args.efficiency_json, e
+            )
+            sys.exit(1)
+
+    if args.systematics_json:
+        try:
+            with open(args.systematics_json, "r", encoding="utf-8") as f:
+                cfg["systematics"] = json.load(f)
+        except Exception as e:
+            logger.error(
+                "Could not load systematics JSON '%s': %s",
+                args.systematics_json,
+                e,
+            )
+            sys.exit(1)
+
+    if args.seed is not None:
+        _log_override("pipeline", "random_seed", int(args.seed))
+        cfg.setdefault("pipeline", {})["random_seed"] = int(args.seed)
+
+    if args.ambient_concentration is not None:
+        ambient_cli = _safe_float(args.ambient_concentration)
+        if ambient_cli is None:
+            logger.warning(
+                "Ignoring ambient concentration override %r; could not convert to float",
+                args.ambient_concentration,
+            )
+        else:
+            _log_override(
+                "analysis",
+                "ambient_concentration",
+                ambient_cli,
+            )
+            cfg.setdefault("analysis", {})["ambient_concentration"] = ambient_cli
+
+    if args.analysis_end_time is not None:
+        _log_override("analysis", "analysis_end_time", args.analysis_end_time)
+        cfg.setdefault("analysis", {})["analysis_end_time"] = args.analysis_end_time
+
+    if args.analysis_start_time is not None:
+        _log_override("analysis", "analysis_start_time", args.analysis_start_time)
+        cfg.setdefault("analysis", {})["analysis_start_time"] = args.analysis_start_time
+
+    if args.spike_start_time is not None:
+        _log_override("analysis", "spike_start_time", args.spike_start_time)
+        cfg.setdefault("analysis", {})["spike_start_time"] = args.spike_start_time
+
+    if args.spike_end_time is not None:
+        _log_override("analysis", "spike_end_time", args.spike_end_time)
+        cfg.setdefault("analysis", {})["spike_end_time"] = args.spike_end_time
+
+    if args.spike_period:
+        _log_override("analysis", "spike_periods", args.spike_period)
+        cfg.setdefault("analysis", {})["spike_periods"] = [
+            [s, e] for s, e in args.spike_period
+        ]
+
+    if args.run_period:
+        _log_override("analysis", "run_periods", args.run_period)
+        cfg.setdefault("analysis", {})["run_periods"] = [
+            [s, e] for s, e in args.run_period
+        ]
+
+    if args.radon_interval:
+        _log_override("analysis", "radon_interval", args.radon_interval)
+        cfg.setdefault("analysis", {})["radon_interval"] = [
+            args.radon_interval[0],
+            args.radon_interval[1],
+        ]
+
+    if args.background_model is not None:
+        _log_override("analysis", "background_model", args.background_model)
+        cfg.setdefault("analysis", {})["background_model"] = args.background_model
+
+    if args.likelihood is not None:
+        _log_override("analysis", "likelihood", args.likelihood)
+        cfg.setdefault("analysis", {})["likelihood"] = args.likelihood
+
+    if args.settle_s is not None:
+        _log_override("analysis", "settle_s", float(args.settle_s))
+        cfg.setdefault("analysis", {})["settle_s"] = float(args.settle_s)
+
+    if args.hl_po214 is not None:
+        tf = cfg.setdefault("time_fit", {})
+        sig = 0.0
+        current = tf.get("hl_po214")
+        if isinstance(current, list) and len(current) > 1:
+            sig = current[1]
+        _log_override("time_fit", "hl_po214", [float(args.hl_po214), sig])
+        tf["hl_po214"] = [float(args.hl_po214), sig]
+
+    if args.hl_po218 is not None:
+        tf = cfg.setdefault("time_fit", {})
+        sig = 0.0
+        current = tf.get("hl_po218")
+        if isinstance(current, list) and len(current) > 1:
+            sig = current[1]
+        _log_override("time_fit", "hl_po218", [float(args.hl_po218), sig])
+        tf["hl_po218"] = [float(args.hl_po218), sig]
+
+    if args.time_bin_mode:
+        _log_override("plotting", "plot_time_binning_mode", args.time_bin_mode)
+        cfg.setdefault("plotting", {})["plot_time_binning_mode"] = args.time_bin_mode
+    if args.time_bin_width is not None:
+        _log_override(
+            "plotting",
+            "plot_time_bin_width_s",
+            float(args.time_bin_width),
+        )
+        cfg.setdefault("plotting", {})["plot_time_bin_width_s"] = float(
+            args.time_bin_width
+        )
+    if args.dump_ts_json:
+        cfg.setdefault("plotting", {})["dump_time_series_json"] = True
+
+    if args.burst_mode is not None:
+        _log_override("burst_filter", "burst_mode", args.burst_mode)
+        cfg.setdefault("burst_filter", {})["burst_mode"] = args.burst_mode
+
+    if (
+        args.spike_count is not None
+        or args.spike_count_err is not None
+        or args.spike_activity is not None
+        or args.spike_duration is not None
+        or args.no_spike
+    ):
+        eff_sec = cfg.setdefault("efficiency", {}).setdefault("spike", {})
+        if args.spike_count is not None:
+            eff_sec["counts"] = float(args.spike_count)
+        if args.spike_count_err is not None:
+            eff_sec["error"] = float(args.spike_count_err)
+        if args.spike_activity is not None:
+            eff_sec["activity_bq"] = float(args.spike_activity)
+        if args.spike_duration is not None:
+            eff_sec["live_time_s"] = float(args.spike_duration)
+        if args.no_spike:
+            eff_sec["enabled"] = False
+
+    if args.slope is not None:
+        _log_override("systematics", "adc_drift_rate", float(args.slope))
+        cfg.setdefault("systematics", {})["adc_drift_rate"] = float(args.slope)
+
+    if args.noise_cutoff is not None:
+        _log_override(
+            "calibration",
+            "noise_cutoff",
+            int(args.noise_cutoff),
+        )
+        cfg.setdefault("calibration", {})["noise_cutoff"] = int(args.noise_cutoff)
+
+    if args.calibration_slope is not None:
+        _log_override(
+            "calibration",
+            "slope_MeV_per_ch",
+            float(args.calibration_slope),
+        )
+        cfg.setdefault("calibration", {})["slope_MeV_per_ch"] = float(args.calibration_slope)
+
+    if args.float_slope:
+        cfg.setdefault("calibration", {})["float_slope"] = True
+
+    if args.iso is not None:
+        prev = cfg.get("analysis_isotope")
+        if prev is not None and prev != args.iso:
+            logging.info(
+                f"Overriding analysis_isotope={prev!r} with {args.iso!r} from CLI"
+            )
+        cfg["analysis_isotope"] = args.iso
+    assert cfg.get("analysis_isotope", "radon") in {"radon", "po218", "po214"}
+
+    if args.calibration_method is not None:
+        _log_override("calibration", "method", args.calibration_method)
+        cfg.setdefault("calibration", {})["method"] = args.calibration_method
+
+    if args.allow_negative_baseline:
+        cfg["allow_negative_baseline"] = True
+
+    if args.debug:
+        cfg.setdefault("pipeline", {})["log_level"] = "DEBUG"
+
+    if args.palette:
+        cfg.setdefault("plotting", {})["palette"] = args.palette
+
+    # Timestamp for this analysis run
+    now_str = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+    base_cfg_sha = hashlib.sha256(
+        json.dumps(to_native(cfg), sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+    # Configure logging as early as possible
+    log_level = cfg.get("pipeline", {}).get("log_level", "INFO")
+    numeric_level = getattr(logging, log_level.upper(), logging.INFO)
+    logging.basicConfig(
+        level=numeric_level, format="%(levelname)s:%(name)s:%(message)s"
     )
 
-    # Setup time windows and parse time periods
-    time_windows = setup_time_windows(cfg, events_filtered)
-    t0_global = time_windows["t0_global"]
-    t0_cfg = time_windows["t0_cfg"]
-    t_end_global = time_windows["t_end_global"]
-    t_end_global_ts = time_windows["t_end_global_ts"]
-    t_end_cfg = time_windows["t_end_cfg"]
-    t_spike_start = time_windows["t_spike_start"]
-    spike_start_cfg = time_windows["spike_start_cfg"]
-    t_spike_end = time_windows["t_spike_end"]
-    spike_end_cfg = time_windows["spike_end_cfg"]
-    spike_periods = time_windows["spike_periods"]
-    spike_periods_cfg = time_windows["spike_periods_cfg"]
-    run_periods = time_windows["run_periods"]
-    run_periods_cfg = time_windows["run_periods_cfg"]
-    radon_interval = time_windows["radon_interval"]
-    radon_interval_cfg = time_windows["radon_interval_cfg"]
+    start_warning_capture()
+
+    seed = cfg.get("pipeline", {}).get("random_seed")
+    seed_used = None
+    if seed is not None:
+        try:
+            seed_int = int(seed)
+            np.random.seed(seed_int)
+            random.seed(seed_int)
+            seed_used = seed_int
+        except Exception:
+            logging.warning(f"Invalid random_seed '{seed}' ignored")
+    else:
+        derived_seed = int(
+            hashlib.sha256((base_cfg_sha + now_str).encode("utf-8")).hexdigest()[:8],
+            16,
+        )
+        np.random.seed(derived_seed)
+        random.seed(derived_seed)
+        seed_used = derived_seed
+        cfg.setdefault("pipeline", {})["random_seed"] = derived_seed
+
+    cfg_sha256 = hashlib.sha256(
+        json.dumps(to_native(cfg), sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+    # ────────────────────────────────────────────────────────────
+    # 2. Load event data
+    # ────────────────────────────────────────────────────────────
+    with timer.section("load_events"):
+        try:
+            events_all = load_events(args.input, column_map=cfg.get("columns"))
+
+            # Parse timestamps to UTC ``Timestamp`` objects
+            events_all["timestamp"] = events_all["timestamp"].map(parse_timestamp)
+
+        except Exception as e:
+            logger.error("Could not load events from '%s': %s", args.input, e)
+            sys.exit(1)
+
+    if events_all.empty:
+        logger.info("No events found in the input CSV. Exiting.")
+        sys.exit(0)
+
+    # ``load_events()`` already returns timezone-aware ``datetime64`` values.
+    # Timestamps are kept in this form and converted to epoch seconds only for
+    # numerical operations.
+
+    # ───────────────────────────────────────────────
+    # 2a. Pedestal / electronic-noise cut (integer ADC)
+    # ───────────────────────────────────────────────
+    noise_thr = cfg.get("calibration", {}).get("noise_cutoff")
+    n_removed_noise = 0
+    noise_thr_val = None
+    events_filtered = events_all.copy()
+    with timer.section("noise_cut"):
+        if noise_thr is not None:
+            try:
+                noise_thr_val = int(noise_thr)
+            except (ValueError, TypeError):
+                logging.warning(
+                    f"Invalid noise_cutoff '{noise_thr}' - skipping noise cut"
+                )
+                noise_thr_val = None
+            else:
+                before = len(events_filtered)
+                events_filtered = events_filtered[
+                    events_filtered["adc"] > noise_thr_val
+                ].reset_index(drop=True)
+                n_removed_noise = before - len(events_filtered)
+                if before > 0:
+                    frac_removed_noise = n_removed_noise / before
+                    logging.info(
+                        f"Noise cut removed {n_removed_noise} events ({frac_removed_noise:.1%})"
+                    )
+                else:
+                    logging.info(f"Noise cut removed {n_removed_noise} events")
+
+        _ensure_events(events_filtered, "noise cut")
+
+    events_after_noise = events_filtered.copy()
+
+    # Optional burst filter to remove high-rate clusters
+    with timer.section("burst_filter"):
+        total_span = (
+            events_filtered["timestamp"].max() - events_filtered["timestamp"].min()
+        )
+        if isinstance(total_span, (np.timedelta64, pd.Timedelta)):
+            total_span = total_span / np.timedelta64(1, "s")
+        rate_cps = len(events_filtered) / max(float(total_span), 1e-9)
+        if args.burst_mode is None:
+            current_mode = cfg.get("burst_filter", {}).get("burst_mode", "rate")
+            if current_mode == "rate" and rate_cps < 0.1:
+                cfg.setdefault("burst_filter", {})["burst_mode"] = "none"
+
+        burst_mode = (
+            args.burst_mode
+            if args.burst_mode is not None
+            else cfg.get("burst_filter", {}).get("burst_mode", "rate")
+        )
+
+        n_before_burst = len(events_filtered)
+        events_filtered, n_removed_burst = apply_burst_filter(
+            events_filtered, cfg, mode=burst_mode
+        )
+        events_after_burst = events_filtered.copy()
+        if n_before_burst > 0:
+            frac_removed = n_removed_burst / n_before_burst
+            logging.info(
+                f"Burst filter removed {n_removed_burst} events ({frac_removed:.1%})"
+            )
+            if frac_removed > 0.5:
+                logging.warning(
+                    f"More than half of events vetoed by burst filter ({frac_removed:.1%})"
+                )
+
+        _ensure_events(events_filtered, "burst filtering")
+
+    # Global t₀ reference
+    t0_cfg = cfg.get("analysis", {}).get("analysis_start_time")
+    if t0_cfg is not None:
+        try:
+            t0_global = to_utc_datetime(t0_cfg)
+            t0_cfg = t0_global
+            cfg.setdefault("analysis", {})["analysis_start_time"] = t0_global
+        except Exception:
+            logging.warning(
+                f"Invalid analysis_start_time '{t0_cfg}' - using first event"
+            )
+            t0_global = to_utc_datetime(events_filtered["timestamp"].min())
+    else:
+        t0_global = to_utc_datetime(events_filtered["timestamp"].min())
+        t0_cfg = t0_global
+
+    t_end_cfg = cfg.get("analysis", {}).get("analysis_end_time")
+    t_end_global = None
+    t_end_global_ts = None
+    if t_end_cfg is not None:
+        try:
+            t_end_dt = to_utc_datetime(t_end_cfg)
+            t_end_global = t_end_dt
+            t_end_global_ts = t_end_dt.timestamp()
+            t_end_cfg = t_end_dt
+            cfg.setdefault("analysis", {})["analysis_end_time"] = t_end_dt
+        except Exception:
+            logging.warning(
+                f"Invalid analysis_end_time '{t_end_cfg}' - using last event"
+            )
+            t_end_global = None
+            t_end_global_ts = None
+
+    spike_start_cfg = cfg.get("analysis", {}).get("spike_start_time")
+    t_spike_start = None
+    if spike_start_cfg is not None:
+        try:
+            t_spike_start_dt = to_utc_datetime(spike_start_cfg)
+            t_spike_start = t_spike_start_dt
+            cfg.setdefault("analysis", {})["spike_start_time"] = t_spike_start_dt
+        except Exception:
+            logging.warning(f"Invalid spike_start_time '{spike_start_cfg}' - ignoring")
+            t_spike_start = None
+
+    spike_end_cfg = cfg.get("analysis", {}).get("spike_end_time")
+    t_spike_end = None
+    if spike_end_cfg is not None:
+        try:
+            t_spike_end_dt = to_utc_datetime(spike_end_cfg)
+            t_spike_end = t_spike_end_dt
+            cfg.setdefault("analysis", {})["spike_end_time"] = t_spike_end_dt
+        except Exception:
+            logging.warning(f"Invalid spike_end_time '{spike_end_cfg}' - ignoring")
+            t_spike_end = None
+
+    spike_periods_cfg = cfg.get("analysis", {}).get("spike_periods", [])
+    if spike_periods_cfg is None:
+        spike_periods_cfg = []
+    spike_periods = []
+    for period in spike_periods_cfg:
+        try:
+            start, end = period
+            start_ts = to_utc_datetime(start)
+            end_ts = to_utc_datetime(end)
+            if end_ts <= start_ts:
+                raise ValueError("end <= start")
+            spike_periods.append([start_ts, end_ts])
+        except Exception as e:
+            logging.warning(f"Invalid spike_period {period} -> {e}")
+    if spike_periods:
+        cfg.setdefault("analysis", {})["spike_periods"] = spike_periods
+        spike_periods_cfg = spike_periods
+
+    run_periods_cfg = cfg.get("analysis", {}).get("run_periods", [])
+    if run_periods_cfg is None:
+        run_periods_cfg = []
+    run_periods = []
+    for period in run_periods_cfg:
+        try:
+            start, end = period
+            start_ts = to_utc_datetime(start)
+            end_ts = to_utc_datetime(end)
+            if end_ts <= start_ts:
+                raise ValueError("end <= start")
+            run_periods.append([start_ts, end_ts])
+        except Exception as e:
+            logging.warning(f"Invalid run_period {period} -> {e}")
+    if run_periods:
+        cfg.setdefault("analysis", {})["run_periods"] = run_periods
+        run_periods_cfg = run_periods
+
+    radon_interval_cfg = cfg.get("analysis", {}).get("radon_interval")
+    radon_interval = None
+    if radon_interval_cfg:
+        try:
+            start_r, end_r = radon_interval_cfg
+            start_r_dt = to_utc_datetime(start_r)
+            end_r_dt = to_utc_datetime(end_r)
+            if end_r_dt <= start_r_dt:
+                raise ValueError("end <= start")
+            radon_interval = [start_r_dt, end_r_dt]
+            cfg.setdefault("analysis", {})["radon_interval"] = radon_interval
+            radon_interval_cfg = radon_interval
+        except Exception as e:
+            logging.warning(f"Invalid radon_interval {radon_interval_cfg} -> {e}")
+            radon_interval = None
 
     with timer.section("prepare_analysis_df"):
         (
@@ -333,8 +2277,12 @@ def main(argv=None):
             cov = np.array([[c_sig**2, 0.0], [0.0, a_sig**2]])
     
             if "ac_covariance" in obj:
-                cov_ac = float(np.asarray(obj["ac_covariance"], dtype=float)[0][1])
-                cov[0, 1] = cov[1, 0] = cov_ac
+                cov_matrix = np.asarray(obj["ac_covariance"], dtype=float)
+                if cov_matrix.shape >= (2, 2):
+                    cov_ac = float(cov_matrix[0][1])
+                    cov[0, 1] = cov[1, 0] = cov_ac
+                else:
+                    logger.warning(f"ac_covariance matrix has invalid shape {cov_matrix.shape}, expected at least (2,2)")
     
             if "a2" in obj:
                 coeffs.append(a2)
@@ -370,9 +2318,9 @@ def main(argv=None):
     
             assert isinstance(cal_params, CalibrationResult)
             idx = {exp: i for i, exp in enumerate(cal_params._exponents)}
-            c = cal_params.coeffs[idx.get(0, 0)] if 0 in idx else 0.0
-            a = cal_params.coeffs[idx.get(1, 0)] if 1 in idx else 0.0
-            a2 = cal_params.coeffs[idx.get(2, 0)] if 2 in idx else 0.0
+            c = cal_params.coeffs[idx[0]] if 0 in idx else 0.0
+            a = cal_params.coeffs[idx[1]] if 1 in idx else 0.0
+            a2 = cal_params.coeffs[idx[2]] if 2 in idx else 0.0
             sigE_mean = cal_params.sigma_E
             sigE_sigma = cal_params.sigma_E_error
             try:
@@ -674,8 +2622,8 @@ def main(argv=None):
                         int(np.ceil((E_all.max() - E_all.min()) / float(fd_width))),
                     )
                 else:
-                    nbins = default_bins
-    
+                    nbins = default_bins if default_bins is not None else 100
+
                 bins = nbins
                 bin_edges = None
             elif method == "energy":

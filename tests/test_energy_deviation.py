@@ -6,7 +6,6 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import analyze
-import analysis_helpers
 from fitting import FitResult, FitParams
 import pytest
 
@@ -51,7 +50,7 @@ def test_spectral_refit_narrows_bounds(monkeypatch):
         "spectral_fit": {"spectral_peak_tolerance_mev": 0.2},
     }
 
-    res, dev = analysis_helpers._spectral_fit_with_check(energies, priors, flags, cfg)
+    res, dev = analyze._spectral_fit_with_check(energies, priors, flags, cfg)
 
     assert len(calls) == 2
     assert dev["Po210"] < 0.2
@@ -90,7 +89,7 @@ def test_sigma_E_prior_mapping(monkeypatch):
     }
     cfg = {"calibration": {"known_energies": {"Po214": 7.7}}, "spectral_fit": {}}
 
-    res, _ = analysis_helpers._spectral_fit_with_check(energies, priors, {}, cfg)
+    res, _ = analyze._spectral_fit_with_check(energies, priors, {}, cfg)
 
     assert "sigma0" in captured["priors"]
     assert "F" in captured["priors"]
@@ -142,6 +141,6 @@ def test_max_tau_ratio_passed_through(monkeypatch):
         "spectral_fit": {"max_tau_ratio": 0.5},
     }
 
-    analysis_helpers._spectral_fit_with_check(energies, priors, {}, cfg)
+    analyze._spectral_fit_with_check(energies, priors, {}, cfg)
 
     assert captured["max_tau_ratio"] == 0.5
