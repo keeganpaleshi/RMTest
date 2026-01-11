@@ -16,8 +16,7 @@ import pandas as pd
 from pathlib import Path
 from typing import Tuple, Optional, Any, Dict
 
-from io_utils import load_events
-from filtering import apply_burst_filter
+from io_utils import load_events, apply_burst_filter
 from analysis_helpers import _ensure_events
 from utils.time_utils import parse_timestamp, to_utc_datetime
 
