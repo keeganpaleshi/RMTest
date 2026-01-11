@@ -4,6 +4,9 @@ from typing import Union
 import pandas as pd
 from pandas.api.types import is_datetime64_any_dtype
 
+# Import to_utc_datetime from parent utils module for backwards compatibility
+from utils import to_utc_datetime
+
 __all__ = [
     "to_datetime_utc",
     "tz_localize_utc",
@@ -11,6 +14,7 @@ __all__ = [
     "ensure_utc",
     "parse_timestamp",
     "to_epoch_seconds",
+    "to_utc_datetime",
 ]
 
 
