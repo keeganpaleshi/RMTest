@@ -178,11 +178,22 @@ from config.validation import validate_baseline_window
 from pipeline_init import init_pipeline
 from data_loading import load_and_filter_events, setup_time_windows
 from calibration_stage import run_energy_calibration
+from baseline_stage import run_baseline_stage
+from spectral_fit_stage import run_spectral_fit_stage
+from time_series_stage import run_time_series_stage
+from systematics_stage import run_systematics_stage
+from summary_stage import build_and_write_summary
+
+# Re-export for test compatibility
+from analysis_helpers import _spike_eff_cache
 
 
 def main(argv=None):
     # Initialize pipeline: parse args, load config, apply overrides, setup logging & random seed
     args, cfg, timer, tzinfo, metadata = init_pipeline(argv)
+
+    # Store cli_args for test compatibility
+    cli_args = args
 
     # Unpack metadata
     cli_sha256 = metadata["cli_sha256"]
@@ -425,220 +436,33 @@ def main(argv=None):
     with timer.section("baseline"):
         # 4. Baseline run (optional)
         # ────────────────────────────────────────────────────────────
-        baseline_info = {}
-        baseline_counts = {}
-        baseline_record = None
+        baseline_result = run_baseline_stage(
+            df_analysis=df_analysis,
+            events_all=events_all,
+            cal_result=cal_result,
+            cfg=cfg,
+            args=args,
+            analysis_start=analysis_start,
+            analysis_end=analysis_end,
+            hist_bins=hist_bins,
+        )
+
+        # Unpack results
+        baseline_info = baseline_result["baseline_info"]
+        baseline_counts = baseline_result["baseline_counts"]
+        baseline_record = baseline_result["baseline_record"]
+        dilution_factor = baseline_result["dilution_factor"]
+        base_events = baseline_result["base_events"]
+        baseline_range = baseline_result["baseline_range"]
+        isotopes_to_subtract = baseline_result["isotopes_to_subtract"]
+        df_analysis = baseline_result["df_analysis"]
+
+        # Extract baseline_live_time for later use
+        baseline_live_time = baseline_info.get("live_time", 0.0)
+
+        # Initialize other baseline-related variables
         baseline_background_provenance: dict[str, dict[str, Any]] = {}
-        dilution_factor = None
-        baseline_cfg = cfg.get("baseline", {})
-        isotopes_to_subtract = baseline_cfg.get("isotopes_to_subtract", ["Po214", "Po218"])
-        baseline_range = None
-        if args.baseline_range:
-            _log_override("baseline", "range", args.baseline_range)
-            baseline_range = (args.baseline_range[0], args.baseline_range[1])
-            logging.info(
-                "Baseline window: %s \u2192 %s",
-                baseline_range[0].isoformat(),
-                baseline_range[1].isoformat(),
-            )
-            cfg.setdefault("baseline", {})["range"] = [
-                baseline_range[0],
-                baseline_range[1],
-            ]
-        elif "range" in baseline_cfg:
-            try:
-                b0, b1 = baseline_cfg.get("range")
-                start_dt = to_utc_datetime(b0)
-                end_dt = to_utc_datetime(b1)
-                baseline_range = (start_dt, end_dt)
-                baseline_cfg["range"] = [start_dt, end_dt]
-            except Exception as e:
-                if not cfg.get("allow_fallback"):
-                    raise
-                logging.warning(
-                    "Invalid baseline.range %r -> %s", baseline_cfg.get("range"), e
-                )
-    
-        # Validate baseline window against analysis times
-        try:
-            validate_baseline_window(cfg)
-        except ValueError as e:
-            raise
-    
-        try:
-            monitor_vol = float(baseline_cfg.get("monitor_volume_l", 605.0))
-            sample_vol = float(baseline_cfg.get("sample_volume_l", 0.0))
-        except (TypeError, ValueError) as exc:
-            raise ValueError("baseline volumes must be numeric") from exc
-        base_events = pd.DataFrame()
-        baseline_live_time = 0.0
-        mask_base = None
-    
-        if baseline_range:
-            t_start_base = baseline_range[0]
-            t_end_base = baseline_range[1]
-            if t_end_base <= t_start_base:
-                raise ValueError("baseline_range end time must be greater than start time")
-            events_all_ts = to_datetime_utc(events_all["timestamp"])
-            mask_base_full = (events_all_ts >= t_start_base) & (events_all_ts < t_end_base)
-            mask_base = (df_analysis["timestamp"] >= t_start_base) & (
-                df_analysis["timestamp"] < t_end_base
-            )
-            if events_all_ts.size > 0 and (
-                t_end_base < events_all_ts.min() or t_start_base > events_all_ts.max()
-            ):
-                logging.warning(
-                    "Baseline interval outside data range – taking counts anyway"
-                )
-            base_events = events_all[mask_base_full].copy()
-            # Apply calibration to the baseline events
-            if not base_events.empty:
-                base_events["energy_MeV"] = cal_result.predict(base_events["adc"])
-                base_events["denergy_MeV"] = cal_result.uncertainty(base_events["adc"])
-            else:
-                base_events["energy_MeV"] = np.array([], dtype=float)
-                base_events["denergy_MeV"] = np.array([], dtype=float)
-            if len(base_events) == 0:
-                logging.warning("baseline_range yielded zero events")
-            baseline_live_time = float((t_end_base - t_start_base).total_seconds())
-            cfg.setdefault("baseline", {})["range"] = [
-                t_start_base,
-                t_end_base,
-            ]
-            baseline_info = {
-                "start": t_start_base,
-                "end": t_end_base,
-                "n_events": len(base_events),
-                "live_time": baseline_live_time,
-            }
-    
-            try:
-                dilution_factor = compute_dilution_factor(monitor_vol, sample_vol)
-            except ValueError as exc:
-                msg = (
-                    "invalid baseline volumes: "
-                    f"monitor_volume_l={monitor_vol!r}, sample_volume_l={sample_vol!r}"
-                )
-                if cfg.get("allow_fallback"):
-                    monitor_safe = max(monitor_vol, 0.0)
-                    sample_safe = max(sample_vol, 0.0)
-                    total_safe = monitor_safe + sample_safe
-                    if monitor_safe <= 0 or total_safe <= 0:
-                        raise ValueError(msg) from exc
-                    logger.warning("%s – clamping to non-negative values", msg)
-                    monitor_vol = monitor_safe
-                    sample_vol = sample_safe
-                    dilution_factor = monitor_safe / total_safe
-                    warnings_list = baseline_info.setdefault("warnings", [])
-                    warnings_list.append(msg)
-                    baseline_info["dilution_factor_fallback"] = True
-                else:
-                    raise ValueError(msg) from exc
-    
-            scales = {
-                "Po214": dilution_factor,
-                "Po218": dilution_factor,
-                "Po210": 1.0,
-                "noise": 1.0,
-            }
-            baseline_info["dilution_factor"] = dilution_factor
-            baseline_info["scales"] = scales
-            baseline_record = baseline_handling.initialize_baseline_record(
-                baseline_info,
-                calibration=cal_result,
-            )
-    
-            # Estimate electronic noise level from ADC values below Po-210
-            noise_level = None
-            try:
-                from baseline_noise import estimate_baseline_noise
-    
-                peak_adc = None
-                if getattr(cal_result, "peaks", None):
-                    peak_adc = cal_result.peaks.get("Po210", {}).get("centroid_adc")
-                if peak_adc is not None:
-                    result = estimate_baseline_noise(
-                        base_events["adc"].values,
-                        peak_adc=peak_adc,
-                        pedestal_cut=noise_thr_val,
-                        return_mask=True,
-                    )
-                    if isinstance(result, tuple) and len(result) == 3:
-                        noise_level, _, mask_noise = result
-                        baseline_info["n_noise_events"] = int(np.sum(mask_noise))
-                    else:
-                        noise_level, _ = result
-            except Exception as e:
-                if not cfg.get("allow_fallback"):
-                    raise
-                logger.warning("Baseline noise estimation failed -> %s", e)
-    
-            if noise_level is not None:
-                # Store estimated noise peak amplitude in counts (not ADC units)
-                baseline_info["noise_level"] = float(noise_level)
-    
-            # Record noise counts in ``baseline_counts``
-            if "mask_noise" in locals():
-                baseline_counts["noise"] = int(np.sum(mask_noise))
-                if baseline_record is not None:
-                    baseline_handling.update_record_with_counts(
-                        baseline_record,
-                        "noise",
-                        baseline_counts["noise"],
-                        baseline_live_time,
-                        1.0,
-                    )
-    
-        _ensure_events(df_analysis, "baseline subtraction")
-    
-        if args.check_baseline_only:
-            try:
-                summary = summarize_baseline(cfg, isotopes_to_subtract)
-            except BaselineError as e:
-                logger.error("BaselineError: %s", e)
-                sys.exit(1)
-            try:
-                from tabulate import tabulate
-    
-                rows = [
-                    (iso, f"{vals[0]:.3f}", f"{vals[1]:.3f}", f"{vals[2]:.3f}")
-                    for iso, vals in summary.items()
-                ]
-                table = tabulate(
-                    rows,
-                    headers=["Isotope", "Raw rate", "Baseline rate", "Corrected"],
-                    tablefmt="plain",
-                )
-            except Exception:
-                table = "\n".join(
-                    f"{iso}: raw={vals[0]:.3f} baseline={vals[1]:.3f} corrected={vals[2]:.3f}"
-                    for iso, vals in summary.items()
-                )
-            logger.info("%s", table)
-            if not args.allow_negative_baseline and any(v[2] < 0 for v in summary.values()):
-                sys.exit(1)
-            sys.exit(0)
-    
-        if args.baseline_range:
-            t_base0 = args.baseline_range[0]
-            t_base1 = args.baseline_range[1]
-            edges = adc_hist_edges(df_analysis["adc"].values, hist_bins)
-            try:
-                df_analysis, _ = baseline.subtract(
-                    df_analysis,
-                    events_all,
-                    bins=edges,
-                    t_base0=t_base0,
-                    t_base1=t_base1,
-                    mode=args.baseline_mode,
-                    live_time_analysis=(analysis_end - analysis_start).total_seconds(),
-                    allow_fallback=cfg.get("allow_fallback", False),
-                )
-            except Exception as e:
-                if not cfg.get("allow_fallback"):
-                    raise
-                logger.warning("Baseline subtraction failed -> %s", e)
-    
+
         # ────────────────────────────────────────────────────────────
     with timer.section("spectral_fit"):
         # 5. Spectral fit (optional)
@@ -986,597 +810,36 @@ def main(argv=None):
     with timer.section("time_series"):
         # 6. Time‐series decay fits for Po‐218 and Po‐214
         # ────────────────────────────────────────────────────────────
-        time_fit_results = {}
-        time_fit_background_meta: dict[str, dict[str, Any]] = {}
-        priors_time_all = {}
-        time_plot_data = {}
-        iso_live_time = {}
-        t_start_map = {}
-        iso_counts = {}
-        iso_counts_raw = {}
-        radon_estimate_info = None
-        po214_estimate_info = None
-        po218_estimate_info = None
-        allow_negative_baseline = bool(cfg.get("allow_negative_baseline"))
-        if cfg.get("time_fit", {}).get("do_time_fit", False):
-            time_fit_section = cfg.get("time_fit") or {}
-            if isinstance(time_fit_section, Mapping):
-                time_cfg: dict[str, Any] = dict(time_fit_section)
-            else:
-                logger.debug(
-                    "time_fit config is not a mapping (%r); using defaults instead",
-                    type(time_fit_section),
-                )
-                time_cfg = {}
-    
-            model = str(time_cfg.get("model", "single_exp"))
-    
-            t0_raw = time_cfg.get("t0")
-            t0: float | None
-            if t0_raw is None:
-                t0 = None
-            else:
-                try:
-                    t0 = float(t0_raw)
-                except (TypeError, ValueError):
-                    logger.debug("Invalid time_fit.t0=%r; ignoring", t0_raw)
-                    t0 = None
-    
-            fix_lambda = bool(time_cfg.get("fix_lambda", False))
-    
-            lambda_raw = time_cfg.get("lambda")
-            lambda_val: float | None = None
-            if lambda_raw is not None:
-                try:
-                    lambda_val = float(lambda_raw)
-                except (TypeError, ValueError):
-                    logger.debug("Invalid time_fit.lambda=%r; ignoring", lambda_raw)
-    
-            units = str(time_cfg.get("activity_units", "Bq"))
-    
-            base_fit_kwargs: dict[str, Any] = {"model": model, "units": units}
-            if t0 is not None:
-                base_fit_kwargs["t0"] = t0
-            if fix_lambda and lambda_val is not None:
-                base_fit_kwargs["lambda_fixed"] = lambda_val
-    
-            for iso in ("Po218", "Po214"):
-                win_key = f"window_{iso.lower()}"
-    
-                # Missing energy window for this isotope -> skip gracefully
-                win_range = cfg.get("time_fit", {}).get(win_key)
-                if win_range is None:
-                    logger.info(
-                        "Config key '%s' not found. Skipping time fit for %s.",
-                        win_key,
-                        iso,
-                    )
-                    continue
-    
-                lo, hi = win_range
-                probs = window_prob(
-                    df_analysis["energy_MeV"].values,
-                    df_analysis["denergy_MeV"].values,
-                    lo,
-                    hi,
-                )
-                iso_mask = probs > 0
-                iso_events = df_analysis[iso_mask].copy()
-                iso_events["weight"] = probs[iso_mask]
-    
-                # Derive minimum counts automatically if not provided
-                thr_cfg = cfg.get("time_fit", {}).get("min_counts")
-                if thr_cfg is not None:
-                    thr = int(thr_cfg)
-                    if len(iso_events) < thr:
-                        iso_events, (lo, hi) = auto_expand_window(
-                            df_analysis, (lo, hi), thr
-                        )
-                        if len(iso_events) >= thr:
-                            logger.info(
-                                "expanded %s window to [%.2f, %.2f] MeV", iso, lo, hi
-                            )
-                else:
-                    thr = len(iso_events)
-    
-                if iso_events.empty:
-                    logger.warning(
-                        "No events found for %s in [%.3f, %.3f] MeV.", iso, lo, hi
-                    )
-                    continue
-    
-                first_ts = to_datetime_utc(iso_events["timestamp"].iloc[0])
-                t0_dt = to_utc_datetime(t0_global)
-                settle = timedelta(seconds=float(args.settle_s or 0))
-                t_start_fit_dt = max(first_ts, t0_dt + settle)
-                t_start_map[iso] = t_start_fit_dt
-                iso_live_time[iso] = (t_end_global - t_start_fit_dt).total_seconds()
-    
-            # Build priors for time fit
-            priors_time = {}
-    
-            # Efficiency prior per isotope
-    
-            eff_cfg_val = cfg["time_fit"].get(f"eff_{iso.lower()}")
-    
-            eff_nom = (
-                eff_cfg_val[0] if isinstance(eff_cfg_val, (list, tuple)) else eff_cfg_val
-            )
-    
-            if args.eff_fixed:
-                priors_time["eff"] = (1.0, np.inf)
-                eff_val = 1.0
-            else:
-                eff_val, sigma = _eff_prior(eff_cfg_val)
-                priors_time["eff"] = (eff_val, sigma)
-    
-            # Half-life prior (user must supply [T1/2, sigma(T1/2)] in seconds)
-            hl_key = f"hl_{iso.lower()}"
-            hl_val = cfg["time_fit"].get(hl_key)
-            if hl_val is not None:
-                if isinstance(hl_val, list):
-                    T12 = hl_val[0] if hl_val else None
-                    T12sig = hl_val[1] if len(hl_val) > 1 else 0.0
-                else:
-                    T12 = hl_val
-                    T12sig = 0.0
-                if T12 is not None:
-                    priors_time["tau"] = (T12 / np.log(2), T12sig / np.log(2))
-    
-            # Background‐rate prior
-            if f"bkg_{iso.lower()}" in cfg["time_fit"]:
-                priors_time["B0"] = tuple(cfg["time_fit"][f"bkg_{iso.lower()}"])
-    
-            # Initial N₀ from baseline (if provided)
-            if baseline_range:
-                # Count baseline events in this energy window
-                probs_base = window_prob(
-                    base_events["energy_MeV"].values,
-                    base_events["denergy_MeV"].values,
-                    lo,
-                    hi,
-                )
-                n0_count = float(np.sum(probs_base))
-                if iso in isotopes_to_subtract:
-                    baseline_counts[iso] = n0_count
-    
-                eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
-                if isinstance(eff_cfg, list):
-                    eff = eff_cfg[0]
-                else:
-                    eff = eff_cfg if eff_cfg is not None else 1.0
-    
-                if baseline_record is not None:
-                    baseline_handling.update_record_with_counts(
-                        baseline_record,
-                        iso,
-                        n0_count,
-                        baseline_live_time,
-                        eff,
-                    )
-                if baseline_live_time > 0 and eff > 0:
-                    n0_activity = n0_count / (baseline_live_time * eff)
-                    n0_sigma = np.sqrt(n0_count) / (baseline_live_time * eff)
-                else:
-                    n0_activity = 0.0
-                    n0_sigma = 1.0
-    
-                priors_time["N0"] = (
-                    n0_activity,
-                    cfg["time_fit"].get(
-                        f"sig_n0_{iso.lower()}",
-                        cfg["time_fit"].get(f"sig_N0_{iso}", n0_sigma),
-                    ),
-                )
-    
-                analysis_counts = float(np.sum(iso_events["weight"]))
-                iso_counts_raw[iso] = analysis_counts
-                live_time_iso = iso_live_time.get(iso, 0.0)
-                if (
-                    iso in isotopes_to_subtract
-                    and live_time_iso > 0
-                    and baseline_live_time > 0
-                    and eff > 0
-                ):
-                    c_rate, c_sigma = subtract_baseline_counts(
-                        analysis_counts,
-                        eff,
-                        live_time_iso,
-                        baseline_counts.get(iso, 0.0),
-                        baseline_live_time,
-                    )
-                else:
-                    if eff > 0 and live_time_iso > 0:
-                        c_rate = analysis_counts / (live_time_iso * eff)
-                        c_sigma = math.sqrt(analysis_counts) / (live_time_iso * eff)
-                    else:
-                        c_rate = 0.0
-                        c_sigma = 0.0
-                if not allow_negative_baseline and c_rate < 0.0:
-                    c_rate = 0.0
-                baseline_info.setdefault("corrected_activity", {})[iso] = {
-                    "value": c_rate,
-                    "uncertainty": c_sigma,
-                }
-                weight_factor = 1.0 / (c_sigma**2) if c_sigma > 0 else 1.0
-                iso_events["weight"] *= weight_factor
-            else:
-                priors_time["N0"] = (
-                    0.0,
-                    cfg["time_fit"].get(
-                        f"sig_n0_{iso.lower()}",
-                        cfg["time_fit"].get(f"sig_N0_{iso}", 1.0),
-                    ),
-                )
-    
-                analysis_counts = float(np.sum(iso_events["weight"]))
-                iso_counts_raw[iso] = analysis_counts
-                eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
-                if isinstance(eff_cfg, list):
-                    eff = eff_cfg[0]
-                else:
-                    eff = eff_cfg if eff_cfg is not None else 1.0
-                live_time_iso = iso_live_time.get(iso, 0.0)
-                if eff > 0 and live_time_iso > 0:
-                    c_rate = analysis_counts / (live_time_iso * eff)
-                    c_sigma = math.sqrt(analysis_counts) / (live_time_iso * eff)
-                else:
-                    c_rate = 0.0
-                    c_sigma = 0.0
-                if not allow_negative_baseline and c_rate < 0.0:
-                    c_rate = 0.0
-                baseline_info.setdefault("corrected_activity", {})[iso] = {
-                    "value": c_rate,
-                    "uncertainty": c_sigma,
-                }
-                weight_factor = 1.0 / (c_sigma**2) if c_sigma > 0 else 1.0
-                iso_events["weight"] *= weight_factor
-    
-            # Store priors for use in systematics scanning
-            priors_time_all[iso] = priors_time
-    
-            # Build configuration for fit_time_series
-            if args.settle_s is not None:
-                t0_dt = to_utc_datetime(t0_global)
-                cut = t0_dt + timedelta(seconds=float(args.settle_s))
-                iso_events = iso_events[iso_events["timestamp"] >= cut]
-            ts_vals = iso_events["timestamp"].map(to_epoch_seconds).to_numpy()
-            times_dict = {iso: ts_vals}
-            weights_map = {iso: iso_events["weight"].values}
-            eff_key = f"eff_{iso.lower()}"
-            eff_cfg_val = cfg["time_fit"].get(eff_key)
-            eff_value: float | None
-            if args.eff_fixed:
-                eff_value = None
-            else:
-                explicit_null = False
-                if eff_key in cfg["time_fit"]:
-                    if eff_cfg_val in (None, "null"):
-                        explicit_null = True
-                    elif isinstance(eff_cfg_val, (list, tuple)):
-                        explicit_null = bool(eff_cfg_val) and eff_cfg_val[0] in (
-                            None,
-                            "null",
-                        )
-                if explicit_null:
-                    eff_value = None
-                else:
-                    eff_value = _config_efficiency(cfg, iso)
-            fit_cfg = {
-                "isotopes": {
-                    iso: {
-                        "half_life_s": _hl_value(cfg, iso),
-                        "efficiency": eff_value,
-                    }
-                },
-                "fit_background": not cfg["time_fit"]["flags"].get(
-                    "fix_background_b", False
-                ),
-                "fit_initial": not cfg["time_fit"]["flags"].get(
-                    f"fix_N0_{iso.lower()}", False
-                ),
-                "background_guess": cfg["time_fit"].get("background_guess", 0.0),
-                "n0_guess_fraction": cfg["time_fit"].get("n0_guess_fraction", 0.1),
-                "min_counts": thr,
-                "fix_background_b_first_pass": cfg["time_fit"].get(
-                    "fix_background_b_first_pass", True
-                ),
-                "background_b_fixed_value": cfg["time_fit"].get(
-                    "background_b_fixed_value"
-                ),
-            }
-    
-            # Determine baseline rate for fixed-background first pass
-            baseline_rate_iso = None
-            fixed_from_baseline_info = None
-            if baseline_record is not None:
-                fixed_from_baseline_info = baseline_handling.get_fixed_background_for_time_fit(
-                    baseline_record,
-                    iso,
-                    cfg.get("baseline", {}),
-                )
-                if fixed_from_baseline_info:
-                    baseline_rate_iso = fixed_from_baseline_info.get("background_rate_Bq")
-    
-            if baseline_rate_iso is None and baseline_live_time > 0:
-                eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
-                if isinstance(eff_cfg, list):
-                    eff_rate = eff_cfg[0]
-                else:
-                    eff_rate = eff_cfg if eff_cfg is not None else 1.0
-                if eff_rate > 0:
-                    baseline_rate_iso = baseline_counts.get(iso, 0.0) / (
-                        baseline_live_time * eff_rate
-                    )
-    
-            # Run time-series fit (two-pass)
-            decay_out = None  # fresh variable each iteration
-            try:
-                t_start_val = t_start_map.get(iso)
-                if isinstance(t_start_val, datetime):
-                    t_start_fit = t_start_val.timestamp()
-                else:
-                    t_start_fit = to_utc_datetime(
-                        t_start_val if t_start_val is not None else t0_global
-                    ).timestamp()
-                decay_out = two_pass_time_fit(
-                    times_dict,
-                    t_start_fit,
-                    t_end_global_ts,
-                    fit_cfg,
-                    baseline_rate=baseline_rate_iso,
-                    weights=weights_map,
-                    strict=args.strict_covariance,
-                    fit_func=fit_time_series,
-                    fit_kwargs=base_fit_kwargs,
-                )
-                time_fit_results[iso] = decay_out
-            except Exception as e:
-                logging.warning("Decay-curve fit for %s failed -> %s", iso, e)
-                time_fit_results[iso] = {}
-    
-            # Record how the background parameter was treated
-            background_mode = "floated"
-            baseline_rate_meta: float | None = None
-            if isinstance(decay_out, FitResult):
-                param_index = decay_out.param_index or {}
-                has_background_param = f"B_{iso}" in param_index
-                background_mode = "floated" if has_background_param else "fixed"
-            elif isinstance(decay_out, Mapping):
-                has_background_param = f"B_{iso}" in decay_out
-                background_mode = "floated" if has_background_param else "fixed"
-            else:
-                background_mode = "floated" if fit_cfg.get("fit_background") else "fixed"
-    
-            if background_mode == "fixed":
-                if fixed_from_baseline_info:
-                    baseline_rate_meta = float(
-                        fixed_from_baseline_info.get(
-                            "background_rate_Bq", baseline_rate_iso or 0.0
-                        )
-                    )
-                    norm_mode = baseline_handling.normalize_background_mode(
-                        fixed_from_baseline_info.get("mode")
-                    ) or "fixed_from_baseline"
-                    fixed_from_baseline_info = dict(fixed_from_baseline_info)
-                    fixed_from_baseline_info["mode"] = norm_mode
-                    background_mode = norm_mode
-                    baseline_background_provenance[iso] = dict(fixed_from_baseline_info)
-                elif baseline_rate_iso is not None:
-                    baseline_rate_meta = float(baseline_rate_iso)
-                    background_mode = baseline_handling.normalize_background_mode(
-                        "fixed_from_baseline"
-                    ) or "fixed_from_baseline"
-    
-            background_mode = baseline_handling.normalize_background_mode(background_mode)
-    
-            meta_entry: dict[str, Any] = {"mode": background_mode}
-            if baseline_rate_meta is not None:
-                meta_entry["baseline_rate_Bq"] = baseline_rate_meta
-            if (
-                fixed_from_baseline_info
-                and fixed_from_baseline_info.get("background_unc_Bq") is not None
-            ):
-                meta_entry["baseline_unc_Bq"] = float(
-                    fixed_from_baseline_info["background_unc_Bq"]
-                )
-            time_fit_background_meta[iso] = meta_entry
-    
-            # Store inputs for plotting later
-            time_plot_data[iso] = {
-                "events_times": iso_events["timestamp"].values,
-                "events_energy": iso_events["energy_MeV"].values,
-            }
-    
-        def _counts_corrected_rate(
-            iso: str, params: Mapping[str, Any]
-        ) -> tuple[float, float] | None:
-            """Return a baseline-corrected rate from raw counts when fits fail."""
-    
-            counts_val = iso_counts_raw.get(iso)
-            if counts_val is None:
-                return None
-    
-            live_time_iso = iso_live_time.get(iso)
-            if live_time_iso is None or live_time_iso <= 0:
-                return None
-    
-            eff_val = _resolved_efficiency(cfg, iso, params)
-            if eff_val is None or eff_val <= 0:
-                eff_val = _config_efficiency(cfg, iso)
-            if eff_val is None or eff_val <= 0:
-                return None
-    
-            if (
-                args.baseline_mode != "none"
-                and iso in isotopes_to_subtract
-                and baseline_live_time > 0
-            ):
-                base_counts = baseline_counts.get(iso, 0.0)
-                try:
-                    rate, sigma = subtract_baseline_counts(
-                        float(counts_val),
-                        float(eff_val),
-                        float(live_time_iso),
-                        float(base_counts),
-                        float(baseline_live_time),
-                    )
-                except ValueError:
-                    return None
-                rate = float(rate)
-                if not allow_negative_baseline and rate < 0.0:
-                    rate = 0.0
-                return rate, float(sigma)
-    
-            rate = float(counts_val) / (float(live_time_iso) * float(eff_val))
-            sigma = math.sqrt(abs(float(counts_val))) / (
-                float(live_time_iso) * float(eff_val)
-            )
-            if not allow_negative_baseline and rate < 0.0:
-                rate = 0.0
-            return rate, sigma
-    
-        # --- Radon combination ---
-        from radon_joint_estimator import estimate_radon_activity
-        from types import SimpleNamespace
-    
-        fit214_obj = time_fit_results.get("Po214")
-        fit218_obj = time_fit_results.get("Po218")
-        fit214 = fit218 = None
-    
-        def _coerce_float(value: Any) -> float | None:
-            try:
-                return float(value)
-            except (TypeError, ValueError):
-                return None
-    
-        if fit214_obj:
-            p = _fit_params(fit214_obj)
-            rate_val = _coerce_float(p.get("E_corrected", p.get("E_Po214")))
-            err_val = _coerce_float(p.get("dE_corrected", p.get("dE_Po214")))
-            fallback_needed = False
-            if rate_val is None or not math.isfinite(rate_val):
-                fallback_needed = True
-            if not bool(p.get("fit_valid", True)):
-                fallback_needed = True
-            if fallback_needed:
-                fallback_res = _counts_corrected_rate("Po214", p)
-                if fallback_res is not None:
-                    rate_val, err_val = fallback_res
-                    p["E_corrected"] = rate_val
-                    p["dE_corrected"] = err_val
-                    p["counts_fallback"] = True
-            if err_val is None or not math.isfinite(err_val) or err_val < 0:
-                err_val = _fallback_uncertainty(rate_val, fit214_obj, "E_Po214")
-            fit214 = SimpleNamespace(
-                rate=rate_val,
-                err=err_val,
-                counts=getattr(fit214_obj, "counts", None),
-                params=p,
-            )
-        if fit218_obj:
-            p = _fit_params(fit218_obj)
-            rate_val = _coerce_float(p.get("E_corrected", p.get("E_Po218")))
-            err_val = _coerce_float(p.get("dE_corrected", p.get("dE_Po218")))
-            fallback_needed = False
-            if rate_val is None or not math.isfinite(rate_val):
-                fallback_needed = True
-            if not bool(p.get("fit_valid", True)):
-                fallback_needed = True
-            if fallback_needed:
-                fallback_res = _counts_corrected_rate("Po218", p)
-                if fallback_res is not None:
-                    rate_val, err_val = fallback_res
-                    p["E_corrected"] = rate_val
-                    p["dE_corrected"] = err_val
-                    p["counts_fallback"] = True
-            if err_val is None or not math.isfinite(err_val) or err_val < 0:
-                err_val = _fallback_uncertainty(rate_val, fit218_obj, "E_Po218")
-            fit218 = SimpleNamespace(
-                rate=rate_val,
-                err=err_val,
-                counts=getattr(fit218_obj, "counts", None),
-                params=p,
-            )
-    
-        iso_mode = cfg.get("analysis_isotope", "radon").lower()
-    
-        if iso_mode == "radon":
-            have_218 = (
-                fit218
-                and fit218.counts is not None
-                and _fit_efficiency(fit218.params, "Po218") is not None
-            )
-            have_214 = (
-                fit214
-                and fit214.counts is not None
-                and _fit_efficiency(fit214.params, "Po214") is not None
-            )
-            if have_218 or have_214:
-                N218 = fit218.counts if have_218 else None
-                N214 = fit214.counts if have_214 else None
-                eps218 = (
-                    _resolved_efficiency(cfg, "Po218", fit218.params)
-                    if fit218
-                    else 1.0
-                )
-                eps214 = (
-                    _resolved_efficiency(cfg, "Po214", fit214.params)
-                    if fit214
-                    else 1.0
-                )
-                lt218 = iso_live_time.get("Po218") if have_218 else None
-                lt214 = iso_live_time.get("Po214") if have_214 else None
-                radon_estimate_info = estimate_radon_activity(
-                    N218=N218,
-                    epsilon218=eps218,
-                    f218=1.0,
-                    N214=N214,
-                    epsilon214=eps214,
-                    f214=1.0,
-                    live_time218_s=lt218,
-                    live_time214_s=lt214,
-                )
-            elif (fit214 and fit214.rate is not None) or (
-                fit218 and fit218.rate is not None
-            ):
-                radon_estimate_info = estimate_radon_activity(
-                    rate214=fit214.rate if fit214 else None,
-                    err214=fit214.err if fit214 else None,
-                    rate218=fit218.rate if fit218 else None,
-                    err218=fit218.err if fit218 else None,
-                )
-        elif iso_mode == "po218":
-            if fit218:
-                po218_estimate_info = {
-                    "activity_Bq": fit218.rate,
-                    "stat_unc_Bq": fit218.err,
-                }
-        elif iso_mode == "po214":
-            if fit214:
-                po214_estimate_info = {
-                    "activity_Bq": fit214.rate,
-                    "stat_unc_Bq": fit214.err,
-                }
-        else:
-            raise ValueError(f"Unknown analysis isotope {iso_mode}")
-    
-        # Also extract Po-210 events for plotting if a window is provided
-        win_p210 = cfg.get("time_fit", {}).get("window_po210")
-        if win_p210 is not None:
-            lo, hi = win_p210
-            mask210 = (
-                (df_analysis["energy_MeV"] >= lo)
-                & (df_analysis["energy_MeV"] <= hi)
-                & (df_analysis["timestamp"] >= to_datetime_utc(t0_global))
-                & (df_analysis["timestamp"] <= t_end_global)
-            )
-            events_p210 = df_analysis[mask210]
-            time_plot_data["Po210"] = {
-                "events_times": events_p210["timestamp"].values,
-                "events_energy": events_p210["energy_MeV"].values,
-            }
-    
+        time_series_results = run_time_series_stage(
+            df_analysis=df_analysis,
+            cfg=cfg,
+            args=args,
+            t0_global=t0_global,
+            t_end_global=t_end_global,
+            t_end_global_ts=t_end_global_ts,
+            baseline_range=baseline_range,
+            base_events=base_events,
+            baseline_record=baseline_record,
+            baseline_live_time=baseline_live_time,
+            baseline_counts=baseline_counts,
+            isotopes_to_subtract=isotopes_to_subtract,
+            baseline_info=baseline_info,
+            baseline_background_provenance=baseline_background_provenance,
+        )
+
+        # Unpack results
+        time_fit_results = time_series_results["time_fit_results"]
+        time_fit_background_meta = time_series_results["time_fit_background_meta"]
+        priors_time_all = time_series_results["priors_time_all"]
+        time_plot_data = time_series_results["time_plot_data"]
+        iso_live_time = time_series_results["iso_live_time"]
+        t_start_map = time_series_results["t_start_map"]
+        iso_counts = time_series_results["iso_counts"]
+        iso_counts_raw = time_series_results["iso_counts_raw"]
+        radon_estimate_info = time_series_results["radon_estimate_info"]
+        po214_estimate_info = time_series_results["po214_estimate_info"]
+        po218_estimate_info = time_series_results["po218_estimate_info"]
+
         # ────────────────────────────────────────────────────────────
     with timer.section("systematics"):
         # 7. Systematics scan (optional)
@@ -1825,11 +1088,62 @@ def main(argv=None):
                 baseline_info.setdefault("dilution_factor", dilution_factor)
     
         baseline_info["analysis_counts"] = iso_counts_raw
-    
+
+        # Helper function for counts-based fallback rate
+        def _counts_corrected_rate(
+            iso: str, params: Mapping[str, Any]
+        ) -> tuple[float, float] | None:
+            """Return a baseline-corrected rate from raw counts when fits fail."""
+
+            counts_val = iso_counts_raw.get(iso)
+            if counts_val is None:
+                return None
+
+            live_time_iso = iso_live_time.get(iso)
+            if live_time_iso is None or live_time_iso <= 0:
+                return None
+
+            eff_val = _resolved_efficiency(cfg, iso, params)
+            if eff_val is None or eff_val <= 0:
+                eff_val = _config_efficiency(cfg, iso)
+            if eff_val is None or eff_val <= 0:
+                return None
+
+            if (
+                args.baseline_mode != "none"
+                and iso in isotopes_to_subtract
+                and baseline_live_time > 0
+            ):
+                base_counts = baseline_counts.get(iso, 0.0)
+                try:
+                    rate, sigma = subtract_baseline_counts(
+                        float(counts_val),
+                        float(eff_val),
+                        float(live_time_iso),
+                        float(base_counts),
+                        float(baseline_live_time),
+                    )
+                except ValueError:
+                    return None
+                rate = float(rate)
+                allow_negative_baseline = cfg.get("allow_negative_baseline", False)
+                if not allow_negative_baseline and rate < 0.0:
+                    rate = 0.0
+                return rate, float(sigma)
+
+            rate = float(counts_val) / (float(live_time_iso) * float(eff_val))
+            sigma = math.sqrt(abs(float(counts_val))) / (
+                float(live_time_iso) * float(eff_val)
+            )
+            allow_negative_baseline = cfg.get("allow_negative_baseline", False)
+            if not allow_negative_baseline and rate < 0.0:
+                rate = 0.0
+            return rate, sigma
+
         corrected_rates = {}
         corrected_unc = {}
         activity_rows = []
-    
+
         for iso, fit in time_fit_results.items():
             params = _fit_params(fit)
             if not params or f"E_{iso}" not in params:
@@ -2168,554 +1482,67 @@ def main(argv=None):
     with timer.section("summary_json"):
         # 8. Assemble and write out the summary JSON
         # ────────────────────────────────────────────────────────────
-        spec_dict = {}
-        if isinstance(spectrum_results, FitResult):
-            spec_dict = dict(spectrum_results.params)
-            spec_dict["cov"] = spectrum_results.cov.tolist()
-            spec_dict["ndf"] = spectrum_results.ndf
-            spec_dict["likelihood_path"] = spectrum_results.params.get("likelihood_path")
-        elif isinstance(spectrum_results, dict):
-            spec_dict = spectrum_results
-            spec_dict["likelihood_path"] = spectrum_results.get("likelihood_path")
-        if peak_deviation:
-            spec_dict["peak_deviation"] = peak_deviation
-    
-        time_fit_serializable = {}
-        for iso, fit in time_fit_results.items():
-            if isinstance(fit, FitResult):
-                d = dict(fit.params)
-                d["cov"] = fit.cov.tolist()
-                d["ndf"] = fit.ndf
-            elif isinstance(fit, dict):
-                d = fit
-            else:
-                d = {}
-            meta = time_fit_background_meta.get(iso)
-            if meta:
-                d = dict(d)
-                d["background_mode"] = meta.get("mode")
-                if meta.get("baseline_rate_Bq") is not None:
-                    d["baseline_rate_Bq"] = meta["baseline_rate_Bq"]
-                if meta.get("baseline_unc_Bq") is not None:
-                    d["baseline_unc_Bq"] = meta["baseline_unc_Bq"]
-            time_fit_serializable[iso] = d
-    
-        baseline_handling.apply_time_fit_provenance(
-            time_fit_serializable,
-            baseline_background_provenance,
-            baseline_record,
-        )
-    
-        if isinstance(cal_params, dict):
-            cal_summary = cal_params
-        else:
-            cal_summary = {
-                "coeffs": list(cal_params.coeffs),
-                "covariance": np.asarray(cal_params.cov).tolist(),
-                "sigma_E": cal_params.sigma_E,
-                "sigma_E_error": cal_params.sigma_E_error,
-                "peaks": cal_params.peaks,
-            }
-    
-        summary = Summary(
-            timestamp=now_str,
-            config_used=args.config.name,
-            config_sha256=cfg_sha256,
-            calibration=cal_summary,
+        summary, out_dir, isotope_series_data, radon_inference_results = build_and_write_summary(
+            args=args,
+            cfg=cfg,
+            spectrum_results=spectrum_results,
+            peak_deviation=peak_deviation,
+            time_fit_results=time_fit_results,
+            time_fit_background_meta=time_fit_background_meta,
+            baseline_background_provenance=baseline_background_provenance,
+            baseline_record=baseline_record,
+            cal_params=cal_params,
+            cal_result=cal_result,
+            now_str=now_str,
+            cfg_sha256=cfg_sha256,
             calibration_valid=calibration_valid,
-            spectral_fit=spec_dict,
-            time_fit=time_fit_serializable,
-            systematics=systematics_results,
-            baseline=baseline_info,
+            systematics_results=systematics_results,
+            baseline_info=baseline_info,
             radon_results=radon_results,
-            noise_cut={"removed_events": int(n_removed_noise)},
-            burst_filter={
-                "removed_events": int(n_removed_burst),
-                "burst_mode": burst_mode,
-                "roi_diff": roi_diff,
-                "sensitivity_scan": {
-                    "grid": {f"{m}_{w}": v for (m, w), v in scan_results.items()},
-                    "best": {
-                        "burst_multiplier": best_params[0] if best_params else None,
-                        "burst_window_size_s": best_params[1] if best_params else None,
-                    },
-                },
-            },
-            adc_drift_rate=drift_rate,
-            adc_drift_mode=drift_mode,
-            adc_drift_params=drift_params,
-            efficiency=efficiency_results,
-            random_seed=seed_used,
-            git_commit=commit,
+            n_removed_noise=n_removed_noise,
+            n_removed_burst=n_removed_burst,
+            burst_mode=burst_mode,
+            roi_diff=roi_diff,
+            scan_results=scan_results,
+            best_params=best_params,
+            drift_rate=drift_rate,
+            drift_mode=drift_mode,
+            drift_params=drift_params,
+            efficiency_results=efficiency_results,
+            seed_used=seed_used,
+            commit=commit,
             requirements_sha256=requirements_sha256,
             cli_sha256=cli_sha256,
             cli_args=cli_args,
-            analysis={
-                "analysis_start_time": t0_cfg,
-                "analysis_end_time": t_end_cfg,
-                "spike_start_time": spike_start_cfg,
-                "spike_end_time": spike_end_cfg,
-                "spike_periods": spike_periods_cfg,
-                "run_periods": run_periods_cfg,
-                "radon_interval": radon_interval_cfg,
-                "background_model": cfg.get("analysis", {}).get("background_model"),
-                "likelihood": cfg.get("analysis", {}).get("likelihood"),
-                "ambient_concentration": cfg.get("analysis", {}).get(
-                    "ambient_concentration"
-                ),
-                "settle_s": cfg.get("analysis", {}).get("settle_s"),
-            },
+            t0_cfg=t0_cfg,
+            t_end_cfg=t_end_cfg,
+            spike_start_cfg=spike_start_cfg,
+            spike_end_cfg=spike_end_cfg,
+            spike_periods_cfg=spike_periods_cfg,
+            run_periods_cfg=run_periods_cfg,
+            radon_interval_cfg=radon_interval_cfg,
+            radon_combined_info=radon_combined_info,
+            corrected_rates=corrected_rates,
+            corrected_unc=corrected_unc,
+            fit214=fit214,
+            fit218=fit218,
+            iso_live_time=iso_live_time,
+            iso_mode=iso_mode,
+            monitor_vol=monitor_vol,
+            sample_vol=sample_vol,
+            weights=weights,
+            spec_plot_data=spec_plot_data,
+            df_analysis=df_analysis,
+            pre_spec_energies=pre_spec_energies,
+            post_spec_energies=post_spec_energies,
+            t0_global=t0_global,
+            t_end_global=t_end_global,
+            t_end_global_ts=t_end_global_ts,
+            analysis_start=analysis_start,
+            radon_interval=radon_interval,
+            time_plot_data=time_plot_data,
         )
-    
-        if radon_combined_info is not None:
-            summary.radon_combined = radon_combined_info
-    
-        from radon_joint_estimator import estimate_radon_activity
-    
-        rate214_final = corrected_rates.get("Po214") if corrected_rates else None
-        err214_final = corrected_unc.get("Po214") if corrected_unc else None
-        rate218_final = corrected_rates.get("Po218") if corrected_rates else None
-        err218_final = corrected_unc.get("Po218") if corrected_unc else None
-    
-        if rate214_final is None and fit214:
-            rate214_final = fit214.rate
-            err214_final = fit214.err
-        if rate218_final is None and fit218:
-            rate218_final = fit218.rate
-            err218_final = fit218.err
-    
-        radon = estimate_radon_activity(
-            N218=fit218.counts if fit218 else 0,
-            epsilon218=(
-                _resolved_efficiency(cfg, "Po218", fit218.params) if fit218 else 1.0
-            ),
-            N214=fit214.counts if fit214 else 0,
-            epsilon214=(
-                _resolved_efficiency(cfg, "Po214", fit214.params) if fit214 else 1.0
-            ),
-            f218=1.0,
-            f214=1.0,
-            live_time218_s=iso_live_time.get("Po218") if fit218 else None,
-            live_time214_s=iso_live_time.get("Po214") if fit214 else None,
-            rate214=rate214_final,
-            err214=err214_final,
-            rate218=rate218_final,
-            err218=err218_final,
-            analysis_isotope=iso_mode,
-        )
-    
-        # ── Construct a minimal time-series aligned with the measurement window ──
-        ts_start, ts_end = _radon_time_window(t0_cfg, t_end_cfg, radon_interval_cfg)
-        ts_points: list[float]
-        if not math.isfinite(ts_start):
-            ts_start = to_utc_datetime(t0_cfg).timestamp()
-        if math.isfinite(ts_end) and ts_end > ts_start:
-            ts_points = [float(ts_start), float(ts_end)]
-        else:
-            ts_points = [float(ts_start)]
-    
-        gaussian_ok = bool(radon.get("gaussian_uncertainty_valid", True))
-        stat_unc = radon.get("stat_unc_Bq") if gaussian_ok else float("nan")
-        try:
-            stat_unc_val = float(stat_unc) if stat_unc is not None else float("nan")
-        except (TypeError, ValueError):
-            stat_unc_val = float("nan")
-        if not math.isfinite(stat_unc_val) or stat_unc_val < 0:
-            stat_unc_val = float("nan")
-        errors_ts = [stat_unc_val] * len(ts_points)
-    
-        radon["time_series"] = {
-            "time": ts_points,
-            "activity": [float(radon["Rn_activity_Bq"])] * len(ts_points),
-        }
-        radon["time_series"]["error"] = errors_ts
-    
-        total_vals, total_errs = _total_radon_series(
-            radon["time_series"]["activity"],
-            radon["time_series"].get("error"),
-            monitor_vol,
-            sample_vol,
-        )
-        total_ts = {
-            "time": list(radon["time_series"]["time"]),
-            "activity": total_vals.tolist(),
-        }
-        if total_errs is not None:
-            total_ts["error"] = total_errs.tolist()
-        radon["total_time_series"] = total_ts
-    
-        summary["radon"] = radon
-    
-        if weights is not None:
-            summary.efficiency = summary.efficiency or {}
-            summary.efficiency["blue_weights"] = list(weights)
-    
-        summary.diagnostics = build_diagnostics(
-            summary, spectrum_results, time_fit_results, df_analysis, cfg
-        )
-    
-        drift_flag, drift_msg = baseline_handling.assess_baseline_drift(
-            baseline_record,
-            cal_result,
-            cfg.get("baseline", {}),
-        )
-        if drift_flag:
-            summary.diagnostics = summary.diagnostics or {}
-            summary.diagnostics["baseline_compat_warning"] = True
-            if drift_msg:
-                warn_list = summary.diagnostics.setdefault("warnings", [])
-                if drift_msg not in warn_list:
-                    warn_list.append(drift_msg)
-    
-        results_dir = Path(args.output_dir) / (args.job_id or now_str)
-        if results_dir.exists():
-            if args.overwrite:
-                shutil.rmtree(results_dir)
-            else:
-                raise FileExistsError(f"Results folder already exists: {results_dir}")
-    
-        copy_config(results_dir, cfg, exist_ok=args.overwrite)
-        out_dir = Path(write_summary(results_dir, summary))
-        out_dir.mkdir(parents=True, exist_ok=True)
-    
-        radon_background_mode = locals().get("background_mode")
-        if (
-            iso_mode == "radon"
-            and radon_background_mode is None
-            and hasattr(summary, "get")
-        ):
-            summary_radon = summary.get("radon")
-            if isinstance(summary_radon, Mapping):
-                plot_payload = summary_radon.get("plot_series")
-                if isinstance(plot_payload, Mapping):
-                    radon_background_mode = plot_payload.get("background_mode")
-    
-        if iso_mode == "radon" and "radon" in summary:
-            rad_ts = summary["radon"]["time_series"]
-    
-            plot_radon_activity(
-                rad_ts["time"],
-                rad_ts["activity"],
-                Path(out_dir) / "radon_activity.png",
-                rad_ts.get("error"),
-                config=cfg.get("plotting", {}),
-                sample_volume_l=sample_vol,
-                background_mode=radon_background_mode,
-            )
-            total_vals, total_errs = _total_radon_series(
-                rad_ts["activity"],
-                rad_ts.get("error"),
-                monitor_vol,
-                sample_vol,
-            )
-            plot_total_radon(
-                rad_ts["time"],
-                total_vals,
-                Path(out_dir) / "total_radon.png",
-                total_errs,
-                config=cfg.get("plotting", {}),
-                background_mode=radon_background_mode,
-            )
-            plot_radon_trend(
-                rad_ts["time"],
-                rad_ts["activity"],
-                Path(out_dir) / "radon_trend.png",
-                config=cfg.get("plotting", {}),
-            )
-    
-        # Generate plots now that the output directory exists
-        spectrum_png = Path(out_dir) / "spectrum.png"
-        spectrum_components_png = Path(out_dir) / "spectrum_components.png"
-        if spec_plot_data:
-            try:
-                _ = plot_spectrum(
-                    energies=spec_plot_data["energies"],
-                    fit_vals=spec_plot_data["fit_vals"],
-                    out_png=spectrum_png,
-                    bins=spec_plot_data["bins"],
-                    bin_edges=spec_plot_data["bin_edges"],
-                    config=cfg.get("plotting", {}),
-                    fit_flags=spec_plot_data.get("flags"),
-                )
-            except Exception as e:
-                logger.warning("Could not create spectrum plot: %s", e)
-    
-            try:
-                _ = plot_spectrum(
-                    energies=spec_plot_data["energies"],
-                    fit_vals=spec_plot_data["fit_vals"],
-                    out_png=spectrum_components_png,
-                    bins=spec_plot_data["bins"],
-                    bin_edges=spec_plot_data["bin_edges"],
-                    config=cfg.get("plotting", {}),
-                    fit_flags=spec_plot_data.get("flags"),
-                    show_total_model=False,
-                )
-            except Exception as e:
-                logger.warning("Could not create component spectrum plot: %s", e)
-    
-        if not spectrum_png.exists():
-            try:
-                stub_bins = spec_plot_data["bins"] if spec_plot_data else None
-                stub_edges = spec_plot_data.get("bin_edges") if spec_plot_data else None
-            except Exception:
-                stub_bins = None
-                stub_edges = None
-            try:
-                energies_stub = (
-                    spec_plot_data.get("energies")
-                    if spec_plot_data and isinstance(spec_plot_data, dict)
-                    else df_analysis.get("energy_MeV", pd.Series(dtype=float)).to_numpy()
-                )
-            except Exception:
-                energies_stub = (
-                    df_analysis.get("energy_MeV", pd.Series(dtype=float)).to_numpy()
-                    if isinstance(df_analysis, pd.DataFrame)
-                    else np.asarray([], dtype=float)
-                )
-            try:
-                _save_stub_spectrum_plot(
-                    energies_stub,
-                    spectrum_png,
-                    bins=stub_bins,
-                    bin_edges=stub_edges,
-                    config=cfg.get("plotting", {}),
-                )
-                logger.info(
-                    "Saved fallback spectrum plot after unavailable fit to %s", spectrum_png
-                )
-            except Exception as e:
-                logger.warning("Could not create fallback spectrum plot: %s", e)
-    
-            try:
-                _save_stub_spectrum_plot(
-                    energies_stub,
-                    spectrum_components_png,
-                    bins=stub_bins,
-                    bin_edges=stub_edges,
-                    config=cfg.get("plotting", {}),
-                )
-                logger.info(
-                    "Saved fallback component spectrum plot after unavailable fit to %s",
-                    spectrum_components_png,
-                )
-            except Exception as e:
-                logger.warning(
-                    "Could not create fallback component spectrum plot: %s", e
-                )
-    
-        try:
-            _ = plot_spectrum_comparison(
-                pre_spec_energies,
-                post_spec_energies,
-                bins=spec_plot_data.get("bins", 400) if spec_plot_data else 400,
-                bin_edges=spec_plot_data.get("bin_edges") if spec_plot_data else None,
-                out_png=Path(out_dir) / "spectrum_pre_post.png",
-                config=cfg.get("time_fit", {}),
-            )
-        except Exception as e:
-            logger.warning("Could not create pre/post spectrum plot -> %s", e)
-    
-        if args.burst_sensitivity_scan and scan_results:
-            try:
-                plot_activity_grid(
-                    scan_results,
-                    out_png=Path(out_dir) / "burst_scan.png",
-                    config=cfg.get("plotting", {}),
-                )
-            except Exception as e:
-                logger.warning("Could not create burst scan plot -> %s", e)
-    
-        overlay = cfg.get("plotting", {}).get("overlay_isotopes", False)
-        save_individual_ts = bool(
-            cfg.get("plotting", {}).get("save_individual_time_series", False)
-        )
-        isotope_series_data: dict[str, list[dict[str, float]]] = {}
 
-        if overlay:
-            # Guarantee plotting payloads exist for both daughter isotopes even
-            # when the fit skipped one of them so the overlay consistently
-            # generates Po-214 and Po-218 images.
-            tf_cfg = cfg.get("time_fit", {})
-            ts_start = to_datetime_utc(t0_global)
-            for iso in ("Po218", "Po214"):
-                if iso in time_plot_data:
-                    continue
-
-                win_key = f"window_{iso.lower()}"
-                win_range = tf_cfg.get(win_key) if isinstance(tf_cfg, Mapping) else None
-                if win_range is None:
-                    continue
-
-                lo, hi = win_range
-                try:
-                    mask = (
-                        (df_analysis["energy_MeV"] >= lo)
-                        & (df_analysis["energy_MeV"] <= hi)
-                        & (df_analysis["timestamp"] >= ts_start)
-                        & (df_analysis["timestamp"] <= t_end_global)
-                    )
-                    iso_events = df_analysis.loc[mask]
-                except Exception:
-                    continue
-
-                time_plot_data[iso] = {
-                    "events_times": iso_events["timestamp"].values,
-                    "events_energy": iso_events["energy_MeV"].values,
-                }
-
-        def _prepare_model_errors(
-            ts_times: np.ndarray, plot_cfg: Mapping[str, Any], iso_names: list[str]
-        ) -> dict[str, np.ndarray]:
-            """Return model uncertainty arrays for the requested isotopes."""
-
-            centers, widths = _ts_bin_centers_widths(
-                ts_times, plot_cfg, t0_global.timestamp(), t_end_global_ts
-            )
-            normalise = bool(plot_cfg.get("plot_time_normalise_rate", False))
-            model_errs: dict[str, np.ndarray] = {}
-            for iso_key in iso_names:
-                sigma_arr = _model_uncertainty(
-                    centers,
-                    widths,
-                    time_fit_results.get(iso_key),
-                    iso_key,
-                    plot_cfg,
-                    normalise,
-                )
-                if sigma_arr is not None:
-                    model_errs[iso_key] = sigma_arr
-            return model_errs
-
-        for iso in ("Po218", "Po214", "Po210"):
-            pdata = time_plot_data.get(iso)
-            if pdata is None:
-                continue
-            try:
-                plot_cfg = dict(cfg.get("time_fit", {}))
-                plot_cfg.update(cfg.get("plotting", {}))
-                if run_periods_cfg:
-                    plot_cfg["run_periods"] = run_periods_cfg
-                if not overlay:
-                    for other_iso in ("Po214", "Po218", "Po210"):
-                        if other_iso != iso:
-                            plot_cfg[f"window_{other_iso.lower()}"] = None
-                    ts_times = pdata["events_times"]
-                    ts_energy = pdata["events_energy"]
-                    fit_obj = time_fit_results.get(iso)
-                    fit_dict = _fit_params(fit_obj)
-                else:
-                    ts_times = df_analysis["timestamp"].values
-                    ts_energy = df_analysis["energy_MeV"].values
-                    fit_dict = {}
-                    for k in ("Po214", "Po218", "Po210"):
-                        obj = time_fit_results.get(k)
-                        if obj:
-                            fit_dict.update(_fit_params(obj))
-
-                iso_list_err = (
-                    [iso]
-                    if not overlay
-                    else [i for i in ("Po214", "Po218", "Po210") if time_fit_results.get(i)]
-                )
-                model_errs = _prepare_model_errors(ts_times, plot_cfg, iso_list_err)
-
-                ts_info = plot_time_series(
-                    all_timestamps=ts_times,
-                    all_energies=ts_energy,
-                    fit_results=fit_dict,
-                    t_start=t0_global.timestamp(),
-                    t_end=t_end_global_ts,
-                    config=plot_cfg,
-                    out_png=Path(out_dir) / f"time_series_{iso}.png",
-                    model_errors=model_errs,
-                )
-                if ts_info:
-                    series_map = _segments_to_isotope_series(ts_info)
-                    for iso_key, entries in series_map.items():
-                        if not entries:
-                            continue
-                        existing = isotope_series_data.setdefault(iso_key, [])
-                        existing.extend(entries)
-
-                if overlay and save_individual_ts:
-                    indiv_cfg = dict(plot_cfg)
-                    for other_iso in ("Po214", "Po218", "Po210"):
-                        if other_iso != iso:
-                            indiv_cfg[f"window_{other_iso.lower()}"] = None
-                    indiv_times = pdata["events_times"]
-                    indiv_energy = pdata["events_energy"]
-                    indiv_errs = _prepare_model_errors(indiv_times, indiv_cfg, [iso])
-                    indiv_fit_dict = _fit_params(time_fit_results.get(iso))
-                    _ = plot_time_series(
-                        all_timestamps=indiv_times,
-                        all_energies=indiv_energy,
-                        fit_results=indiv_fit_dict,
-                        t_start=t0_global.timestamp(),
-                        t_end=t_end_global_ts,
-                        config=indiv_cfg,
-                        out_png=Path(out_dir) / f"time_series_{iso}_individual.png",
-                        model_errors=indiv_errs,
-                    )
-            except Exception as e:
-                logger.warning("Could not create time-series plot for %s -> %s", iso, e)
-    
-        for iso_entries in isotope_series_data.values():
-            iso_entries.sort(key=lambda row: row.get("t", 0.0))
-    
-        # Deduplicate isotope series data to prevent duplicate bins when overlay_isotopes is enabled
-        isotope_series_data = dedupe_isotope_series(isotope_series_data)
-    
-        radon_inference_results = None
-        radon_inference_cfg = cfg.get("radon_inference")
-        if isotope_series_data and isinstance(radon_inference_cfg, Mapping):
-            timestamps_for_external = sorted(
-                {
-                    float(entry.get("t"))
-                    for entries in isotope_series_data.values()
-                    for entry in entries
-                    if entry.get("t") is not None
-                }
-            )
-            external_series = None
-            if timestamps_for_external and radon_inference_cfg.get("enabled", False):
-                try:
-                    raw_external = load_external_rn_series(
-                        radon_inference_cfg.get("external_rn"), timestamps_for_external
-                    )
-                except Exception as exc:
-                    logger.warning("Failed to load external radon series: %s", exc)
-                    raw_external = []
-    
-                if raw_external:
-                    external_series = []
-                    for ts_obj, value in raw_external:
-                        try:
-                            if hasattr(ts_obj, "timestamp"):
-                                t_val = float(ts_obj.timestamp())
-                            else:
-                                t_val = float(ts_obj)
-                            val_float = float(value)
-                        except (TypeError, ValueError):
-                            continue
-                        if not np.isfinite(t_val) or not np.isfinite(val_float):
-                            continue
-                        external_series.append({"t": t_val, "rn_bq_per_m3": val_float})
-    
-            radon_inference_results = run_radon_inference(
-                isotope_series_data,
-                cfg,
-                external_series,
-            )
-            if radon_inference_results:
-                summary["radon_inference"] = radon_inference_results
-                try:
-                    plot_rn_inferred_vs_time(radon_inference_results, Path(out_dir))
-                    plot_ambient_rn_vs_time(radon_inference_results, Path(out_dir))
-                    plot_volume_equiv_vs_time(radon_inference_results, Path(out_dir))
-                except Exception as exc:
-                    logger.warning("Failed to create radon inference plots: %s", exc)
-    
     # Additional visualizations
     with timer.section("additional_visualizations"):
         if efficiency_results.get("sources"):

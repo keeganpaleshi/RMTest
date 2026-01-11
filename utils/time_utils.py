@@ -11,6 +11,7 @@ __all__ = [
     "ensure_utc",
     "parse_timestamp",
     "to_epoch_seconds",
+    "to_utc_datetime",
 ]
 
 
@@ -91,4 +92,12 @@ def to_epoch_seconds(ts: Union[pd.Timestamp, str, int, float]) -> float:
 
     ts_parsed = parse_timestamp(ts)
     return ts_parsed.timestamp()
+
+
+def __getattr__(name):
+    """Deferred import to avoid circular dependency with parent utils module."""
+    if name == "to_utc_datetime":
+        from utils import to_utc_datetime as func
+        return func
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
