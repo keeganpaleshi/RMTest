@@ -18,7 +18,8 @@ from typing import Tuple, Optional, Any, Dict
 
 from io_utils import load_events, apply_burst_filter
 from analysis_helpers import _ensure_events
-from utils.time_utils import parse_timestamp, to_utc_datetime
+from utils.time_utils import parse_timestamp
+from utils import to_utc_datetime
 
 
 logger = logging.getLogger(__name__)
