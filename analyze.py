@@ -1088,11 +1088,62 @@ def main(argv=None):
                 baseline_info.setdefault("dilution_factor", dilution_factor)
     
         baseline_info["analysis_counts"] = iso_counts_raw
-    
+
+        # Helper function for counts-based fallback rate
+        def _counts_corrected_rate(
+            iso: str, params: Mapping[str, Any]
+        ) -> tuple[float, float] | None:
+            """Return a baseline-corrected rate from raw counts when fits fail."""
+
+            counts_val = iso_counts_raw.get(iso)
+            if counts_val is None:
+                return None
+
+            live_time_iso = iso_live_time.get(iso)
+            if live_time_iso is None or live_time_iso <= 0:
+                return None
+
+            eff_val = _resolved_efficiency(cfg, iso, params)
+            if eff_val is None or eff_val <= 0:
+                eff_val = _config_efficiency(cfg, iso)
+            if eff_val is None or eff_val <= 0:
+                return None
+
+            if (
+                args.baseline_mode != "none"
+                and iso in isotopes_to_subtract
+                and baseline_live_time > 0
+            ):
+                base_counts = baseline_counts.get(iso, 0.0)
+                try:
+                    rate, sigma = subtract_baseline_counts(
+                        float(counts_val),
+                        float(eff_val),
+                        float(live_time_iso),
+                        float(base_counts),
+                        float(baseline_live_time),
+                    )
+                except ValueError:
+                    return None
+                rate = float(rate)
+                allow_negative_baseline = cfg.get("allow_negative_baseline", False)
+                if not allow_negative_baseline and rate < 0.0:
+                    rate = 0.0
+                return rate, float(sigma)
+
+            rate = float(counts_val) / (float(live_time_iso) * float(eff_val))
+            sigma = math.sqrt(abs(float(counts_val))) / (
+                float(live_time_iso) * float(eff_val)
+            )
+            allow_negative_baseline = cfg.get("allow_negative_baseline", False)
+            if not allow_negative_baseline and rate < 0.0:
+                rate = 0.0
+            return rate, sigma
+
         corrected_rates = {}
         corrected_unc = {}
         activity_rows = []
-    
+
         for iso, fit in time_fit_results.items():
             params = _fit_params(fit)
             if not params or f"E_{iso}" not in params:
