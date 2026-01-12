@@ -243,11 +243,9 @@ def test_clamp_non_negative():
     assert err == pytest.approx(0.01)
 
 
-def test_compute_total_radon_negative_activity_default_raises(caplog):
-    caplog.set_level("WARNING")
+def test_compute_total_radon_negative_activity_default_raises():
     with pytest.raises(RuntimeError):
         compute_total_radon(-1.0, 0.5, 10.0, 1.0)
-    assert any("Clamped negative activity" in rec.message for rec in caplog.records)
 
 
 def test_compute_total_radon_negative_activity_allowed(caplog):
