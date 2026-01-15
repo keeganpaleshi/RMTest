@@ -308,7 +308,8 @@ def radon_activity_curve(
     dE : float
         Uncertainty on ``E``.
     N0 : float
-        Initial activity parameter.
+        Initial atom count parameter. The initial activity at t=0 is λ*N0 where
+        λ = ln(2)/half_life_s. The decay model is A(t) = E*(1-exp(-λt)) + λ*N0*exp(-λt).
     dN0 : float
         Uncertainty on ``N0``.
     half_life_s : float
@@ -355,9 +356,9 @@ def radon_delta(
     """Change in activity between two times.
 
     Parameters are identical to :func:`radon_activity_curve` with ``t_start``
-    and ``t_end`` specifying the relative times in seconds. ``cov_en0`` is the
-    optional covariance between ``E`` and ``N0`` used for the uncertainty
-    propagation.
+    and ``t_end`` specifying the relative times in seconds. ``N0`` is the initial
+    atom count parameter (not initial activity). ``cov_en0`` is the optional
+    covariance between ``E`` and ``N0`` used for the uncertainty propagation.
     """
 
     if half_life_s <= 0:
