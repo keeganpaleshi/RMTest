@@ -1272,8 +1272,16 @@ def fit_time_series(
     fixed_background=None,
     **kwargs,
 ):
-    """
-    times_dict: mapping of isotope -> array of timestamps in seconds.
+    """Fit time-series decay data to extract activity parameters.
+
+    The decay model is: r(t) = eff*[E*(1-exp(-λt)) + λ*N0*exp(-λt)] + B
+    where E is steady-state activity (Bq), N0 is initial atom count, B is background
+    rate, λ = ln(2)/half_life_s, and eff is detection efficiency. Note that N0 is
+    in units of atom count, not activity; the initial activity is λ*N0.
+
+    Parameters
+    ----------
+    times_dict : mapping of isotope -> array of timestamps in seconds
     weights : dict or None
         Optional mapping of isotope -> per-event weights matching
         ``times_dict``.
@@ -1281,14 +1289,20 @@ def fit_time_series(
         When ``True`` raise a :class:`RuntimeError` if the covariance matrix
         is not positive definite.  The default is ``False`` which attempts to
         stabilise the matrix by adding a tiny jitter.
-    t_start, t_end: floats (absolute UNIX seconds) defining the fit window
-    config: JSON dict with these keys:
+    t_start, t_end : float
+        Absolute UNIX timestamps (seconds) defining the fit window
+    config : dict
+        Configuration dict with these keys:
           "isotopes": { "Po214": {"half_life_s": , "efficiency": ,  }, "Po218": {   } }
           "fit_background": bool
           "fit_initial": bool
           "background_guess": float  (initial guess for B_iso)
-          "initial_guess":    float  (initial guess for N0_iso)
-    Returns: dict with best fit values & 1  uncertainties, e.g.:
+          "initial_guess":    float  (initial guess for N0_iso atom count)
+
+    Returns
+    -------
+    dict
+        Best fit values & 1σ uncertainties, e.g.:
         {
           "E_Po214": 12.3,  "dE_Po214": 1.4,
           "B_Po214": 0.02, "dB_Po214": 0.005,

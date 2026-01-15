@@ -1,5 +1,5 @@
 nuclide_constants:
   Rn222: { half_life_s: 330350.4 }
   Po218: { half_life_s: 186.0 }
-  Po214: { half_life_s: 1.64e-4 }
+  Po214: { half_life_s: 1.643e-4 }
   Po210: { half_life_s: 1.1956e7 }

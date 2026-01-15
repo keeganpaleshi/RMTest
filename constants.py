@@ -88,7 +88,7 @@ PO214 = NuclideConst(
     half_life_s=float(_YAML_DEFAULTS.get("Po214", {}).get("half_life_s", 1.643e-4))
 )
 PO218 = NuclideConst(
-    half_life_s=float(_YAML_DEFAULTS.get("Po218", {}).get("half_life_s", 185.88))
+    half_life_s=float(_YAML_DEFAULTS.get("Po218", {}).get("half_life_s", 186.0))
 )
 PO210 = NuclideConst(
     half_life_s=float(
