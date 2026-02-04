@@ -66,6 +66,16 @@ calibration:
     Po210: 5.304
     Po218: 6.002
     Po214: 7.687
+  # Fitting bounds and thresholds (previously hardcoded)
+  min_peak_separation_adc: 10.0
+  gaussian_sigma_upper_bound: 500.0
+  emg_sigma_upper_bound: 250.0
+  emg_tau_upper_bound: 200.0
+  quadratic_residual_threshold_mev: 0.005
+  jacobian_epsilon: 1.0e-6
+  tau_bounds_adc:
+    default: [5.0e-4, 50.0]
+    Po218: [5.0e-4, 8.0]
 spectral_fit:
   do_spectral_fit: true
   spectral_binning_mode: energy
@@ -87,6 +97,10 @@ spectral_fit:
   S_bkg_prior:
     - 0.0
     - 5.0
+  # Fitting numerical constants (previously hardcoded)
+  tau_bound_expansion: 10.0
+  background_norm_points: 512
+  emg_tau_floor: 5.0e-4
   tau_Po210_prior_mean: 0.010
   tau_Po210_prior_sigma: 0.006
   tau_Po218_prior_mean: 0.030

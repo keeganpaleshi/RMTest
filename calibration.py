@@ -25,7 +25,16 @@ from emg_stable import StableEMG, emg_left_stable
 
 _USE_STABLE_EMG_DEFAULT = True
 _LOGGER = logging.getLogger(__name__)
-_MIN_PEAK_SEPARATION_ADC = 10.0  # Minimum ADC channels separation for peak fitting
+
+# Default fitting bounds and thresholds (can be overridden via config)
+_MIN_PEAK_SEPARATION_ADC_DEFAULT = 10.0
+_GAUSSIAN_SIGMA_UPPER_BOUND_DEFAULT = 500.0
+_EMG_SIGMA_UPPER_BOUND_DEFAULT = 250.0
+_EMG_TAU_UPPER_BOUND_DEFAULT = 200.0
+_QUADRATIC_RESIDUAL_THRESHOLD_DEFAULT = 0.005
+_JACOBIAN_EPSILON_DEFAULT = 1.0e-6
+_TAU_UPPER_BOUND_DEFAULT = 50.0
+_TAU_UPPER_BOUND_PO218_DEFAULT = 8.0
 
 logger = logging.getLogger(__name__)
 
@@ -151,10 +160,14 @@ def set_emg_tau_min(value: float) -> None:
     _set_tau_min(tau_min)
 
 
-def _make_tau_bounds(tau_min: float) -> dict[str, tuple[float, float]]:
+def _make_tau_bounds(
+    tau_min: float,
+    tau_upper_default: float = _TAU_UPPER_BOUND_DEFAULT,
+    tau_upper_po218: float = _TAU_UPPER_BOUND_PO218_DEFAULT,
+) -> dict[str, tuple[float, float]]:
     return {
-        "default": (tau_min, 50.0),
-        "Po218": (tau_min, 8.0),
+        "default": (tau_min, tau_upper_default),
+        "Po218": (tau_min, tau_upper_po218),
     }
 
 
@@ -475,6 +488,7 @@ def _fit_gaussian_peak(
     sigma0: float,
     maxfev: int,
     retry_window: float | None,
+    sigma_upper_bound: float = _GAUSSIAN_SIGMA_UPPER_BOUND_DEFAULT,
 ):
     """Fit a Gaussian peak with one retry using a larger window."""
 
@@ -491,7 +505,7 @@ def _fit_gaussian_peak(
 
         p0 = [amp_guess, float(x0), sigma_guess]
         # Upper sigma bound: generous limit to avoid constraining wide peaks
-        bounds = ([0, x0 - window_size, 1e-3], [np.inf, x0 + window_size, 500.0])
+        bounds = ([0, x0 - window_size, 1e-3], [np.inf, x0 + window_size, sigma_upper_bound])
         popt, pcov = curve_fit(
             model_gauss, x_slice, y_slice, p0=p0, bounds=bounds, maxfev=maxfev
         )
@@ -520,6 +534,7 @@ def _fit_emg_peak(
     tau_bounds: tuple[float, float],
     maxfev: int,
     retry_window: float | None,
+    sigma_upper_bound: float = _EMG_SIGMA_UPPER_BOUND_DEFAULT,
 ):
     """Fit an EMG peak with a Gaussian retry fallback."""
 
@@ -537,7 +552,7 @@ def _fit_emg_peak(
 
         p0 = [amp_guess, float(x0), sigma_guess, tau0]
         # Upper sigma bound: generous limit to avoid constraining wide peaks
-        bounds = ([0, x0 - window_size, 1e-3, tau_lo], [np.inf, x0 + window_size, 250.0, tau_hi])
+        bounds = ([0, x0 - window_size, 1e-3, tau_lo], [np.inf, x0 + window_size, sigma_upper_bound, tau_hi])
         popt, pcov = curve_fit(
             model_emg, x_slice, y_slice, p0=p0, bounds=bounds, maxfev=maxfev
         )
@@ -658,6 +673,11 @@ def fixed_slope_calibration(adc_values, cfg, *, status=None):
     tau_cfg = cal_cfg.get("init_tau_adc", 0.0)
     tau0 = max(tau_cfg, _TAU_MIN) if use_emg else 0.0
 
+    # Read configurable bounds
+    emg_tau_upper = cal_cfg.get("emg_tau_upper_bound", _EMG_TAU_UPPER_BOUND_DEFAULT)
+    emg_sigma_upper = cal_cfg.get("emg_sigma_upper_bound", _EMG_SIGMA_UPPER_BOUND_DEFAULT)
+    gaussian_sigma_upper = cal_cfg.get("gaussian_sigma_upper_bound", _GAUSSIAN_SIGMA_UPPER_BOUND_DEFAULT)
+
     if use_emg:
         popt, pcov = _fit_emg_peak(
             "Po214",
@@ -667,14 +687,16 @@ def fixed_slope_calibration(adc_values, cfg, *, status=None):
             fit_window,
             sigma0,
             tau0,
-            (_TAU_MIN, 200.0),
+            (_TAU_MIN, emg_tau_upper),
             fit_maxfev,
             retry_window,
+            sigma_upper_bound=emg_sigma_upper,
         )
         A_fit, mu_fit, sigma_fit, tau_fit = popt
     else:
         popt, pcov = _fit_gaussian_peak(
-            "Po214", centers, hist, mu0, fit_window, sigma0, fit_maxfev, retry_window
+            "Po214", centers, hist, mu0, fit_window, sigma0, fit_maxfev, retry_window,
+            sigma_upper_bound=gaussian_sigma_upper,
         )
         A_fit, mu_fit, sigma_fit = popt
         tau_fit = 0.0
@@ -840,6 +862,11 @@ def calibrate_run(adc_values, config, hist_bins=None):
     window = cal_cfg["fit_window_adc"]  # e.g. +/-50 ADC channels
     retry_window = _resolve_retry_window(cal_cfg, window)
     use_emg = cal_cfg["use_emg"]  # True/False
+
+    # Read configurable bounds from config
+    emg_sigma_upper = cal_cfg.get("emg_sigma_upper_bound", _EMG_SIGMA_UPPER_BOUND_DEFAULT)
+    gaussian_sigma_upper = cal_cfg.get("gaussian_sigma_upper_bound", _GAUSSIAN_SIGMA_UPPER_BOUND_DEFAULT)
+
     for iso, idx_center in chosen_idx.items():
         x0 = centers[idx_center]
         mu0 = float(x0)
@@ -878,11 +905,13 @@ def calibrate_run(adc_values, config, hist_bins=None):
                 tau_bounds,
                 fit_maxfev,
                 retry_window,
+                sigma_upper_bound=emg_sigma_upper,
             )
             A_fit, mu_fit, sigma_fit, tau_fit = popt
         else:
             popt, pcov = _fit_gaussian_peak(
-                iso, centers, hist, mu0, window, sigma0, fit_maxfev, retry_window
+                iso, centers, hist, mu0, window, sigma0, fit_maxfev, retry_window,
+                sigma_upper_bound=gaussian_sigma_upper,
             )
             A_fit, mu_fit, sigma_fit = popt
             tau_fit = 0.0
@@ -934,7 +963,8 @@ def calibrate_run(adc_values, config, hist_bins=None):
     if quad_opt == "auto":
         a_lin, c_lin = two_point_calibration([adc210, adc214], [E210, E214])
         resid = abs(apply_calibration(adc218, a_lin, c_lin) - E218)
-        quadratic = resid > 0.005
+        quad_threshold = cal_cfg.get("quadratic_residual_threshold_mev", _QUADRATIC_RESIDUAL_THRESHOLD_DEFAULT)
+        quadratic = resid > quad_threshold
     elif quad_opt == "true":
         quadratic = True
     else:
@@ -997,11 +1027,11 @@ def calibrate_run(adc_values, config, hist_bins=None):
         mus = np.array([adc210, adc218, adc214], dtype=float)
         coeff0 = np.array([a2, a, c], dtype=float)
         # Use relative epsilon scaled to ADC magnitude for better numerical precision
-        eps_rel = 1.0e-6
+        eps_rel = cal_cfg.get("jacobian_epsilon", _JACOBIAN_EPSILON_DEFAULT)
         J = np.zeros((3, 3))
         for i in range(3):
             m_step = mus.copy()
-            eps = max(abs(mus[i]) * eps_rel, 1.0e-6)  # Relative epsilon with floor
+            eps = max(abs(mus[i]) * eps_rel, eps_rel)  # Relative epsilon with floor
             m_step[i] += eps
             J[:, i] = (solve_coeff(m_step) - coeff0) / eps
 
@@ -1014,10 +1044,11 @@ def calibrate_run(adc_values, config, hist_bins=None):
     else:
         delta = adc214 - adc210
         # Check for sufficient peak separation to avoid numerical instability
-        if abs(delta) < _MIN_PEAK_SEPARATION_ADC:
+        min_peak_sep = cal_cfg.get("min_peak_separation_adc", _MIN_PEAK_SEPARATION_ADC_DEFAULT)
+        if abs(delta) < min_peak_sep:
             raise ValueError(
                 f"Insufficient peak separation: Po214-Po210 delta = {delta:.1f} ADC channels "
-                f"(minimum {_MIN_PEAK_SEPARATION_ADC:.1f} required)"
+                f"(minimum {min_peak_sep:.1f} required)"
             )
         var_a = (a / delta) ** 2 * (mu_err_210**2 + mu_err_214**2)
         var_c = (a * adc214 / delta) ** 2 * mu_err_210**2 + (
@@ -1175,6 +1206,13 @@ def derive_calibration_constants_auto(
             "init_sigma_adc": 10.0,
             "init_tau_adc": 1.0,
             "sanity_tolerance_mev": 0.5,
+            # Include defaults for configurable bounds
+            "min_peak_separation_adc": _MIN_PEAK_SEPARATION_ADC_DEFAULT,
+            "gaussian_sigma_upper_bound": _GAUSSIAN_SIGMA_UPPER_BOUND_DEFAULT,
+            "emg_sigma_upper_bound": _EMG_SIGMA_UPPER_BOUND_DEFAULT,
+            "emg_tau_upper_bound": _EMG_TAU_UPPER_BOUND_DEFAULT,
+            "quadratic_residual_threshold_mev": _QUADRATIC_RESIDUAL_THRESHOLD_DEFAULT,
+            "jacobian_epsilon": _JACOBIAN_EPSILON_DEFAULT,
         }
     }
 

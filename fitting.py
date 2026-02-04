@@ -73,9 +73,9 @@ except ImportError:
     except ImportError:
         # Fallback implementation for local development
         def _clamp_tau(val, cfg=None, *, min_tau=None):
-            floor = 5.0e-4 if min_tau is None else min_tau
+            floor = _EMG_TAU_FLOOR_DEFAULT if min_tau is None else min_tau
             return val if val >= floor else floor
-        _EMG_FLOOR = 5.0e-4
+        _EMG_FLOOR = _EMG_TAU_FLOOR_DEFAULT
 try:  # pragma: no cover - optional dependency path for package layout
     from rmtest.fitting.emg_config import (
         get_emg_stable_mode as _get_emg_stable_mode,
@@ -137,7 +137,13 @@ except ImportError:  # pragma: no cover - package may be unavailable at runtime
                 return {iso: _FallbackEMGSpec(False) for iso in isotopes}
 
 
-_TAU_BOUND_EXPANSION = 10.0
+# Default fitting constants (can be overridden via config)
+_TAU_BOUND_EXPANSION_DEFAULT = 10.0
+_BACKGROUND_NORM_POINTS_DEFAULT = 512
+_EMG_TAU_FLOOR_DEFAULT = 5.0e-4
+
+# Module-level values (can be updated from config)
+_TAU_BOUND_EXPANSION = _TAU_BOUND_EXPANSION_DEFAULT
 
 
 EMG_STABLE_MODE: bool = _get_emg_stable_mode()
@@ -193,7 +199,7 @@ def _sigmoid(x: np.ndarray | float) -> np.ndarray | float:
 
 
 def make_linear_bkg(
-    Emin: float, Emax: float, Eref: float | None = None, n_norm: int = 512
+    Emin: float, Emax: float, Eref: float | None = None, n_norm: int | None = None
 ):
     """Return a unit-area log-linear background shape function.
 
@@ -206,7 +212,10 @@ def make_linear_bkg(
         ``Emin`` and ``Emax``.
     n_norm : int, optional
         Number of points used to compute the normalization constant.
+        Defaults to ``_BACKGROUND_NORM_POINTS_DEFAULT`` (512).
     """
+    if n_norm is None:
+        n_norm = _BACKGROUND_NORM_POINTS_DEFAULT
 
     if Eref is None:
         Eref = 0.5 * (Emin + Emax)
