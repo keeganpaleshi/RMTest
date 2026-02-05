@@ -193,7 +193,7 @@ def run_radon_inference(
         overall_eff = 1.0
 
     chain_correction = str(radon_cfg.get("chain_correction", "none")).lower()
-    if chain_correction not in {"none", "equilibrium"}:
+    if chain_correction not in {"none", "assume_equilibrium", "equilibrium", "forward_model"}:
         logger.warning("Unknown chain_correction %s – defaulting to 'none'", chain_correction)
         chain_correction = "none"
 
@@ -225,8 +225,8 @@ def run_radon_inference(
             if eff <= 0:
                 continue
             activity = counts / (eff * dt)
-            if chain_correction == "equilibrium":  # placeholder for future options
-                activity = activity  # no-op but explicit for readability
+            if chain_correction in ("equilibrium", "assume_equilibrium"):
+                pass  # placeholder for future correction logic
             iso_activity[iso] = activity
             weighted_sum += weights.get(iso, 0.0) * activity
             contributing_isotopes.append(iso)

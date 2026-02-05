@@ -195,7 +195,7 @@ def apply_baseline_subtraction(
         events_end = _max if _max.tzinfo is not None else _max.tz_localize("UTC")
         if t1 < events_start or t0 > events_end:
             msg = "Baseline interval outside data range"
-            logging.warning("%s – taking counts anyway", msg)
+            logger.warning("%s – taking counts anyway", msg)
             if not allow_fallback:
                 raise BaselineError(msg)
     ts_int = ts_full.view("int64")
@@ -204,7 +204,7 @@ def apply_baseline_subtraction(
     mask = (ts_int >= t0_ns) & (ts_int <= t1_ns)
     if not mask.any():
         msg = "baseline_range matched no events"
-        logging.warning("%s – subtraction skipped", msg)
+        logger.warning("%s – subtraction skipped", msg)
         if not allow_fallback:
             raise BaselineError(msg)
         hist = rate_an * live_time_analysis

@@ -36,8 +36,6 @@ _JACOBIAN_EPSILON_DEFAULT = 1.0e-6
 _TAU_UPPER_BOUND_DEFAULT = 50.0
 _TAU_UPPER_BOUND_PO218_DEFAULT = 8.0
 
-logger = logging.getLogger(__name__)
-
 
 _EMG_MODE_ALIASES = {
     "": "scipy_safe",
@@ -761,7 +759,7 @@ def _fallback_to_fixed_slope(adc_values, config, exc, warning_message=None):
     if warning_message is not None:
         warnings.warn(warning_message, RuntimeWarning)
 
-    logger.exception(
+    _LOGGER.exception(
         "Calibration failed with configured slope; using fixed-slope fallback (cause: %s)",
         exc,
         exc_info=exc,
