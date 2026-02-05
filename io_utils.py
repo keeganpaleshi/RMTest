@@ -18,7 +18,6 @@ import numpy as np
 from utils import to_native
 from utils.time_utils import parse_timestamp, to_epoch_seconds, tz_convert_utc
 import jsonschema
-import warnings
 from reporting import DEFAULT_DIAGNOSTICS
 from config.validation import validate_radon_inference
 
@@ -982,7 +981,7 @@ def write_summary(
         results_folder = output_path
     else:
         if timestamp is None:
-            timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         results_folder = output_path / timestamp
         if results_folder.exists():
             raise FileExistsError(f"Results folder already exists: {results_folder}")
