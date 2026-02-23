@@ -136,3 +136,26 @@ def validate_radon_inference(cfg: dict) -> None:
                 raise ValueError(
                     "radon_inference.external_rn.file_path must be provided when mode is 'file'"
                 )
+
+        units = external.get("units")
+        if units is not None:
+            supported_units = ("bq_per_m3", "pci_per_l")
+            if units not in supported_units:
+                raise ValueError(
+                    f"radon_inference.external_rn.units must be one of "
+                    f"{supported_units}, got {units!r}"
+                )
+
+        time_columns = external.get("time_columns")
+        if time_columns is not None:
+            if not isinstance(time_columns, Mapping):
+                raise ValueError(
+                    "radon_inference.external_rn.time_columns must be a mapping"
+                )
+            required_keys = ("year", "month", "day", "hour", "minute")
+            missing = [k for k in required_keys if not time_columns.get(k)]
+            if missing:
+                raise ValueError(
+                    "radon_inference.external_rn.time_columns is missing required keys: "
+                    + ", ".join(missing)
+                )

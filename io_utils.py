@@ -407,10 +407,30 @@ CONFIG_SCHEMA = {
                         },
                         "constant_bq_per_m3": {"type": "number"},
                         "fallback_bq_per_m3": {"type": "number"},
+                        "default_bq_per_m3": {"type": "number"},
                         "file_path": {"type": "string"},
                         "time_column": {"type": "string"},
+                        "time_columns": {
+                            "type": "object",
+                            "properties": {
+                                "year": {"type": "string"},
+                                "month": {"type": "string"},
+                                "day": {"type": "string"},
+                                "hour": {"type": "string"},
+                                "minute": {"type": "string"},
+                                "year_format": {
+                                    "type": "string",
+                                    "enum": ["full", "two_digit"],
+                                },
+                            },
+                        },
                         "value_column": {"type": "string"},
+                        "units": {
+                            "type": "string",
+                            "enum": ["bq_per_m3", "pci_per_l"],
+                        },
                         "tz": {"type": "string"},
+                        "timezone": {"type": "string"},
                         "interpolation": {
                             "type": "string",
                             "enum": ["nearest", "ffill"],

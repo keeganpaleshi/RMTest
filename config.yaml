@@ -197,10 +197,24 @@ radon_inference:
   external_rn:
     mode: constant  # allowed: constant, file
     constant_bq_per_m3: 120.0
-    file_path: mine_rn_timeseries.csv
-    time_column: timestamp
-    value_column: rn_bq_per_m3
-    tz: America/Toronto
+    # --- file-mode options (used when mode: file) ---
+    file_path: /path/to/rad_4996_pico40l.xls
+    # Option A: single timestamp column
+    # time_column: timestamp
+    # tz: America/Toronto            # applied when timestamps are naive
+    # Option B: component timestamp columns (e.g. pico40l .xls format)
+    time_columns:
+      year: Year
+      month: Month
+      day: Day
+      hour: Hour
+      minute: Minute
+      year_format: two_digit          # interpret years < 100 as 20xx
+    value_column: "rn_bq_per_m3"
+    units: bq_per_m3                  # allowed: bq_per_m3, pci_per_l
+    interpolation: nearest            # allowed: nearest, ffill
+    max_gap_seconds: 7200             # max gap tolerance in seconds
+    fallback_bq_per_m3: 80.0         # value when gap exceeds max_gap_seconds
   output:
     write_per_interval: true
     write_cumulative: true

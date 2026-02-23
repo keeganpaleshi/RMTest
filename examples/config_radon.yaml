@@ -97,6 +97,20 @@ radon_inference:
     Po218: 0.3
   transport_efficiency: 1.0
   retention_efficiency: 1.0
+  external_rn:
+    mode: file
+    file_path: /path/to/rad_4996_pico40l.xls
+    time_columns:
+      year: Year
+      month: Month
+      day: Day
+      hour: Hour
+      minute: Minute
+      year_format: two_digit
+    value_column: "My Radon Rate\nPci/l"
+    units: pci_per_l
+    interpolation: nearest
+    max_gap_seconds: 7200
 
 plotting:
   plot_save_formats:

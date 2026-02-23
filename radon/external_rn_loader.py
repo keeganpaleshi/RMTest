@@ -173,7 +173,7 @@ def _load_file_series(cfg_external: dict, target_index: pd.DatetimeIndex) -> pd.
     df = _read_file(file_path_obj)
 
     value_column = cfg_external.get("value_column", "rn_bq_per_m3")
-    tz_name = cfg_external.get("timezone")
+    tz_name = cfg_external.get("timezone") or cfg_external.get("tz")
 
     if value_column not in df.columns:
         raise ValueError(
