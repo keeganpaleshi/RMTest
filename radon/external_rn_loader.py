@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Iterable
 
@@ -16,6 +17,17 @@ __all__ = ["load_external_rn_series"]
 
 
 logger = logging.getLogger(__name__)
+
+# Supported file extensions and their reader functions
+_CSV_EXTENSIONS = {".csv", ".txt"}
+_EXCEL_EXTENSIONS = {".xls", ".xlsx"}
+_ALL_EXTENSIONS = _CSV_EXTENSIONS | _EXCEL_EXTENSIONS
+
+# Unit conversion factors to Bq/m³
+_UNIT_CONVERSIONS: dict[str, float] = {
+    "bq_per_m3": 1.0,
+    "pci_per_l": 37.0,  # 1 pCi/L = 37 Bq/m³
+}
 
 
 def _get_constant(cfg_external: dict | None) -> float | None:
@@ -66,20 +78,14 @@ def _reindex_series(
     return reindexed
 
 
-def _load_file_series(cfg_external: dict, target_index: pd.DatetimeIndex) -> pd.Series:
-    file_path = cfg_external.get("file_path")
-    if not file_path:
-        raise ValueError("external radon config missing 'file_path'")
-
-    # Validate file extension
-    file_path_obj = Path(file_path).expanduser()
-    if file_path_obj.suffix.lower() not in ['.csv', '.txt']:
-        raise ValueError(
-            f"external radon file must be CSV format, got {file_path_obj.suffix} for {file_path!r}"
-        )
-
+def _read_file(file_path_obj: Path) -> pd.DataFrame:
+    """Read a data file (CSV or Excel) into a DataFrame."""
+    ext = file_path_obj.suffix.lower()
     try:
-        df = pd.read_csv(file_path_obj)
+        if ext in _CSV_EXTENSIONS:
+            return pd.read_csv(file_path_obj)
+        else:
+            return pd.read_excel(file_path_obj)
     except FileNotFoundError as exc:
         raise FileNotFoundError(
             "external radon file not found; check "
@@ -91,22 +97,102 @@ def _load_file_series(cfg_external: dict, target_index: pd.DatetimeIndex) -> pd.
             "radon_inference.external_rn.file_path"
         ) from exc
 
-    time_column = cfg_external.get("time_column", "timestamp")
+
+def _build_timestamps_from_columns(
+    df: pd.DataFrame, time_columns: Mapping[str, str], file_path: str
+) -> pd.Series:
+    """Build a timestamp Series from separate Year/Month/Day/Hour/Minute columns.
+
+    Parameters
+    ----------
+    df : DataFrame
+        The loaded data.
+    time_columns : mapping
+        Mapping with keys ``year``, ``month``, ``day``, ``hour``, ``minute``
+        whose values are the corresponding column names in *df*.  An optional
+        ``year_format`` key set to ``"two_digit"`` causes year values < 100 to
+        be interpreted as 20xx.
+    file_path : str
+        Original file path string for error messages.
+    """
+    required = ("year", "month", "day", "hour", "minute")
+    col_map: dict[str, str] = {}
+    for key in required:
+        col_name = time_columns.get(key)
+        if not col_name:
+            raise ValueError(
+                f"time_columns.{key} is required when using component timestamp columns"
+            )
+        if col_name not in df.columns:
+            raise ValueError(
+                f"time_columns.{key} column {col_name!r} not found in file {file_path!r}"
+            )
+        col_map[key] = col_name
+
+    years = pd.to_numeric(df[col_map["year"]], errors="coerce").astype("Int64")
+    months = pd.to_numeric(df[col_map["month"]], errors="coerce").astype("Int64")
+    days = pd.to_numeric(df[col_map["day"]], errors="coerce").astype("Int64")
+    hours = pd.to_numeric(df[col_map["hour"]], errors="coerce").astype("Int64")
+    minutes = pd.to_numeric(df[col_map["minute"]], errors="coerce").astype("Int64")
+
+    year_format = str(time_columns.get("year_format", "")).lower()
+    if year_format == "two_digit":
+        years = years.where(years.isna() | (years >= 100), years + 2000)
+
+    timestamps = pd.to_datetime(
+        {
+            "year": years,
+            "month": months,
+            "day": days,
+            "hour": hours,
+            "minute": minutes,
+        },
+        errors="coerce",
+    )
+    if timestamps.isna().any():
+        n_bad = int(timestamps.isna().sum())
+        raise ValueError(
+            f"Could not parse {n_bad} timestamps from component columns in {file_path!r}"
+        )
+    return timestamps
+
+
+def _load_file_series(cfg_external: dict, target_index: pd.DatetimeIndex) -> pd.Series:
+    file_path = cfg_external.get("file_path")
+    if not file_path:
+        raise ValueError("external radon config missing 'file_path'")
+
+    # Validate file extension
+    file_path_obj = Path(file_path).expanduser()
+    if file_path_obj.suffix.lower() not in _ALL_EXTENSIONS:
+        raise ValueError(
+            f"external radon file must be CSV or Excel format, "
+            f"got {file_path_obj.suffix} for {file_path!r}"
+        )
+
+    df = _read_file(file_path_obj)
+
     value_column = cfg_external.get("value_column", "rn_bq_per_m3")
     tz_name = cfg_external.get("timezone")
 
-    if time_column not in df.columns:
-        raise ValueError(
-            f"external radon column {time_column!r} not found in file {file_path!r}"
-        )
     if value_column not in df.columns:
         raise ValueError(
             f"external radon column {value_column!r} not found in file {file_path!r}"
         )
 
-    timestamps = pd.to_datetime(df[time_column], utc=False, errors="coerce")
-    if timestamps.isna().any():
-        raise ValueError("external radon time column contains unparsable timestamps")
+    # Build timestamps: either from component columns or a single column
+    time_columns = cfg_external.get("time_columns")
+    if isinstance(time_columns, Mapping):
+        timestamps = _build_timestamps_from_columns(df, time_columns, file_path)
+    else:
+        time_column = cfg_external.get("time_column", "timestamp")
+        if time_column not in df.columns:
+            raise ValueError(
+                f"external radon column {time_column!r} not found in file {file_path!r}"
+            )
+        timestamps = pd.to_datetime(df[time_column], utc=False, errors="coerce")
+        if timestamps.isna().any():
+            raise ValueError("external radon time column contains unparsable timestamps")
 
     # Validate that value column is numeric before conversion
     values = pd.to_numeric(df[value_column], errors="coerce")
@@ -114,6 +200,18 @@ def _load_file_series(cfg_external: dict, target_index: pd.DatetimeIndex) -> pd.
         raise ValueError(
             f"external radon value column {value_column!r} contains non-numeric values"
         )
+
+    # Apply unit conversion to Bq/m³
+    units = str(cfg_external.get("units", "bq_per_m3")).lower()
+    conversion_factor = _UNIT_CONVERSIONS.get(units)
+    if conversion_factor is None:
+        raise ValueError(
+            f"unsupported units {units!r}; "
+            f"supported: {', '.join(sorted(_UNIT_CONVERSIONS))}"
+        )
+    if conversion_factor != 1.0:
+        values = values * conversion_factor
+
     series = pd.Series(values.to_numpy(dtype="float64"), index=timestamps)
     idx = pd.DatetimeIndex(series.index)
     if idx.tz is None:
