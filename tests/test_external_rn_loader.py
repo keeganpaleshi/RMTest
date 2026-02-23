@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -281,3 +282,246 @@ def test_missing_fallback_raises_clear_error(tmp_path):
     assert "no fallback defined" in error_msg
     assert "fallback_bq_per_m3" in error_msg
     assert "max_gap_seconds" in error_msg
+
+
+# --- Excel (.xlsx) and pico40l format tests ---
+
+
+def test_excel_file_single_timestamp_column(tmp_path):
+    """Test loading radon data from an Excel file with a single timestamp column."""
+    xlsx_path = tmp_path / "external.xlsx"
+    df = pd.DataFrame(
+        {
+            "timestamp": [
+                "2024-01-01T00:00:00Z",
+                "2024-01-01T01:00:00Z",
+                "2024-01-01T02:00:00Z",
+            ],
+            "rn_bq_per_m3": [60.0, 90.0, 120.0],
+        }
+    )
+    df.to_excel(xlsx_path, index=False)
+
+    cfg = {
+        "mode": "file",
+        "file_path": str(xlsx_path),
+        "max_gap_seconds": 7200,
+        "interpolation": "nearest",
+    }
+    targets = _timestamps(3)
+
+    result = load_external_rn_series(cfg, targets)
+
+    assert [round(val, 3) for _, val in result] == [60.0, 90.0, 120.0]
+
+
+def test_component_timestamp_columns_csv(tmp_path):
+    """Test building timestamps from separate Year/Month/Day/Hour/Minute columns."""
+    csv_path = tmp_path / "component_times.csv"
+    df = pd.DataFrame(
+        {
+            "Year": [2024, 2024, 2024],
+            "Month": [1, 1, 1],
+            "Day": [1, 1, 1],
+            "Hour": [0, 1, 2],
+            "Minute": [0, 0, 0],
+            "rn_bq_per_m3": [60.0, 90.0, 120.0],
+        }
+    )
+    df.to_csv(csv_path, index=False)
+
+    cfg = {
+        "mode": "file",
+        "file_path": str(csv_path),
+        "time_columns": {
+            "year": "Year",
+            "month": "Month",
+            "day": "Day",
+            "hour": "Hour",
+            "minute": "Minute",
+        },
+        "max_gap_seconds": 7200,
+        "interpolation": "nearest",
+    }
+    targets = _timestamps(3)
+
+    result = load_external_rn_series(cfg, targets)
+
+    assert [round(val, 3) for _, val in result] == [60.0, 90.0, 120.0]
+
+
+def test_two_digit_year_format(tmp_path):
+    """Test that two-digit year values (e.g. 19 for 2019) are handled correctly."""
+    csv_path = tmp_path / "two_digit_year.csv"
+    df = pd.DataFrame(
+        {
+            "Year": [19, 19, 19],
+            "Month": [2, 2, 2],
+            "Day": [13, 13, 13],
+            "Hour": [13, 14, 15],
+            "Minute": [42, 42, 42],
+            "radon_rate": [1.37, 2.46, 2.55],
+        }
+    )
+    df.to_csv(csv_path, index=False)
+
+    cfg = {
+        "mode": "file",
+        "file_path": str(csv_path),
+        "time_columns": {
+            "year": "Year",
+            "month": "Month",
+            "day": "Day",
+            "hour": "Hour",
+            "minute": "Minute",
+            "year_format": "two_digit",
+        },
+        "value_column": "radon_rate",
+        "max_gap_seconds": 7200,
+        "interpolation": "nearest",
+    }
+    targets = [
+        "2019-02-13T13:42:00Z",
+        "2019-02-13T14:42:00Z",
+        "2019-02-13T15:42:00Z",
+    ]
+
+    result = load_external_rn_series(cfg, targets)
+
+    assert [round(val, 3) for _, val in result] == [1.37, 2.46, 2.55]
+
+
+def test_pci_per_l_unit_conversion(tmp_path):
+    """Test that pCi/L values are correctly converted to Bq/m³ (factor of 37)."""
+    csv_path = tmp_path / "pci_data.csv"
+    df = pd.DataFrame(
+        {
+            "timestamp": [
+                "2024-01-01T00:00:00Z",
+                "2024-01-01T01:00:00Z",
+            ],
+            "radon_pci": [1.0, 2.0],
+        }
+    )
+    df.to_csv(csv_path, index=False)
+
+    cfg = {
+        "mode": "file",
+        "file_path": str(csv_path),
+        "value_column": "radon_pci",
+        "units": "pci_per_l",
+        "max_gap_seconds": 7200,
+    }
+    targets = _timestamps(2)
+
+    result = load_external_rn_series(cfg, targets)
+
+    # 1 pCi/L = 37 Bq/m³
+    assert [round(val, 3) for _, val in result] == [37.0, 74.0]
+
+
+def test_pico40l_format_full(tmp_path):
+    """Integration test simulating the pico40l .xlsx data format with
+    component timestamps, pCi/L units, and two-digit years."""
+    xlsx_path = tmp_path / "rad_4996_pico40l.xlsx"
+    df = pd.DataFrame(
+        {
+            "Test No": [1, 2, 3],
+            "Year": [19, 19, 19],
+            "Month": [2, 2, 2],
+            "Day": [13, 13, 13],
+            "Hour": [13, 14, 15],
+            "Minute": [42, 42, 42],
+            "Counts": [46, 82, 89],
+            "Humidity": [13, 9, 6],
+            "My Radon Rate\nPci/l": [1.368852, 2.456336, 2.545479],
+            "Radon Rate Uncertainty\npCi/l": [0.268011, 0.385338, 0.392419],
+            "Weighted Average": [0.249613, 0.257439, 0.256923],
+            "Weighted Uncertainty": [0.002265, 0.001982, 0.002026],
+        }
+    )
+    df.to_excel(xlsx_path, index=False)
+
+    cfg = {
+        "mode": "file",
+        "file_path": str(xlsx_path),
+        "time_columns": {
+            "year": "Year",
+            "month": "Month",
+            "day": "Day",
+            "hour": "Hour",
+            "minute": "Minute",
+            "year_format": "two_digit",
+        },
+        "value_column": "My Radon Rate\nPci/l",
+        "units": "pci_per_l",
+        "max_gap_seconds": 7200,
+        "interpolation": "nearest",
+    }
+    targets = [
+        "2019-02-13T13:42:00Z",
+        "2019-02-13T14:42:00Z",
+        "2019-02-13T15:42:00Z",
+    ]
+
+    result = load_external_rn_series(cfg, targets)
+
+    # Values should be converted from pCi/L to Bq/m³ (× 37)
+    expected = [round(v * 37.0, 3) for v in [1.368852, 2.456336, 2.545479]]
+    actual = [round(val, 3) for _, val in result]
+    assert actual == expected
+
+
+def test_unsupported_units_raises(tmp_path):
+    """Test that unsupported unit strings raise a clear error."""
+    csv_path = tmp_path / "data.csv"
+    pd.DataFrame(
+        {"timestamp": ["2024-01-01T00:00:00Z"], "val": [1.0]}
+    ).to_csv(csv_path, index=False)
+
+    cfg = {
+        "mode": "file",
+        "file_path": str(csv_path),
+        "value_column": "val",
+        "units": "bogus_unit",
+    }
+
+    with pytest.raises(ValueError, match="unsupported units"):
+        load_external_rn_series(cfg, ["2024-01-01T00:00:00Z"])
+
+
+def test_unsupported_file_extension_raises(tmp_path):
+    """Test that unsupported file extensions raise a clear error."""
+    bad_path = tmp_path / "data.json"
+    bad_path.write_text("{}")
+
+    cfg = {
+        "mode": "file",
+        "file_path": str(bad_path),
+    }
+
+    with pytest.raises(ValueError, match="CSV or Excel"):
+        load_external_rn_series(cfg, ["2024-01-01T00:00:00Z"])
+
+
+def test_missing_time_column_key_in_time_columns_raises(tmp_path):
+    """Test that missing required keys in time_columns raise a clear error."""
+    csv_path = tmp_path / "data.csv"
+    pd.DataFrame(
+        {"Year": [2024], "Month": [1], "Day": [1], "val": [1.0]}
+    ).to_csv(csv_path, index=False)
+
+    cfg = {
+        "mode": "file",
+        "file_path": str(csv_path),
+        "value_column": "val",
+        "time_columns": {
+            "year": "Year",
+            "month": "Month",
+            "day": "Day",
+            # Missing hour and minute
+        },
+    }
+
+    with pytest.raises(ValueError, match="time_columns.hour"):
+        load_external_rn_series(cfg, ["2024-01-01T00:00:00Z"])

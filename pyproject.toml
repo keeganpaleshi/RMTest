@@ -16,6 +16,8 @@ dependencies = [
     "pyyaml",
     "jsonschema",
     "python-dateutil",
+    "xlrd>=2.0",
+    "openpyxl>=3.0",
 ]
 
 [tool.setuptools]
