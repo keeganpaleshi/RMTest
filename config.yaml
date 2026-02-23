@@ -17,6 +17,9 @@ analysis:
   run_periods: []
   radon_interval: null
   ambient_concentration: null
+  background_model: linear       # allowed: linear, loglin_unit
+  likelihood: current            # allowed: current, extended
+  settle_s: null                 # settling time (seconds) to skip at start; null = disabled
 columns:
   timestamp: timestamps
   adc: adc_channels
@@ -195,12 +198,26 @@ radon_inference:
   retention_efficiency: 1.0
   chain_correction: none  # allowed: none, assume_equilibrium, forward_model
   external_rn:
-    mode: constant  # allowed: constant, file
-    constant_bq_per_m3: 120.0
-    file_path: mine_rn_timeseries.csv
-    time_column: timestamp
+    mode: constant               # allowed: constant, file
+    constant_bq_per_m3: 120.0    # value used in constant mode
+    fallback_bq_per_m3: 80.0     # fallback when file has gaps or is missing
+    file_path: mine_rn_timeseries.csv  # CSV or Excel (.xls/.xlsx)
+    time_column: timestamp       # single-column timestamp (ignored when time_columns is set)
     value_column: rn_bq_per_m3
-    tz: America/Toronto
+    units: bq_per_m3             # allowed: bq_per_m3, pci_per_l
+    timezone: America/Toronto    # applied to naive timestamps; ignored if already tz-aware
+    interpolation: nearest       # allowed: nearest, ffill
+    max_gap_seconds: 300         # max gap before value becomes NaN (then filled by fallback)
+    # Component timestamp columns for formats like pico40l that store
+    # year/month/day/hour/minute in separate columns.  When set, time_column
+    # is ignored and timestamps are assembled from these columns instead.
+    # time_columns:
+    #   year: Year
+    #   month: Month
+    #   day: Day
+    #   hour: Hour
+    #   minute: Minute
+    #   year_format: two_digit   # interpret values < 100 as 20xx
   output:
     write_per_interval: true
     write_cumulative: true

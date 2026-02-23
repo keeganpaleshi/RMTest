@@ -410,13 +410,32 @@ CONFIG_SCHEMA = {
                         "file_path": {"type": "string"},
                         "time_column": {"type": "string"},
                         "value_column": {"type": "string"},
-                        "tz": {"type": "string"},
+                        "timezone": {"type": "string"},
+                        "units": {
+                            "type": "string",
+                            "enum": ["bq_per_m3", "pci_per_l"],
+                        },
                         "interpolation": {
                             "type": "string",
                             "enum": ["nearest", "ffill"],
                         },
                         "allowed_skew_seconds": {"type": "number"},
                         "max_gap_seconds": {"type": "number"},
+                        "time_columns": {
+                            "type": "object",
+                            "properties": {
+                                "year": {"type": "string"},
+                                "month": {"type": "string"},
+                                "day": {"type": "string"},
+                                "hour": {"type": "string"},
+                                "minute": {"type": "string"},
+                                "year_format": {
+                                    "type": "string",
+                                    "enum": ["two_digit", "four_digit"],
+                                },
+                            },
+                            "required": ["year", "month", "day", "hour", "minute"],
+                        },
                     },
                     "required": ["mode"],
                     "allOf": [
