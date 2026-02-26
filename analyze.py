@@ -132,14 +132,14 @@ class PipelineTimer:
         finally:
             duration = time.perf_counter() - start
             self._sections.append((name, duration))
-            self.logger.info("⏱️ %s took %.2f s", name, duration)
+            self.logger.info("%s took %.2f s", name, duration)
 
     def report(self):
         if not self._sections:
             return
         total = time.perf_counter() - self._start
         lines = [f"Pipeline timing summary (total {total:.2f} s):"]
-        lines.extend(f"  • {name}: {duration:.2f} s" for name, duration in self._sections)
+        lines.extend(f"  - {name}: {duration:.2f} s" for name, duration in self._sections)
         self.logger.info("\n".join(lines))
 
 
@@ -3040,301 +3040,301 @@ def main(argv=None):
                 t_start_map[iso] = t_start_fit_dt
                 iso_live_time[iso] = (t_end_global - t_start_fit_dt).total_seconds()
     
-            # Build priors for time fit
-            priors_time = {}
+                # Build priors for time fit
+                priors_time = {}
     
-            # Efficiency prior per isotope
+                # Efficiency prior per isotope
     
-            eff_cfg_val = cfg["time_fit"].get(f"eff_{iso.lower()}")
+                eff_cfg_val = cfg["time_fit"].get(f"eff_{iso.lower()}")
     
-            eff_nom = (
-                eff_cfg_val[0] if isinstance(eff_cfg_val, (list, tuple)) else eff_cfg_val
-            )
-    
-            if args.eff_fixed:
-                priors_time["eff"] = (1.0, np.inf)
-                eff_val = 1.0
-            else:
-                eff_val, sigma = _eff_prior(eff_cfg_val)
-                priors_time["eff"] = (eff_val, sigma)
-    
-            # Half-life prior (user must supply [T1/2, sigma(T1/2)] in seconds)
-            hl_key = f"hl_{iso.lower()}"
-            hl_val = cfg["time_fit"].get(hl_key)
-            if hl_val is not None:
-                if isinstance(hl_val, list):
-                    T12 = hl_val[0] if hl_val else None
-                    T12sig = hl_val[1] if len(hl_val) > 1 else 0.0
-                else:
-                    T12 = hl_val
-                    T12sig = 0.0
-                if T12 is not None:
-                    priors_time["tau"] = (T12 / np.log(2), T12sig / np.log(2))
-    
-            # Background‐rate prior
-            if f"bkg_{iso.lower()}" in cfg["time_fit"]:
-                priors_time["B0"] = tuple(cfg["time_fit"][f"bkg_{iso.lower()}"])
-    
-            # Initial N₀ from baseline (if provided)
-            if baseline_range:
-                # Count baseline events in this energy window
-                probs_base = window_prob(
-                    base_events["energy_MeV"].values,
-                    base_events["denergy_MeV"].values,
-                    lo,
-                    hi,
-                )
-                n0_count = float(np.sum(probs_base))
-                if iso in isotopes_to_subtract:
-                    baseline_counts[iso] = n0_count
-    
-                eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
-                if isinstance(eff_cfg, list):
-                    eff = eff_cfg[0]
-                else:
-                    eff = eff_cfg if eff_cfg is not None else 1.0
-    
-                if baseline_record is not None:
-                    baseline_handling.update_record_with_counts(
-                        baseline_record,
-                        iso,
-                        n0_count,
-                        baseline_live_time,
-                        eff,
-                    )
-                if baseline_live_time > 0 and eff > 0:
-                    n0_activity = n0_count / (baseline_live_time * eff)
-                    n0_sigma = np.sqrt(n0_count) / (baseline_live_time * eff)
-                else:
-                    n0_activity = 0.0
-                    n0_sigma = 1.0
-    
-                priors_time["N0"] = (
-                    n0_activity,
-                    cfg["time_fit"].get(
-                        f"sig_n0_{iso.lower()}",
-                        cfg["time_fit"].get(f"sig_N0_{iso}", n0_sigma),
-                    ),
+                eff_nom = (
+                    eff_cfg_val[0] if isinstance(eff_cfg_val, (list, tuple)) else eff_cfg_val
                 )
     
-                analysis_counts = float(np.sum(iso_events["weight"]))
-                iso_counts_raw[iso] = analysis_counts
-                live_time_iso = iso_live_time.get(iso, 0.0)
-                if (
-                    iso in isotopes_to_subtract
-                    and live_time_iso > 0
-                    and baseline_live_time > 0
-                    and eff > 0
-                ):
-                    c_rate, c_sigma = subtract_baseline_counts(
-                        analysis_counts,
-                        eff,
-                        live_time_iso,
-                        baseline_counts.get(iso, 0.0),
-                        baseline_live_time,
-                    )
+                if args.eff_fixed:
+                    priors_time["eff"] = (1.0, np.inf)
+                    eff_val = 1.0
                 else:
+                    eff_val, sigma = _eff_prior(eff_cfg_val)
+                    priors_time["eff"] = (eff_val, sigma)
+    
+                # Half-life prior (user must supply [T1/2, sigma(T1/2)] in seconds)
+                hl_key = f"hl_{iso.lower()}"
+                hl_val = cfg["time_fit"].get(hl_key)
+                if hl_val is not None:
+                    if isinstance(hl_val, list):
+                        T12 = hl_val[0] if hl_val else None
+                        T12sig = hl_val[1] if len(hl_val) > 1 else 0.0
+                    else:
+                        T12 = hl_val
+                        T12sig = 0.0
+                    if T12 is not None:
+                        priors_time["tau"] = (T12 / np.log(2), T12sig / np.log(2))
+    
+                # Background‐rate prior
+                if f"bkg_{iso.lower()}" in cfg["time_fit"]:
+                    priors_time["B0"] = tuple(cfg["time_fit"][f"bkg_{iso.lower()}"])
+    
+                # Initial N₀ from baseline (if provided)
+                if baseline_range:
+                    # Count baseline events in this energy window
+                    probs_base = window_prob(
+                        base_events["energy_MeV"].values,
+                        base_events["denergy_MeV"].values,
+                        lo,
+                        hi,
+                    )
+                    n0_count = float(np.sum(probs_base))
+                    if iso in isotopes_to_subtract:
+                        baseline_counts[iso] = n0_count
+    
+                    eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
+                    if isinstance(eff_cfg, list):
+                        eff = eff_cfg[0]
+                    else:
+                        eff = eff_cfg if eff_cfg is not None else 1.0
+    
+                    if baseline_record is not None:
+                        baseline_handling.update_record_with_counts(
+                            baseline_record,
+                            iso,
+                            n0_count,
+                            baseline_live_time,
+                            eff,
+                        )
+                    if baseline_live_time > 0 and eff > 0:
+                        n0_activity = n0_count / (baseline_live_time * eff)
+                        n0_sigma = np.sqrt(n0_count) / (baseline_live_time * eff)
+                    else:
+                        n0_activity = 0.0
+                        n0_sigma = 1.0
+    
+                    priors_time["N0"] = (
+                        n0_activity,
+                        cfg["time_fit"].get(
+                            f"sig_n0_{iso.lower()}",
+                            cfg["time_fit"].get(f"sig_N0_{iso}", n0_sigma),
+                        ),
+                    )
+    
+                    analysis_counts = float(np.sum(iso_events["weight"]))
+                    iso_counts_raw[iso] = analysis_counts
+                    live_time_iso = iso_live_time.get(iso, 0.0)
+                    if (
+                        iso in isotopes_to_subtract
+                        and live_time_iso > 0
+                        and baseline_live_time > 0
+                        and eff > 0
+                    ):
+                        c_rate, c_sigma = subtract_baseline_counts(
+                            analysis_counts,
+                            eff,
+                            live_time_iso,
+                            baseline_counts.get(iso, 0.0),
+                            baseline_live_time,
+                        )
+                    else:
+                        if eff > 0 and live_time_iso > 0:
+                            c_rate = analysis_counts / (live_time_iso * eff)
+                            c_sigma = math.sqrt(analysis_counts) / (live_time_iso * eff)
+                        else:
+                            c_rate = 0.0
+                            c_sigma = 0.0
+                    if not allow_negative_baseline and c_rate < 0.0:
+                        c_rate = 0.0
+                    baseline_info.setdefault("corrected_activity", {})[iso] = {
+                        "value": c_rate,
+                        "uncertainty": c_sigma,
+                    }
+                    weight_factor = 1.0 / (c_sigma**2) if c_sigma > 0 else 1.0
+                    iso_events["weight"] *= weight_factor
+                else:
+                    priors_time["N0"] = (
+                        0.0,
+                        cfg["time_fit"].get(
+                            f"sig_n0_{iso.lower()}",
+                            cfg["time_fit"].get(f"sig_N0_{iso}", 1.0),
+                        ),
+                    )
+    
+                    analysis_counts = float(np.sum(iso_events["weight"]))
+                    iso_counts_raw[iso] = analysis_counts
+                    eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
+                    if isinstance(eff_cfg, list):
+                        eff = eff_cfg[0]
+                    else:
+                        eff = eff_cfg if eff_cfg is not None else 1.0
+                    live_time_iso = iso_live_time.get(iso, 0.0)
                     if eff > 0 and live_time_iso > 0:
                         c_rate = analysis_counts / (live_time_iso * eff)
                         c_sigma = math.sqrt(analysis_counts) / (live_time_iso * eff)
                     else:
                         c_rate = 0.0
                         c_sigma = 0.0
-                if not allow_negative_baseline and c_rate < 0.0:
-                    c_rate = 0.0
-                baseline_info.setdefault("corrected_activity", {})[iso] = {
-                    "value": c_rate,
-                    "uncertainty": c_sigma,
-                }
-                weight_factor = 1.0 / (c_sigma**2) if c_sigma > 0 else 1.0
-                iso_events["weight"] *= weight_factor
-            else:
-                priors_time["N0"] = (
-                    0.0,
-                    cfg["time_fit"].get(
-                        f"sig_n0_{iso.lower()}",
-                        cfg["time_fit"].get(f"sig_N0_{iso}", 1.0),
-                    ),
-                )
+                    if not allow_negative_baseline and c_rate < 0.0:
+                        c_rate = 0.0
+                    baseline_info.setdefault("corrected_activity", {})[iso] = {
+                        "value": c_rate,
+                        "uncertainty": c_sigma,
+                    }
+                    weight_factor = 1.0 / (c_sigma**2) if c_sigma > 0 else 1.0
+                    iso_events["weight"] *= weight_factor
     
-                analysis_counts = float(np.sum(iso_events["weight"]))
-                iso_counts_raw[iso] = analysis_counts
-                eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
-                if isinstance(eff_cfg, list):
-                    eff = eff_cfg[0]
-                else:
-                    eff = eff_cfg if eff_cfg is not None else 1.0
-                live_time_iso = iso_live_time.get(iso, 0.0)
-                if eff > 0 and live_time_iso > 0:
-                    c_rate = analysis_counts / (live_time_iso * eff)
-                    c_sigma = math.sqrt(analysis_counts) / (live_time_iso * eff)
-                else:
-                    c_rate = 0.0
-                    c_sigma = 0.0
-                if not allow_negative_baseline and c_rate < 0.0:
-                    c_rate = 0.0
-                baseline_info.setdefault("corrected_activity", {})[iso] = {
-                    "value": c_rate,
-                    "uncertainty": c_sigma,
-                }
-                weight_factor = 1.0 / (c_sigma**2) if c_sigma > 0 else 1.0
-                iso_events["weight"] *= weight_factor
+                # Store priors for use in systematics scanning
+                priors_time_all[iso] = priors_time
     
-            # Store priors for use in systematics scanning
-            priors_time_all[iso] = priors_time
-    
-            # Build configuration for fit_time_series
-            if args.settle_s is not None:
-                t0_dt = to_utc_datetime(t0_global)
-                cut = t0_dt + timedelta(seconds=float(args.settle_s))
-                iso_events = iso_events[iso_events["timestamp"] >= cut]
-            ts_vals = iso_events["timestamp"].map(to_epoch_seconds).to_numpy()
-            times_dict = {iso: ts_vals}
-            weights_map = {iso: iso_events["weight"].values}
-            eff_key = f"eff_{iso.lower()}"
-            eff_cfg_val = cfg["time_fit"].get(eff_key)
-            eff_value: float | None
-            if args.eff_fixed:
-                eff_value = None
-            else:
-                explicit_null = False
-                if eff_key in cfg["time_fit"]:
-                    if eff_cfg_val in (None, "null"):
-                        explicit_null = True
-                    elif isinstance(eff_cfg_val, (list, tuple)):
-                        explicit_null = bool(eff_cfg_val) and eff_cfg_val[0] in (
-                            None,
-                            "null",
-                        )
-                if explicit_null:
+                # Build configuration for fit_time_series
+                if args.settle_s is not None:
+                    t0_dt = to_utc_datetime(t0_global)
+                    cut = t0_dt + timedelta(seconds=float(args.settle_s))
+                    iso_events = iso_events[iso_events["timestamp"] >= cut]
+                ts_vals = iso_events["timestamp"].map(to_epoch_seconds).to_numpy()
+                times_dict = {iso: ts_vals}
+                weights_map = {iso: iso_events["weight"].values}
+                eff_key = f"eff_{iso.lower()}"
+                eff_cfg_val = cfg["time_fit"].get(eff_key)
+                eff_value: float | None
+                if args.eff_fixed:
                     eff_value = None
                 else:
-                    eff_value = _config_efficiency(cfg, iso)
-            fit_cfg = {
-                "isotopes": {
-                    iso: {
-                        "half_life_s": _hl_value(cfg, iso),
-                        "efficiency": eff_value,
-                    }
-                },
-                "fit_background": not cfg["time_fit"]["flags"].get(
-                    "fix_background_b", False
-                ),
-                "fit_initial": not cfg["time_fit"]["flags"].get(
-                    f"fix_N0_{iso.lower()}", False
-                ),
-                "background_guess": cfg["time_fit"].get("background_guess", 0.0),
-                "n0_guess_fraction": cfg["time_fit"].get("n0_guess_fraction", 0.1),
-                "min_counts": thr,
-                "fix_background_b_first_pass": cfg["time_fit"].get(
-                    "fix_background_b_first_pass", True
-                ),
-                "background_b_fixed_value": cfg["time_fit"].get(
-                    "background_b_fixed_value"
-                ),
-            }
+                    explicit_null = False
+                    if eff_key in cfg["time_fit"]:
+                        if eff_cfg_val in (None, "null"):
+                            explicit_null = True
+                        elif isinstance(eff_cfg_val, (list, tuple)):
+                            explicit_null = bool(eff_cfg_val) and eff_cfg_val[0] in (
+                                None,
+                                "null",
+                            )
+                    if explicit_null:
+                        eff_value = None
+                    else:
+                        eff_value = _config_efficiency(cfg, iso)
+                fit_cfg = {
+                    "isotopes": {
+                        iso: {
+                            "half_life_s": _hl_value(cfg, iso),
+                            "efficiency": eff_value,
+                        }
+                    },
+                    "fit_background": not cfg["time_fit"]["flags"].get(
+                        "fix_background_b", False
+                    ),
+                    "fit_initial": not cfg["time_fit"]["flags"].get(
+                        f"fix_N0_{iso.lower()}", False
+                    ),
+                    "background_guess": cfg["time_fit"].get("background_guess", 0.0),
+                    "n0_guess_fraction": cfg["time_fit"].get("n0_guess_fraction", 0.1),
+                    "min_counts": thr,
+                    "fix_background_b_first_pass": cfg["time_fit"].get(
+                        "fix_background_b_first_pass", True
+                    ),
+                    "background_b_fixed_value": cfg["time_fit"].get(
+                        "background_b_fixed_value"
+                    ),
+                }
     
-            # Determine baseline rate for fixed-background first pass
-            baseline_rate_iso = None
-            fixed_from_baseline_info = None
-            if baseline_record is not None:
-                fixed_from_baseline_info = baseline_handling.get_fixed_background_for_time_fit(
-                    baseline_record,
-                    iso,
-                    cfg.get("baseline", {}),
-                )
-                if fixed_from_baseline_info:
-                    baseline_rate_iso = fixed_from_baseline_info.get("background_rate_Bq")
-    
-            if baseline_rate_iso is None and baseline_live_time > 0:
-                eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
-                if isinstance(eff_cfg, list):
-                    eff_rate = eff_cfg[0]
-                else:
-                    eff_rate = eff_cfg if eff_cfg is not None else 1.0
-                if eff_rate > 0:
-                    baseline_rate_iso = baseline_counts.get(iso, 0.0) / (
-                        baseline_live_time * eff_rate
+                # Determine baseline rate for fixed-background first pass
+                baseline_rate_iso = None
+                fixed_from_baseline_info = None
+                if baseline_record is not None:
+                    fixed_from_baseline_info = baseline_handling.get_fixed_background_for_time_fit(
+                        baseline_record,
+                        iso,
+                        cfg.get("baseline", {}),
                     )
+                    if fixed_from_baseline_info:
+                        baseline_rate_iso = fixed_from_baseline_info.get("background_rate_Bq")
     
-            # Run time-series fit (two-pass)
-            decay_out = None  # fresh variable each iteration
-            try:
-                t_start_val = t_start_map.get(iso)
-                if isinstance(t_start_val, datetime):
-                    t_start_fit = t_start_val.timestamp()
-                else:
-                    t_start_fit = to_utc_datetime(
-                        t_start_val if t_start_val is not None else t0_global
-                    ).timestamp()
-                decay_out = two_pass_time_fit(
-                    times_dict,
-                    t_start_fit,
-                    t_end_global_ts,
-                    fit_cfg,
-                    baseline_rate=baseline_rate_iso,
-                    weights=weights_map,
-                    strict=args.strict_covariance,
-                    fit_func=fit_time_series,
-                    fit_kwargs=base_fit_kwargs,
-                )
-                time_fit_results[iso] = decay_out
-            except Exception as e:
-                logging.warning("Decay-curve fit for %s failed -> %s", iso, e)
-                time_fit_results[iso] = {}
-    
-            # Record how the background parameter was treated
-            background_mode = "floated"
-            baseline_rate_meta: float | None = None
-            if isinstance(decay_out, FitResult):
-                param_index = decay_out.param_index or {}
-                has_background_param = f"B_{iso}" in param_index
-                background_mode = "floated" if has_background_param else "fixed"
-            elif isinstance(decay_out, Mapping):
-                has_background_param = f"B_{iso}" in decay_out
-                background_mode = "floated" if has_background_param else "fixed"
-            else:
-                background_mode = "floated" if fit_cfg.get("fit_background") else "fixed"
-    
-            if background_mode == "fixed":
-                if fixed_from_baseline_info:
-                    baseline_rate_meta = float(
-                        fixed_from_baseline_info.get(
-                            "background_rate_Bq", baseline_rate_iso or 0.0
+                if baseline_rate_iso is None and baseline_live_time > 0:
+                    eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
+                    if isinstance(eff_cfg, list):
+                        eff_rate = eff_cfg[0]
+                    else:
+                        eff_rate = eff_cfg if eff_cfg is not None else 1.0
+                    if eff_rate > 0:
+                        baseline_rate_iso = baseline_counts.get(iso, 0.0) / (
+                            baseline_live_time * eff_rate
                         )
+    
+                # Run time-series fit (two-pass)
+                decay_out = None  # fresh variable each iteration
+                try:
+                    t_start_val = t_start_map.get(iso)
+                    if isinstance(t_start_val, datetime):
+                        t_start_fit = t_start_val.timestamp()
+                    else:
+                        t_start_fit = to_utc_datetime(
+                            t_start_val if t_start_val is not None else t0_global
+                        ).timestamp()
+                    decay_out = two_pass_time_fit(
+                        times_dict,
+                        t_start_fit,
+                        t_end_global_ts,
+                        fit_cfg,
+                        baseline_rate=baseline_rate_iso,
+                        weights=weights_map,
+                        strict=args.strict_covariance,
+                        fit_func=fit_time_series,
+                        fit_kwargs=base_fit_kwargs,
                     )
-                    norm_mode = baseline_handling.normalize_background_mode(
-                        fixed_from_baseline_info.get("mode")
-                    ) or "fixed_from_baseline"
-                    fixed_from_baseline_info = dict(fixed_from_baseline_info)
-                    fixed_from_baseline_info["mode"] = norm_mode
-                    background_mode = norm_mode
-                    baseline_background_provenance[iso] = dict(fixed_from_baseline_info)
-                elif baseline_rate_iso is not None:
-                    baseline_rate_meta = float(baseline_rate_iso)
-                    background_mode = baseline_handling.normalize_background_mode(
-                        "fixed_from_baseline"
-                    ) or "fixed_from_baseline"
+                    time_fit_results[iso] = decay_out
+                except Exception as e:
+                    logging.warning("Decay-curve fit for %s failed -> %s", iso, e)
+                    time_fit_results[iso] = {}
     
-            background_mode = baseline_handling.normalize_background_mode(background_mode)
+                # Record how the background parameter was treated
+                background_mode = "floated"
+                baseline_rate_meta: float | None = None
+                if isinstance(decay_out, FitResult):
+                    param_index = decay_out.param_index or {}
+                    has_background_param = f"B_{iso}" in param_index
+                    background_mode = "floated" if has_background_param else "fixed"
+                elif isinstance(decay_out, Mapping):
+                    has_background_param = f"B_{iso}" in decay_out
+                    background_mode = "floated" if has_background_param else "fixed"
+                else:
+                    background_mode = "floated" if fit_cfg.get("fit_background") else "fixed"
     
-            meta_entry: dict[str, Any] = {"mode": background_mode}
-            if baseline_rate_meta is not None:
-                meta_entry["baseline_rate_Bq"] = baseline_rate_meta
-            if (
-                fixed_from_baseline_info
-                and fixed_from_baseline_info.get("background_unc_Bq") is not None
-            ):
-                meta_entry["baseline_unc_Bq"] = float(
-                    fixed_from_baseline_info["background_unc_Bq"]
-                )
-            time_fit_background_meta[iso] = meta_entry
+                if background_mode == "fixed":
+                    if fixed_from_baseline_info:
+                        baseline_rate_meta = float(
+                            fixed_from_baseline_info.get(
+                                "background_rate_Bq", baseline_rate_iso or 0.0
+                            )
+                        )
+                        norm_mode = baseline_handling.normalize_background_mode(
+                            fixed_from_baseline_info.get("mode")
+                        ) or "fixed_from_baseline"
+                        fixed_from_baseline_info = dict(fixed_from_baseline_info)
+                        fixed_from_baseline_info["mode"] = norm_mode
+                        background_mode = norm_mode
+                        baseline_background_provenance[iso] = dict(fixed_from_baseline_info)
+                    elif baseline_rate_iso is not None:
+                        baseline_rate_meta = float(baseline_rate_iso)
+                        background_mode = baseline_handling.normalize_background_mode(
+                            "fixed_from_baseline"
+                        ) or "fixed_from_baseline"
     
-            # Store inputs for plotting later
-            time_plot_data[iso] = {
-                "events_times": iso_events["timestamp"].values,
-                "events_energy": iso_events["energy_MeV"].values,
-            }
+                background_mode = baseline_handling.normalize_background_mode(background_mode)
+    
+                meta_entry: dict[str, Any] = {"mode": background_mode}
+                if baseline_rate_meta is not None:
+                    meta_entry["baseline_rate_Bq"] = baseline_rate_meta
+                if (
+                    fixed_from_baseline_info
+                    and fixed_from_baseline_info.get("background_unc_Bq") is not None
+                ):
+                    meta_entry["baseline_unc_Bq"] = float(
+                        fixed_from_baseline_info["background_unc_Bq"]
+                    )
+                time_fit_background_meta[iso] = meta_entry
+    
+                # Store inputs for plotting later
+                time_plot_data[iso] = {
+                    "events_times": iso_events["timestamp"].values,
+                    "events_energy": iso_events["energy_MeV"].values,
+                }
     
         def _counts_corrected_rate(
             iso: str, params: Mapping[str, Any]
@@ -4258,7 +4258,7 @@ def main(argv=None):
         if not math.isfinite(ts_start):
             ts_start = to_utc_datetime(t0_cfg).timestamp()
         if math.isfinite(ts_end) and ts_end > ts_start:
-            ts_points = [float(ts_start), float(ts_end)]
+            ts_points = [float(t) for t in np.linspace(ts_start, ts_end, 50)]
         else:
             ts_points = [float(ts_start)]
     
