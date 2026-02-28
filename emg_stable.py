@@ -92,7 +92,8 @@ class StableEMG:
             return amplitude * norm.pdf(x, mu, sigma)
 
         # Validate sigma before division
-        if sigma <= 0:
+        sigma = np.asarray(sigma, dtype=float)
+        if np.any(sigma <= 0):
             raise ValueError(f"sigma must be positive, got {sigma}")
 
         # Ensure arrays for vectorized operations
@@ -288,9 +289,10 @@ def _emg_strategy_erfcx_exact(
     from scipy.special import erfcx
 
     x = np.asarray(x, dtype=float)
+    sigma = np.asarray(sigma, dtype=float)
 
     # Check for degenerate case
-    if sigma <= 0:
+    if np.any(sigma <= 0):
         raise ValueError(f"sigma must be positive, got {sigma}")
 
     if tau <= _get_tau_min():

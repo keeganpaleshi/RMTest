@@ -4544,29 +4544,16 @@ def main(argv=None):
                 plot_cfg.update(cfg.get("plotting", {}))
                 if run_periods_cfg:
                     plot_cfg["run_periods"] = run_periods_cfg
-                if not overlay:
-                    for other_iso in ("Po214", "Po218", "Po210"):
-                        if other_iso != iso:
-                            plot_cfg[f"window_{other_iso.lower()}"] = None
-                    ts_times = pdata["events_times"]
-                    ts_energy = pdata["events_energy"]
-                    fit_obj = time_fit_results.get(iso)
-                    fit_dict = _fit_params(fit_obj)
-                else:
-                    ts_times = df_analysis["timestamp"].values
-                    ts_energy = df_analysis["energy_MeV"].values
-                    fit_dict = {}
-                    for k in ("Po214", "Po218", "Po210"):
-                        obj = time_fit_results.get(k)
-                        if obj:
-                            fit_dict.update(_fit_params(obj))
+                # Per-isotope files always show only this isotope
+                for other_iso in ("Po214", "Po218", "Po210"):
+                    if other_iso != iso:
+                        plot_cfg[f"window_{other_iso.lower()}"] = None
+                ts_times = pdata["events_times"]
+                ts_energy = pdata["events_energy"]
+                fit_obj = time_fit_results.get(iso)
+                fit_dict = _fit_params(fit_obj)
 
-                iso_list_err = (
-                    [iso]
-                    if not overlay
-                    else [i for i in ("Po214", "Po218", "Po210") if time_fit_results.get(i)]
-                )
-                model_errs = _prepare_model_errors(ts_times, plot_cfg, iso_list_err)
+                model_errs = _prepare_model_errors(ts_times, plot_cfg, [iso])
 
                 ts_info = plot_time_series(
                     all_timestamps=ts_times,
@@ -4586,27 +4573,41 @@ def main(argv=None):
                         existing = isotope_series_data.setdefault(iso_key, [])
                         existing.extend(entries)
 
-                if overlay and save_individual_ts:
-                    indiv_cfg = dict(plot_cfg)
-                    for other_iso in ("Po214", "Po218", "Po210"):
-                        if other_iso != iso:
-                            indiv_cfg[f"window_{other_iso.lower()}"] = None
-                    indiv_times = pdata["events_times"]
-                    indiv_energy = pdata["events_energy"]
-                    indiv_errs = _prepare_model_errors(indiv_times, indiv_cfg, [iso])
-                    indiv_fit_dict = _fit_params(time_fit_results.get(iso))
-                    _ = plot_time_series(
-                        all_timestamps=indiv_times,
-                        all_energies=indiv_energy,
-                        fit_results=indiv_fit_dict,
-                        t_start=t0_global.timestamp(),
-                        t_end=t_end_global_ts,
-                        config=indiv_cfg,
-                        out_png=Path(out_dir) / f"time_series_{iso}_individual.png",
-                        model_errors=indiv_errs,
-                    )
             except Exception as e:
                 logger.warning("Could not create time-series plot for %s -> %s", iso, e)
+
+        # Combined overlay plot showing all isotopes together
+        if overlay:
+            try:
+                overlay_cfg = dict(cfg.get("time_fit", {}))
+                overlay_cfg.update(cfg.get("plotting", {}))
+                if run_periods_cfg:
+                    overlay_cfg["run_periods"] = run_periods_cfg
+                overlay_times = df_analysis["timestamp"].values
+                overlay_energy = df_analysis["energy_MeV"].values
+                overlay_fit_dict = {}
+                for k in ("Po214", "Po218", "Po210"):
+                    obj = time_fit_results.get(k)
+                    if obj:
+                        overlay_fit_dict.update(_fit_params(obj))
+                overlay_iso_list = [
+                    i for i in ("Po214", "Po218", "Po210") if time_fit_results.get(i)
+                ]
+                overlay_errs = _prepare_model_errors(
+                    overlay_times, overlay_cfg, overlay_iso_list
+                )
+                _ = plot_time_series(
+                    all_timestamps=overlay_times,
+                    all_energies=overlay_energy,
+                    fit_results=overlay_fit_dict,
+                    t_start=t0_global.timestamp(),
+                    t_end=t_end_global_ts,
+                    config=overlay_cfg,
+                    out_png=Path(out_dir) / "isotope_time_series.png",
+                    model_errors=overlay_errs,
+                )
+            except Exception as e:
+                logger.warning("Could not create overlay time-series plot -> %s", e)
     
         for iso_entries in isotope_series_data.values():
             iso_entries.sort(key=lambda row: row.get("t", 0.0))
