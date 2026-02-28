@@ -194,7 +194,7 @@ def run_radon_inference(
 
     chain_correction = str(radon_cfg.get("chain_correction", "none")).lower()
     if chain_correction not in {"none", "assume_equilibrium", "equilibrium", "forward_model"}:
-        logger.warning("Unknown chain_correction %s – defaulting to 'none'", chain_correction)
+        logger.warning("Unknown chain_correction %s --defaulting to 'none'", chain_correction)
         chain_correction = "none"
 
     bins = _prepare_bins(isotope_series, available_isotopes)

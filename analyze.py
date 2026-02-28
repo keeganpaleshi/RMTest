@@ -132,14 +132,14 @@ class PipelineTimer:
         finally:
             duration = time.perf_counter() - start
             self._sections.append((name, duration))
-            self.logger.info("⏱️ %s took %.2f s", name, duration)
+            self.logger.info("%s took %.2f s", name, duration)
 
     def report(self):
         if not self._sections:
             return
         total = time.perf_counter() - self._start
         lines = [f"Pipeline timing summary (total {total:.2f} s):"]
-        lines.extend(f"  • {name}: {duration:.2f} s" for name, duration in self._sections)
+        lines.extend(f"  - {name}: {duration:.2f} s" for name, duration in self._sections)
         self.logger.info("\n".join(lines))
 
 
@@ -2247,7 +2247,7 @@ def main(argv=None):
                 # Two‐point calibration as given in config
                 cal_params = derive_calibration_constants(adc_vals, config=cfg)
         except Exception:
-            logging.exception("calibration failed – using defaults")
+            logging.exception("calibration failed --using defaults")
             if not cfg.get("allow_fallback"):
                 raise
             calibration_valid = False
@@ -2436,7 +2436,7 @@ def main(argv=None):
                 t_end_base < events_all_ts.min() or t_start_base > events_all_ts.max()
             ):
                 logging.warning(
-                    "Baseline interval outside data range – taking counts anyway"
+                    "Baseline interval outside data range --taking counts anyway"
                 )
             base_events = events_all[mask_base_full].copy()
             # Apply calibration to the baseline events
@@ -2473,7 +2473,7 @@ def main(argv=None):
                     total_safe = monitor_safe + sample_safe
                     if monitor_safe <= 0 or total_safe <= 0:
                         raise ValueError(msg) from exc
-                    logger.warning("%s – clamping to non-negative values", msg)
+                    logger.warning("%s --clamping to non-negative values", msg)
                     monitor_vol = monitor_safe
                     sample_vol = sample_safe
                     dilution_factor = monitor_safe / total_safe
@@ -3737,7 +3737,7 @@ def main(argv=None):
                         total_safe = monitor_safe + sample_safe
                         if monitor_safe <= 0 or total_safe <= 0:
                             raise ValueError(msg) from exc
-                        logger.warning("%s – clamping to non-negative values", msg)
+                        logger.warning("%s --clamping to non-negative values", msg)
                         monitor_vol = monitor_safe
                         sample_vol = sample_safe
                         dilution_factor = monitor_safe / total_safe
@@ -4664,6 +4664,31 @@ def main(argv=None):
                     plot_volume_equiv_vs_time(radon_inference_results, Path(out_dir))
                 except Exception as exc:
                     logger.warning("Failed to create radon inference plots: %s", exc)
+
+                # Re-generate radon_trend using per-bin inference data
+                rn_inferred = radon_inference_results.get("rn_inferred")
+                if rn_inferred:
+                    trend_times = []
+                    trend_vals = []
+                    for entry in rn_inferred:
+                        try:
+                            t_val = float(entry.get("t"))
+                            rn_val = float(entry.get("rn_bq"))
+                        except (TypeError, ValueError, AttributeError):
+                            continue
+                        if np.isfinite(t_val) and np.isfinite(rn_val):
+                            trend_times.append(t_val)
+                            trend_vals.append(rn_val)
+                    if len(trend_times) > 2:
+                        try:
+                            plot_radon_trend(
+                                trend_times,
+                                trend_vals,
+                                Path(out_dir) / "radon_trend.png",
+                                config=cfg.get("plotting", {}),
+                            )
+                        except Exception as exc:
+                            logger.warning("Failed to update radon trend plot: %s", exc)
     
     # Additional visualizations
     with timer.section("additional_visualizations"):

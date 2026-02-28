@@ -31,7 +31,7 @@ def plot_radon_activity(ts, outdir):
     times = getattr(ts, "time", None)
     activity = getattr(ts, "activity", None)
     if times is None or activity is None or len(times) == 0 or len(activity) == 0:
-        logging.warning("plot_radon_activity: missing data – skipping plot")
+        logging.warning("plot_radon_activity: missing data --skipping plot")
         return
     fig, ax = plt.subplots()
     times_mpl = guard_mpl_times(times=times)
@@ -58,7 +58,7 @@ def plot_radon_trend(ts, outdir):
     times = getattr(ts, "time", None)
     activity = getattr(ts, "activity", None)
     if times is None or activity is None or len(times) == 0 or len(activity) == 0:
-        logging.warning("plot_radon_trend: missing data – skipping plot")
+        logging.warning("plot_radon_trend: missing data --skipping plot")
         return
     fig, ax = plt.subplots()
     times_mpl = guard_mpl_times(times=times)
@@ -81,7 +81,7 @@ def plot_total_radon(ts, outdir):
     times = getattr(ts, "time", None)
     total = getattr(ts, "activity", None)
     if times is None or total is None or len(times) == 0 or len(total) == 0:
-        logging.warning("plot_total_radon: missing data – skipping plot")
+        logging.warning("plot_total_radon: missing data --skipping plot")
         return
 
     fig, ax = plt.subplots()
