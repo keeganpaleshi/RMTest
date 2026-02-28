@@ -45,7 +45,6 @@ To run (without baseline) for a single merged CSV:
 """
 
 
-import argparse
 import sys
 import logging
 import random
@@ -95,6 +94,17 @@ from calibration import (
 )
 
 from fitting import fit_spectrum, fit_time_series, FitResult, FitParams
+from fitting_utils import (
+    fit_params,
+    config_efficiency,
+    fit_efficiency,
+    resolved_efficiency,
+    safe_float,
+    float_with_default,
+    cov_lookup,
+    fallback_uncertainty,
+)
+from cli_parser import parse_args
 from reporting import build_diagnostics, start_warning_capture
 
 from constants import (
@@ -612,79 +622,6 @@ def _regrid_series(
     return np.interp(target_times, times, values, left=first, right=last)
 
 
-def _fit_params(obj: FitResult | Mapping[str, float] | None) -> FitParams:
-    """Return fit parameters mapping from a ``FitResult`` or dictionary."""
-    if isinstance(obj, FitResult):
-        return cast(FitParams, obj.params)
-    if isinstance(obj, Mapping):
-        return obj  # type: ignore[return-value]
-    return {}
-
-
-def _config_efficiency(cfg: Mapping[str, Any], iso: str) -> float:
-    """Return the prior efficiency for ``iso`` from ``cfg``."""
-
-    eff_cfg = cfg.get("time_fit", {}).get(f"eff_{iso.lower()}")
-    if isinstance(eff_cfg, (list, tuple)):
-        return float(eff_cfg[0]) if eff_cfg else 1.0
-    if eff_cfg is None or eff_cfg == "null":
-        return 1.0
-    try:
-        return float(eff_cfg)
-    except (TypeError, ValueError):
-        return 1.0
-
-
-def _fit_efficiency(params: Mapping[str, Any] | None, iso: str) -> float | None:
-    """Return fitted efficiency for ``iso`` if present in ``params``."""
-
-    if not params:
-        return None
-
-    keys = ("eff", f"eff_{iso}", f"eff_{iso.lower()}")
-    for key in keys:
-        val = params.get(key)
-        if val is None:
-            continue
-        try:
-            return float(val)
-        except (TypeError, ValueError):
-            continue
-    return None
-
-
-def _resolved_efficiency(
-    cfg: Mapping[str, Any], iso: str, params: Mapping[str, Any] | None
-) -> float:
-    """Return efficiency for ``iso`` preferring fitted values over priors."""
-
-    fitted = _fit_efficiency(params, iso)
-    if fitted is not None and fitted > 0:
-        return fitted
-    return _config_efficiency(cfg, iso)
-
-
-def _safe_float(value: Any) -> float | None:
-    """Return ``value`` coerced to ``float`` when it is finite."""
-
-    try:
-        if value is None:
-            return None
-        coerced = float(value)
-    except (TypeError, ValueError):
-        return None
-    if not math.isfinite(coerced):
-        return None
-    return coerced
-
-
-def _float_with_default(value: Any, default: float) -> float:
-    """Return ``value`` as ``float`` or ``default`` when coercion fails."""
-
-    coerced = _safe_float(value)
-    return default if coerced is None else coerced
-
-
 def _radon_activity_curve_from_fit(
     iso: str,
     fit_result: FitResult | Mapping[str, Any] | None,
@@ -695,76 +632,19 @@ def _radon_activity_curve_from_fit(
     """Return radon activity curve using sanitized fit parameters."""
 
     raw_E = fit_params.get("E_corrected")
-    if _safe_float(raw_E) is None:
+    if safe_float(raw_E) is None:
         raw_E = fit_params.get(f"E_{iso}")
-    E = _float_with_default(raw_E, 0.0)
+    E = float_with_default(raw_E, 0.0)
 
     raw_dE = fit_params.get("dE_corrected")
-    if _safe_float(raw_dE) is None:
+    if safe_float(raw_dE) is None:
         raw_dE = fit_params.get(f"dE_{iso}", 0.0)
-    dE = _float_with_default(raw_dE, 0.0)
-    N0 = _float_with_default(fit_params.get(f"N0_{iso}", 0.0), 0.0)
-    dN0 = _float_with_default(fit_params.get(f"dN0_{iso}", 0.0), 0.0)
+    dE = float_with_default(raw_dE, 0.0)
+    N0 = float_with_default(fit_params.get(f"N0_{iso}", 0.0), 0.0)
+    dN0 = float_with_default(fit_params.get(f"dN0_{iso}", 0.0), 0.0)
     hl = _hl_value(cfg, iso)
-    cov = _cov_lookup(fit_result, f"E_{iso}", f"N0_{iso}")
+    cov = cov_lookup(fit_result, f"E_{iso}", f"N0_{iso}")
     return radon_activity.radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
-
-
-def _cov_lookup(
-    fit_result: FitResult | Mapping[str, float] | None, name1: str, name2: str
-) -> float:
-    """Return covariance between two parameters if present."""
-    if isinstance(fit_result, FitResult):
-        try:
-            return float(fit_result.cov_df.loc[name1, name2])
-        except KeyError:
-            try:
-                return float(fit_result.get_cov(name1, name2))
-            except KeyError:
-                return 0.0
-    if isinstance(fit_result, Mapping):
-        return float(fit_result.get(f"cov_{name1}_{name2}", 0.0))
-    return 0.0
-
-
-def _fallback_uncertainty(
-    rate: float | None, fit_result: FitResult | Mapping[str, float] | None, param: str
-) -> float:
-    """Return uncertainty from covariance or a Poisson estimate."""
-
-    def _try_var(value: Any) -> float | None:
-        try:
-            var_val = float(value)
-        except (TypeError, ValueError):
-            return None
-        if not math.isfinite(var_val) or var_val <= 0:
-            return None
-        return var_val
-
-    candidates: list[Any] = []
-    if isinstance(fit_result, FitResult):
-        if fit_result.cov is not None and fit_result.param_index is not None:
-            idx = fit_result.param_index.get(param)
-            if idx is not None and idx < fit_result.cov.shape[0]:
-                candidates.append(fit_result.cov[idx, idx])
-        candidates.append(fit_result.params.get(f"cov_{param}_{param}"))
-    elif isinstance(fit_result, Mapping):
-        candidates.append(fit_result.get(f"cov_{param}_{param}"))
-
-    for cand in candidates:
-        var = _try_var(cand)
-        if var is not None:
-            return math.sqrt(var)
-
-    try:
-        rate_val = float(rate) if rate is not None else None
-    except (TypeError, ValueError):
-        rate_val = None
-
-    if rate_val is None or not math.isfinite(rate_val):
-        return 0.0
-
-    return math.sqrt(abs(rate_val))
 
 
 def _ensure_events(events: pd.DataFrame, stage: str) -> None:
@@ -1300,7 +1180,7 @@ def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
     """Propagate fit parameter errors to the model curve."""
     if fit_obj is None:
         return None
-    params = _fit_params(fit_obj)
+    params = fit_params(fit_obj)
     hl = _hl_value(cfg, iso)
     eff_cfg = cfg.get("time_fit", {}).get(f"eff_{iso.lower()}")
     if isinstance(eff_cfg, list):
@@ -1311,7 +1191,7 @@ def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
     dE = params.get("dE_corrected", params.get(f"dE_{iso}", 0.0))
     dN0 = params.get(f"dN0_{iso}", 0.0)
     dB = params.get(f"dB_{iso}", params.get("dB", 0.0))
-    cov = _cov_lookup(fit_obj, f"E_{iso}", f"N0_{iso}")
+    cov = cov_lookup(fit_obj, f"E_{iso}", f"N0_{iso}")
     t = np.asarray(centers, dtype=float)
     exp_term = np.exp(-lam * t)
     dR_dE = eff * (1.0 - exp_term)
@@ -1322,336 +1202,6 @@ def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
         var += 2.0 * dR_dE * dR_dN0 * cov
     sigma_rate = np.sqrt(var)
     return sigma_rate if normalise else sigma_rate * widths
-
-
-def parse_args(argv=None):
-    """Parse command line arguments."""
-    p = argparse.ArgumentParser(
-        description="Full Radon Monitor Analysis Pipeline",
-        epilog=(
-            "See the README's Opt-in section for details on experimental flags "
-            "such as background_model=loglin_unit and likelihood=extended."
-        ),
-    )
-    default_cfg = Path(__file__).resolve().with_name("config.yaml")
-    p.add_argument(
-        "--config",
-        "-c",
-        default=str(default_cfg),
-        help="Path to YAML or JSON configuration file (default: config.yaml)",
-    )
-    default_input = Path.cwd() / "merged_output.csv"
-    p.add_argument(
-        "--input",
-        "-i",
-        default=str(default_input),
-        help=(
-            "CSV of merged event data (must contain at least: timestamp, adc) "
-            f"(default: {default_input})"
-        ),
-    )
-    p.add_argument(
-        "--output_dir",
-        "-o",
-        default="results",
-        help=(
-            "Directory under which to create a timestamped analysis folder "
-            "(override with --job-id; default: results)"
-        ),
-    )
-    p.add_argument(
-        "--timezone",
-        default="UTC",
-        help="Timezone for naive input timestamps (default: UTC)",
-    )
-    p.add_argument(
-        "--baseline_range",
-        nargs=2,
-        metavar=("TSTART", "TEND"),
-        type=str,
-        help=(
-            "Optional baseline-run interval. Providing this option overrides `baseline.range` in config.yaml. Provide two values (either ISO strings or epoch floats). If set, those events are extracted (same energy cuts) and listed in `baseline` of the summary."
-        ),
-    )
-    p.add_argument(
-        "--baseline-mode",
-        choices=["none", "electronics", "radon", "all"],
-        default="all",
-        help="Background removal strategy (default: all)",
-    )
-    p.add_argument(
-        "--iso",
-        choices=["radon", "po218", "po214"],
-        help=(
-            "Select which progeny drives the radon estimate "
-            "(overrides analysis_isotope in config.yaml)"
-        ),
-    )
-    p.add_argument(
-        "--allow-negative-baseline",
-        action="store_true",
-        help="Allow negative baseline-corrected rates",
-    )
-    p.add_argument(
-        "--allow-negative-activity",
-        action="store_true",
-        help="Continue if radon activity is negative",
-    )
-    p.add_argument(
-        "--check-baseline-only",
-        action="store_true",
-        help="Exit after printing baseline diagnostics",
-    )
-    p.add_argument(
-        "--burst-mode",
-        choices=["none", "micro", "rate", "both"],
-        help="Burst filtering mode to pass to apply_burst_filter. Providing this option overrides `burst_filter.burst_mode` in config.yaml",
-    )
-    p.add_argument(
-        "--burst-sensitivity-scan",
-        action="store_true",
-        help="Scan burst parameters and plot activity vs burst window/multiplier",
-    )
-    p.add_argument(
-        "--job-id",
-        help="Optional identifier used for the results folder instead of the timestamp",
-    )
-    p.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="Overwrite existing results folder if it already exists",
-    )
-    p.add_argument(
-        "--efficiency-json",
-        help="Path to a JSON file containing efficiency inputs to merge into the configuration",
-    )
-    p.add_argument(
-        "--systematics-json",
-        help="Path to a JSON file with systematics settings overriding the config",
-    )
-    p.add_argument(
-        "--spike-count",
-        type=float,
-        help="Counts observed during a spike run for efficiency",
-    )
-    p.add_argument(
-        "--spike-count-err",
-        type=float,
-        help="Uncertainty on spike counts",
-    )
-    p.add_argument(
-        "--spike-activity",
-        type=float,
-        help="Known spike activity in Bq",
-    )
-    p.add_argument(
-        "--spike-duration",
-        type=float,
-        help="Duration of the spike run in seconds",
-    )
-    p.add_argument(
-        "--no-spike",
-        action="store_true",
-        help="Disable spike efficiency",
-    )
-    p.add_argument(
-        "--analysis-end-time",
-        type=str,
-        help="Ignore events occurring after this ISO timestamp. Providing this option overrides `analysis.analysis_end_time` in config.yaml",
-    )
-    p.add_argument(
-        "--analysis-start-time",
-        type=str,
-        help="Reference start time of the analysis (ISO string or epoch). Overrides `analysis.analysis_start_time` in config.yaml",
-    )
-    p.add_argument(
-        "--background-model",
-        choices=["linear", "loglin_unit"],
-        help="Experimental (opt-in) background model. Defaults keep legacy behavior.",
-    )
-    p.add_argument(
-        "--likelihood",
-        choices=["current", "extended"],
-        help="Experimental (opt-in) likelihood. Defaults keep legacy behavior.",
-    )
-    p.add_argument(
-        "--spike-start-time",
-        help="Discard events after this ISO timestamp. Providing this option overrides `analysis.spike_start_time` in config.yaml",
-    )
-    p.add_argument(
-        "--spike-end-time",
-        help="Discard events before this ISO timestamp. Providing this option overrides `analysis.spike_end_time` in config.yaml",
-    )
-    p.add_argument(
-        "--spike-period",
-        nargs=2,
-        action="append",
-        metavar=("START", "END"),
-        help="Discard events between START and END (can be given multiple times). Providing this option overrides `analysis.spike_periods` in config.yaml",
-    )
-    p.add_argument(
-        "--run-period",
-        nargs=2,
-        action="append",
-        metavar=("START", "END"),
-        help="Keep events between START and END (can be given multiple times). Providing this option overrides `analysis.run_periods` in config.yaml",
-    )
-    p.add_argument(
-        "--radon-interval",
-        nargs=2,
-        metavar=("START", "END"),
-        help="Time interval to evaluate radon delta. Providing this option overrides `analysis.radon_interval` in config.yaml",
-    )
-    p.add_argument(
-        "--slope",
-        type=float,
-        help="Apply a linear ADC drift correction with the given slope. Providing this option overrides `systematics.adc_drift_rate` in config.yaml",
-    )
-    p.add_argument(
-        "--noise-cutoff",
-        type=int,
-        help=(
-            "ADC threshold for the noise cut. Providing this option overrides "
-            "`calibration.noise_cutoff` in config.yaml"
-        ),
-    )
-    p.add_argument(
-        "--calibration-slope",
-        type=float,
-        help=(
-            "Fixed MeV per ADC conversion slope. Providing this option overrides "
-            "`calibration.slope_MeV_per_ch` in config.yaml"
-        ),
-    )
-    p.add_argument(
-        "--float-slope",
-        action="store_true",
-        help="Allow provided calibration slope to float during the two-point fit",
-    )
-    p.add_argument(
-        "--calibration-method",
-        choices=["two-point", "auto"],
-        help=(
-            "Energy calibration method. Providing this option overrides "
-            "`calibration.method` in config.yaml"
-        ),
-    )
-    p.add_argument(
-        "--settle-s",
-        type=float,
-        help="Discard events occurring this many seconds after the start",
-    )
-    p.add_argument(
-        "--hl-po214",
-        type=float,
-        help=(
-            "Half-life to use for Po-214 in seconds. "
-            "Providing this option overrides `time_fit.hl_po214` in config.yaml"
-        ),
-    )
-    p.add_argument(
-        "--hl-po218",
-        type=float,
-        help=(
-            "Half-life to use for Po-218 in seconds. "
-            "Providing this option overrides `time_fit.hl_po218` in config.yaml"
-        ),
-    )
-    p.add_argument(
-        "--eff-fixed",
-        action="store_true",
-        help="Fix all efficiencies to exactly 1.0 (no prior)",
-    )
-    p.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable debug logging. Providing this option overrides `pipeline.log_level` in config.yaml",
-    )
-    p.add_argument(
-        "--plot-time-binning-mode",
-        dest="time_bin_mode_new",
-        choices=["auto", "fd", "fixed"],
-        help="Time-series binning mode. Providing this option overrides `plotting.plot_time_binning_mode` in config.yaml",
-    )
-    p.add_argument(
-        "--time-bin-mode",
-        dest="time_bin_mode_old",
-        choices=["auto", "fd", "fixed"],
-        help="DEPRECATED alias for --plot-time-binning-mode",
-    )
-    p.add_argument(
-        "--plot-time-bin-width",
-        dest="time_bin_width",
-        type=float,
-        help="Fixed time bin width in seconds. Providing this option overrides `plotting.plot_time_bin_width_s` in config.yaml",
-    )
-    p.add_argument(
-        "--dump-ts-json",
-        "--dump-time-series-json",
-        dest="dump_ts_json",
-        action="store_true",
-        help="Write *_ts.json files containing binned time-series data",
-    )
-    p.add_argument(
-        "--ambient-file",
-        help=(
-            "Two-column text file of timestamp and ambient concentration in Bq/L"
-        ),
-    )
-    p.add_argument(
-        "--ambient-concentration",
-        type=float,
-        help=(
-            "Ambient radon concentration in Bq per liter for "
-            "equivalent air plot. Providing this option overrides "
-            "`analysis.ambient_concentration` in config.yaml"
-        ),
-    )
-    p.add_argument(
-        "--seed",
-        type=int,
-        help="Override random seed used by analysis algorithms. Providing this option overrides `pipeline.random_seed` in config.yaml",
-    )
-    p.add_argument(
-        "--palette",
-        help="Color palette for plots. Providing this option overrides `plotting.palette` in config.yaml",
-    )
-    p.add_argument(
-        "--strict-covariance",
-        action="store_true",
-        help="Fail if fit covariance matrices are not positive definite",
-    )
-    p.add_argument(
-        "--hierarchical-summary",
-        metavar="OUTFILE",
-        help=(
-            "Combine half-life and calibration results from previous runs and "
-            "write a hierarchical fit summary to OUTFILE"
-        ),
-    )
-    p.add_argument(
-        "--reproduce",
-        metavar="SUMMARY",
-        help="Load config and seed from SUMMARY to reproduce a previous run",
-    )
-
-    args = p.parse_args(argv)
-
-    if args.time_bin_mode_new is not None and args.time_bin_mode_old is not None:
-        if args.time_bin_mode_new != args.time_bin_mode_old:
-            p.error(
-                "--plot-time-binning-mode conflicts with deprecated --time-bin-mode"
-            )
-
-    args.time_bin_mode = (
-        args.time_bin_mode_new
-        if args.time_bin_mode_new is not None
-        else args.time_bin_mode_old
-    )
-    del args.time_bin_mode_new
-    del args.time_bin_mode_old
-
-    return args
 
 
 def main(argv=None):
@@ -1783,7 +1333,7 @@ def main(argv=None):
         cfg.setdefault("pipeline", {})["random_seed"] = int(args.seed)
 
     if args.ambient_concentration is not None:
-        ambient_cli = _safe_float(args.ambient_concentration)
+        ambient_cli = safe_float(args.ambient_concentration)
         if ambient_cli is None:
             logger.warning(
                 "Ignoring ambient concentration override %r; could not convert to float",
@@ -3209,7 +2759,7 @@ def main(argv=None):
                 if explicit_null:
                     eff_value = None
                 else:
-                    eff_value = _config_efficiency(cfg, iso)
+                    eff_value = config_efficiency(cfg, iso)
             fit_cfg = {
                 "isotopes": {
                     iso: {
@@ -3349,9 +2899,9 @@ def main(argv=None):
             if live_time_iso is None or live_time_iso <= 0:
                 return None
     
-            eff_val = _resolved_efficiency(cfg, iso, params)
+            eff_val = resolved_efficiency(cfg, iso, params)
             if eff_val is None or eff_val <= 0:
-                eff_val = _config_efficiency(cfg, iso)
+                eff_val = config_efficiency(cfg, iso)
             if eff_val is None or eff_val <= 0:
                 return None
     
@@ -3399,7 +2949,7 @@ def main(argv=None):
                 return None
     
         if fit214_obj:
-            p = _fit_params(fit214_obj)
+            p = fit_params(fit214_obj)
             rate_val = _coerce_float(p.get("E_corrected", p.get("E_Po214")))
             err_val = _coerce_float(p.get("dE_corrected", p.get("dE_Po214")))
             fallback_needed = False
@@ -3415,7 +2965,7 @@ def main(argv=None):
                     p["dE_corrected"] = err_val
                     p["counts_fallback"] = True
             if err_val is None or not math.isfinite(err_val) or err_val < 0:
-                err_val = _fallback_uncertainty(rate_val, fit214_obj, "E_Po214")
+                err_val = fallback_uncertainty(rate_val, fit214_obj, "E_Po214")
             fit214 = SimpleNamespace(
                 rate=rate_val,
                 err=err_val,
@@ -3423,7 +2973,7 @@ def main(argv=None):
                 params=p,
             )
         if fit218_obj:
-            p = _fit_params(fit218_obj)
+            p = fit_params(fit218_obj)
             rate_val = _coerce_float(p.get("E_corrected", p.get("E_Po218")))
             err_val = _coerce_float(p.get("dE_corrected", p.get("dE_Po218")))
             fallback_needed = False
@@ -3439,7 +2989,7 @@ def main(argv=None):
                     p["dE_corrected"] = err_val
                     p["counts_fallback"] = True
             if err_val is None or not math.isfinite(err_val) or err_val < 0:
-                err_val = _fallback_uncertainty(rate_val, fit218_obj, "E_Po218")
+                err_val = fallback_uncertainty(rate_val, fit218_obj, "E_Po218")
             fit218 = SimpleNamespace(
                 rate=rate_val,
                 err=err_val,
@@ -3453,23 +3003,23 @@ def main(argv=None):
             have_218 = (
                 fit218
                 and fit218.counts is not None
-                and _fit_efficiency(fit218.params, "Po218") is not None
+                and fit_efficiency(fit218.params, "Po218") is not None
             )
             have_214 = (
                 fit214
                 and fit214.counts is not None
-                and _fit_efficiency(fit214.params, "Po214") is not None
+                and fit_efficiency(fit214.params, "Po214") is not None
             )
             if have_218 or have_214:
                 N218 = fit218.counts if have_218 else None
                 N214 = fit214.counts if have_214 else None
                 eps218 = (
-                    _resolved_efficiency(cfg, "Po218", fit218.params)
+                    resolved_efficiency(cfg, "Po218", fit218.params)
                     if fit218
                     else 1.0
                 )
                 eps214 = (
-                    _resolved_efficiency(cfg, "Po214", fit214.params)
+                    resolved_efficiency(cfg, "Po214", fit214.params)
                     if fit214
                     else 1.0
                 )
@@ -3714,8 +3264,8 @@ def main(argv=None):
         else:
             if baseline_live_time > 0:
                 for iso, n in baseline_counts.items():
-                    params = _fit_params(time_fit_results.get(iso))
-                    eff = _resolved_efficiency(cfg, iso, params)
+                    params = fit_params(time_fit_results.get(iso))
+                    eff = resolved_efficiency(cfg, iso, params)
                     if eff > 0:
                         baseline_rates[iso] = n / (baseline_live_time * eff)
                         baseline_unc[iso] = np.sqrt(n) / (baseline_live_time * eff)
@@ -3779,7 +3329,7 @@ def main(argv=None):
         activity_rows = []
     
         for iso, fit in time_fit_results.items():
-            params = _fit_params(fit)
+            params = fit_params(fit)
             if not params or f"E_{iso}" not in params:
                 continue
     
@@ -3803,7 +3353,7 @@ def main(argv=None):
             err_fit = params.get(f"dE_{iso}", 0.0)
             live_time_iso = iso_live_time.get(iso, 0.0)
             count = iso_counts_raw.get(iso, baseline_counts.get(iso, 0.0))
-            eff = _resolved_efficiency(cfg, iso, params)
+            eff = resolved_efficiency(cfg, iso, params)
             base_cnt = baseline_counts.get(iso, 0.0)
             s = scales.get(iso, 1.0)
     
@@ -3876,7 +3426,7 @@ def main(argv=None):
                 {
                     "baseline": baseline_info,
                     "time_fit": {
-                        iso: _fit_params(time_fit_results.get(iso))
+                        iso: fit_params(time_fit_results.get(iso))
                         for iso in isotopes_to_subtract
                     },
                     "allow_negative_baseline": cfg.get("allow_negative_baseline"),
@@ -3908,7 +3458,7 @@ def main(argv=None):
         rate214 = None
         err214 = None
         if "Po214" in time_fit_results:
-            fit_dict = _fit_params(time_fit_results["Po214"])
+            fit_dict = fit_params(time_fit_results["Po214"])
             rate_raw = fit_dict.get("E_corrected", fit_dict.get("E_Po214"))
             try:
                 rate214 = float(rate_raw) if rate_raw is not None else None
@@ -3922,7 +3472,7 @@ def main(argv=None):
             if err_val is not None and (not math.isfinite(err_val) or err_val < 0):
                 err_val = None
             if err_val is None:
-                err214 = _fallback_uncertainty(
+                err214 = fallback_uncertainty(
                     rate214,
                     time_fit_results.get("Po214"),
                     "E_Po214",
@@ -3933,7 +3483,7 @@ def main(argv=None):
         rate218 = None
         err218 = None
         if "Po218" in time_fit_results:
-            fit_dict = _fit_params(time_fit_results["Po218"])
+            fit_dict = fit_params(time_fit_results["Po218"])
             rate_raw = fit_dict.get("E_corrected", fit_dict.get("E_Po218"))
             try:
                 rate218 = float(rate_raw) if rate_raw is not None else None
@@ -3947,7 +3497,7 @@ def main(argv=None):
             if err_val is not None and (not math.isfinite(err_val) or err_val < 0):
                 err_val = None
             if err_val is None:
-                err218 = _fallback_uncertainty(
+                err218 = fallback_uncertainty(
                     rate218,
                     time_fit_results.get("Po218"),
                     "E_Po218",
@@ -4049,20 +3599,20 @@ def main(argv=None):
             delta214 = err_delta214 = None
             if "Po214" in time_fit_results:
                 fit_result = time_fit_results["Po214"]
-                fit = _fit_params(fit_result)
-                E = _safe_float(fit.get("E_corrected", fit.get("E_Po214")))
+                fit = fit_params(fit_result)
+                E = safe_float(fit.get("E_corrected", fit.get("E_Po214")))
                 if E is None:
                     logger.warning(
                         "Skipping radon delta calculation for Po214 because the fitted E parameter is missing or non-finite."
                     )
                 else:
-                    dE = _float_with_default(
+                    dE = float_with_default(
                         fit.get("dE_corrected", fit.get("dE_Po214", 0.0)), 0.0
                     )
-                    N0 = _float_with_default(fit.get("N0_Po214", 0.0), 0.0)
-                    dN0 = _float_with_default(fit.get("dN0_Po214", 0.0), 0.0)
+                    N0 = float_with_default(fit.get("N0_Po214", 0.0), 0.0)
+                    dN0 = float_with_default(fit.get("dN0_Po214", 0.0), 0.0)
                     hl = _hl_value(cfg, "Po214")
-                    cov = _safe_float(_cov_lookup(fit_result, "E_Po214", "N0_Po214"))
+                    cov = safe_float(cov_lookup(fit_result, "E_Po214", "N0_Po214"))
                     delta214, err_delta214 = radon_delta(
                         t_start_rel,
                         t_end_rel,
@@ -4077,20 +3627,20 @@ def main(argv=None):
             delta218 = err_delta218 = None
             if "Po218" in time_fit_results:
                 fit_result = time_fit_results["Po218"]
-                fit = _fit_params(fit_result)
-                E = _safe_float(fit.get("E_corrected", fit.get("E_Po218")))
+                fit = fit_params(fit_result)
+                E = safe_float(fit.get("E_corrected", fit.get("E_Po218")))
                 if E is None:
                     logger.warning(
                         "Skipping radon delta calculation for Po218 because the fitted E parameter is missing or non-finite."
                     )
                 else:
-                    dE = _float_with_default(
+                    dE = float_with_default(
                         fit.get("dE_corrected", fit.get("dE_Po218", 0.0)), 0.0
                     )
-                    N0 = _float_with_default(fit.get("N0_Po218", 0.0), 0.0)
-                    dN0 = _float_with_default(fit.get("dN0_Po218", 0.0), 0.0)
+                    N0 = float_with_default(fit.get("N0_Po218", 0.0), 0.0)
+                    dN0 = float_with_default(fit.get("dN0_Po218", 0.0), 0.0)
                     hl = _hl_value(cfg, "Po218")
-                    cov = _safe_float(_cov_lookup(fit_result, "E_Po218", "N0_Po218"))
+                    cov = safe_float(cov_lookup(fit_result, "E_Po218", "N0_Po218"))
                     delta218, err_delta218 = radon_delta(
                         t_start_rel,
                         t_end_rel,
@@ -4235,11 +3785,11 @@ def main(argv=None):
         radon = estimate_radon_activity(
             N218=fit218.counts if fit218 else 0,
             epsilon218=(
-                _resolved_efficiency(cfg, "Po218", fit218.params) if fit218 else 1.0
+                resolved_efficiency(cfg, "Po218", fit218.params) if fit218 else 1.0
             ),
             N214=fit214.counts if fit214 else 0,
             epsilon214=(
-                _resolved_efficiency(cfg, "Po214", fit214.params) if fit214 else 1.0
+                resolved_efficiency(cfg, "Po214", fit214.params) if fit214 else 1.0
             ),
             f218=1.0,
             f214=1.0,
@@ -4551,7 +4101,7 @@ def main(argv=None):
                     ts_times = pdata["events_times"]
                     ts_energy = pdata["events_energy"]
                     fit_obj = time_fit_results.get(iso)
-                    fit_dict = _fit_params(fit_obj)
+                    fit_dict = fit_params(fit_obj)
                 else:
                     ts_times = df_analysis["timestamp"].values
                     ts_energy = df_analysis["energy_MeV"].values
@@ -4559,7 +4109,7 @@ def main(argv=None):
                     for k in ("Po214", "Po218", "Po210"):
                         obj = time_fit_results.get(k)
                         if obj:
-                            fit_dict.update(_fit_params(obj))
+                            fit_dict.update(fit_params(obj))
 
                 iso_list_err = (
                     [iso]
@@ -4594,7 +4144,7 @@ def main(argv=None):
                     indiv_times = pdata["events_times"]
                     indiv_energy = pdata["events_energy"]
                     indiv_errs = _prepare_model_errors(indiv_times, indiv_cfg, [iso])
-                    indiv_fit_dict = _fit_params(time_fit_results.get(iso))
+                    indiv_fit_dict = fit_params(time_fit_results.get(iso))
                     _ = plot_time_series(
                         all_timestamps=indiv_times,
                         all_energies=indiv_energy,
@@ -4779,7 +4329,7 @@ def main(argv=None):
             fit_obj = time_fit_results.get(iso)
             if fit_obj is None:
                 continue
-            fit_params = _fit_params(fit_obj)
+            fit_params = fit_params(fit_obj)
             fit_ok = bool(fit_params.get("fit_valid", True))
             iso_flag = f"fit_valid_{iso}"
             if iso_flag in fit_params:
@@ -4966,7 +4516,7 @@ def main(argv=None):
             A214_tr = None
             if "Po214" in time_fit_results:
                 fit_result = time_fit_results["Po214"]
-                fit = _fit_params(fit_result)
+                fit = fit_params(fit_result)
                 if fit.get("fit_valid", True) and fit.get("fit_valid_Po214", True):
                     A214_tr, _ = _radon_activity_curve_from_fit(
                         "Po214", fit_result, fit, rel_trend, cfg
@@ -4974,7 +4524,7 @@ def main(argv=None):
             A218_tr = None
             if "Po218" in time_fit_results:
                 fit_result = time_fit_results["Po218"]
-                fit = _fit_params(fit_result)
+                fit = fit_params(fit_result)
                 if fit.get("fit_valid", True) and fit.get("fit_valid_Po218", True):
                     A218_tr, _ = _radon_activity_curve_from_fit(
                         "Po218", fit_result, fit, rel_trend, cfg
