@@ -254,6 +254,19 @@ def parse_datetime(value):
     return _parse_timestamp(value)
 
 
+def _datetime64_divisor(dt_series: pd.Series) -> float:
+    """Return the divisor to convert int64 representation to epoch seconds."""
+    res = str(dt_series.dtype)
+    if "[ns" in res:
+        return 1e9
+    if "[us" in res:
+        return 1e6
+    if "[ms" in res:
+        return 1e3
+    # seconds or unknown
+    return 1.0
+
+
 def to_seconds(series: pd.Series) -> np.ndarray:
     """Return float seconds from a timestamp series.
 
@@ -271,12 +284,12 @@ def to_seconds(series: pd.Series) -> np.ndarray:
     # 2) Already datetime64 -> ensure UTC then convert to epoch seconds
     if pdt.is_datetime64_any_dtype(series):
         dt = series.dt.tz_convert("UTC") if series.dt.tz is not None else series.dt.tz_localize("UTC")
-        return (dt.view("int64") / 1e9).astype(float)
+        return dt.astype("int64") / _datetime64_divisor(dt)
 
     # 3) Object/strings: try datetime parse first; if it fails, fall back to numeric
     dt = pd.to_datetime(series, errors="coerce", utc=True)
     if dt.notna().any():
-        return (dt.view("int64") / 1e9).astype(float)
+        return dt.astype("int64") / _datetime64_divisor(dt)
     return pd.to_numeric(series, errors="coerce").to_numpy(dtype=float)
 
 

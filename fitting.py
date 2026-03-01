@@ -224,7 +224,7 @@ def make_linear_bkg(
     def shape(E, beta0, beta1):
         exp_grid = _safe_exp(beta0 + beta1 * (grid - Eref))
         # Use np.trapezoid (NumPy 2.0+) or fall back to np.trapz
-        trapz_func = getattr(np, 'trapezoid', np.trapz)
+        trapz_func = getattr(np, 'trapezoid', None) or np.trapz
         Z = trapz_func(exp_grid, grid)
         Z = max(Z, 1e-300)
         E = np.asarray(E, dtype=float)

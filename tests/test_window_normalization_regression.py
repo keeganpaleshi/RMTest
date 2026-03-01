@@ -24,6 +24,7 @@ def test_extended_mu_equals_sum_of_yields_after_window_renorm():
     E = np.linspace(domain[0], domain[1], 6001)
     lam = spectral(E, params, domain)
     mu = integral_of_intensity(params, domain, iso_list=iso_list, use_emg=True)
-    num_mu = np.trapz(lam, E)
+    _trapz = getattr(np, "trapezoid", None) or np.trapz
+    num_mu = _trapz(lam, E)
     assert abs(mu - (300+400+300)) < 1e-6
     assert abs(num_mu - mu) / mu < 1e-3

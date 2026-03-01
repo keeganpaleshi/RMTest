@@ -748,7 +748,11 @@ def load_events(csv_path, *, start=None, end=None, column_map=None):
         if mask.any():
             # Use .copy() to avoid SettingWithCopyWarning
             parsed = parsed.copy()
-            parsed.loc[mask] = pd.to_datetime(ts_raw.loc[mask], utc=True, errors="coerce")
+            fallback = pd.to_datetime(ts_raw.loc[mask], utc=True, errors="coerce")
+            # Widen to microsecond resolution so sub-second ISO timestamps
+            # can be assigned without a lossy-cast error (pandas >= 2.0).
+            parsed = parsed.astype("datetime64[us, UTC]")
+            parsed.loc[mask] = fallback
 
         # Validate timestamp range to catch incorrect unit assumptions
         # (e.g., milliseconds instead of seconds)

@@ -28,7 +28,7 @@ def test_datetime_pipeline(tmp_path):
     df.to_csv(csv_path, index=False)
 
     loaded = io_utils.load_events(csv_path)
-    assert str(loaded["timestamp"].dtype) == "datetime64[ns, UTC]"
+    assert str(loaded["timestamp"].dtype) in ("datetime64[s, UTC]", "datetime64[ns, UTC]", "datetime64[us, UTC]")
 
     bins = np.arange(0, 5)
     subtracted, _ = baseline.subtract(
@@ -39,7 +39,7 @@ def test_datetime_pipeline(tmp_path):
         t_base1=datetime(1970, 1, 1, 0, 0, 2, tzinfo=timezone.utc),
         mode="all",
     )
-    assert str(subtracted["timestamp"].dtype) == "datetime64[ns, UTC]"
+    assert str(subtracted["timestamp"].dtype) in ("datetime64[s, UTC]", "datetime64[ns, UTC]", "datetime64[us, UTC]")
 
     args = argparse.Namespace(slope=None)
     analysis_df, *_ = analyze.prepare_analysis_df(
@@ -53,4 +53,4 @@ def test_datetime_pipeline(tmp_path):
         cfg={},
         args=args,
     )
-    assert str(analysis_df["timestamp"].dtype) == "datetime64[ns, UTC]"
+    assert str(analysis_df["timestamp"].dtype) in ("datetime64[s, UTC]", "datetime64[ns, UTC]", "datetime64[us, UTC]")
