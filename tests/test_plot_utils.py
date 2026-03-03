@@ -1098,7 +1098,7 @@ def test_plot_modeled_radon_activity_variation(tmp_path, monkeypatch):
     plot_modeled_radon_activity(times, 1.0, 0.1, 2.0, 0.2, str(tmp_path / "var.png"))
 
     assert "y" in captured
-    assert captured["y"].ptp() > 0
+    assert np.ptp(captured["y"]) > 0
 
 
 def test_plot_modeled_radon_activity_time_change(tmp_path, monkeypatch):

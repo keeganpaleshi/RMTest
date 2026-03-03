@@ -159,12 +159,12 @@ def plot_ambient_rn_vs_time(radon_results: Mapping[str, object], out_dir: Path) 
     is_constant = False
     if len(set(values)) == 1:
         is_constant = True
-        logger.info("Ambient radon is constant at %.3g Bq/m³", values[0])
+        logger.info("Ambient radon is constant at %.3g Bq/m^3", values[0])
 
     fig, ax = plt.subplots(figsize=(8, 5))
     times_mpl = guard_mpl_times(times=times)
     ax.plot(times_mpl, values, marker="o", linestyle="None", color="#1f77b4")
-    ax.set_ylabel("Ambient radon [Bq/m³]")
+    ax.set_ylabel("Ambient radon [Bq/m^3]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
     setup_time_axis(ax, times_mpl)
@@ -176,7 +176,7 @@ def plot_ambient_rn_vs_time(radon_results: Mapping[str, object], out_dir: Path) 
         ax.text(
             0.98,
             0.98,
-            f"Constant: {values[0]:.3g} Bq/m³",
+            f"Constant: {values[0]:.3g} Bq/m^3",
             transform=ax.transAxes,
             ha="right",
             va="top",

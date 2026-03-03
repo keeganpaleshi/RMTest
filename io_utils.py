@@ -748,7 +748,13 @@ def load_events(csv_path, *, start=None, end=None, column_map=None):
         if mask.any():
             # Use .copy() to avoid SettingWithCopyWarning
             parsed = parsed.copy()
-            parsed.loc[mask] = pd.to_datetime(ts_raw.loc[mask], utc=True, errors="coerce")
+            fallback = pd.to_datetime(ts_raw.loc[mask], utc=True, errors="coerce")
+            try:
+                parsed.loc[mask] = fallback
+            except (TypeError, ValueError):
+                # pandas >= 2.0: resolution mismatch (e.g., s vs us)
+                parsed = parsed.astype(fallback.dtype)
+                parsed.loc[mask] = fallback
 
         # Validate timestamp range to catch incorrect unit assumptions
         # (e.g., milliseconds instead of seconds)

@@ -23,7 +23,7 @@ def test_load_events_returns_timezone(tmp_path):
     p = tmp_path / "data.csv"
     df.to_csv(p, index=False)
     loaded = load_events(p)
-    assert str(loaded["timestamp"].dtype) == "datetime64[ns, UTC]"
+    assert str(loaded["timestamp"].dtype) in ("datetime64[s, UTC]", "datetime64[ns, UTC]", "datetime64[us, UTC]")
 
 
 def test_subtract_baseline_preserves_dtype():
@@ -38,7 +38,7 @@ def test_subtract_baseline_preserves_dtype():
         t_base1=datetime(1970, 1, 1, 0, 2, tzinfo=timezone.utc),
         mode="none",
     )
-    assert str(out["timestamp"].dtype) == "datetime64[ns, UTC]"
+    assert str(out["timestamp"].dtype) in ("datetime64[s, UTC]", "datetime64[ns, UTC]", "datetime64[us, UTC]")
 
 
 def test_prepare_analysis_df_preserves_dtype():
@@ -56,4 +56,4 @@ def test_prepare_analysis_df_preserves_dtype():
         cfg={},
         args=args,
     )
-    assert str(out_df["timestamp"].dtype) == "datetime64[ns, UTC]"
+    assert str(out_df["timestamp"].dtype) in ("datetime64[s, UTC]", "datetime64[ns, UTC]", "datetime64[us, UTC]")

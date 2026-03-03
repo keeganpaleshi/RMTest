@@ -21,7 +21,8 @@ def _loglin_unit_shape(E, beta0, beta1, Emin, Emax, *, n_norm=None):
     Eref = 0.5 * (Emin + Emax)
     grid = np.linspace(Emin, Emax, int(n_norm))
     exp_grid = _safe_exp(beta0 + beta1 * (grid - Eref))
-    Z = np.trapz(exp_grid, grid)
+    _trapz = getattr(np, "trapezoid", None) or np.trapz
+    Z = _trapz(exp_grid, grid)
     Z = max(Z, 1e-300)
 
     E = np.asarray(E, dtype=float)
