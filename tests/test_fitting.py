@@ -185,9 +185,9 @@ def test_analyze_time_fit_respects_efficiency(tmp_path, monkeypatch):
     assert res1["eff"] == pytest.approx(eff1)
     assert res2["eff"] == pytest.approx(eff2)
     assert res1["E"] and res2["E"]
-    corr1 = res1["E"] / res1["eff"]
-    corr2 = res2["E"] / res2["eff"]
-    assert corr1 == pytest.approx(corr2, rel=0.2)
+    observed1 = res1["E"] * res1["eff"]
+    observed2 = res2["E"] * res2["eff"]
+    assert observed1 == pytest.approx(observed2, rel=0.2)
 
 def test_fit_spectrum_use_emg_flag():
     """Adding a tau prior when use_emg is True should not break the fit."""

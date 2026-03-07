@@ -1336,14 +1336,12 @@ def fit_time_series(
     else:
         weights_dict = {iso: np.asarray(weights.get(iso), dtype=float) if weights.get(iso) is not None else None for iso in iso_list}
 
-    # Early exit when statistics are insufficient
-    total_counts = 0.0
+    # Early exit when statistics are insufficient. Use the raw event count here:
+    # probability weights change the effective information content but should not
+    # make a populated window look empty.
+    total_counts = 0
     for iso in iso_list:
-        w_arr = weights_dict.get(iso)
-        if w_arr is None:
-            total_counts += len(times_dict.get(iso, []))
-        else:
-            total_counts += float(np.sum(w_arr))
+        total_counts += len(np.asarray(times_dict.get(iso, [])))
 
     cfg_min_counts = config.get("min_counts")
     if cfg_min_counts is not None and int(cfg_min_counts) > 0:

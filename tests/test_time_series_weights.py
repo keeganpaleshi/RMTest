@@ -1,3 +1,4 @@
+import math
 import sys
 from pathlib import Path
 import numpy as np
@@ -5,6 +6,8 @@ import pytest
 from scipy.integrate import quad
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import analyze
+from baseline_utils import subtract_baseline_counts
 from fitting import (
     fit_time_series,
     _neg_log_likelihood_time,
@@ -143,3 +146,44 @@ def test_corrected_sigma_weighting():
         res_weight.params["E_Po214"], rel=1e-3
     )
     assert res_weight.params["dE_Po214"] == pytest.approx(corrected_sigma, rel=2e-2)
+
+
+def test_analyze_time_fit_weight_scale_is_unity_without_baseline():
+    counts = 100.0
+    live_time = 50.0
+    efficiency = 0.5
+    sigma = math.sqrt(counts) / (live_time * efficiency)
+
+    scale = analyze._time_fit_weight_scale(counts, live_time, efficiency, sigma)
+
+    assert scale == pytest.approx(1.0)
+
+
+def test_analyze_time_fit_weight_scale_matches_baseline_variance():
+    counts = 100.0
+    live_time = 100.0
+    efficiency = 1.0
+    baseline_counts = 25.0
+    baseline_live_time = 100.0
+
+    _, corrected_sigma = subtract_baseline_counts(
+        counts,
+        efficiency,
+        live_time,
+        baseline_counts,
+        baseline_live_time,
+    )
+    scale = analyze._time_fit_weight_scale(
+        counts,
+        live_time,
+        efficiency,
+        corrected_sigma,
+    )
+
+    expected = (
+        counts * baseline_live_time**2
+        / (counts * baseline_live_time**2 + baseline_counts * live_time**2)
+    )
+
+    assert scale == pytest.approx(expected)
+    assert 0.0 < scale < 1.0

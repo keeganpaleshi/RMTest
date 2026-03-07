@@ -163,6 +163,31 @@ def _hl_value(cfg: Mapping[str, Any], iso: str) -> float:
     return float(val)
 
 
+def _summary_radon_background_mode(
+    summary: Mapping[str, Any],
+    cfg: Mapping[str, Any],
+    time_fit_results: Mapping[str, Any],
+) -> str | None:
+    """Return the best available radon background mode for plotting."""
+
+    time_fit_summary = summary.get("time_fit") if isinstance(summary, Mapping) else None
+    if isinstance(time_fit_summary, Mapping):
+        for iso in ("Po214", "Po218"):
+            fit_summary = time_fit_summary.get(iso)
+            if not isinstance(fit_summary, Mapping):
+                continue
+            mode = baseline_handling.normalize_background_mode(
+                fit_summary.get("background_mode")
+                or fit_summary.get("background_source")
+            )
+            if mode is not None:
+                return mode
+
+    return baseline_handling.normalize_background_mode(
+        _radon_background_mode(cfg, time_fit_results)
+    )
+
+
 def _radon_background_mode(
     cfg: Mapping[str, Any],
     time_fit_results: Mapping[str, Any],
@@ -1322,6 +1347,45 @@ def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
         var += 2.0 * dR_dE * dR_dN0 * cov
     sigma_rate = np.sqrt(var)
     return sigma_rate if normalise else sigma_rate * widths
+
+
+def _time_fit_weight_scale(
+    counts: float,
+    live_time_s: float,
+    efficiency: float,
+    target_sigma: float,
+) -> float:
+    """Return the uniform weight scaling needed to match ``target_sigma``."""
+
+    try:
+        counts_val = float(counts)
+        live_time_val = float(live_time_s)
+        eff_val = float(efficiency)
+        sigma_val = float(target_sigma)
+    except (TypeError, ValueError):
+        return 1.0
+
+    if (
+        not math.isfinite(counts_val)
+        or not math.isfinite(live_time_val)
+        or not math.isfinite(eff_val)
+        or not math.isfinite(sigma_val)
+        or counts_val <= 0.0
+        or live_time_val <= 0.0
+        or eff_val <= 0.0
+        or sigma_val <= 0.0
+    ):
+        return 1.0
+
+    raw_sigma = math.sqrt(counts_val) / (live_time_val * eff_val)
+    if not math.isfinite(raw_sigma) or raw_sigma <= 0.0:
+        return 1.0
+
+    scale = (raw_sigma / sigma_val) ** 2
+    if not math.isfinite(scale) or scale <= 0.0:
+        return 1.0
+
+    return min(scale, 1.0)
 
 
 def parse_args(argv=None):
@@ -3036,7 +3100,9 @@ def main(argv=None):
                 first_ts = to_datetime_utc(iso_events["timestamp"].iloc[0])
                 t0_dt = to_utc_datetime(t0_global)
                 settle = timedelta(seconds=float(args.settle_s or 0))
-                t_start_fit_dt = max(first_ts, t0_dt + settle)
+                # Start the fit just before the first kept event so fixed-background /
+                # fixed-N0 models do not evaluate exactly at r(t=0)=0.
+                t_start_fit_dt = max(first_ts, t0_dt + settle) - timedelta(microseconds=1)
                 t_start_map[iso] = t_start_fit_dt
                 iso_live_time[iso] = (t_end_global - t_start_fit_dt).total_seconds()
     
@@ -3146,7 +3212,12 @@ def main(argv=None):
                     "value": c_rate,
                     "uncertainty": c_sigma,
                 }
-                weight_factor = 1.0 / (c_sigma**2) if c_sigma > 0 else 1.0
+                weight_factor = _time_fit_weight_scale(
+                    analysis_counts,
+                    live_time_iso,
+                    eff,
+                    c_sigma,
+                )
                 iso_events["weight"] *= weight_factor
             else:
                 priors_time["N0"] = (
@@ -3177,7 +3248,12 @@ def main(argv=None):
                     "value": c_rate,
                     "uncertainty": c_sigma,
                 }
-                weight_factor = 1.0 / (c_sigma**2) if c_sigma > 0 else 1.0
+                weight_factor = _time_fit_weight_scale(
+                    analysis_counts,
+                    live_time_iso,
+                    eff,
+                    c_sigma,
+                )
                 iso_events["weight"] *= weight_factor
     
             # Store priors for use in systematics scanning
@@ -4132,7 +4208,7 @@ def main(argv=None):
         for iso, fit in time_fit_results.items():
             if isinstance(fit, FitResult):
                 d = dict(fit.params)
-                d["cov"] = fit.cov.tolist()
+                d["cov"] = fit.cov.tolist() if fit.cov is not None else None
                 d["ndf"] = fit.ndf
             elif isinstance(fit, dict):
                 d = fit
@@ -4716,6 +4792,7 @@ def main(argv=None):
                 logger.warning("Could not create efficiency plots -> %s", e)
 
     # Radon activity and equivalent air plots
+    summary_updated = False
     try:
         rad_summary = summary.get("radon", {}) if hasattr(summary, "get") else {}
         if not isinstance(rad_summary, Mapping):
@@ -4816,8 +4893,11 @@ def main(argv=None):
         times_dt = to_datetime_utc(time_grid, unit="s")
         t_rel = (times_dt - analysis_start).total_seconds()
         activity_times = time_grid
-        background_mode = _radon_background_mode(cfg, time_fit_results)
-        background_mode = baseline_handling.normalize_background_mode(background_mode)
+        background_mode = _summary_radon_background_mode(
+            summary,
+            cfg,
+            time_fit_results,
+        )
 
         if radon_combined_info is not None:
             try:
@@ -4980,6 +5060,13 @@ def main(argv=None):
                 config=cfg.get("plotting", {}),
                 background_mode=background_mode,
             )
+            plot_radon_trend(
+                activity_times,
+                activity_arr,
+                Path(out_dir) / "radon_trend.png",
+                config=cfg.get("plotting", {}),
+            )
+            summary_updated = True
 
         if radon_interval is not None:
             times_trend = np.linspace(
@@ -5072,6 +5159,14 @@ def main(argv=None):
                 )
     except Exception as e:
         logger.warning("Could not create radon activity plots -> %s", e)
+
+    if summary_updated:
+        try:
+            write_summary(out_dir, summary)
+        except Exception as e:
+            logger.warning(
+                "Could not refresh summary JSON with radon plot series -> %s", e
+            )
 
     if args.hierarchical_summary:
         try:
