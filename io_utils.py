@@ -75,6 +75,7 @@ class Summary(Mapping[str, Any]):
     baseline: dict = field(default_factory=dict)
     radon_results: dict = field(default_factory=dict)
     radon_combined: dict = field(default_factory=dict)
+    radon_inference: dict = field(default_factory=dict)
     radon: dict = field(default_factory=dict)
     po214: dict = field(default_factory=dict)
     po218: dict = field(default_factory=dict)
@@ -410,7 +411,27 @@ CONFIG_SCHEMA = {
                         "file_path": {"type": "string"},
                         "time_column": {"type": "string"},
                         "value_column": {"type": "string"},
+                        "time_columns": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "year": {"type": "string"},
+                                "month": {"type": "string"},
+                                "day": {"type": "string"},
+                                "hour": {"type": "string"},
+                                "minute": {"type": "string"},
+                                "year_format": {
+                                    "type": "string",
+                                    "enum": ["two_digit"],
+                                },
+                            },
+                        },
+                        "units": {
+                            "type": "string",
+                            "enum": ["bq_per_m3", "pci_per_l"],
+                        },
                         "tz": {"type": "string"},
+                        "timezone": {"type": "string"},
                         "interpolation": {
                             "type": "string",
                             "enum": ["nearest", "ffill"],

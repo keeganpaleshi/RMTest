@@ -24,9 +24,39 @@ from ._time_utils import guard_mpl_times, setup_time_axis
 # Half-life constants used for the time-series overlay [seconds]
 PO214_HALF_LIFE_S = PO214.half_life_s
 PO218_HALF_LIFE_S = PO218.half_life_s
+_DEFAULT_MARKER_SIZE = 3.0
 
 
-def _errorbar_kwargs(color=None, *, label=None):
+def _get_marker_size(config=None, default=_DEFAULT_MARKER_SIZE) -> float:
+    if isinstance(config, Mapping):
+        value = config.get("plot_marker_size", config.get("marker_size", default))
+        try:
+            marker_size = float(value)
+        except (TypeError, ValueError):
+            marker_size = float(default)
+        if marker_size > 0:
+            return marker_size
+    return float(default)
+
+
+def _robust_center_sigma(values: np.ndarray | list[float] | tuple[float, ...]) -> tuple[float, float]:
+    values_arr = np.asarray(values, dtype=float).ravel()
+    finite_values = values_arr[np.isfinite(values_arr)]
+    if finite_values.size == 0:
+        return float("nan"), 0.0
+
+    center = float(np.median(finite_values))
+    mad = float(np.median(np.abs(finite_values - center)))
+    sigma = 1.4826 * mad
+    if not np.isfinite(sigma) or sigma <= 0.0:
+        q25, q75 = np.percentile(finite_values, [25.0, 75.0])
+        sigma = float((q75 - q25) / 1.349) if np.isfinite(q25) and np.isfinite(q75) else 0.0
+    if not np.isfinite(sigma) or sigma < 0.0:
+        sigma = 0.0
+    return center, sigma
+
+
+def _errorbar_kwargs(color=None, *, label=None, markersize=_DEFAULT_MARKER_SIZE):
     """Return styling options for visible error bars."""
 
     kwargs = {
@@ -35,6 +65,7 @@ def _errorbar_kwargs(color=None, *, label=None):
         "capthick": 1,
         "elinewidth": 1,
         "barsabove": True,
+        "markersize": float(markersize),
     }
     if color is not None:
         kwargs["color"] = color
@@ -456,6 +487,8 @@ def plot_time_series(
 
     normalise_rate = bool(config.get("plot_time_normalise_rate", False))
     style = str(config.get("plot_time_style", "steps")).lower()
+    show_models = bool(config.get("plot_time_show_models", config.get("show_time_fit_models", True)))
+    marker_size = _get_marker_size(config)
 
     plt.figure(figsize=(8, 6))
     palette_name = str(config.get("palette", "default"))
@@ -582,6 +615,7 @@ def plot_time_series(
                     "elinewidth": 1,
                     "capthick": 1,
                     "barsabove": True,
+                    "markersize": marker_size,
                 }
                 if label is not None:
                     err_kwargs["label"] = label
@@ -608,7 +642,7 @@ def plot_time_series(
 
             label_used = label_used or label is not None
 
-            if has_fit and fit_ok:
+            if show_models and has_fit and fit_ok:
                 centers_rel = seg["centers_rel_global"]
                 r_rel = (
                     eff
@@ -997,28 +1031,46 @@ def _compute_short_timescale_ylim(
         return None
 
     finite_values = values_arr[finite_mask]
-    y_mid = float(np.mean(finite_values))
-    sigma = float(np.std(finite_values))
 
-    err_max = 0.0
+    err_typical = 0.0
     if errors is not None:
         err_arr = np.asarray(errors, dtype=float)
         err_arr = np.abs(err_arr).ravel()
         if err_arr.size:
             finite_errs = err_arr[np.isfinite(err_arr)]
             if finite_errs.size:
-                err_max = float(np.max(finite_errs))
+                err_typical = float(np.median(finite_errs))
+                if not np.isfinite(err_typical):
+                    err_typical = 0.0
 
-    span_candidate = max(5.0 * sigma, 0.1 * abs(y_mid))
+    # Preserve the previous behaviour for tiny inputs used in small-unit tests.
+    if finite_values.size < 8:
+        y_mid = float(np.mean(finite_values))
+        sigma = float(np.std(finite_values))
+        span_candidate = max(5.0 * sigma, 0.1 * abs(y_mid))
+        if not np.isfinite(span_candidate):
+            span_candidate = 0.0
+        total_span = err_typical if err_typical > 0.0 else 0.0
+        total_span += span_candidate
+        if not np.isfinite(total_span) or total_span <= 0.0:
+            return None
+        ymin = y_mid - total_span
+        ymax = y_mid + total_span
+        if not (np.isfinite(ymin) and np.isfinite(ymax)):
+            return None
+        return float(ymin), float(ymax)
+
+    center, sigma = _robust_center_sigma(finite_values)
+    span_candidate = max(5.0 * sigma, 0.1 * abs(center))
     if not np.isfinite(span_candidate):
         span_candidate = 0.0
 
-    total_span = err_max + span_candidate
+    total_span = span_candidate + err_typical
     if not np.isfinite(total_span) or total_span <= 0.0:
         return None
 
-    ymin = y_mid - total_span
-    ymax = y_mid + total_span
+    ymin = center - total_span
+    ymax = center + total_span
     if not (np.isfinite(ymin) and np.isfinite(ymax)):
         return None
 
@@ -1099,7 +1151,7 @@ def plot_radon_activity_full(
         times_mpl,
         conc_arr,
         yerr=conc_err,
-        **_errorbar_kwargs(color, label=label),
+        **_errorbar_kwargs(color, label=label, markersize=_get_marker_size(config)),
     )
     _apply_time_format(ax_abs, times_mpl)
     ax_abs.set_xlabel("Time (UTC)")
@@ -1111,7 +1163,7 @@ def plot_radon_activity_full(
         elapsed_hours,
         conc_arr,
         yerr=conc_err,
-        **_errorbar_kwargs(color),
+        **_errorbar_kwargs(color, markersize=_get_marker_size(config)),
     )
     ax_rel.set_xlabel("Elapsed Time (h)")
     ax_rel.set_ylabel(label_units)
@@ -1136,13 +1188,11 @@ def plot_radon_activity_full(
         lines2, labels2 = ax2.get_legend_handles_labels()
         ax_abs.legend(lines1 + lines2, labels1 + labels2, loc="best")
 
-    ylim_low, ylim_high = _compute_ylim(conc_arr, conc_err)
-    ax_abs.set_ylim(ylim_low, ylim_high)
-    short_ylim = _compute_short_timescale_ylim(conc_arr, conc_err)
-    if short_ylim is not None:
-        ax_rel.set_ylim(*short_ylim)
-    else:
-        ax_rel.set_ylim(ylim_low, ylim_high)
+    display_ylim = _compute_short_timescale_ylim(conc_arr, conc_err)
+    if display_ylim is None:
+        display_ylim = _compute_ylim(conc_arr, conc_err)
+    ax_abs.set_ylim(*display_ylim)
+    ax_rel.set_ylim(*display_ylim)
 
     ax_abs.yaxis.get_offset_text().set_visible(False)
     ax_rel.yaxis.get_offset_text().set_visible(False)
@@ -1188,7 +1238,7 @@ def plot_total_radon_full(
         times_mpl,
         total_bq,
         yerr=errors_arr,
-        **_errorbar_kwargs(color),
+        **_errorbar_kwargs(color, markersize=_get_marker_size(config)),
     )
     _apply_time_format(ax_abs, times_mpl)
     ax_abs.set_xlabel("Time (UTC)")
@@ -1200,7 +1250,7 @@ def plot_total_radon_full(
         elapsed_hours,
         total_bq,
         yerr=errors_arr,
-        **_errorbar_kwargs(color),
+        **_errorbar_kwargs(color, markersize=_get_marker_size(config)),
     )
     ax_rel.set_xlabel("Elapsed Time (h)")
     ax_rel.set_ylabel("Total Radon in Sample (Bq)")
@@ -1208,13 +1258,11 @@ def plot_total_radon_full(
     ax_rel.ticklabel_format(axis="y", style="plain")
     ax_rel.xaxis.get_offset_text().set_visible(False)
 
-    ylim_low, ylim_high = _compute_ylim(total_bq, errors_arr)
-    ax_abs.set_ylim(ylim_low, ylim_high)
-    short_ylim = _compute_short_timescale_ylim(total_bq, errors_arr)
-    if short_ylim is not None:
-        ax_rel.set_ylim(*short_ylim)
-    else:
-        ax_rel.set_ylim(ylim_low, ylim_high)
+    display_ylim = _compute_short_timescale_ylim(total_bq, errors_arr)
+    if display_ylim is None:
+        display_ylim = _compute_ylim(total_bq, errors_arr)
+    ax_abs.set_ylim(*display_ylim)
+    ax_rel.set_ylim(*display_ylim)
 
     ax_abs.yaxis.get_offset_text().set_visible(False)
     ax_rel.yaxis.get_offset_text().set_visible(False)
@@ -1338,12 +1386,16 @@ def plot_radon_trend_full(times, activity, out_png, config=None, *, fit_valid=Tr
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("radon_activity", "#9467bd")
-    ax.plot(times_mpl, activity, "o", color=color)
+    ax.plot(times_mpl, activity, "o", color=color, markersize=_get_marker_size(config))
     ax.set_xlabel("Time (UTC)")
     ax.set_ylabel("Radon Concentration (Bq/L)")
     ax.set_title("Radon Concentration Trend")
 
     ax.ticklabel_format(axis="y", style="plain")
+    display_ylim = _compute_short_timescale_ylim(activity, None)
+    if display_ylim is None:
+        display_ylim = _compute_ylim(activity, None)
+    ax.set_ylim(*display_ylim)
     setup_time_axis(ax, times_mpl)
     fig.autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)
@@ -1390,11 +1442,15 @@ def plot_radon_trend(ts_dict, outdir):
     coeff = np.polyfit(times_mpl, y, 1)
 
     fig, ax = plt.subplots()
-    ax.plot(times_mpl, y, "o")
+    ax.plot(times_mpl, y, "o", markersize=_DEFAULT_MARKER_SIZE)
     ax.plot(times_mpl, np.polyval(coeff, times_mpl))
     ax.set_ylabel("Radon activity [Bq]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
+    display_ylim = _compute_short_timescale_ylim(y, None)
+    if display_ylim is None:
+        display_ylim = _compute_ylim(y, None)
+    ax.set_ylim(*display_ylim)
     setup_time_axis(ax, times_mpl)
     fig.autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)

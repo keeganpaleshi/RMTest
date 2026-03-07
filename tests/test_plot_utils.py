@@ -556,6 +556,34 @@ def test_plot_time_series_invalid_half_life_po218(tmp_path):
         )
 
 
+def test_plot_time_series_can_hide_model_overlays(tmp_path, monkeypatch):
+    times = np.array([1000.1, 1001.1, 1002.1])
+    energies = np.array([7.6, 7.7, 7.8])
+    cfg = basic_config()
+    cfg.update({"plot_time_show_models": False})
+
+    calls = []
+
+    def fake_plot(*args, **kwargs):
+        calls.append(kwargs.get("label"))
+        return type("obj", (), {})()
+
+    monkeypatch.setattr("plot_utils.plt.plot", fake_plot)
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    plot_time_series(
+        times,
+        energies,
+        {"E_Po214": 0.1, "B_Po214": 0.0, "N0_Po214": 0.0},
+        1000.0,
+        1003.0,
+        cfg,
+        str(tmp_path / "ts_hide_model.png"),
+    )
+
+    assert not any(label == "Model Po214" for label in calls)
+
+
 def test_plot_time_series_line_style(tmp_path, monkeypatch):
     times = np.array([1000.2, 1000.8])
     energies = np.array([7.7, 7.8])
@@ -864,6 +892,20 @@ def test_compute_short_timescale_ylim_empty_inputs():
     assert _compute_short_timescale_ylim([np.nan, np.nan], None) is None
 
 
+def test_compute_short_timescale_ylim_ignores_single_large_error_outlier():
+    from plot_utils import _compute_short_timescale_ylim
+
+    values = np.concatenate([np.linspace(10.0, 12.0, 49), [11.0]])
+    errors = np.concatenate([np.full(49, 0.2), [100.0]])
+
+    result = _compute_short_timescale_ylim(values, errors)
+
+    assert result is not None
+    ymin, ymax = result
+    assert ymax < 25.0
+    assert ymin > 0.0
+
+
 def test_plot_total_radon_short_timescale_ylim(tmp_path, monkeypatch):
     import plot_utils as plot_utils_mod
 
@@ -897,8 +939,7 @@ def test_plot_total_radon_short_timescale_ylim(tmp_path, monkeypatch):
 
     assert "axes" in captured and "result" in helper_calls
     ax_abs, ax_rel = captured["axes"]
-    base_ylim = plot_utils_mod._compute_ylim(np.asarray(total, dtype=float), None)
-    assert np.allclose(ax_abs.get_ylim(), base_ylim)
+    assert np.allclose(ax_abs.get_ylim(), helper_calls["result"])
     assert np.allclose(ax_rel.get_ylim(), helper_calls["result"])
 
 
@@ -1289,6 +1330,31 @@ def test_plot_radon_trend_output(tmp_path):
     plot_radon_trend_full(times, activity, str(out_png))
 
     assert out_png.exists()
+
+
+def test_plot_radon_trend_uses_robust_ylim_for_outlier(tmp_path, monkeypatch):
+    import plot_utils as plot_utils_mod
+
+    times = np.arange(40, dtype=float)
+    activity = np.concatenate([np.linspace(1.0, 1.3, 39), [25.0]])
+    out_png = tmp_path / "trend_outlier.png"
+
+    captured = {}
+    orig_subplots = plot_utils_mod.plt.subplots
+
+    def tracking_subplots(*args, **kwargs):
+        fig, ax = orig_subplots(*args, **kwargs)
+        captured["ax"] = ax
+        return fig, ax
+
+    monkeypatch.setattr(plot_utils_mod.plt, "subplots", tracking_subplots)
+    monkeypatch.setattr(plot_utils_mod.plt, "close", lambda *a, **k: None)
+
+    plot_utils_mod.plot_radon_trend_full(times, activity, str(out_png))
+
+    assert "ax" in captured
+    _, ymax = captured["ax"].get_ylim()
+    assert ymax < 10.0
 
 
 def test_plot_radon_activity_po214(tmp_path):

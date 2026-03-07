@@ -210,7 +210,8 @@ def run_radon_inference(
     volume_series: list[dict[str, object]] = []
     ambient_series_out: list[dict[str, object]] = []
     cumulative_series: list[dict[str, object]] = []
-    cumulative_volume = 0.0
+    cumulative_activity_exposure = 0.0
+    cumulative_ambient_exposure = 0.0
 
     for bin_entry in bins:
         dt = bin_entry.dt
@@ -264,7 +265,15 @@ def run_radon_inference(
                     volume_lpm = volume_m3 * 1000.0 / dt_minutes
                 else:
                     volume_lpm = float("nan")
-                cumulative_volume += volume_m3
+                # Build the cumulative curve as a running estimate of the
+                # total equivalent volume implied by all bins seen so far.
+                # Summing `volume_m3` directly would make the "total"
+                # depend on the chosen binning.
+                cumulative_activity_exposure += radon_bq * dt
+                cumulative_ambient_exposure += ambient_val * dt
+                cumulative_volume = (
+                    cumulative_activity_exposure / cumulative_ambient_exposure
+                )
                 volume_series.append(
                     {
                         "t": bin_entry.t,
