@@ -17,6 +17,7 @@ analysis:
   run_periods: []
   radon_interval: null
   ambient_concentration: null
+  background_model: loglin_unit
 columns:
   timestamp: timestamps
   adc: adc_channels
@@ -86,7 +87,7 @@ spectral_fit:
   - 4.8
   - 8.3
   amp_prior_scale: 5.0
-  bkg_mode: "loglin_unit"
+  bkg_mode: "manual"
   clip_floor: 1e-300
   b0_prior:
     - 0.0
@@ -216,3 +217,4 @@ plotting:
   plot_time_style: lines
   overlay_isotopes: true
   save_individual_time_series: false
+

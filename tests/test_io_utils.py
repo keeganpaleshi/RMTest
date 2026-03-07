@@ -40,6 +40,27 @@ def test_load_config(tmp_path):
     assert loaded["burst_filter"]["burst_mode"] == "rate"
 
 
+def test_load_config_normalizes_legacy_background_model_key(tmp_path):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "spectral_fit": {
+            "expected_peaks": {"Po210": 1250, "Po218": 1400, "Po214": 1800},
+            "bkg_mode": "loglin_unit",
+        },
+        "time_fit": {"do_time_fit": True},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    p = tmp_path / "cfg.yaml"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+
+    loaded = load_config(p)
+
+    assert loaded["analysis"]["background_model"] == "loglin_unit"
+    assert loaded["spectral_fit"]["bkg_mode"] == "manual"
+
+
 def test_load_config_missing_key(tmp_path):
     cfg = {
         "pipeline": {"log_level": "INFO"},
@@ -693,4 +714,5 @@ def test_load_config_unknown_key(tmp_path):
         json.dump(cfg, f)
     with pytest.raises(jsonschema.exceptions.ValidationError):
         load_config(p)
+
 

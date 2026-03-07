@@ -1,0 +1,92 @@
+{
+    "pipeline": {
+        "log_level": "INFO",
+        "random_seed": 1182055755
+    },
+    "calibration": {
+        "method": "two-point",
+        "peak_prominence": 0.0,
+        "peak_width": 1,
+        "nominal_adc": {
+            "Po210": 1250,
+            "Po218": 1300,
+            "Po214": 1800
+        },
+        "peak_search_radius": 20,
+        "fit_window_adc": 20,
+        "use_emg": false,
+        "init_sigma_adc": 5.0,
+        "init_tau_adc": 1.0,
+        "sanity_tolerance_mev": 1.0
+    },
+    "spectral_fit": {
+        "do_spectral_fit": false,
+        "expected_peaks": {
+            "Po210": 0
+        },
+        "clip_floor": 1e-300,
+        "loglin_n_norm": 512,
+        "max_b1_sigma": 10.0,
+        "use_emg": {
+            "Po210": false,
+            "Po218": false,
+            "Po214": false
+        }
+    },
+    "time_fit": {
+        "do_time_fit": true,
+        "window_po214": [
+            7.55,
+            7.8
+        ],
+        "hl_po214": null,
+        "eff_po214": [
+            1.0,
+            0.0
+        ],
+        "flags": {},
+        "window_po210": [
+            5.224,
+            5.384
+        ],
+        "window_po218": [
+            5.455846662508106,
+            5.6158466625081065
+        ]
+    },
+    "systematics": {
+        "enable": false
+    },
+    "plotting": {
+        "plot_save_formats": [
+            "png"
+        ]
+    },
+    "nuclide_constants": {
+        "Po214": {
+            "half_life_s": 0.0001643,
+            "Q_value_MeV": null
+        },
+        "Po218": {
+            "half_life_s": 186.0,
+            "Q_value_MeV": null
+        },
+        "Po210": {
+            "half_life_s": 11956000.0,
+            "Q_value_MeV": null
+        },
+        "Rn222": {
+            "half_life_s": 330350.4,
+            "Q_value_MeV": null
+        }
+    },
+    "analysis_isotope": "radon",
+    "fitting": {
+        "use_stable_emg": true,
+        "emg_stable_mode": true,
+        "emg_tau_min": 0.0005
+    },
+    "burst_filter": {
+        "burst_mode": "none"
+    }
+}

@@ -497,10 +497,33 @@ def load_config(config_path):
         with open(path, "r", encoding="utf-8") as f:
             cfg = yaml.load(f, Loader=_UniqueKeyLoader) or {}
 
+    sf = cfg.setdefault("spectral_fit", {})
+    analysis_cfg = cfg.setdefault("analysis", {})
+    legacy_background_model = sf.get("bkg_mode")
+    if isinstance(legacy_background_model, str):
+        legacy_background_model = legacy_background_model.strip().lower()
+        if legacy_background_model in {"linear", "loglin_unit"}:
+            explicit_background_model = analysis_cfg.get("background_model")
+            if explicit_background_model is None:
+                analysis_cfg["background_model"] = legacy_background_model
+                logger.warning(
+                    "Config uses legacy spectral_fit.bkg_mode=%r as a background model selector; "
+                    "normalizing to analysis.background_model=%r and spectral_fit.bkg_mode='manual'.",
+                    legacy_background_model,
+                    legacy_background_model,
+                )
+            elif explicit_background_model != legacy_background_model:
+                logger.warning(
+                    "Config sets conflicting background models: analysis.background_model=%r "
+                    "takes precedence over legacy spectral_fit.bkg_mode=%r.",
+                    explicit_background_model,
+                    legacy_background_model,
+                )
+            sf["bkg_mode"] = "manual"
+
     # Pre-validate clip_floor so tests see a ValueError (not a schema error).
     # Do this BEFORE jsonschema.validate, otherwise the schema's
     # exclusiveMinimum/maximum will throw first.
-    sf = cfg.setdefault("spectral_fit", {})
     if "clip_floor" in sf:
         try:
             sf["clip_floor"] = float(sf["clip_floor"])
@@ -1041,3 +1064,4 @@ def copy_config(output_dir, config_path, *, exist_ok=False):
             json.dump(sanitized, f, indent=4)
         logger.info(f"Wrote config to {dest_path}")
     return dest_path
+
