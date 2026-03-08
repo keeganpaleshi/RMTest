@@ -203,7 +203,7 @@ def plot_volume_equiv_vs_time(
     times, volumes_m3 = _extract_series(volume_series, "v_m3")
     _, volumes_lpm = _extract_series(volume_series, "v_lpm")
     if not times or not volumes_m3:
-        logger.info("No equivalent volume data available for plotting")
+        logger.info("No leak-volume data available for plotting")
         return
 
     out_dir = Path(out_dir)
@@ -213,9 +213,9 @@ def plot_volume_equiv_vs_time(
     if volume_units is None:
         meta = radon_results.get("meta")
         if isinstance(meta, Mapping):
-            volume_units = meta.get("volume_units", "m³ per interval")
+            volume_units = meta.get("volume_units", "m^3 leaked per interval")
         else:
-            volume_units = "m³ per interval"
+            volume_units = "m^3 leaked per interval"
     volume_units = str(volume_units)
     cumulative_units = volume_units.replace(" per interval", "")
 
@@ -223,7 +223,7 @@ def plot_volume_equiv_vs_time(
 
     fig, ax1 = plt.subplots(figsize=(8, 5))
     ax1.plot(times_mpl, volumes_m3, marker="o", linestyle="None", markersize=_DEFAULT_MARKER_SIZE, color="#2ca02c")
-    ax1.set_ylabel(f"Equivalent volume [{volume_units}]")
+    ax1.set_ylabel(f"Leak volume [{volume_units}]")
     ax1.set_xlabel("Time (UTC)")
     ax1.ticklabel_format(axis="y", style="plain")
     setup_time_axis(ax1, times_mpl)
@@ -236,10 +236,10 @@ def plot_volume_equiv_vs_time(
 
     # Create an additional plot in liters per interval for convenience
     volumes_liters = [v * 1000.0 for v in volumes_m3]
-    liters_units = "L per interval"
+    liters_units = "L leaked per interval"
     fig_l, ax_l = plt.subplots(figsize=(8, 5))
     ax_l.plot(times_mpl, volumes_liters, marker="o", linestyle="None", markersize=_DEFAULT_MARKER_SIZE, color="#17becf")
-    ax_l.set_ylabel(f"Equivalent volume [{liters_units}]")
+    ax_l.set_ylabel(f"Leak volume [{liters_units}]")
     ax_l.set_xlabel("Time (UTC)")
     ax_l.ticklabel_format(axis="y", style="plain")
     setup_time_axis(ax_l, times_mpl)
@@ -253,13 +253,13 @@ def plot_volume_equiv_vs_time(
     if volumes_lpm:
         paired_len = min(len(times_mpl), len(volumes_lpm))
         if paired_len == 0:
-            logger.info("Equivalent flow data present but no overlapping timestamps; skipping flow plot")
+            logger.info("Leak-rate data present but no overlapping timestamps; skipping flow plot")
         else:
             times_flow = times_mpl[:paired_len]
             volumes_flow = volumes_lpm[:paired_len]
             fig_flow, ax_flow = plt.subplots(figsize=(8, 5))
             ax_flow.plot(times_flow, volumes_flow, marker="o", linestyle="None", markersize=_DEFAULT_MARKER_SIZE, color="#ff7f0e")
-            ax_flow.set_ylabel("Equivalent flow [L/min]")
+            ax_flow.set_ylabel("Leak rate [L/min]")
             ax_flow.set_xlabel("Time (UTC)")
             ax_flow.ticklabel_format(axis="y", style="plain")
             setup_time_axis(ax_flow, times_flow)
@@ -277,7 +277,7 @@ def plot_volume_equiv_vs_time(
             fig_cum, ax_cum = plt.subplots(figsize=(8, 5))
             times_mpl_cum = guard_mpl_times(times=cum_times)
             ax_cum.plot(times_mpl_cum, cum_values, marker="o", linestyle="None", markersize=_DEFAULT_MARKER_SIZE, color="#9467bd")
-            ax_cum.set_ylabel(f"Cumulative volume [{cumulative_units}]")
+            ax_cum.set_ylabel(f"Cumulative leaked volume [{cumulative_units}]")
             ax_cum.set_xlabel("Time (UTC)")
             ax_cum.ticklabel_format(axis="y", style="plain")
             setup_time_axis(ax_cum, times_mpl_cum)
@@ -298,7 +298,7 @@ def plot_volume_equiv_vs_time(
                 markersize=_DEFAULT_MARKER_SIZE,
                 color="#8c564b",
             )
-            ax_cum_l.set_ylabel("Cumulative volume [L]")
+            ax_cum_l.set_ylabel("Cumulative leaked volume [L]")
             ax_cum_l.set_xlabel("Time (UTC)")
             ax_cum_l.ticklabel_format(axis="y", style="plain")
             setup_time_axis(ax_cum_l, times_mpl_cum)

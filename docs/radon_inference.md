@@ -13,17 +13,17 @@ translates them into inferred radon levels, aligned with the original binning.
   inferred Rn-222 activity inside the cell.
 * Combines multiple isotopes via configurable weights and records the derived
   series in the analysis summary for downstream reporting.
-* Divides the inferred activity by an external ambient radon monitor to compute
-  a per-bin equivalent volume estimate and a running cumulative-volume estimate.
+* Uses the ambient radon concentration together with the Rn-222 decay
+  constant to estimate a leak rate, a per-interval leaked volume, and a
+  cumulative leaked-volume sum that is intended to be stable under rebinning.
 
 ## Why it matters
 
 The derived series bridges the gap between Po-214/Po-218 counts and the
-ambient radon concentration. It highlights how well the monitor keeps up with
-the mine environment and surfaces inconsistent assumptions (for example,
-incorrect transport or retention efficiencies) that can lead to inflated
-volumes. Without this conversion the Po-214 counts are difficult to interpret
-in operational units.
+ambient radon concentration. It turns the inferred radon inventory into a leak
+rate and cumulative leaked-air estimate, which is closer to how leak checking
+is normally interpreted in operational units. Without this conversion the
+Po-214 counts are difficult to compare against ambient radon levels.
 
 ## Configuration
 
@@ -56,7 +56,10 @@ Set `mode: file` inside `external_rn` to point at a CSV with `timestamp` and
 * When the chosen isotope is not in secular equilibrium with Rn-222 the
   inferred activity will lag the true radon level.
 * Extremely small external radon concentrations produce unrealistically large
-  equivalent volumes—double check the reference monitor calibration in that
+  leak-rate estimates - double check the reference monitor calibration in that
   case.
 * Transport and retention efficiencies default to 1.0. If they are unknown the
   reported activity represents a lower bound.
+* The leak-rate model currently assumes radioactive decay is the only sink.
+  If the monitored volume is actively purged or vented, an additional removal
+  term is required for a fully physical leak-rate estimate.

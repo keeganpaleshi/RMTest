@@ -958,15 +958,39 @@ The radon inference calculation follows these steps:
    A_rn_corrected = A_rn / (transport * retention)
    ```
 
-4. Calculate equivalent air volume when ambient radon concentration is available:
+4. Estimate the leak rate from the Rn-222 inventory balance:
    ```
-   V_equiv = A_rn_corrected / C_mine
+   dA_rn/dt = q * C_mine - lambda_Rn * A_rn
    ```
-   where `C_mine` is the ambient radon concentration in Bq/m^3.
+   In RMTest `A_rn` is treated as an interval-average inventory, so for each
+   interval the leak rate is estimated from the interval start activity
+   `A_start,i`, the interval-average activity `A_mean,i`, and the ambient
+   concentration `C_i`:
+   ```
+   survival = exp(-lambda_Rn * Delta t)
+   response = (1 - survival) / lambda_Rn
+   mean_weight = response / Delta t
+   leak_weight = 1 - mean_weight
+   q_i = lambda_Rn * (A_mean,i - A_start,i * mean_weight) / (C_i * leak_weight)
+   ```
+   RMTest propagates the inferred interval-end activity forward from one bin to
+   the next. For the first interval it uses the steady-state estimate
+   `q_0 = lambda_Rn * A_mean,0 / C_0`.
 
-The cumulative volume plot is a running estimate of the total equivalent
-volume implied by all bins seen so far, so it is reported in plain volume
-units (`m^3` / `L`) rather than per-interval units.
+5. Convert the leak rate into per-interval and cumulative leaked volume:
+   ```
+   Delta V_i = max(q_i, 0) * Delta t
+   V_cum = sum_i Delta V_i
+   ```
+   Negative rates from statistical fluctuations are clipped to zero so the
+   cumulative leaked volume stays monotonic.
+
+The cumulative volume plot is therefore a cumulative leaked-air estimate rather
+than a snapshot of resident radon inventory. It is intended to stay stable
+under rebinning apart from measurement noise and the first-interval assumption.
+This model assumes radioactive decay is the only sink term; if the monitored
+volume is being actively purged or vented, that extra loss term is not yet
+included.
 
 ### Overlay and Duplication
 
@@ -1142,5 +1166,3 @@ Run as usual:
 ```bash
 python analyze.py --input path/to/merged_output.csv
 ```
-
-

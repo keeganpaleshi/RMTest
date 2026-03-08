@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from constants import RN222
 from radon.external_rn_loader import load_external_rn_series
 from radon.radon_inference import run_radon_inference
 
@@ -22,62 +23,153 @@ def _base_config(**overrides):
     return cfg
 
 
+def _rn222_lambda() -> float:
+    return math.log(2.0) / RN222.half_life_s
+
+
 def test_constant_external_rn_volume_math():
     config = _base_config(
         external_rn={"mode": "constant", "constant_bq_per_m3": 80.0}
     )
-    series = {"Po214": [{"t": 0.0, "counts": 120.0, "dt": 60.0}]}
-    external = [{"t": 0.0, "rn_bq_per_m3": 80.0}]
+    series = {"Po214": [{"t": 30.0, "counts": 120.0, "dt": 60.0}]}
+    external = [{"t": 30.0, "rn_bq_per_m3": 80.0}]
 
     result = run_radon_inference(series, config, external)
     assert result is not None
 
+    expected_activity = 120.0 / (0.12 * 60.0)
+    expected_rate = _rn222_lambda() * expected_activity / 80.0
+    expected_volume = expected_rate * 60.0
+
     rn_entry = result["rn_inferred"][0]
-    assert rn_entry["rn_bq"] == pytest.approx(120.0 / (0.12 * 60.0))
+    assert rn_entry["rn_bq"] == pytest.approx(expected_activity)
 
     vol_entry = result["volume_equiv"][0]
-    # The equivalent volume is the inferred activity divided by the ambient
-    # concentration.  No additional scaling by ``dt`` should occur.
-    assert vol_entry["v_m3"] == pytest.approx(0.2083333333)
-    assert vol_entry["v_lpm"] == pytest.approx(208.3333333333)
-    assert result["volume_cumulative"][0]["v_m3_cum"] == pytest.approx(0.2083333333)
+    assert vol_entry["q_m3_s"] == pytest.approx(expected_rate)
+    assert vol_entry["v_m3"] == pytest.approx(expected_volume)
+    assert vol_entry["v_lpm"] == pytest.approx(expected_rate * 60000.0)
+    assert result["volume_cumulative"][0]["v_m3_cum"] == pytest.approx(expected_volume)
 
 
-def test_cumulative_volume_is_stable_under_rebinning():
+def test_leak_volume_is_stable_under_rebinning_for_steady_state():
     config = _base_config(
         external_rn={"mode": "constant", "constant_bq_per_m3": 80.0}
     )
+    leak_rate = 1.25e-6
+    ambient = 80.0
+    dt_split = 60.0
+    dt_merged = 120.0
+    efficiency = 0.12
+    activity = leak_rate * ambient / _rn222_lambda()
+
     split_series = {
         "Po214": [
-            {"t": 0.0, "counts": 120.0, "dt": 60.0},
-            {"t": 60.0, "counts": 120.0, "dt": 60.0},
+            {"t": 30.0, "counts": activity * efficiency * dt_split, "dt": dt_split},
+            {"t": 90.0, "counts": activity * efficiency * dt_split, "dt": dt_split},
         ]
     }
-    merged_series = {"Po214": [{"t": 60.0, "counts": 240.0, "dt": 120.0}]}
+    merged_series = {
+        "Po214": [{"t": 60.0, "counts": activity * efficiency * dt_merged, "dt": dt_merged}]
+    }
 
     split_result = run_radon_inference(
         split_series,
         config,
         [
-            {"t": 0.0, "rn_bq_per_m3": 80.0},
-            {"t": 60.0, "rn_bq_per_m3": 80.0},
+            {"t": 30.0, "rn_bq_per_m3": ambient},
+            {"t": 90.0, "rn_bq_per_m3": ambient},
         ],
     )
     merged_result = run_radon_inference(
         merged_series,
         config,
-        [{"t": 60.0, "rn_bq_per_m3": 80.0}],
+        [{"t": 60.0, "rn_bq_per_m3": ambient}],
     )
 
     assert split_result is not None
     assert merged_result is not None
 
-    split_cumulative = split_result["volume_cumulative"]
-    assert [entry["v_m3_cum"] for entry in split_cumulative] == pytest.approx(
-        [0.2083333333, 0.2083333333]
+    split_volumes = [entry["v_m3"] for entry in split_result["volume_equiv"]]
+    assert split_volumes == pytest.approx([leak_rate * dt_split, leak_rate * dt_split])
+    assert split_result["volume_equiv"][0]["q_m3_s"] == pytest.approx(leak_rate)
+    assert split_result["volume_equiv"][1]["q_m3_s"] == pytest.approx(leak_rate)
+    assert merged_result["volume_equiv"][-1]["v_m3"] == pytest.approx(
+        leak_rate * dt_merged
     )
+    assert merged_result["volume_equiv"][-1]["q_m3_s"] == pytest.approx(leak_rate)
     assert merged_result["volume_cumulative"][-1]["v_m3_cum"] == pytest.approx(
-        split_cumulative[-1]["v_m3_cum"]
+        split_result["volume_cumulative"][-1]["v_m3_cum"]
+    )
+
+
+def test_leak_volume_recovers_constant_rate_with_changing_ambient():
+    config = _base_config(
+        external_rn={"mode": "constant", "constant_bq_per_m3": 80.0}
+    )
+    leak_rate = 1.0e-6
+    dt = 60.0
+    efficiency = 0.12
+    ambient0 = 80.0
+    ambient1 = 160.0
+    lambda_rn = _rn222_lambda()
+    activity0 = leak_rate * ambient0 / lambda_rn
+    survival = math.exp(-lambda_rn * dt)
+    response = (1.0 - survival) / lambda_rn
+    mean_weight = response / dt
+    leak_weight = 1.0 - mean_weight
+    activity1 = activity0 * mean_weight + leak_rate * ambient1 * leak_weight / lambda_rn
+
+    series = {
+        "Po214": [
+            {"t": 30.0, "counts": activity0 * efficiency * dt, "dt": dt},
+            {"t": 90.0, "counts": activity1 * efficiency * dt, "dt": dt},
+        ]
+    }
+    external = [
+        {"t": 30.0, "rn_bq_per_m3": ambient0},
+        {"t": 90.0, "rn_bq_per_m3": ambient1},
+    ]
+
+    result = run_radon_inference(series, config, external)
+    assert result is not None
+
+    volumes = [entry["v_m3"] for entry in result["volume_equiv"]]
+    rates = [entry["q_m3_s"] for entry in result["volume_equiv"]]
+    cumulative = [entry["v_m3_cum"] for entry in result["volume_cumulative"]]
+    assert volumes == pytest.approx([leak_rate * dt, leak_rate * dt])
+    assert rates == pytest.approx([leak_rate, leak_rate])
+    assert cumulative == pytest.approx([leak_rate * dt, 2.0 * leak_rate * dt])
+
+
+def test_negative_leak_rates_are_clipped_to_zero():
+    config = _base_config(
+        external_rn={"mode": "constant", "constant_bq_per_m3": 80.0}
+    )
+    dt = 60.0
+    efficiency = 0.12
+    activity0 = 10.0
+    activity1 = 4.0
+    series = {
+        "Po214": [
+            {"t": 30.0, "counts": activity0 * efficiency * dt, "dt": dt},
+            {"t": 90.0, "counts": activity1 * efficiency * dt, "dt": dt},
+        ]
+    }
+    external = [
+        {"t": 30.0, "rn_bq_per_m3": 80.0},
+        {"t": 90.0, "rn_bq_per_m3": 80.0},
+    ]
+
+    result = run_radon_inference(series, config, external)
+    assert result is not None
+
+    first, second = result["volume_equiv"]
+    assert first["v_m3"] > 0.0
+    assert second["q_m3_s"] == pytest.approx(0.0)
+    assert second["v_m3"] == pytest.approx(0.0)
+    assert second["meta"]["clipped_to_zero"] is True
+    assert result["volume_cumulative"][-1]["v_m3_cum"] == pytest.approx(
+        result["volume_cumulative"][0]["v_m3_cum"]
     )
 
 

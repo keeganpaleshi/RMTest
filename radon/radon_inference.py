@@ -8,6 +8,8 @@ from typing import Iterable, Mapping, Sequence
 
 import numpy as np
 
+from constants import load_half_life_overrides
+
 logger = logging.getLogger(__name__)
 
 SUPPORTED_ISOTOPES = {"Po214", "Po218", "Po210"}
@@ -124,6 +126,66 @@ def _interpolate_external(
     return list(zip(targets.tolist(), filled.tolist()))
 
 
+
+
+def _estimate_leak_rate(
+    *,
+    start_activity: float,
+    mean_activity: float,
+    ambient_activity: float,
+    interval_dt: float,
+    rn_decay_constant: float,
+    initial_interval: bool = False,
+) -> dict[str, float | bool | str] | None:
+    """Estimate leak rate from interval-averaged activity.
+
+    Within one interval the radon inventory obeys ``dA/dt = q * C - lambda * A``.
+    Treating ``mean_activity`` as the average inventory over that interval and
+    ``start_activity`` as the inventory at the interval start gives a leak-rate
+    estimate that is substantially less sensitive to binning than differencing
+    adjacent averages directly.
+    """
+
+    if (
+        not np.isfinite(start_activity)
+        or not np.isfinite(mean_activity)
+        or not np.isfinite(ambient_activity)
+        or ambient_activity <= 0.0
+        or interval_dt <= 0.0
+        or not np.isfinite(rn_decay_constant)
+        or rn_decay_constant <= 0.0
+    ):
+        return None
+
+    survival = float(np.exp(-rn_decay_constant * interval_dt))
+    response = float(-np.expm1(-rn_decay_constant * interval_dt) / rn_decay_constant)
+    mean_weight = response / interval_dt
+    leak_weight = 1.0 - mean_weight
+    if not np.isfinite(mean_weight) or not np.isfinite(leak_weight) or leak_weight <= 0.0:
+        return None
+
+    leak_rate_raw = (
+        rn_decay_constant * (mean_activity - start_activity * mean_weight)
+    ) / (ambient_activity * leak_weight)
+    clipped_to_zero = bool(leak_rate_raw < 0.0)
+    leak_rate_m3_s = max(float(leak_rate_raw), 0.0)
+    end_activity = start_activity * survival + leak_rate_m3_s * ambient_activity * response
+    method = "steady_state_initial" if initial_interval else "inventory_balance"
+    if clipped_to_zero:
+        method = f"{method}_clipped"
+
+    return {
+        "leak_rate_m3_s": leak_rate_m3_s,
+        "leak_rate_raw_m3_s": float(leak_rate_raw),
+        "inventory_equiv_m3": float(mean_activity / ambient_activity),
+        "mean_activity_bq": float(mean_activity),
+        "start_activity_bq": float(start_activity),
+        "end_activity_bq": float(end_activity),
+        "clipped_to_zero": clipped_to_zero,
+        "method": method,
+    }
+
+
 def run_radon_inference(
     isotope_series: Mapping[str, Sequence[Mapping[str, float]]],
     config: Mapping[str, object],
@@ -206,12 +268,19 @@ def run_radon_inference(
     ambient_aligned = _interpolate_external(external_rn_series, times)
     ambient_lookup = {round(t, 6): val for t, val in ambient_aligned}
 
+    half_life_map = load_half_life_overrides(dict(config) if isinstance(config, Mapping) else None)
+    rn_half_life_s = float(half_life_map.get("Rn222", 0.0))
+    if not np.isfinite(rn_half_life_s) or rn_half_life_s <= 0.0:
+        logger.warning("Invalid Rn222 half-life configured for radon inference; skipping stage")
+        return None
+    rn_decay_constant = float(np.log(2.0) / rn_half_life_s)
+
     rn_series: list[dict[str, object]] = []
     volume_series: list[dict[str, object]] = []
     ambient_series_out: list[dict[str, object]] = []
     cumulative_series: list[dict[str, object]] = []
-    cumulative_activity_exposure = 0.0
-    cumulative_ambient_exposure = 0.0
+    cumulative_volume_m3 = 0.0
+    negative_leak_rate_intervals_clipped = 0
 
     for bin_entry in bins:
         dt = bin_entry.dt
@@ -236,8 +305,9 @@ def run_radon_inference(
             continue
 
         radon_bq = weighted_sum / overall_eff
+        current_t = float(bin_entry.t)
         rn_entry = {
-            "t": bin_entry.t,
+            "t": current_t,
             "dt": dt,
             "rn_bq": radon_bq,
             "source": contributing_isotopes[0]
@@ -247,51 +317,66 @@ def run_radon_inference(
         }
         rn_series.append(rn_entry)
 
-        ambient_val = ambient_lookup.get(round(bin_entry.t, 6))
-        if ambient_val is not None:
-            ambient_series_out.append(
-                {"t": bin_entry.t, "rn_bq_per_m3": ambient_val, "dt": dt}
-            )
-            if ambient_val > 0:
-                # The equivalent volume for a bin is derived from the
-                # inferred activity and the ambient concentration.  Since the
-                # activity ``radon_bq`` is already a decay rate (Bq), dividing
-                # by the ambient concentration (Bq/m³) directly yields the
-                # sampled volume in m³.  Multiplying by ``dt`` would
-                # double-count the elapsed time and inflate volumes.
-                volume_m3 = radon_bq / ambient_val
-                dt_minutes = dt / 60.0 if dt > 0 else np.nan
-                if dt_minutes > 0:
-                    volume_lpm = volume_m3 * 1000.0 / dt_minutes
-                else:
-                    volume_lpm = float("nan")
-                # Build the cumulative curve as a running estimate of the
-                # total equivalent volume implied by all bins seen so far.
-                # Summing `volume_m3` directly would make the "total"
-                # depend on the chosen binning.
-                cumulative_activity_exposure += radon_bq * dt
-                cumulative_ambient_exposure += ambient_val * dt
-                cumulative_volume = (
-                    cumulative_activity_exposure / cumulative_ambient_exposure
-                )
-                volume_series.append(
-                    {
-                        "t": bin_entry.t,
-                        "dt": dt,
-                        "v_m3": volume_m3,
-                        "v_lpm": volume_lpm,
-                        "meta": {"ambient_rn_bq_m3": ambient_val},
-                    }
-                )
-                cumulative_series.append(
-                    {"t": bin_entry.t, "v_m3_cum": cumulative_volume}
-                )
-        else:
-            ambient_series_out.append({"t": bin_entry.t, "rn_bq_per_m3": None, "dt": dt})
+        ambient_val = ambient_lookup.get(round(current_t, 6))
+        ambient_series_out.append(
+            {"t": current_t, "rn_bq_per_m3": ambient_val, "dt": dt}
+        )
 
-    if not rn_series:
-        logger.info("Radon inference did not compute any activity samples; skipping")
-        return None
+    previous_end_activity: float | None = None
+    for rn_entry in rn_series:
+        current_t = float(rn_entry["t"])
+        mean_activity = float(rn_entry["rn_bq"])
+        interval_dt = float(rn_entry["dt"])
+        current_ambient = ambient_lookup.get(round(current_t, 6))
+        if current_ambient is None or not np.isfinite(current_ambient) or current_ambient <= 0.0:
+            continue
+
+        initial_interval = previous_end_activity is None
+        start_activity = mean_activity if initial_interval else float(previous_end_activity)
+        leak_estimate = _estimate_leak_rate(
+            start_activity=start_activity,
+            mean_activity=mean_activity,
+            ambient_activity=float(current_ambient),
+            interval_dt=interval_dt,
+            rn_decay_constant=rn_decay_constant,
+            initial_interval=initial_interval,
+        )
+        if leak_estimate is None:
+            continue
+
+        if leak_estimate["clipped_to_zero"]:
+            negative_leak_rate_intervals_clipped += 1
+
+        leak_rate_m3_s = float(leak_estimate["leak_rate_m3_s"])
+        delta_volume_m3 = leak_rate_m3_s * interval_dt
+        cumulative_volume_m3 += delta_volume_m3
+        volume_series.append(
+            {
+                "t": current_t,
+                "dt": interval_dt,
+                "v_m3": delta_volume_m3,
+                "v_lpm": leak_rate_m3_s * 60000.0,
+                "q_m3_s": leak_rate_m3_s,
+                "meta": {
+                    "ambient_rn_bq_m3": float(current_ambient),
+                    "inventory_equiv_m3": float(leak_estimate["inventory_equiv_m3"]),
+                    "leak_rate_raw_m3_s": float(leak_estimate["leak_rate_raw_m3_s"]),
+                    "mean_activity_bq": float(leak_estimate["mean_activity_bq"]),
+                    "start_activity_bq": float(leak_estimate["start_activity_bq"]),
+                    "end_activity_bq": float(leak_estimate["end_activity_bq"]),
+                    "method": leak_estimate["method"],
+                    "clipped_to_zero": bool(leak_estimate["clipped_to_zero"]),
+                },
+            }
+        )
+        cumulative_series.append({"t": current_t, "v_m3_cum": cumulative_volume_m3})
+        previous_end_activity = float(leak_estimate["end_activity_bq"])
+
+    if negative_leak_rate_intervals_clipped:
+        logger.info(
+            "Clipped %d negative leak-rate intervals to 0.0 m^3/s",
+            negative_leak_rate_intervals_clipped,
+        )
 
     meta = {
         "source_isotopes": available_isotopes,
@@ -302,6 +387,11 @@ def run_radon_inference(
         "transport_efficiency": transport_eff,
         "retention_efficiency": retention_eff,
         "chain_correction": chain_correction,
+        "rn222_half_life_s": rn_half_life_s,
+        "rn222_decay_constant_s": rn_decay_constant,
+        "volume_method": "interval_average_inventory_balance",
+        "volume_units": "m^3 leaked per interval",
+        "negative_leak_rate_intervals_clipped": negative_leak_rate_intervals_clipped,
     }
 
     result = {
@@ -315,4 +405,3 @@ def run_radon_inference(
 
 
 __all__ = ["run_radon_inference"]
-
