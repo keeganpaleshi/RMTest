@@ -173,15 +173,47 @@ def _load_file_series(cfg_external: dict, target_index: pd.DatetimeIndex) -> pd.
     df = _read_file(file_path_obj)
 
     value_column = cfg_external.get("value_column", "rn_bq_per_m3")
-    tz_name = cfg_external.get("timezone")
+    tz_name = cfg_external.get("timezone") or cfg_external.get("tz")
 
     if value_column not in df.columns:
         raise ValueError(
             f"external radon column {value_column!r} not found in file {file_path!r}"
         )
 
-    # Build timestamps: either from component columns or a single column
     time_columns = cfg_external.get("time_columns")
+    if isinstance(time_columns, Mapping):
+        time_component_cols = [
+            time_columns.get(key) for key in ("year", "month", "day", "hour", "minute")
+        ]
+        time_component_cols = [col for col in time_component_cols if col in df.columns]
+        if time_component_cols:
+            time_blank_mask = df[time_component_cols].isna().all(axis=1)
+            partial_time_mask = df[time_component_cols].isna().any(axis=1) & ~time_blank_mask
+        else:
+            time_blank_mask = pd.Series(False, index=df.index)
+            partial_time_mask = pd.Series(False, index=df.index)
+    else:
+        time_column = cfg_external.get("time_column", "timestamp")
+        time_blank_mask = df[time_column].isna() if time_column in df.columns else pd.Series(False, index=df.index)
+        partial_time_mask = pd.Series(False, index=df.index)
+
+    if partial_time_mask.any():
+        raise ValueError(
+            f"external radon file {file_path!r} contains rows with incomplete timestamp components"
+        )
+
+    if time_blank_mask.any():
+        logger.info(
+            "Dropping %d external radon rows without timestamps from %s",
+            int(time_blank_mask.sum()),
+            file_path_obj.name,
+        )
+        df = df.loc[~time_blank_mask].copy()
+
+    if df.empty:
+        return pd.Series(index=target_index, dtype="float64")
+
+    # Build timestamps: either from component columns or a single column
     if isinstance(time_columns, Mapping):
         timestamps = _build_timestamps_from_columns(df, time_columns, file_path)
     else:
@@ -196,10 +228,22 @@ def _load_file_series(cfg_external: dict, target_index: pd.DatetimeIndex) -> pd.
 
     # Validate that value column is numeric before conversion
     values = pd.to_numeric(df[value_column], errors="coerce")
-    if values.isna().any() and not df[value_column].isna().any():
+    non_numeric_mask = values.isna() & df[value_column].notna()
+    if non_numeric_mask.any():
         raise ValueError(
             f"external radon value column {value_column!r} contains non-numeric values"
         )
+    missing_value_mask = df[value_column].isna()
+    if missing_value_mask.any():
+        logger.info(
+            "Dropping %d external radon rows with missing %s values from %s",
+            int(missing_value_mask.sum()),
+            value_column,
+            file_path_obj.name,
+        )
+        keep_mask = ~missing_value_mask.to_numpy()
+        timestamps = timestamps[keep_mask]
+        values = values[keep_mask]
 
     # Apply unit conversion to Bq/m³
     units = str(cfg_external.get("units", "bq_per_m3")).lower()

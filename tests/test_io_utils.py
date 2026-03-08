@@ -233,6 +233,46 @@ def test_load_config_radon_inference_valid(tmp_path):
     assert loaded["radon_inference"]["external_rn"]["mode"] == "constant"
 
 
+def test_load_config_radon_inference_file_mode_with_component_timestamps(tmp_path):
+    cfg = _base_config()
+    cfg["radon_inference"] = {
+        "enabled": True,
+        "source_isotopes": ["Po214", "Po218"],
+        "source_weights": {"Po214": 0.7, "Po218": 0.3},
+        "detection_efficiency": {"Po214": 0.12, "Po218": 0.1},
+        "transport_efficiency": 1.0,
+        "retention_efficiency": 1.0,
+        "chain_correction": "none",
+        "external_rn": {
+            "mode": "file",
+            "fallback_bq_per_m3": 120.0,
+            "file_path": "rad_4996_pico40l.xls",
+            "time_columns": {
+                "year": "Year",
+                "month": "Month",
+                "day": "Day",
+                "hour": "Hour",
+                "minute": "Minute",
+                "year_format": "two_digit",
+            },
+            "value_column": "Radon Bq/m^3",
+            "tz": "America/Toronto",
+            "interpolation": "ffill",
+            "max_gap_seconds": 21600,
+        },
+        "output": {"write_per_interval": True, "write_cumulative": True},
+    }
+    p = tmp_path / "cfg.yaml"
+    with open(p, "w") as f:
+        json.dump(cfg, f)
+
+    loaded = load_config(p)
+    external = loaded["radon_inference"]["external_rn"]
+    assert external["mode"] == "file"
+    assert external["time_columns"]["year"] == "Year"
+    assert external["value_column"] == "Radon Bq/m^3"
+
+
 def test_load_config_radon_inference_missing_detection(tmp_path):
     cfg = _base_config()
     cfg["radon_inference"] = {
@@ -457,6 +497,20 @@ def test_write_summary_with_nan_values(tmp_path):
     assert loaded["calibration"]["nan"] is None
     assert loaded["calibration"]["inf"] is None
     assert loaded["calibration"]["list"] == [None, 1.0]
+
+
+def test_write_summary_includes_radon_inference(tmp_path):
+    summary = Summary(
+        radon_inference={"rn_inferred": [{"t": 0.0, "rn_bq": 1.25}]}
+    )
+    outdir = tmp_path / "out_radon_inference"
+    ts = "19700101T000003Z"
+    results = write_summary(outdir, summary, ts)
+    summary_path = Path(results) / "summary.json"
+    with open(summary_path, "r", encoding="utf-8") as f:
+        loaded = json.load(f)
+
+    assert loaded["radon_inference"]["rn_inferred"][0]["rn_bq"] == pytest.approx(1.25)
 
 
 def test_apply_burst_filter_no_removal():

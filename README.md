@@ -960,9 +960,13 @@ The radon inference calculation follows these steps:
 
 4. Calculate equivalent air volume when ambient radon concentration is available:
    ```
-   V_equiv = (A_rn * dt) / (C_mine * transport * retention)
+   V_equiv = A_rn_corrected / C_mine
    ```
    where `C_mine` is the ambient radon concentration in Bq/m^3.
+
+The cumulative volume plot is a running estimate of the total equivalent
+volume implied by all bins seen so far, so it is reported in plain volume
+units (`m^3` / `L`) rather than per-interval units.
 
 ### Overlay and Duplication
 

@@ -57,7 +57,10 @@ def test_runs_with_same_seed_reproduce(tmp_path, monkeypatch):
 
     results = []
     def fake_write(out_dir, summary, timestamp=None):
-        results.append(asdict(summary))
+        summary_dict = asdict(summary)
+        radon = summary_dict.get("radon", {})
+        if isinstance(radon, dict) and "plot_series" in radon:
+            results.append(summary_dict)
         d = Path(out_dir) / (timestamp or "x")
         d.mkdir(parents=True, exist_ok=True)
         return str(d)

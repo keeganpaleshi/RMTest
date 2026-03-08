@@ -13,6 +13,7 @@ import numpy as np
 from plot_utils._time_utils import guard_mpl_times, setup_time_axis
 
 logger = logging.getLogger(__name__)
+_DEFAULT_MARKER_SIZE = 3.0
 
 
 def _extract_series(
@@ -109,7 +110,7 @@ def plot_rn_inferred_vs_time(radon_results: Mapping[str, object], out_dir: Path)
     fig, ax = plt.subplots(figsize=(8, 5))
     times_mpl = guard_mpl_times(times=times)
     label = _legend_label(radon_results.get("meta"))
-    ax.plot(times_mpl, values, marker="o", linestyle="None", label=label)
+    ax.plot(times_mpl, values, marker="o", linestyle="None", markersize=_DEFAULT_MARKER_SIZE, label=label)
     ax.set_ylabel("Rn222 activity [Bq]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
@@ -163,7 +164,7 @@ def plot_ambient_rn_vs_time(radon_results: Mapping[str, object], out_dir: Path) 
 
     fig, ax = plt.subplots(figsize=(8, 5))
     times_mpl = guard_mpl_times(times=times)
-    ax.plot(times_mpl, values, marker="o", linestyle="None", color="#1f77b4")
+    ax.plot(times_mpl, values, marker="o", linestyle="None", markersize=_DEFAULT_MARKER_SIZE, color="#1f77b4")
     ax.set_ylabel("Ambient radon [Bq/m^3]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
@@ -215,11 +216,13 @@ def plot_volume_equiv_vs_time(
             volume_units = meta.get("volume_units", "m³ per interval")
         else:
             volume_units = "m³ per interval"
+    volume_units = str(volume_units)
+    cumulative_units = volume_units.replace(" per interval", "")
 
     times_mpl = guard_mpl_times(times=times)
 
     fig, ax1 = plt.subplots(figsize=(8, 5))
-    ax1.plot(times_mpl, volumes_m3, marker="o", linestyle="None", color="#2ca02c")
+    ax1.plot(times_mpl, volumes_m3, marker="o", linestyle="None", markersize=_DEFAULT_MARKER_SIZE, color="#2ca02c")
     ax1.set_ylabel(f"Equivalent volume [{volume_units}]")
     ax1.set_xlabel("Time (UTC)")
     ax1.ticklabel_format(axis="y", style="plain")
@@ -235,7 +238,7 @@ def plot_volume_equiv_vs_time(
     volumes_liters = [v * 1000.0 for v in volumes_m3]
     liters_units = "L per interval"
     fig_l, ax_l = plt.subplots(figsize=(8, 5))
-    ax_l.plot(times_mpl, volumes_liters, marker="o", linestyle="None", color="#17becf")
+    ax_l.plot(times_mpl, volumes_liters, marker="o", linestyle="None", markersize=_DEFAULT_MARKER_SIZE, color="#17becf")
     ax_l.set_ylabel(f"Equivalent volume [{liters_units}]")
     ax_l.set_xlabel("Time (UTC)")
     ax_l.ticklabel_format(axis="y", style="plain")
@@ -255,7 +258,7 @@ def plot_volume_equiv_vs_time(
             times_flow = times_mpl[:paired_len]
             volumes_flow = volumes_lpm[:paired_len]
             fig_flow, ax_flow = plt.subplots(figsize=(8, 5))
-            ax_flow.plot(times_flow, volumes_flow, marker="o", linestyle="None", color="#ff7f0e")
+            ax_flow.plot(times_flow, volumes_flow, marker="o", linestyle="None", markersize=_DEFAULT_MARKER_SIZE, color="#ff7f0e")
             ax_flow.set_ylabel("Equivalent flow [L/min]")
             ax_flow.set_xlabel("Time (UTC)")
             ax_flow.ticklabel_format(axis="y", style="plain")
@@ -273,8 +276,8 @@ def plot_volume_equiv_vs_time(
         if cum_times and cum_values:
             fig_cum, ax_cum = plt.subplots(figsize=(8, 5))
             times_mpl_cum = guard_mpl_times(times=cum_times)
-            ax_cum.plot(times_mpl_cum, cum_values, marker="o", linestyle="None", color="#9467bd")
-            ax_cum.set_ylabel(f"Cumulative volume [{volume_units}]")
+            ax_cum.plot(times_mpl_cum, cum_values, marker="o", linestyle="None", markersize=_DEFAULT_MARKER_SIZE, color="#9467bd")
+            ax_cum.set_ylabel(f"Cumulative volume [{cumulative_units}]")
             ax_cum.set_xlabel("Time (UTC)")
             ax_cum.ticklabel_format(axis="y", style="plain")
             setup_time_axis(ax_cum, times_mpl_cum)
@@ -284,7 +287,7 @@ def plot_volume_equiv_vs_time(
             fig_cum.savefig(out_dir / "equivalent_volume_cumulative.png", dpi=300)
             plt.close(fig_cum)
 
-            # Also provide a liters-per-interval cumulative view
+            # Also provide the cumulative view in liters.
             cum_values_liters = [val * 1000.0 for val in cum_values]
             fig_cum_l, ax_cum_l = plt.subplots(figsize=(8, 5))
             ax_cum_l.plot(
@@ -292,9 +295,10 @@ def plot_volume_equiv_vs_time(
                 cum_values_liters,
                 marker="o",
                 linestyle="None",
+                markersize=_DEFAULT_MARKER_SIZE,
                 color="#8c564b",
             )
-            ax_cum_l.set_ylabel("Cumulative volume [L per interval]")
+            ax_cum_l.set_ylabel("Cumulative volume [L]")
             ax_cum_l.set_xlabel("Time (UTC)")
             ax_cum_l.ticklabel_format(axis="y", style="plain")
             setup_time_axis(ax_cum_l, times_mpl_cum)

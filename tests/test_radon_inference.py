@@ -40,9 +40,49 @@ def test_constant_external_rn_volume_math():
     # concentration.  No additional scaling by ``dt`` should occur.
     assert vol_entry["v_m3"] == pytest.approx(0.2083333333)
     assert vol_entry["v_lpm"] == pytest.approx(208.3333333333)
+    assert result["volume_cumulative"][0]["v_m3_cum"] == pytest.approx(0.2083333333)
+
+
+def test_cumulative_volume_is_stable_under_rebinning():
+    config = _base_config(
+        external_rn={"mode": "constant", "constant_bq_per_m3": 80.0}
+    )
+    split_series = {
+        "Po214": [
+            {"t": 0.0, "counts": 120.0, "dt": 60.0},
+            {"t": 60.0, "counts": 120.0, "dt": 60.0},
+        ]
+    }
+    merged_series = {"Po214": [{"t": 60.0, "counts": 240.0, "dt": 120.0}]}
+
+    split_result = run_radon_inference(
+        split_series,
+        config,
+        [
+            {"t": 0.0, "rn_bq_per_m3": 80.0},
+            {"t": 60.0, "rn_bq_per_m3": 80.0},
+        ],
+    )
+    merged_result = run_radon_inference(
+        merged_series,
+        config,
+        [{"t": 60.0, "rn_bq_per_m3": 80.0}],
+    )
+
+    assert split_result is not None
+    assert merged_result is not None
+
+    split_cumulative = split_result["volume_cumulative"]
+    assert [entry["v_m3_cum"] for entry in split_cumulative] == pytest.approx(
+        [0.2083333333, 0.2083333333]
+    )
+    assert merged_result["volume_cumulative"][-1]["v_m3_cum"] == pytest.approx(
+        split_cumulative[-1]["v_m3_cum"]
+    )
 
 
 def test_missing_isotope_reweights_po214_only():
+
     config = _base_config(
         source_isotopes=["Po214", "Po218"],
         source_weights={"Po214": 0.7, "Po218": 0.3},

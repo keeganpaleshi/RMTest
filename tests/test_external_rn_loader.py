@@ -472,6 +472,47 @@ def test_pico40l_format_full(tmp_path):
     assert actual == expected
 
 
+def test_pico40l_tz_alias_and_blank_rows(tmp_path):
+    """Blank footer rows should be ignored and `tz` should localize component times."""
+    xlsx_path = tmp_path / "rad_4996_pico40l.xlsx"
+    df = pd.DataFrame(
+        {
+            "Year": [19, 19, None, None],
+            "Month": [2, 2, None, None],
+            "Day": [13, 13, None, None],
+            "Hour": [13, 14, None, None],
+            "Minute": [42, 42, None, None],
+            "Radon Bq/m^3": [110.2106, 129.8770, 121.45315, "Units: Bq/m^3"],
+        }
+    )
+    df.to_excel(xlsx_path, index=False)
+
+    cfg = {
+        "mode": "file",
+        "file_path": str(xlsx_path),
+        "time_columns": {
+            "year": "Year",
+            "month": "Month",
+            "day": "Day",
+            "hour": "Hour",
+            "minute": "Minute",
+            "year_format": "two_digit",
+        },
+        "value_column": "Radon Bq/m^3",
+        "tz": "America/Toronto",
+        "max_gap_seconds": 7200,
+        "interpolation": "nearest",
+    }
+    targets = [
+        "2019-02-13T18:42:00Z",
+        "2019-02-13T19:42:00Z",
+    ]
+
+    result = load_external_rn_series(cfg, targets)
+
+    assert [round(val, 4) for _, val in result] == [110.2106, 129.8770]
+
+
 def test_unsupported_units_raises(tmp_path):
     """Test that unsupported unit strings raise a clear error."""
     csv_path = tmp_path / "data.csv"

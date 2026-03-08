@@ -196,12 +196,20 @@ radon_inference:
   retention_efficiency: 1.0
   chain_correction: none  # allowed: none, assume_equilibrium, forward_model
   external_rn:
-    mode: constant  # allowed: constant, file
-    constant_bq_per_m3: 120.0
-    file_path: mine_rn_timeseries.csv
-    time_column: timestamp
-    value_column: rn_bq_per_m3
+    mode: file  # allowed: constant, file
+    fallback_bq_per_m3: 120.0
+    file_path: rad_4996_pico40l.xls
+    time_columns:
+      year: Year
+      month: Month
+      day: Day
+      hour: Hour
+      minute: Minute
+      year_format: two_digit
+    value_column: Radon Bq/m^3
     tz: America/Toronto
+    interpolation: ffill
+    max_gap_seconds: 21600
   output:
     write_per_interval: true
     write_cumulative: true
@@ -215,6 +223,8 @@ plotting:
   - png
   dump_time_series_json: true
   plot_time_style: lines
+  plot_time_show_models: false
+  plot_marker_size: 3.0
   overlay_isotopes: true
   save_individual_time_series: false
 

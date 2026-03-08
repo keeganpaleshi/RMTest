@@ -14,7 +14,7 @@ translates them into inferred radon levels, aligned with the original binning.
 * Combines multiple isotopes via configurable weights and records the derived
   series in the analysis summary for downstream reporting.
 * Divides the inferred activity by an external ambient radon monitor to compute
-  an equivalent sampled volume and its cumulative integral.
+  a per-bin equivalent volume estimate and a running cumulative-volume estimate.
 
 ## Why it matters
 
