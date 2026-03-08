@@ -2,6 +2,7 @@ import numpy as np
 
 import analyze
 import radon_activity
+from constants import RN222
 
 
 def test_radon_activity_curve_uses_defaults_for_missing_uncertainties(monkeypatch):
@@ -45,3 +46,25 @@ def test_radon_activity_curve_uses_defaults_for_missing_uncertainties(monkeypatc
     assert err214.shape == t_rel.shape
     assert act218.shape == t_rel.shape
     assert err218.shape == t_rel.shape
+
+
+def test_radon_activity_curve_from_fit_uses_rn222_half_life(monkeypatch):
+    half_lives: list[float] = []
+
+    def fake_curve(times, E, dE, N0, dN0, hl, cov=0.0):  # pragma: no cover - stub
+        half_lives.append(hl)
+        return np.zeros_like(times, dtype=float), np.ones_like(times, dtype=float)
+
+    monkeypatch.setattr(radon_activity, "radon_activity_curve", fake_curve)
+
+    t_rel = np.array([0.0, 1.0, 2.0], dtype=float)
+    cfg = {"time_fit": {"hl_po214": 1.0, "hl_po218": 2.0}}
+
+    analyze._radon_activity_curve_from_fit(
+        "Po214", {}, {"E_Po214": 5.0, "N0_Po214": 10.0}, t_rel, cfg
+    )
+    analyze._radon_activity_curve_from_fit(
+        "Po218", {}, {"E_Po218": 7.0, "N0_Po218": 11.0}, t_rel, cfg
+    )
+
+    assert half_lives == [RN222.half_life_s, RN222.half_life_s]

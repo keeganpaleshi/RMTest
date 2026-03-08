@@ -536,9 +536,24 @@ def plot_total_radon(
     )
 
 
-def plot_radon_trend(times, activity, out_png, *, config=None, fit_valid=True):
+def plot_radon_trend(
+    times,
+    activity,
+    out_png,
+    *,
+    config=None,
+    sample_volume_l=None,
+    fit_valid=True,
+):
     """Wrapper used by tests expecting output path as third argument."""
-    return plot_radon_trend_full(times, activity, out_png, config=config, fit_valid=fit_valid)
+    return plot_radon_trend_full(
+        times,
+        activity,
+        out_png,
+        config=config,
+        sample_volume_l=sample_volume_l,
+        fit_valid=fit_valid,
+    )
 
 
 def _total_radon_series(activity, errors, monitor_volume, sample_volume):
@@ -726,7 +741,9 @@ def _radon_activity_curve_from_fit(
     dE = _float_with_default(raw_dE, 0.0)
     N0 = _float_with_default(fit_params.get(f"N0_{iso}", 0.0), 0.0)
     dN0 = _float_with_default(fit_params.get(f"dN0_{iso}", 0.0), 0.0)
-    hl = _hl_value(cfg, iso)
+    # Daughter-fit parameters are converted into an Rn-222 activity curve, so
+    # evaluate them with the radon half-life instead of the daughter half-life.
+    hl = _hl_value(cfg, "Rn222")
     cov = _cov_lookup(fit_result, f"E_{iso}", f"N0_{iso}")
     return radon_activity.radon_activity_curve(t_rel, E, dE, N0, dN0, hl, cov)
 
@@ -872,6 +889,97 @@ def _normalise_mu_bounds(
         normalised[iso] = (lo_val, hi_val)
 
     return normalised
+
+
+def _normalise_fit_energy_range(
+    fit_range_cfg: Sequence[float] | None,
+) -> tuple[float, float] | None:
+    """Return a validated spectral fit window in MeV."""
+
+    if fit_range_cfg is None:
+        return None
+    if isinstance(fit_range_cfg, (str, bytes)) or not isinstance(fit_range_cfg, Sequence):
+        raise ValueError("fit_energy_range must be a sequence of two numbers")
+    if len(fit_range_cfg) != 2:
+        raise ValueError("fit_energy_range must contain exactly two elements")
+    try:
+        lo = float(fit_range_cfg[0])
+        hi = float(fit_range_cfg[1])
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"fit_energy_range must be numeric; got {fit_range_cfg}"
+        ) from exc
+    if not np.isfinite(lo) or not np.isfinite(hi):
+        raise ValueError("fit_energy_range values must be finite")
+    if hi <= lo:
+        raise ValueError("fit_energy_range requires lower < upper")
+    return float(lo), float(hi)
+
+
+def _select_spectral_fit_frame(
+    df: pd.DataFrame,
+    spectral_cfg: Mapping[str, Any],
+) -> tuple[pd.DataFrame, tuple[float, float] | None]:
+    """Return the event subset used for the spectral fit."""
+
+    fit_range = _normalise_fit_energy_range(spectral_cfg.get("fit_energy_range"))
+    if fit_range is None:
+        return df, None
+
+    lo, hi = fit_range
+    energies = df["energy_MeV"].to_numpy(dtype=float, copy=False)
+    mask = np.isfinite(energies) & (energies >= lo) & (energies <= hi)
+    return df.loc[mask], fit_range
+
+
+def _estimate_loglin_background_prior(
+    energies: Sequence[float] | np.ndarray,
+    peak_centroids: Mapping[str, float],
+    *,
+    peak_width: float,
+    prior_hint: Sequence[float] | None = None,
+) -> tuple[float, float]:
+    """Return a broad total-count prior for the log-linear background."""
+
+    energies_arr = np.asarray(energies, dtype=float)
+    energies_arr = energies_arr[np.isfinite(energies_arr)]
+    if energies_arr.size == 0:
+        return 1.0, 1.0
+
+    continuum_mask = np.ones(energies_arr.shape, dtype=bool)
+    width = float(peak_width)
+    if np.isfinite(width) and width > 0.0:
+        for mu in peak_centroids.values():
+            mu_val = float(mu)
+            if np.isfinite(mu_val):
+                continuum_mask &= np.abs(energies_arr - mu_val) > width
+
+    continuum_counts = float(np.count_nonzero(continuum_mask))
+    if continuum_counts <= 0.0:
+        continuum_counts = float(energies_arr.size)
+
+    prior_mean = float("nan")
+    prior_sigma = float("nan")
+    if prior_hint is not None:
+        if isinstance(prior_hint, (str, bytes)) or not isinstance(prior_hint, Sequence):
+            raise ValueError("S_bkg_prior must be a sequence of two numbers")
+        if len(prior_hint) != 2:
+            raise ValueError("S_bkg_prior must contain exactly two elements")
+        try:
+            prior_mean = float(prior_hint[0])
+            prior_sigma = float(prior_hint[1])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"S_bkg_prior must be numeric; got {prior_hint}"
+            ) from exc
+
+    mean = continuum_counts
+    if np.isfinite(prior_mean) and prior_mean > 0.0:
+        mean = max(mean, prior_mean)
+
+    sigma_scale = abs(prior_sigma) if np.isfinite(prior_sigma) and prior_sigma > 0.0 else 1.0
+    sigma = max(np.sqrt(mean), sigma_scale * mean, 1.0)
+    return float(mean), float(sigma)
 
 
 def _spectral_fit_with_check(
@@ -2885,339 +2993,420 @@ def main(argv=None):
         if cfg.get("spectral_fit", {}).get("do_spectral_fit", False):
             # Decide binning: new 'binning' dict or legacy keys
             spectral_cfg = cfg["spectral_fit"]
-    
-            bin_cfg = spectral_cfg.get("binning")
-            if bin_cfg is not None:
-                method = bin_cfg.get("method", "adc").lower()
-                default_bins = bin_cfg.get("default_bins")
-            else:
-                method = str(
-                    spectral_cfg.get("spectral_binning_mode", "adc")
-                ).lower()
-                default_bins = spectral_cfg.get("fd_hist_bins")
-    
-            if method == "fd":
-                E_all = df_analysis["energy_MeV"].values
-                # Freedman‐Diaconis on energy array
-                q25, q75 = np.percentile(E_all, [25, 75])
-                iqr = q75 - q25
-                n = E_all.size
-                if (iqr > 0) and (n > 0):
-                    fd_width = 2 * iqr / (n ** (1 / 3))
-                    # fd_width is measured in MeV since energies are in MeV
-                    nbins = max(
-                        1,
-                        int(np.ceil((E_all.max() - E_all.min()) / float(fd_width))),
-                    )
-                else:
-                    nbins = default_bins if default_bins is not None else 100
+            analysis_cfg = cfg.get("analysis", {})
+            df_spectrum, fit_energy_range = _select_spectral_fit_frame(
+                df_analysis,
+                spectral_cfg,
+            )
+            E_all = df_spectrum["energy_MeV"].to_numpy(dtype=float, copy=False)
+            adc_all = df_spectrum["adc"].to_numpy(dtype=float, copy=False)
 
-                bins = nbins
-                bin_edges = None
-            elif method == "energy":
-                width = 0.02
+            if E_all.size == 0:
+                if fit_energy_range is None:
+                    logger.warning("No finite energies available for spectral fit")
+                else:
+                    logger.warning(
+                        "No events in spectral fit range %.3f-%.3f MeV; skipping spectral fit",
+                        fit_energy_range[0],
+                        fit_energy_range[1],
+                    )
+            else:
+                bin_cfg = spectral_cfg.get("binning")
                 if bin_cfg is not None:
-                    width = bin_cfg.get("energy_bin_width", width)
+                    method = bin_cfg.get("method", "adc").lower()
+                    default_bins = bin_cfg.get("default_bins")
                 else:
-                    width = cfg["spectral_fit"].get("energy_bin_width", width)
-                width = float(width)
-                if width <= 0:
-                    raise ValueError("energy_bin_width must be positive")
-                E_all = df_analysis["energy_MeV"].values
-                if E_all.size == 0:
-                    bins = 1
-                    bin_edges = np.array([0.0, width], dtype=float)
-                else:
-                    e_min = float(np.min(E_all))
-                    e_max = float(np.max(E_all))
-                    # Guard against a single-point spectrum
+                    method = str(
+                        spectral_cfg.get("spectral_binning_mode", "adc")
+                    ).lower()
+                    default_bins = spectral_cfg.get("fd_hist_bins")
+
+                if method == "fd":
+                    if E_all.size < 2:
+                        nbins = 1
+                    else:
+                        q25, q75 = np.percentile(E_all, [25, 75])
+                        iqr = q75 - q25
+                        if iqr > 0:
+                            fd_width = 2 * iqr / (E_all.size ** (1 / 3))
+                            nbins = max(
+                                1,
+                                int(np.ceil((E_all.max() - E_all.min()) / float(fd_width))),
+                            )
+                        else:
+                            nbins = default_bins if default_bins is not None else 100
+
+                    if fit_energy_range is not None:
+                        lo, hi = fit_energy_range
+                        bin_edges = np.linspace(lo, hi, int(nbins) + 1, dtype=float)
+                        bins = int(nbins)
+                    else:
+                        bins = int(nbins)
+                        bin_edges = None
+                elif method == "energy":
+                    width = 0.02
+                    if bin_cfg is not None:
+                        width = bin_cfg.get("energy_bin_width", width)
+                    else:
+                        width = cfg["spectral_fit"].get("energy_bin_width", width)
+                    width = float(width)
+                    if width <= 0:
+                        raise ValueError("energy_bin_width must be positive")
+
+                    if fit_energy_range is not None:
+                        e_min, e_max = fit_energy_range
+                    else:
+                        e_min = float(np.min(E_all))
+                        e_max = float(np.max(E_all))
+
                     if np.isclose(e_min, e_max):
                         e_max = e_min + width
-                    n_steps = int(np.ceil((e_max - e_min) / width))
-                    # np.arange is exclusive of the stop value -> pad by one step
-                    stop = e_min + (n_steps + 1) * width
-                    bin_edges = np.arange(e_min, stop + 0.5 * width, width, dtype=float)
+                    n_steps = max(1, int(np.ceil((e_max - e_min) / width)))
+                    if fit_energy_range is not None:
+                        bin_edges = e_min + width * np.arange(n_steps, dtype=float)
+                        bin_edges = np.append(bin_edges, e_max)
+                    else:
+                        stop = e_min + (n_steps + 1) * width
+                        bin_edges = np.arange(e_min, stop + 0.5 * width, width, dtype=float)
                     bins = bin_edges.size - 1
-            else:
-                # "ADC" binning mode -> fixed width in raw channels
-                width = 1
-                if bin_cfg is not None:
-                    width = bin_cfg.get("adc_bin_width", 1)
                 else:
-                    width = spectral_cfg.get("adc_bin_width", 1)
-                adc_min = df_analysis["adc"].min()
-                adc_max = df_analysis["adc"].max()
-                bins = int(np.ceil((adc_max - adc_min + 1) / width))
-    
-                # Build edges in ADC units then convert to energy for plotting
-                bin_edges_adc = np.arange(adc_min, adc_min + bins * width + 1, width)
-                bin_edges = apply_calibration(bin_edges_adc, a, c, quadratic_coeff=a2)
-    
-            # Find approximate ADC centroids for Po‐210, Po‐218, Po‐214
-    
-            expected_peaks = spectral_cfg.get("expected_peaks")
-            if expected_peaks is None:
-                expected_peaks = DEFAULT_ADC_CENTROIDS
-    
-            # `find_adc_bin_peaks` will return a dict: e.g. { "Po210": adc_centroid, … }
-            adc_peaks = find_adc_bin_peaks(
-                df_analysis["adc"].values,
-                expected=expected_peaks,
-                window=spectral_cfg.get("peak_search_width_adc", 50),
-                prominence=spectral_cfg.get("peak_search_prominence", 0),
-                width=spectral_cfg.get("peak_search_width_adc", None),
-                method=spectral_cfg.get("peak_search_method", "prominence"),
-                cwt_widths=spectral_cfg.get("peak_search_cwt_widths"),
-            )
-    
-            # Build priors for the unbinned spectrum fit:
-            priors_spec = {}
-            # Resolution prior: map calibrated sigma_E -> sigma0 parameter
-            sigma_prior_source = spectral_cfg.get("sigma_e_prior_source", spectral_cfg.get("sigma_E_prior_source"))
-            sigma_prior_sigma = spectral_cfg.get("sigma_e_prior_sigma", spectral_cfg.get("sigma_E_prior_sigma", sigE_sigma))
-    
-            def _coerce_sigma(val):
-                try:
-                    return float(val)
-                except (TypeError, ValueError):
-                    return float("nan")
-    
-            if sigma_prior_source in (None, "calibration"):
-                sigma_E_prior = float(sigE_sigma)
-            elif sigma_prior_source == "config":
-                sigma_E_prior = _coerce_sigma(sigma_prior_sigma)
-            else:
-                sigma_E_prior = _coerce_sigma(sigma_prior_source)
-    
-            if not np.isfinite(sigma_E_prior) or sigma_E_prior <= 0.0:
-                sigma_E_prior = _coerce_sigma(sigma_prior_sigma)
-            if not np.isfinite(sigma_E_prior) or sigma_E_prior <= 0.0:
-                sigma_E_prior = max(float(sigE_sigma), 1e-6)
-    
-            float_sigma_E = bool(spectral_cfg.get("float_sigma_e", spectral_cfg.get("float_sigma_E", True)))
-    
-            priors_spec["sigma_E"] = (sigE_mean, sigma_E_prior)
-            # Fit_spectrum expects separate ``sigma0`` and ``F`` resolution terms.
-            # Initialise sigma0 from the calibration-derived resolution.  Allow it
-            # to float within the calibration uncertainty when requested while
-            # keeping the Fano term fixed by default.
-            if float_sigma_E:
-                priors_spec["sigma0"] = (sigE_mean, sigma_E_prior)
-                priors_spec["F"] = (0.0, float(spectral_cfg.get("F_prior_sigma", 0.01)))
-            else:
-                priors_spec["sigma0"] = (sigE_mean, 0.0)
-                priors_spec["F"] = (0.0, 0.0)
-    
-    
-            mu_bounds_units = spectral_cfg.get("mu_bounds_units", "mev")
-            mu_bounds_fit = _normalise_mu_bounds(
-                spectral_cfg.get("mu_bounds"),
-                units=mu_bounds_units,
-                slope=a,
-                intercept=c,
-                quadratic_coeff=a2,
-            )
-    
-            for peak, centroid_adc in adc_peaks.items():
-                mu = apply_calibration(centroid_adc, a, c, quadratic_coeff=a2)
-                bounds = mu_bounds_fit.get(peak)
-                if bounds is not None:
-                    lo, hi = bounds
-                    if not (lo <= mu <= hi):
-                        mu = float(np.clip(mu, lo, hi))
-                priors_spec[f"mu_{peak}"] = (mu, spectral_cfg.get("mu_sigma"))
-                # Observed raw-counts around the expected energy window
+                    # "ADC" binning mode -> fixed width in raw channels
+                    width = 1
+                    if bin_cfg is not None:
+                        width = bin_cfg.get("adc_bin_width", 1)
+                    else:
+                        width = spectral_cfg.get("adc_bin_width", 1)
+                    adc_min = float(np.min(adc_all))
+                    adc_max = float(np.max(adc_all))
+                    bins = int(np.ceil((adc_max - adc_min + 1) / width))
+
+                    # Build edges in ADC units then convert to energy for plotting
+                    bin_edges_adc = np.arange(adc_min, adc_min + bins * width + 1, width)
+                    bin_edges = apply_calibration(bin_edges_adc, a, c, quadratic_coeff=a2)
+
+                expected_peaks = spectral_cfg.get("expected_peaks")
+                if expected_peaks is None:
+                    expected_peaks = DEFAULT_ADC_CENTROIDS
+
+                adc_peaks = find_adc_bin_peaks(
+                    adc_all,
+                    expected=expected_peaks,
+                    window=spectral_cfg.get("peak_search_width_adc", 50),
+                    prominence=spectral_cfg.get("peak_search_prominence", 0),
+                    width=spectral_cfg.get("peak_search_width_adc", None),
+                    method=spectral_cfg.get("peak_search_method", "prominence"),
+                    cwt_widths=spectral_cfg.get("peak_search_cwt_widths"),
+                )
+
+                # Build priors for the unbinned spectrum fit.
+                priors_spec = {}
+                sigma_prior_source = spectral_cfg.get("sigma_e_prior_source", spectral_cfg.get("sigma_E_prior_source"))
+                sigma_prior_sigma = spectral_cfg.get("sigma_e_prior_sigma", spectral_cfg.get("sigma_E_prior_sigma", sigE_sigma))
+
+                def _coerce_sigma(val):
+                    try:
+                        return float(val)
+                    except (TypeError, ValueError):
+                        return float("nan")
+
+                if sigma_prior_source in (None, "calibration"):
+                    sigma_E_prior = float(sigE_sigma)
+                elif sigma_prior_source == "config":
+                    sigma_E_prior = _coerce_sigma(sigma_prior_sigma)
+                else:
+                    sigma_E_prior = _coerce_sigma(sigma_prior_source)
+
+                if not np.isfinite(sigma_E_prior) or sigma_E_prior <= 0.0:
+                    sigma_E_prior = _coerce_sigma(sigma_prior_sigma)
+                if not np.isfinite(sigma_E_prior) or sigma_E_prior <= 0.0:
+                    sigma_E_prior = max(float(sigE_sigma), 1e-6)
+
+                float_sigma_E = bool(spectral_cfg.get("float_sigma_e", spectral_cfg.get("float_sigma_E", True)))
+
+                priors_spec["sigma_E"] = (sigE_mean, sigma_E_prior)
+                # Fit_spectrum expects separate ``sigma0`` and ``F`` resolution terms.
+                # Initialise sigma0 from the calibration-derived resolution. Allow it
+                # to float within the calibration uncertainty when requested while
+                # keeping the Fano term fixed by default.
+                if float_sigma_E:
+                    priors_spec["sigma0"] = (sigE_mean, sigma_E_prior)
+                    priors_spec["F"] = (0.0, float(spectral_cfg.get("F_prior_sigma", 0.01)))
+                else:
+                    priors_spec["sigma0"] = (sigE_mean, 0.0)
+                    priors_spec["F"] = (0.0, 0.0)
+
+                mu_bounds_units = spectral_cfg.get("mu_bounds_units", "mev")
+                mu_bounds_fit = _normalise_mu_bounds(
+                    spectral_cfg.get("mu_bounds"),
+                    units=mu_bounds_units,
+                    slope=a,
+                    intercept=c,
+                    quadratic_coeff=a2,
+                )
+
                 peak_tol = spectral_cfg.get("spectral_peak_tolerance_mev", 0.3)
-                raw_count = float(
-                    (
-                        (df_analysis["energy_MeV"] >= mu - peak_tol)
-                        & (df_analysis["energy_MeV"] <= mu + peak_tol)
-                    ).sum()
-                )
-                mu_amp = max(raw_count, 1.0)
-                sigma_amp = max(
-                    np.sqrt(mu_amp), spectral_cfg.get("amp_prior_scale") * mu_amp
-                )
-                priors_spec[f"S_{peak}"] = (mu_amp, sigma_amp)
-    
-                # If EMG tails are requested for this peak:
-                if spectral_cfg.get("use_emg", {}).get(peak, False):
-                    priors_spec[f"tau_{peak}"] = (
-                        spectral_cfg.get(f"tau_{peak}_prior_mean"),
-                        spectral_cfg.get(f"tau_{peak}_prior_sigma"),
+                for peak, centroid_adc in adc_peaks.items():
+                    mu = apply_calibration(centroid_adc, a, c, quadratic_coeff=a2)
+                    bounds = mu_bounds_fit.get(peak)
+                    if bounds is not None:
+                        lo, hi = bounds
+                        if not (lo <= mu <= hi):
+                            mu = float(np.clip(mu, lo, hi))
+                    priors_spec[f"mu_{peak}"] = (mu, spectral_cfg.get("mu_sigma"))
+                    raw_count = float(
+                        (
+                            (E_all >= mu - peak_tol)
+                            & (E_all <= mu + peak_tol)
+                        ).sum()
                     )
-    
-            # Continuum priors
-            bkg_mode = str(spectral_cfg.get("bkg_mode", "manual")).lower()
-            if bkg_mode == "auto":
-                from background import estimate_linear_background
-    
-                mu_map = {k: priors_spec[f"mu_{k}"][0] for k in adc_peaks.keys()}
-                peak_tol = spectral_cfg.get("spectral_peak_tolerance_mev", 0.3)
-                b0_est, b1_est = estimate_linear_background(
-                    df_analysis["energy_MeV"].values,
-                    mu_map,
-                    peak_width=peak_tol,
-                )
-                priors_spec["b0"] = (b0_est, abs(b0_est) * 0.1 + 1e-3)
-                priors_spec["b1"] = (b1_est, abs(b1_est) * 0.1 + 1e-3)
-            elif bkg_mode.startswith("auto_poly"):
-                from background import estimate_polynomial_background_auto
-    
-                mu_map = {k: priors_spec[f"mu_{k}"][0] for k in adc_peaks.keys()}
-                peak_tol = spectral_cfg.get("spectral_peak_tolerance_mev", 0.3)
-                try:
-                    max_n = int(bkg_mode.split("auto_poly")[-1])
-                except ValueError:
-                    max_n = 2
-                coeffs, order = estimate_polynomial_background_auto(
-                    df_analysis["energy_MeV"].values,
-                    mu_map,
-                    max_order=max_n,
-                    peak_width=peak_tol,
-                )
-                for i, c in enumerate(coeffs):
-                    priors_spec[f"b{i}"] = (float(c), abs(float(c)) * 0.1 + 1e-3)
-                priors_spec["poly_order"] = order
-            else:
-                priors_spec["b0"] = tuple(spectral_cfg.get("b0_prior"))
-                priors_spec["b1"] = tuple(spectral_cfg.get("b1_prior"))
-    
-            # Flags controlling the spectral fit
-            spec_flags = spectral_cfg.get("flags", {}).copy()
-            analysis_cfg = cfg.get("analysis", {})
-            bkg_model = analysis_cfg.get("background_model")
-            if bkg_model is not None:
-                spec_flags["background_model"] = bkg_model
-            like_model = analysis_cfg.get("likelihood")
-            if like_model is not None:
-                spec_flags["likelihood"] = like_model
-            if float_sigma_E and spec_flags.get("fix_sigma0"):
-                raise ValueError(
-                    "Configuration error: cannot float energy resolution while fixing sigma0"
-                )
-            if not float_sigma_E:
-                spec_flags["fix_sigma0"] = True
-                spec_flags.setdefault("fix_F", True)
-    
-            if "fix_sigma_E" in spec_flags:
-                if spec_flags.pop("fix_sigma_E"):
-                    spec_flags.setdefault("fix_sigma0", True)
-                    spec_flags.setdefault("fix_F", True)
-    
-            if spec_flags.get("fix_sigma0") and not spec_flags.get("fix_F", True):
-                raise ValueError(
-                    "Configuration error: fix_sigma0 requires fix_F when energy resolution is fixed"
-                )
-    
-            use_emg_cfg = spectral_cfg.get("use_emg")
-            if use_emg_cfg is not None:
-                spec_flags["use_emg"] = dict(use_emg_cfg)
-    
-            # Launch the spectral fit
-            spec_fit_out = None
-            peak_deviation = {}
-            try:
-                fit_kwargs = {
-                    "energies": df_analysis["energy_MeV"].values,
-                    "priors": priors_spec,
-                    "flags": spec_flags,
-                }
-                if spectral_cfg.get("use_plot_bins_for_fit", False):
-                    fit_kwargs.update({"bins": bins, "bin_edges": bin_edges})
-                if spectral_cfg.get("unbinned_likelihood", False):
-                    fit_kwargs["unbinned"] = True
-                if args.strict_covariance:
-                    fit_kwargs["strict"] = True
-                if mu_bounds_fit:
-                    bounds_map = {
-                        f"mu_{iso}": tuple(bounds)
-                        for iso, bounds in mu_bounds_fit.items()
-                    }
-                    if bounds_map:
-                        fit_kwargs["bounds"] = bounds_map
-    
-                spec_fit_out, peak_deviation = _spectral_fit_with_check(
-                    df_analysis["energy_MeV"].values,
-                    priors_spec,
-                    spec_flags,
-                    cfg,
-                    bins=fit_kwargs.get("bins"),
-                    bin_edges=fit_kwargs.get("bin_edges"),
-                    bounds=fit_kwargs.get("bounds"),
-                    unbinned=fit_kwargs.get("unbinned", False),
-                    strict=fit_kwargs.get("strict", False),
-                )
-                if isinstance(spec_fit_out, FitResult) and not spec_fit_out.params.get(
-                    "fit_valid", True
-                ):
-                    tau_keys = [k for k in priors_spec if k.startswith("tau_")]
-                    if tau_keys:
-                        priors_shrunk = priors_spec.copy()
-                        for t in tau_keys:
-                            mu, sig = priors_shrunk[t]
-                            priors_shrunk[t] = (mu, sig * 0.5)
-                        flags_fix = spec_flags.copy()
-                        for t in tau_keys:
-                            flags_fix[f"fix_{t}"] = True
-                        refit = fit_spectrum(
-                            df_analysis["energy_MeV"].values,
-                            priors_shrunk,
-                            flags=flags_fix,
-                            bins=fit_kwargs.get("bins"),
-                            bin_edges=fit_kwargs.get("bin_edges"),
-                            bounds=fit_kwargs.get("bounds"),
-                            unbinned=fit_kwargs.get("unbinned", False),
-                            strict=fit_kwargs.get("strict", False),
+                    mu_amp = max(raw_count, 1.0)
+                    sigma_amp = max(
+                        np.sqrt(mu_amp), spectral_cfg.get("amp_prior_scale") * mu_amp
+                    )
+                    priors_spec[f"S_{peak}"] = (mu_amp, sigma_amp)
+
+                    if spectral_cfg.get("use_emg", {}).get(peak, False):
+                        priors_spec[f"tau_{peak}"] = (
+                            spectral_cfg.get(f"tau_{peak}_prior_mean"),
+                            spectral_cfg.get(f"tau_{peak}_prior_sigma"),
                         )
-                        if isinstance(refit, FitResult) and refit.params.get(
-                            "fit_valid", False
-                        ):
-                            thresh = spectral_cfg.get("refit_aic_threshold", 2.0)
-                            if (
-                                refit.params.get("aic", float("inf"))
-                                > spec_fit_out.params.get("aic", float("inf")) - thresh
+
+                # Continuum priors
+                bkg_mode = str(spectral_cfg.get("bkg_mode", "manual")).lower()
+                if bkg_mode == "auto":
+                    from background import estimate_linear_background
+
+                    mu_map = {k: priors_spec[f"mu_{k}"][0] for k in adc_peaks.keys()}
+                    b0_est, b1_est = estimate_linear_background(
+                        E_all,
+                        mu_map,
+                        peak_width=peak_tol,
+                    )
+                    priors_spec["b0"] = (b0_est, abs(b0_est) * 0.1 + 1e-3)
+                    priors_spec["b1"] = (b1_est, abs(b1_est) * 0.1 + 1e-3)
+                elif bkg_mode.startswith("auto_poly"):
+                    from background import estimate_polynomial_background_auto
+
+                    mu_map = {k: priors_spec[f"mu_{k}"][0] for k in adc_peaks.keys()}
+                    try:
+                        max_n = int(bkg_mode.split("auto_poly")[-1])
+                    except ValueError:
+                        max_n = 2
+                    coeffs, order = estimate_polynomial_background_auto(
+                        E_all,
+                        mu_map,
+                        max_order=max_n,
+                        peak_width=peak_tol,
+                    )
+                    for i, c in enumerate(coeffs):
+                        priors_spec[f"b{i}"] = (float(c), abs(float(c)) * 0.1 + 1e-3)
+                    priors_spec["poly_order"] = order
+                else:
+                    priors_spec["b0"] = tuple(spectral_cfg.get("b0_prior"))
+                    priors_spec["b1"] = tuple(spectral_cfg.get("b1_prior"))
+
+                # Flags controlling the spectral fit
+                spec_flags = spectral_cfg.get("flags", {}).copy()
+                bkg_model = analysis_cfg.get("background_model")
+                if bkg_model is not None:
+                    spec_flags["background_model"] = bkg_model
+                like_model = analysis_cfg.get("likelihood")
+                if like_model is not None:
+                    spec_flags["likelihood"] = like_model
+                if float_sigma_E and spec_flags.get("fix_sigma0"):
+                    raise ValueError(
+                        "Configuration error: cannot float energy resolution while fixing sigma0"
+                    )
+                if not float_sigma_E:
+                    spec_flags["fix_sigma0"] = True
+                    spec_flags.setdefault("fix_F", True)
+
+                if "fix_sigma_E" in spec_flags:
+                    if spec_flags.pop("fix_sigma_E"):
+                        spec_flags.setdefault("fix_sigma0", True)
+                        spec_flags.setdefault("fix_F", True)
+
+                if spec_flags.get("fix_sigma0") and not spec_flags.get("fix_F", True):
+                    raise ValueError(
+                        "Configuration error: fix_sigma0 requires fix_F when energy resolution is fixed"
+                    )
+
+                use_emg_cfg = spectral_cfg.get("use_emg")
+                if use_emg_cfg is not None:
+                    spec_flags["use_emg"] = dict(use_emg_cfg)
+
+                if spec_flags.get("background_model") == "loglin_unit":
+                    priors_spec["S_bkg"] = _estimate_loglin_background_prior(
+                        E_all,
+                        {k: priors_spec[f"mu_{k}"][0] for k in adc_peaks.keys()},
+                        peak_width=peak_tol,
+                        prior_hint=spectral_cfg.get("S_bkg_prior", spectral_cfg.get("s_bkg_prior")),
+                    )
+
+                # Launch the spectral fit
+                spec_fit_out = None
+                peak_deviation = {}
+                try:
+                    fit_kwargs = {
+                        "energies": E_all,
+                        "priors": priors_spec,
+                        "flags": spec_flags,
+                    }
+                    if spectral_cfg.get("use_plot_bins_for_fit", False):
+                        fit_kwargs.update({"bins": bins, "bin_edges": bin_edges})
+                    if spectral_cfg.get("unbinned_likelihood", False):
+                        fit_kwargs["unbinned"] = True
+                    if args.strict_covariance:
+                        fit_kwargs["strict"] = True
+                    if mu_bounds_fit:
+                        bounds_map = {
+                            f"mu_{iso}": tuple(bounds)
+                            for iso, bounds in mu_bounds_fit.items()
+                        }
+                        if bounds_map:
+                            fit_kwargs["bounds"] = bounds_map
+
+                    spec_fit_out, peak_deviation = _spectral_fit_with_check(
+                        E_all,
+                        priors_spec,
+                        spec_flags,
+                        cfg,
+                        bins=fit_kwargs.get("bins"),
+                        bin_edges=fit_kwargs.get("bin_edges"),
+                        bounds=fit_kwargs.get("bounds"),
+                        unbinned=fit_kwargs.get("unbinned", False),
+                        strict=fit_kwargs.get("strict", False),
+                    )
+                    if isinstance(spec_fit_out, FitResult) and not spec_fit_out.params.get(
+                        "fit_valid", True
+                    ):
+                        tau_keys = [k for k in priors_spec if k.startswith("tau_")]
+                        if tau_keys:
+                            priors_shrunk = priors_spec.copy()
+                            for t in tau_keys:
+                                mu, sig = priors_shrunk[t]
+                                priors_shrunk[t] = (mu, sig * 0.5)
+                            flags_fix = spec_flags.copy()
+                            for t in tau_keys:
+                                flags_fix[f"fix_{t}"] = True
+                            refit = fit_spectrum(
+                                E_all,
+                                priors_shrunk,
+                                flags=flags_fix,
+                                bins=fit_kwargs.get("bins"),
+                                bin_edges=fit_kwargs.get("bin_edges"),
+                                bounds=fit_kwargs.get("bounds"),
+                                unbinned=fit_kwargs.get("unbinned", False),
+                                strict=fit_kwargs.get("strict", False),
+                            )
+                            if isinstance(refit, FitResult) and refit.params.get(
+                                "fit_valid", False
                             ):
-                                spec_fit_out = refit
-                            else:
-                                free_fit = fit_spectrum(
-                                    df_analysis["energy_MeV"].values,
-                                    priors_shrunk,
-                                    flags=spec_flags,
-                                    bins=fit_kwargs.get("bins"),
-                                    bin_edges=fit_kwargs.get("bin_edges"),
-                                    bounds=fit_kwargs.get("bounds"),
-                                    unbinned=fit_kwargs.get("unbinned", False),
-                                    strict=fit_kwargs.get("strict", False),
-                                )
+                                thresh = spectral_cfg.get("refit_aic_threshold", 2.0)
                                 if (
-                                    isinstance(free_fit, FitResult)
-                                    and free_fit.params.get("fit_valid", False)
-                                    and free_fit.params.get("aic", float("inf"))
-                                    < refit.params.get("aic", float("inf")) - thresh
+                                    refit.params.get("aic", float("inf"))
+                                    > spec_fit_out.params.get("aic", float("inf")) - thresh
                                 ):
-                                    spec_fit_out = free_fit
-                                else:
                                     spec_fit_out = refit
-                spectrum_results = spec_fit_out
-            except Exception as e:
-                logger.warning("Spectral fit failed -> %s", e)
-                spectrum_results = {}
-    
-            # Store plotting inputs (bin_edges now in energy units)
-            fit_vals = None
-            if isinstance(spec_fit_out, FitResult):
-                fit_vals = spec_fit_out
-            elif isinstance(spec_fit_out, dict):
-                fit_vals = spec_fit_out
-            spec_plot_data = {
-                "energies": df_analysis["energy_MeV"].values,
-                "fit_vals": fit_vals,
-                "bins": bins,
-                "bin_edges": bin_edges,
-                "flags": dict(spec_flags),
-            }
-    
+                                else:
+                                    free_fit = fit_spectrum(
+                                        E_all,
+                                        priors_shrunk,
+                                        flags=spec_flags,
+                                        bins=fit_kwargs.get("bins"),
+                                        bin_edges=fit_kwargs.get("bin_edges"),
+                                        bounds=fit_kwargs.get("bounds"),
+                                        unbinned=fit_kwargs.get("unbinned", False),
+                                        strict=fit_kwargs.get("strict", False),
+                                    )
+                                    if (
+                                        isinstance(free_fit, FitResult)
+                                        and free_fit.params.get("fit_valid", False)
+                                        and free_fit.params.get("aic", float("inf"))
+                                        < refit.params.get("aic", float("inf")) - thresh
+                                    ):
+                                        spec_fit_out = free_fit
+                                    else:
+                                        spec_fit_out = refit
+                    spectrum_results = spec_fit_out
+                except Exception as e:
+                    logger.warning("Spectral fit failed -> %s", e)
+                    spectrum_results = {}
+
+                fit_vals = None
+                if isinstance(spec_fit_out, FitResult):
+                    fit_vals = spec_fit_out
+                elif isinstance(spec_fit_out, dict):
+                    fit_vals = spec_fit_out
+
+                plot_energies = df_analysis["energy_MeV"].to_numpy(dtype=float, copy=False)
+                plot_bins = bins
+                plot_bin_edges = bin_edges
+                plot_flags = dict(spec_flags)
+                configured_fit_range = _normalise_fit_energy_range(
+                    spectral_cfg.get("fit_energy_range")
+                )
+                if configured_fit_range is not None:
+                    plot_flags["fit_energy_range"] = configured_fit_range
+
+                if method == "energy" and bin_edges is not None:
+                    finite_plot = plot_energies[np.isfinite(plot_energies)]
+                    if finite_plot.size:
+                        plot_min = float(np.min(finite_plot))
+                        plot_max = float(np.max(finite_plot))
+                        start_steps = int(np.floor((plot_min - float(bin_edges[0])) / width))
+                        stop_steps = int(np.ceil((plot_max - float(bin_edges[0])) / width))
+                        plot_bin_edges = float(bin_edges[0]) + width * np.arange(
+                            start_steps,
+                            stop_steps + 1,
+                            dtype=float,
+                        )
+                        if plot_bin_edges.size < 2:
+                            plot_bin_edges = np.array(
+                                [plot_min, plot_min + width],
+                                dtype=float,
+                            )
+                        elif plot_bin_edges[-1] < plot_max:
+                            plot_bin_edges = np.append(
+                                plot_bin_edges,
+                                plot_bin_edges[-1] + width,
+                            )
+                        plot_bins = plot_bin_edges.size - 1
+                elif method == "adc" and bin_edges is not None:
+                    adc_plot = df_analysis["adc"].to_numpy(dtype=float, copy=False)
+                    adc_plot = adc_plot[np.isfinite(adc_plot)]
+                    if adc_plot.size:
+                        adc_ref = float(np.min(adc_all))
+                        adc_min_plot = float(np.min(adc_plot))
+                        adc_max_plot = float(np.max(adc_plot))
+                        start_steps = int(np.floor((adc_min_plot - adc_ref) / width))
+                        stop_steps = int(np.ceil((adc_max_plot - adc_ref + 1.0) / width))
+                        plot_edges_adc = adc_ref + width * np.arange(
+                            start_steps,
+                            stop_steps + 1,
+                            dtype=float,
+                        )
+                        if plot_edges_adc.size < 2:
+                            plot_edges_adc = np.array(
+                                [adc_min_plot, adc_min_plot + width],
+                                dtype=float,
+                            )
+                        plot_bin_edges = apply_calibration(
+                            plot_edges_adc,
+                            a,
+                            c,
+                            quadratic_coeff=a2,
+                        )
+                        plot_bins = plot_bin_edges.size - 1
+
+                spec_plot_data = {
+                    "energies": plot_energies,
+                    "fit_vals": fit_vals,
+                    "bins": plot_bins,
+                    "bin_edges": plot_bin_edges,
+                    "flags": plot_flags,
+                }
+
         # ────────────────────────────────────────────────────────────
     with timer.section("time_series"):
         # 6. Time‐series decay fits for Po‐218 and Po‐214
@@ -4675,6 +4864,7 @@ def main(argv=None):
                 rad_ts["activity"],
                 Path(out_dir) / "radon_trend.png",
                 config=cfg.get("plotting", {}),
+                sample_volume_l=sample_vol,
             )
     
         # Generate plots now that the output directory exists
@@ -4971,30 +5161,9 @@ def main(argv=None):
                 except Exception as exc:
                     logger.warning("Failed to create radon inference plots: %s", exc)
 
-                # Re-generate radon_trend using per-bin inference data
-                rn_inferred = radon_inference_results.get("rn_inferred")
-                if rn_inferred:
-                    trend_times = []
-                    trend_vals = []
-                    for entry in rn_inferred:
-                        try:
-                            t_val = float(entry.get("t"))
-                            rn_val = float(entry.get("rn_bq"))
-                        except (TypeError, ValueError, AttributeError):
-                            continue
-                        if np.isfinite(t_val) and np.isfinite(rn_val):
-                            trend_times.append(t_val)
-                            trend_vals.append(rn_val)
-                    if len(trend_times) > 2:
-                        try:
-                            plot_radon_trend(
-                                trend_times,
-                                trend_vals,
-                                Path(out_dir) / "radon_trend.png",
-                                config=cfg.get("plotting", {}),
-                            )
-                        except Exception as exc:
-                            logger.warning("Failed to update radon trend plot: %s", exc)
+                # Keep ``radon_trend.png`` sourced from the radon concentration
+                # series. ``rn_inferred`` is detector-cell activity in Bq and is
+                # reported separately in ``radon_inferred.png``.
     
     # Additional visualizations
     with timer.section("additional_visualizations"):
@@ -5295,6 +5464,7 @@ def main(argv=None):
                 activity_arr,
                 Path(out_dir) / "radon_trend.png",
                 config=cfg.get("plotting", {}),
+                sample_volume_l=sample_vol,
             )
             summary_updated = True
 
@@ -5334,6 +5504,7 @@ def main(argv=None):
                     trend,
                     Path(out_dir) / "radon_trend.png",
                     config=cfg.get("plotting", {}),
+                    sample_volume_l=sample_vol,
                 )
 
         ambient = cfg.get("analysis", {}).get("ambient_concentration")

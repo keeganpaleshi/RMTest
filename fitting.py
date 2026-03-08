@@ -594,24 +594,21 @@ def fit_spectrum(
     priors = dict(priors)
     if background_model == "loglin_unit":
         if "S_bkg" not in priors:
-            b0_prior = priors.get("b0", (0.0, 1.0))
-            b1_prior = priors.get("b1", (0.0, 1.0))
-            b0_mu = b0_prior[0] if isinstance(b0_prior, (tuple, list)) and len(b0_prior) > 0 else 0.0
-            b1_mu = b1_prior[0] if isinstance(b1_prior, (tuple, list)) and len(b1_prior) > 0 else 0.0
-            # For exp(b0 + b1*(E - Eref)), calculate integral over [E_lo, E_hi]
-            Eref = 0.5 * (E_lo + E_hi)
-            if abs(b1_mu) > 1e-10:
-                # ∫exp(b0 + b1*(E-Eref))dE = exp(b0)/b1 * [exp(b1*(E_hi-Eref)) - exp(b1*(E_lo-Eref))]
-                from constants import safe_exp
-                exp_hi = safe_exp(b0_mu + b1_mu * (E_hi - Eref))
-                exp_lo = safe_exp(b0_mu + b1_mu * (E_lo - Eref))
-                mu = (exp_hi - exp_lo) / b1_mu
-            else:
-                # For b1 ~ 0, use exp(b0) * (E_hi - E_lo)
-                from constants import safe_exp
-                mu = safe_exp(b0_mu) * (E_hi - E_lo)
-            mu = max(mu, 0.0)
-            sig = max(abs(mu) * 0.1, 1.0)
+            signal_guess = 0.0
+            for iso_name in ("Po210", "Po218", "Po214"):
+                prior_val = priors.get(f"S_{iso_name}")
+                if isinstance(prior_val, (tuple, list)) and len(prior_val) > 0:
+                    try:
+                        signal_guess += max(float(prior_val[0]), 0.0)
+                    except (TypeError, ValueError):
+                        continue
+
+            remaining = float(n_events) - signal_guess
+            if not np.isfinite(remaining) or remaining <= 0.0:
+                remaining = max(0.1 * float(n_events), 1.0)
+
+            mu = max(float(remaining), 1.0)
+            sig = max(np.sqrt(mu), 0.5 * float(n_events), 1.0)
             priors["S_bkg"] = (mu, sig)
         required = {"b0", "b1"}
         missing = required - priors.keys()

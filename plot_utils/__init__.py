@@ -795,6 +795,20 @@ def plot_spectrum(
     elif fit_flags is not None:
         flags = dict(getattr(fit_flags, "__dict__", {}))
 
+    fit_window = None
+    fit_window_cfg = flags.get("fit_energy_range")
+    if fit_window_cfg is not None:
+        try:
+            if isinstance(fit_window_cfg, (str, bytes)) or len(fit_window_cfg) != 2:
+                raise ValueError
+            fit_lo = float(fit_window_cfg[0])
+            fit_hi = float(fit_window_cfg[1])
+        except (TypeError, ValueError):
+            fit_window = None
+        else:
+            if np.isfinite(fit_lo) and np.isfinite(fit_hi) and fit_hi > fit_lo:
+                fit_window = (fit_lo, fit_hi)
+
     if (
         bin_edges is None
         and config is not None
@@ -824,6 +838,9 @@ def plot_spectrum(
             return comps, None
         centers_arr = np.asarray(centers, dtype=float)
         total = np.zeros_like(widths, dtype=float)
+        fit_mask = None
+        if fit_window is not None:
+            fit_mask = (centers_arr >= fit_window[0]) & (centers_arr <= fit_window[1])
 
         # Peak contributions
         sigma0 = fit_params.get("sigma0")
@@ -847,7 +864,11 @@ def plot_spectrum(
             else:
                 density = gaussian(centers_arr, float(mu), sigma_vals)
             density = np.nan_to_num(density, nan=0.0, posinf=0.0, neginf=0.0)
-            comps[iso] = _counts_per_bin(float(amp) * density, widths)
+            component = _counts_per_bin(float(amp) * density, widths)
+            if fit_mask is not None:
+                component = component.astype(float, copy=False)
+                component[~fit_mask] = np.nan
+            comps[iso] = component
             total += comps[iso]
 
         # Background contribution
@@ -858,7 +879,11 @@ def plot_spectrum(
             b0 = float(0.0 if b0 is None else b0)
             b1 = float(0.0 if b1 is None else b1)
             if flags.get("background_model") == "loglin_unit":
-                shape = make_linear_bkg(float(edges[0]), float(edges[-1]))
+                domain_lo = float(edges[0])
+                domain_hi = float(edges[-1])
+                if fit_window is not None:
+                    domain_lo, domain_hi = fit_window
+                shape = make_linear_bkg(domain_lo, domain_hi)
                 amplitude = float(fit_params.get("S_bkg", 0.0))
                 background_density = amplitude * shape(centers_arr, b0, b1)
             else:
@@ -874,6 +899,9 @@ def plot_spectrum(
                 background_density, nan=0.0, posinf=0.0, neginf=0.0
             )
             background = _counts_per_bin(background_density, widths)
+            if fit_mask is not None:
+                background = background.astype(float, copy=False)
+                background[~fit_mask] = np.nan
             total += background
 
         if background is not None:
@@ -881,6 +909,10 @@ def plot_spectrum(
 
         if not comps:
             return comps, None
+
+        if fit_mask is not None:
+            total = total.astype(float, copy=False)
+            total[~fit_mask] = np.nan
 
         return comps, total
 
@@ -938,6 +970,10 @@ def plot_spectrum(
 
         if ax_res is not None:
             residuals = hist.astype(float) - model_total
+            if fit_window is not None:
+                fit_mask = (centers >= fit_window[0]) & (centers <= fit_window[1])
+                residuals = residuals.astype(float, copy=False)
+                residuals[~fit_mask] = np.nan
             ax_res.bar(
                 centers,
                 residuals,
@@ -1041,6 +1077,55 @@ def _compute_short_timescale_ylim(
         return None
 
     return float(ymin), float(ymax)
+
+
+def _use_full_ylim_for_edge_transient(
+    values: np.ndarray | list[float] | tuple[float, ...],
+    display_ylim: tuple[float, float] | None,
+    *,
+    edge_points: int = 5,
+    min_outside: int = 2,
+) -> bool:
+    values_arr = np.asarray(values, dtype=float).ravel()
+    if values_arr.size < 8 or display_ylim is None:
+        return False
+
+    lower, upper = display_ylim
+    window = min(edge_points, values_arr.size)
+    needed = min(min_outside, window)
+
+    def _edge_has_transient(seq: np.ndarray) -> bool:
+        finite_seq = seq[np.isfinite(seq)]
+        if finite_seq.size < needed:
+            return False
+        outside = (finite_seq < lower) | (finite_seq > upper)
+        if int(np.sum(outside)) < needed:
+            return False
+        first = float(finite_seq[0])
+        diffs = np.diff(finite_seq)
+        if first < lower:
+            return bool(np.all(diffs >= 0))
+        if first > upper:
+            return bool(np.all(diffs <= 0))
+        return False
+
+    if _edge_has_transient(values_arr[:window]):
+        return True
+    if _edge_has_transient(values_arr[-window:][::-1]):
+        return True
+    return False
+
+
+def _select_display_ylim(
+    values: np.ndarray | list[float] | tuple[float, ...],
+    errors: np.ndarray | list[float] | tuple[float, ...] | float | None = None,
+) -> tuple[float, float]:
+    values_arr = np.asarray(values, dtype=float)
+    errors_arr = None if errors is None else np.asarray(errors, dtype=float)
+    display_ylim = _compute_short_timescale_ylim(values_arr, errors_arr)
+    if display_ylim is None or _use_full_ylim_for_edge_transient(values_arr, display_ylim):
+        return _compute_ylim(values_arr, errors_arr)
+    return display_ylim
 
 
 def _compute_ylim(values: np.ndarray, errors: np.ndarray | None) -> tuple[float, float]:
@@ -1154,9 +1239,7 @@ def plot_radon_activity_full(
         lines2, labels2 = ax2.get_legend_handles_labels()
         ax_abs.legend(lines1 + lines2, labels1 + labels2, loc="best")
 
-    display_ylim = _compute_short_timescale_ylim(conc_arr, conc_err)
-    if display_ylim is None:
-        display_ylim = _compute_ylim(conc_arr, conc_err)
+    display_ylim = _select_display_ylim(conc_arr, conc_err)
     ax_abs.set_ylim(*display_ylim)
     ax_rel.set_ylim(*display_ylim)
 
@@ -1224,9 +1307,7 @@ def plot_total_radon_full(
     ax_rel.ticklabel_format(axis="y", style="plain")
     ax_rel.xaxis.get_offset_text().set_visible(False)
 
-    display_ylim = _compute_short_timescale_ylim(total_bq, errors_arr)
-    if display_ylim is None:
-        display_ylim = _compute_ylim(total_bq, errors_arr)
+    display_ylim = _select_display_ylim(total_bq, errors_arr)
     ax_abs.set_ylim(*display_ylim)
     ax_rel.set_ylim(*display_ylim)
 
@@ -1341,12 +1422,34 @@ def plot_modeled_radon_activity(
     )
 
 
-def plot_radon_trend_full(times, activity, out_png, config=None, *, fit_valid=True):
+def plot_radon_trend_full(
+    times,
+    activity,
+    out_png,
+    config=None,
+    *,
+    sample_volume_l=None,
+    fit_valid=True,
+):
     """Plot modeled radon activity trend without uncertainties."""
     if not fit_valid:
         return
     times_mpl = guard_mpl_times(times=times)
     activity = np.asarray(activity, dtype=float)
+
+    volume = None
+    if sample_volume_l is not None:
+        try:
+            volume = float(sample_volume_l)
+        except (TypeError, ValueError):
+            volume = None
+
+    label_units = "Radon Activity (Bq)"
+    title = "Radon Activity Trend"
+    if volume is not None and np.isfinite(volume) and volume > 0:
+        activity = activity / volume
+        label_units = "Radon Concentration (Bq/L)"
+        title = "Radon Concentration Trend"
 
     fig, ax = plt.subplots(figsize=(8, 4))
     palette_name = str(config.get("palette", "default")) if config else "default"
@@ -1354,13 +1457,11 @@ def plot_radon_trend_full(times, activity, out_png, config=None, *, fit_valid=Tr
     color = palette.get("radon_activity", "#9467bd")
     ax.plot(times_mpl, activity, "o", color=color, markersize=_get_marker_size(config))
     ax.set_xlabel("Time (UTC)")
-    ax.set_ylabel("Radon Concentration (Bq/L)")
-    ax.set_title("Radon Concentration Trend")
+    ax.set_ylabel(label_units)
+    ax.set_title(title)
 
     ax.ticklabel_format(axis="y", style="plain")
-    display_ylim = _compute_short_timescale_ylim(activity, None)
-    if display_ylim is None:
-        display_ylim = _compute_ylim(activity, None)
+    display_ylim = _select_display_ylim(activity, None)
     ax.set_ylim(*display_ylim)
     setup_time_axis(ax, times_mpl)
     fig.autofmt_xdate()
@@ -1413,9 +1514,7 @@ def plot_radon_trend(ts_dict, outdir):
     ax.set_ylabel("Radon activity [Bq]")
     ax.set_xlabel("Time (UTC)")
     ax.ticklabel_format(axis="y", style="plain")
-    display_ylim = _compute_short_timescale_ylim(y, None)
-    if display_ylim is None:
-        display_ylim = _compute_ylim(y, None)
+    display_ylim = _select_display_ylim(y, None)
     ax.set_ylim(*display_ylim)
     setup_time_axis(ax, times_mpl)
     fig.autofmt_xdate()

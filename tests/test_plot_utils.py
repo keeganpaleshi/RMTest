@@ -356,6 +356,50 @@ def test_plot_spectrum_hide_total_model(tmp_path, monkeypatch):
     assert "Background" in labels
 
 
+def test_plot_spectrum_masks_model_outside_fit_window(tmp_path, monkeypatch):
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    edges = np.array([4.0, 4.5, 5.0, 5.25, 5.5, 5.75, 6.0])
+    energies = np.array([4.1, 4.2, 4.8, 5.1, 5.4, 5.8])
+    fit_vals = {
+        "sigma0": 0.12,
+        "F": 0.0,
+        "mu_Po210": 5.3,
+        "S_Po210": 120.0,
+        "b0": 0.4,
+        "b1": -0.05,
+        "S_bkg": 30.0,
+    }
+
+    ax = plot_spectrum(
+        energies,
+        fit_vals=fit_vals,
+        bin_edges=edges,
+        fit_flags={
+            "background_model": "loglin_unit",
+            "fit_energy_range": (4.8, 5.8),
+        },
+        out_png=str(tmp_path / "spec_fit_window_masked.png"),
+    )
+
+    line_map = {
+        line.get_label(): np.asarray(line.get_ydata(), dtype=float)
+        for line in ax.get_lines()
+    }
+
+    assert np.isnan(line_map["Background"][0])
+    assert np.isnan(line_map["Total model"][0])
+    assert np.isnan(line_map["Po210"][0])
+    assert np.isnan(line_map["Background"][1])
+    assert np.isnan(line_map["Total model"][1])
+    assert np.isnan(line_map["Po210"][1])
+    assert np.isnan(line_map["Background"][-1])
+    assert np.isnan(line_map["Total model"][-1])
+    assert np.isnan(line_map["Po210"][-1])
+    assert np.isfinite(line_map["Background"][2:-1]).all()
+    assert np.isfinite(line_map["Total model"][2:-1]).all()
+
+
 def test_plot_spectrum_accepts_fitresult(tmp_path, monkeypatch):
     energies = np.linspace(5.0, 7.0, 200)
     params = {
@@ -981,6 +1025,35 @@ def test_plot_radon_activity_short_timescale_ylim(tmp_path, monkeypatch):
     assert np.allclose(ax_rel.get_ylim(), helper_calls["result"])
 
 
+def test_plot_radon_activity_edge_transient_uses_full_ylim(tmp_path, monkeypatch):
+    import plot_utils as plot_utils_mod
+
+    times = np.arange(10, dtype=float)
+    activity = np.array([0.0, 0.05, 0.2, 0.5, 0.8, 1.0, 1.0, 1.0, 1.0, 1.0])
+    errors = np.zeros_like(activity)
+    out_png = tmp_path / "radon_edge_transient.png"
+
+    captured = {}
+    orig_subplots = plot_utils_mod.plt.subplots
+
+    def tracking_subplots(*args, **kwargs):
+        fig, axes = orig_subplots(*args, **kwargs)
+        captured["axes"] = axes
+        return fig, axes
+
+    monkeypatch.setattr(plot_utils_mod.plt, "subplots", tracking_subplots)
+    monkeypatch.setattr(plot_utils_mod.plt, "close", lambda *a, **k: None)
+
+    expected = plot_utils_mod._compute_ylim(activity, errors)
+
+    plot_utils_mod.plot_radon_activity_full(times, activity, errors, str(out_png))
+
+    assert "axes" in captured
+    ax_abs, ax_rel = captured["axes"]
+    assert np.allclose(ax_abs.get_ylim(), expected)
+    assert np.allclose(ax_rel.get_ylim(), expected)
+
+
 def test_plot_total_radon_short_timescale_ylim_fallback(tmp_path, monkeypatch):
     import plot_utils as plot_utils_mod
 
@@ -1330,6 +1403,91 @@ def test_plot_radon_trend_output(tmp_path):
     plot_radon_trend_full(times, activity, str(out_png))
 
     assert out_png.exists()
+
+
+def test_plot_radon_trend_uses_activity_units_without_volume(tmp_path, monkeypatch):
+    import plot_utils as plot_utils_mod
+
+    times = [0.0, 1.0, 2.0]
+    activity = [1.0, 1.2, 1.4]
+    out_png = tmp_path / "trend_units.png"
+
+    captured = {}
+    orig_subplots = plot_utils_mod.plt.subplots
+
+    def tracking_subplots(*args, **kwargs):
+        fig, ax = orig_subplots(*args, **kwargs)
+        captured["ax"] = ax
+        return fig, ax
+
+    monkeypatch.setattr(plot_utils_mod.plt, "subplots", tracking_subplots)
+    monkeypatch.setattr(plot_utils_mod.plt, "close", lambda *a, **k: None)
+
+    plot_utils_mod.plot_radon_trend_full(times, activity, str(out_png))
+
+    assert "ax" in captured
+    assert captured["ax"].get_ylabel() == "Radon Activity (Bq)"
+    assert captured["ax"].get_title() == "Radon Activity Trend"
+    assert np.allclose(captured["ax"].lines[0].get_ydata(), activity)
+
+
+def test_plot_radon_trend_converts_to_concentration_with_sample_volume(
+    tmp_path, monkeypatch
+):
+    import plot_utils as plot_utils_mod
+
+    times = [0.0, 1.0, 2.0]
+    activity = [2.0, 4.0, 6.0]
+    out_png = tmp_path / "trend_conc.png"
+
+    captured = {}
+    orig_subplots = plot_utils_mod.plt.subplots
+
+    def tracking_subplots(*args, **kwargs):
+        fig, ax = orig_subplots(*args, **kwargs)
+        captured["ax"] = ax
+        return fig, ax
+
+    monkeypatch.setattr(plot_utils_mod.plt, "subplots", tracking_subplots)
+    monkeypatch.setattr(plot_utils_mod.plt, "close", lambda *a, **k: None)
+
+    plot_utils_mod.plot_radon_trend_full(
+        times,
+        activity,
+        str(out_png),
+        sample_volume_l=2.0,
+    )
+
+    assert "ax" in captured
+    assert captured["ax"].get_ylabel() == "Radon Concentration (Bq/L)"
+    assert captured["ax"].get_title() == "Radon Concentration Trend"
+    assert np.allclose(captured["ax"].lines[0].get_ydata(), [1.0, 2.0, 3.0])
+
+
+def test_plot_radon_trend_edge_transient_uses_full_ylim(tmp_path, monkeypatch):
+    import plot_utils as plot_utils_mod
+
+    times = np.arange(10, dtype=float)
+    activity = np.array([0.0, 0.05, 0.2, 0.5, 0.8, 1.0, 1.0, 1.0, 1.0, 1.0])
+    out_png = tmp_path / "trend_edge_transient.png"
+
+    captured = {}
+    orig_subplots = plot_utils_mod.plt.subplots
+
+    def tracking_subplots(*args, **kwargs):
+        fig, ax = orig_subplots(*args, **kwargs)
+        captured["ax"] = ax
+        return fig, ax
+
+    monkeypatch.setattr(plot_utils_mod.plt, "subplots", tracking_subplots)
+    monkeypatch.setattr(plot_utils_mod.plt, "close", lambda *a, **k: None)
+
+    expected = plot_utils_mod._compute_ylim(activity, None)
+
+    plot_utils_mod.plot_radon_trend_full(times, activity, str(out_png))
+
+    assert "ax" in captured
+    assert np.allclose(captured["ax"].get_ylim(), expected)
 
 
 def test_plot_radon_trend_uses_robust_ylim_for_outlier(tmp_path, monkeypatch):
