@@ -5,10 +5,8 @@ from scipy.signal import find_peaks, find_peaks_cwt
 import math
 from dataclasses import is_dataclass, asdict
 import argparse
-from datetime import datetime, timezone, tzinfo, timedelta
-from dateutil import parser as date_parser
-from dateutil.tz import gettz
-from .time_utils import parse_timestamp as _parse_timestamp, to_epoch_seconds
+from datetime import datetime, timezone, timedelta
+from .time_utils import parse_timestamp as _parse_timestamp, to_epoch_seconds, to_utc_datetime as _to_utc_datetime
 import warnings
 
 __all__ = [
@@ -216,31 +214,7 @@ def cps_to_bq(rate_cps, volume_liters=None):
 def to_utc_datetime(value, tz="UTC") -> datetime:
     """Return ``value`` converted to a UTC ``datetime`` object."""
 
-    tzinfo_obj = tz if isinstance(tz, tzinfo) else gettz(tz)
-    if tzinfo_obj is None:
-        tzinfo_obj = timezone.utc
-
-    if isinstance(value, datetime):
-        dt = value
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=tzinfo_obj)
-    elif isinstance(value, str):
-        try:
-            ts = float(value)
-            return datetime.fromtimestamp(ts, tz=timezone.utc)
-        except ValueError:
-            try:
-                dt = date_parser.isoparse(value)
-            except (ValueError, OverflowError) as e:
-                raise ValueError(f"invalid datetime: {value!r}") from e
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=tzinfo_obj)
-    elif isinstance(value, (int, float)):
-        dt = datetime.fromtimestamp(float(value), tz=timezone.utc)
-    else:
-        raise ValueError(f"invalid datetime: {value!r}")
-
-    return dt.astimezone(timezone.utc)
+    return _to_utc_datetime(value, tz=tz)
 
 
 def parse_datetime(value):
@@ -320,13 +294,13 @@ def parse_time(s, tz="UTC") -> float:
         DeprecationWarning,
         stacklevel=2,
     )
-    return to_epoch_seconds(s)
+    return to_epoch_seconds(s, tz=tz)
 
 
 def parse_time_arg(val, tz="UTC") -> datetime:
     """Parse a time argument into a UTC ``datetime`` object.
 
-    ``tz`` specifies the timezone for naïve inputs.
+    ``tz`` specifies the timezone for naive inputs.
     """
 
     try:
@@ -346,3 +320,4 @@ if __name__ == "__main__":
         print(cps_to_cpd(args.rate_cps))
     else:
         print(cps_to_bq(args.rate_cps, args.volume_liters))
+

@@ -38,7 +38,7 @@ Prior distribution parameters for the baseline slope (b1) when using a linear ba
 ### `range`
 Type: `array` of 2 timestamps or numbers
 
-Time interval for baseline measurement, specified as `[start, end]`.
+Time interval for baseline measurement, specified as `[start, end]`. Each value may be an ISO-8601 timestamp or Unix epoch seconds and is normalized to UTC before comparison.
 
 ### `monitor_volume_l`
 Type: `number` (minimum: 0)
@@ -76,3 +76,4 @@ All new baseline configuration options are optional and maintain backward compat
 - `mode` defaults to the existing baseline behavior
 - `allow_negative_baseline` defaults to `false` (clip negative values)
 - `b0_prior` and `b1_prior` use default priors if not specified
+

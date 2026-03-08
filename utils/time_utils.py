@@ -1,7 +1,10 @@
-from datetime import datetime
-from typing import Union
+from datetime import datetime, timezone, tzinfo
+from typing import Any, Union
 
+import numpy as np
 import pandas as pd
+from dateutil import parser as date_parser
+from dateutil.tz import gettz
 from pandas.api.types import is_datetime64_any_dtype
 
 __all__ = [
@@ -9,6 +12,7 @@ __all__ = [
     "tz_localize_utc",
     "tz_convert_utc",
     "ensure_utc",
+    "to_utc_datetime",
     "parse_timestamp",
     "to_epoch_seconds",
 ]
@@ -45,11 +49,57 @@ def ensure_utc(series: pd.Series) -> pd.Series:
     return tz_convert_utc(series)
 
 
+def _resolve_tzinfo(tz: str | tzinfo | None = "UTC") -> tzinfo:
+    """Return a timezone object, defaulting to UTC for unknown values."""
 
-def parse_timestamp(value: Union[str, int, float, datetime, pd.Timestamp]) -> pd.Timestamp:
+    if isinstance(tz, tzinfo):
+        return tz
+    resolved = gettz(tz) if tz is not None else None
+    return resolved or timezone.utc
+
+
+def to_utc_datetime(value: Any, tz: str | tzinfo = "UTC") -> datetime:
+    """Return ``value`` converted to a timezone-aware UTC ``datetime``."""
+
+    tzinfo_obj = _resolve_tzinfo(tz)
+
+    if isinstance(value, pd.Timestamp):
+        ts = value.tz_localize("UTC") if value.tzinfo is None else value.tz_convert("UTC")
+        return ts.to_pydatetime()
+
+    if isinstance(value, np.datetime64):
+        return parse_timestamp(value, tz=tzinfo_obj).to_pydatetime()
+
+    if isinstance(value, datetime):
+        dt = value if value.tzinfo is not None else value.replace(tzinfo=tzinfo_obj)
+        return dt.astimezone(timezone.utc)
+
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        return datetime.fromtimestamp(float(value), tz=timezone.utc)
+
+    if isinstance(value, str):
+        try:
+            return datetime.fromtimestamp(float(value), tz=timezone.utc)
+        except ValueError:
+            pass
+
+        try:
+            dt = date_parser.isoparse(value)
+        except (ValueError, OverflowError) as exc:
+            raise ValueError(f"invalid datetime: {value!r}") from exc
+
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=tzinfo_obj)
+        return dt.astimezone(timezone.utc)
+
+    raise ValueError(f"invalid datetime: {value!r}")
+
+
+def parse_timestamp(
+    value: Union[str, int, float, datetime, pd.Timestamp, np.datetime64],
+    tz: str | tzinfo = "UTC",
+) -> pd.Timestamp:
     """Return ``value`` parsed to a UTC :class:`pandas.Timestamp`."""
-    from datetime import timezone
-    from dateutil import parser as date_parser
 
     if isinstance(value, pd.Timestamp):
         ts = value
@@ -57,16 +107,14 @@ def parse_timestamp(value: Union[str, int, float, datetime, pd.Timestamp]) -> pd
             return ts.tz_localize("UTC")
         return ts.tz_convert("UTC")
 
-    if isinstance(value, datetime):
-        dt = value
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        else:
-            dt = dt.astimezone(timezone.utc)
-        return pd.Timestamp(dt)
+    if isinstance(value, np.datetime64):
+        ts = pd.Timestamp(value)
+        if ts.tzinfo is None:
+            ts = ts.tz_localize(_resolve_tzinfo(tz))
+        return ts.tz_convert("UTC")
 
-    if isinstance(value, (int, float)):
-        return pd.to_datetime(float(value), unit="s", utc=True)
+    if isinstance(value, (datetime, int, float, np.integer, np.floating)):
+        return pd.Timestamp(to_utc_datetime(value, tz=tz))
 
     if isinstance(value, str):
         try:
@@ -74,21 +122,19 @@ def parse_timestamp(value: Union[str, int, float, datetime, pd.Timestamp]) -> pd
         except ValueError:
             pass
         try:
-            dt = date_parser.isoparse(value)
-        except (ValueError, OverflowError) as e:
-            raise ValueError(f"invalid timestamp: {value!r}") from e
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        else:
-            dt = dt.astimezone(timezone.utc)
-        return pd.Timestamp(dt)
+            return pd.Timestamp(to_utc_datetime(value, tz=tz))
+        except ValueError as exc:
+            raise ValueError(f"invalid timestamp: {value!r}") from exc
 
     raise ValueError(f"invalid timestamp: {value!r}")
 
 
-def to_epoch_seconds(ts: Union[pd.Timestamp, str, int, float]) -> float:
+def to_epoch_seconds(
+    ts: Union[pd.Timestamp, str, int, float, datetime, np.datetime64],
+    tz: str | tzinfo = "UTC",
+) -> float:
     """Return Unix epoch seconds for ``ts``."""
 
-    ts_parsed = parse_timestamp(ts)
+    ts_parsed = parse_timestamp(ts, tz=tz)
     return ts_parsed.timestamp()
 

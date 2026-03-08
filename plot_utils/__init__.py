@@ -20,6 +20,7 @@ from calibration import gaussian, emg_left
 from fitting import make_linear_bkg
 from .paths import get_targets
 from ._time_utils import guard_mpl_times, setup_time_axis
+from utils.time_utils import parse_timestamp, to_epoch_seconds
 
 # Half-life constants used for the time-series overlay [seconds]
 PO214_HALF_LIFE_S = PO214.half_life_s
@@ -102,49 +103,15 @@ def _counts_per_bin(density, widths):
 
 
 def _coerce_timestamp_seconds(value):
-    """Return ``value`` as UNIX seconds or ``None`` if conversion fails."""
+    """Return ``value`` as Unix epoch seconds or ``None`` if conversion fails."""
 
     if value is None:
         return None
 
-    if isinstance(value, (int, float)):
-        return float(value)
-
-    if isinstance(value, np.generic):
-        if np.issubdtype(type(value), np.integer) or np.issubdtype(
-            type(value), np.floating
-        ):
-            return float(value)
-        if np.issubdtype(type(value), np.datetime64):
-            return float(value.astype("int64") / 1e9)
-
-    if isinstance(value, np.datetime64):
-        return float(value.astype("int64") / 1e9)
-
-    if isinstance(value, datetime):
-        return float(value.timestamp())
-
-    if hasattr(value, "to_pydatetime"):
-        try:
-            return float(value.to_pydatetime().timestamp())
-        except Exception:
-            pass
-
-    if isinstance(value, str):
-        try:
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-            return float(parsed.timestamp())
-        except ValueError:
-            try:
-                parsed_np = np.datetime64(value)
-            except ValueError:
-                try:
-                    return float(value)
-                except ValueError:
-                    return None
-            return float(parsed_np.astype("int64") / 1e9)
-
-    return None
+    try:
+        return to_epoch_seconds(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 
 def _resolve_run_periods(config, default_start, default_end):
@@ -273,8 +240,7 @@ def _build_time_segments(
 def _isoformat_utc(seconds):
     """Return an ISO-8601 representation with a ``Z`` suffix."""
 
-    dt = datetime.fromtimestamp(float(seconds), tz=timezone.utc)
-    return dt.isoformat().replace("+00:00", "Z")
+    return parse_timestamp(seconds).isoformat().replace("+00:00", "Z")
 
 
 def extract_time_series(timestamps, energies, window, t_start, t_end, bin_width_s=1.0):
@@ -1167,7 +1133,7 @@ def plot_radon_activity_full(
     )
     ax_rel.set_xlabel("Elapsed Time (h)")
     ax_rel.set_ylabel(label_units)
-    ax_rel.set_title("Radon Concentration vs. Elapsed Hours")
+    ax_rel.set_title("Radon Concentration vs. Elapsed Time (h)")
     ax_rel.ticklabel_format(axis="y", style="plain")
     ax_rel.xaxis.get_offset_text().set_visible(False)
 
@@ -1254,7 +1220,7 @@ def plot_total_radon_full(
     )
     ax_rel.set_xlabel("Elapsed Time (h)")
     ax_rel.set_ylabel("Total Radon in Sample (Bq)")
-    ax_rel.set_title("Total Radon vs. Elapsed Hours")
+    ax_rel.set_title("Total Radon vs. Elapsed Time (h)")
     ax_rel.ticklabel_format(axis="y", style="plain")
     ax_rel.xaxis.get_offset_text().set_visible(False)
 
@@ -1550,3 +1516,4 @@ def plot_activity_grid(result_map, out_png="burst_scan.png", config=None):
 # -----------------------------------------------------
 # End of plot_utils.py
 # -----------------------------------------------------
+

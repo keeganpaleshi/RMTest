@@ -1422,6 +1422,7 @@ def test_plot_radon_activity_axis_labels(tmp_path, monkeypatch):
         "Rn-222 Concentration (Bq/L)",
     }
     assert ax_elapsed.get_xlabel() == "Elapsed Time (h)"
+    assert ax_elapsed.get_title() == "Radon Concentration vs. Elapsed Time (h)"
     assert ax_elapsed.get_ylabel() in {
         "Rn-222 Activity (Bq)",
         "Rn-222 Concentration (Bq/L)",
@@ -1520,5 +1521,4 @@ def test_plot_time_series_datetime64(tmp_path):
     )
 
     assert out_png.exists()
-
 

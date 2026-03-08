@@ -573,12 +573,7 @@ def _total_radon_series(activity, errors, monitor_volume, sample_volume):
 def _as_timestamp(value: Any) -> float:
     """Return ``value`` as a UTC timestamp in seconds."""
 
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, np.generic):  # NumPy scalar
-        return float(value)
-    return to_utc_datetime(value).timestamp()
-
+    return to_epoch_seconds(value)
 
 def _radon_time_window(
     start, end, radon_interval: Sequence[Any] | None
@@ -5227,3 +5222,4 @@ def main(argv=None):
 
 if __name__ == "__main__":
     main()
+

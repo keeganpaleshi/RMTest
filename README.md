@@ -2,7 +2,7 @@
 
 This repository provides a complete pipeline to analyze electrostatic radon monitor data.
 
-**Note:** All time quantities are expressed in seconds and all energies are given in MeV throughout the documentation and code. Input timestamps are converted with `to_utc_datetime` which accepts ISO-8601 strings (with or without timezone), numeric epoch seconds and `datetime` objects and returns a timezone-aware `datetime` in UTC. The function is available from `utils.py` and is used throughout the command-line interface so both ISO-8601 strings and Unix seconds work interchangeably. A global `--timezone` option controls which zone naive times are interpreted in (default: `UTC`). Event timestamps remain timezone-aware objects inside the pipeline; epoch seconds are produced only for numeric computations such as histogramming or fits.
+**Note:** Time values are expressed in seconds unless an output explicitly labels a different unit such as elapsed time `(h)`, and energies are given in MeV throughout the documentation and code. Input timestamps are normalized to UTC with `utils.time_utils.to_utc_datetime` / `parse_timestamp`, which accept ISO-8601 strings, Unix epoch seconds, and `datetime` objects. A global `--timezone` option controls which zone naive inputs are interpreted in (default: `UTC`). Event timestamps remain timezone-aware objects inside the pipeline; Unix epoch seconds are produced only for numeric computations such as histogramming or fits.
 
 ## Structure
 
@@ -157,7 +157,7 @@ Running `analyze.py` produces a consistent set of artifacts next to `summary.jso
 - `spectrum.png` - spectrum, best-fit model components, and residuals in a three-panel layout that always ships with the report.
 - `spectrum_components.png` - the same spectrum view without the summed "Total model" curve so individual Po-210 / Po-218 / Po-214 components remain unobscured.
 - `spectrum_pre_post.png` - diagnostic spectrum overlay comparing pre/post cut spectra to highlight the impact of filtering.
-- Radon time-series plots - `radon_activity.png` presents total activity and concentration versus both absolute time (UTC) and elapsed hours, including statistical error bars and annotating the applied `background_mode`.
+- Radon time-series plots - `radon_activity.png` presents total activity and concentration versus both absolute time (UTC) and elapsed time `(h)`, including statistical error bars and annotating the applied `background_mode`.
 - Isotope time-series plots - `isotope_time_series.png` overlays Po-210 / Po-218 / Po-214 restricted to the configured `run_periods`, with per-bin Poisson error bars; the per-isotope `time_series_Po214.png`, `time_series_Po218.png`, and (when `window_po210` is enabled) `time_series_Po210.png` provide the same data for single-isotope diagnostics.
 - `config_used.json` - copy of the configuration used. Any timestamps overridden on the command line are written back to this file as ISO timestamps.
 - Optional `*_ts.json` files - binned time series when explicit dumps are enabled.
@@ -330,14 +330,15 @@ count also appears in `summary.json` under `noise_cut.removed_events`.
 `analysis_start_time` in the optional `analysis` section sets the global
 time origin for decay fitting and time-series plots.  Provide an
 ISO-8601 string such as `"2023-07-31T00:00:00Z"` or the corresponding
-numeric Unix seconds.  When omitted the first event timestamp is used.
+numeric Unix epoch seconds.  When omitted the first event timestamp is used.
 
 
 All other time-related fields (`analysis_end_time`, `spike_start_time`,
 `spike_end_time`, `spike_periods`, `run_periods`, `radon_interval` and
 `baseline.range`) likewise accept absolute timestamps in ISO 8601
-format or numeric seconds.  All of these values are parsed with
-`time_utils.parse_timestamp` so the same formats apply everywhere.
+format or Unix epoch seconds. All of these values are normalized to UTC with
+`time_utils.to_utc_datetime` / `time_utils.parse_timestamp`, so the same
+parsing rules apply everywhere.
 
 `analysis_end_time` may be specified to stop processing after the given
 timestamp.  `spike_start_time` discards all events after its value,
@@ -854,17 +855,16 @@ centroids. Time parsing utilities are available from `utils.time_utils`:
 - `cps_to_bq(rate_cps, volume_liters=None)` returns the activity in Bq, or
   Bq/m^3 when a detector volume is supplied.
 
-- `time_utils.parse_timestamp(value)` converts ISO-8601 strings, numeric seconds
-  or `datetime` objects to a timezone-aware `pandas.Timestamp` in UTC.
-- `time_utils.to_epoch_seconds(ts_or_str)` converts these inputs to Unix
+- `time_utils.to_utc_datetime(value)` converts ISO-8601 strings, Unix epoch
+  seconds, or `datetime` objects to a timezone-aware UTC `datetime`.
+- `time_utils.parse_timestamp(value)` converts the same inputs to a
+  timezone-aware UTC `pandas.Timestamp`.
+- `time_utils.to_epoch_seconds(value)` converts the same inputs to Unix epoch
   seconds.
-
-- `parse_datetime(value)` converts ISO-8601 strings, numeric seconds or
-  `datetime` objects to a timezone-aware `pandas.Timestamp` in UTC.
-- `parse_timestamp(value)` from `utils.time_utils` accepts the same inputs and
-  always yields a UTC `pandas.Timestamp`.
-- `to_epoch_seconds(ts_or_str)` from `utils.time_utils` converts these inputs to
-  Unix seconds.
+- `utils.to_utc_datetime(...)` and `utils.parse_time_arg(...)` are thin
+  backward-compatible wrappers around the shared UTC conversion helpers.
+- `parse_datetime(value)` remains as a deprecated alias for
+  `time_utils.parse_timestamp(value)`.
 - `baseline_utils.baseline_period_before_data(end, start)` returns ``True`` if
   the baseline interval ends before the data window begins.  Both inputs may be
   naive or timezone-aware and are compared in UTC to avoid subtle mismatches.
@@ -1166,3 +1166,4 @@ Run as usual:
 ```bash
 python analyze.py --input path/to/merged_output.csv
 ```
+
