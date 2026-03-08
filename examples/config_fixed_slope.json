@@ -41,8 +41,8 @@
         "use_emg": false,
         "init_sigma_adc": 10.0,
         "init_tau_adc": 1.0,
-        "slope_MeV_per_ch": 0.00435,
-        "intercept_MeV": -0.15,
+        "slope_mev_per_ch": 0.00435,
+        "intercept_mev": -0.15,
         "sanity_tolerance_mev": 0.5,
         "known_energies": {"Po210": 5.304, "Po218": 6.002, "Po214": 7.687}
     },
@@ -56,19 +56,19 @@
         "bkg_mode": "manual",
         "b0_prior": [0.0, 1.0],
         "b1_prior": [0.0, 1.0],
-        "tau_Po210_prior_mean": 0.0,
-        "tau_Po210_prior_sigma": 0.0,
-        "tau_Po218_prior_mean": 0.005,
-        "tau_Po218_prior_sigma": 0.002,
-        "tau_Po214_prior_mean": 0.005,
-        "tau_Po214_prior_sigma": 0.002,
+        "tau_po210_prior_mean": 0.0,
+        "tau_po210_prior_sigma": 0.0,
+        "tau_po218_prior_mean": 0.005,
+        "tau_po218_prior_sigma": 0.002,
+        "tau_po214_prior_mean": 0.005,
+        "tau_po214_prior_sigma": 0.002,
         "spectral_peak_tolerance_mev": 0.3,
         "use_emg": {
             "Po210": true,
             "Po218": false,
             "Po214": false
         },
-        "float_sigma_E": true,
+        "float_sigma_e": true,
         "peak_search_prominence": 30,
         "peak_search_width_adc": 3,
         "peak_search_method": "prominence",
@@ -99,14 +99,14 @@
         "n0_guess_fraction": 0.1,
         "flags": {
             "fix_background_b": false,
-            "fix_N0_Po218": false
+            "fix_n0_po218": false
         }
     },
     "systematics": {
         "enable": false,
-        "sigma_E_frac": 0.10,
+        "sigma_e_frac": 0.10,
         "tail_fraction": 0.05,
-        "energy_shift_keV": 1.0,
+        "energy_shift_kev": 1.0,
         "adc_drift_rate": 0.0,
         "adc_drift_mode": "linear",
         "adc_drift_params": null

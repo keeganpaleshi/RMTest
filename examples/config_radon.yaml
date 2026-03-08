@@ -34,7 +34,7 @@ calibration:
   method: two-point
   noise_cutoff: 400
   float_slope: true
-  slope_MeV_per_ch: 0.0043
+  slope_mev_per_ch: 0.0043
   known_energies:
     Po210: 5.304
     Po218: 6.002
@@ -57,12 +57,12 @@ spectral_fit:
   fd_hist_bins: 400
   amp_prior_scale: 5.0
   mu_sigma: 0.005
-  tau_Po210_prior_mean: 0.008
-  tau_Po210_prior_sigma: 0.004
-  tau_Po218_prior_mean: 0.020
-  tau_Po218_prior_sigma: 0.010
-  tau_Po214_prior_mean: 0.010
-  tau_Po214_prior_sigma: 0.005
+  tau_po210_prior_mean: 0.008
+  tau_po210_prior_sigma: 0.004
+  tau_po218_prior_mean: 0.020
+  tau_po218_prior_sigma: 0.010
+  tau_po214_prior_mean: 0.010
+  tau_po214_prior_sigma: 0.005
   use_emg:
     Po210: true
     Po218: true
@@ -70,8 +70,8 @@ spectral_fit:
   bkg_mode: loglin_unit
   b0_prior: [0.0, 2.0]
   b1_prior: [0.0, 2.0]
-  sigma_E_prior_source: calibration
-  float_sigma_E: false
+  sigma_e_prior_source: calibration
+  float_sigma_e: false
   expected_peaks:
     Po210: 1250
     Po218: 1400

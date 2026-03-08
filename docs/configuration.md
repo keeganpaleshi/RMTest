@@ -151,13 +151,13 @@ This section controls the ADC-to-energy conversion and the pre-fit event filteri
 - `noise_cutoff`: pedestal threshold in ADC; `null` disables the cut
 - `hist_bins`, `peak_search_radius`, `peak_prominence`, `peak_width`
 - `peak_widths`: per-isotope overrides for `peak_width`
-- `slope_MeV_per_ch`: fixed linear slope
+- `slope_mev_per_ch`: fixed linear slope
 - `float_slope`: when `true`, treat the supplied slope as an initial guess and refine it in the two-point fit
-- `intercept_MeV`: optional intercept that bypasses the Po-214 search when combined with a fixed slope
+- `intercept_mev`: optional intercept that bypasses the Po-214 search when combined with a fixed slope
 - `nominal_adc`: expected raw ADC centroids for Po-210, Po-218, and Po-214
 - `known_energies`: expected energies in MeV
 - `fit_window_adc`, `fit_retry_window`, `fit_maxfev`, `curve_fit_max_evaluations`
-- `sigma_E_init`: optional initial guess for the common energy resolution in MeV, either a single value or a per-isotope map
+- `sigma_e_init`: optional initial guess for the common energy resolution in MeV, either a single value or a per-isotope map
 - `use_emg`, `init_sigma_adc`, `init_tau_adc`, `tau_bounds_adc`
 - `sanity_tolerance_mev`: fail calibration if a centroid drifts too far from the known energy
 
@@ -166,13 +166,13 @@ Important details:
 - `nominal_adc` defaults to `{"Po210": 1250, "Po218": 1400, "Po214": 1800}` when omitted.
 - `curve_fit_max_evaluations` defaults to `10000`.
 - `noise_cutoff` is applied immediately after the CSV is loaded, and the removed-event count is recorded under `noise_cut.removed_events` in `summary.json`.
-- `--calibration-slope` overrides `calibration.slope_MeV_per_ch`.
+- `--calibration-slope` overrides `calibration.slope_mev_per_ch`.
 
 Examples:
 
 ```yaml
 calibration:
-  sigma_E_init: 0.015
+  sigma_e_init: 0.015
 ```
 
 ```yaml
@@ -184,9 +184,9 @@ calibration:
 
 ```yaml
 calibration:
-  slope_MeV_per_ch: 0.00430
+  slope_mev_per_ch: 0.00430
   float_slope: true
-  # intercept_MeV: -0.12
+  # intercept_mev: -0.12
 ```
 
 ## `spectral_fit`
@@ -204,10 +204,10 @@ This section configures the spectral model and its priors.
 - `b0_prior`, `b1_prior`: `[mean, sigma]` priors for the continuum terms
 - `max_b1_sigma`: optional clamp for `b1_prior` sigma; defaults to `10.0`
 - `clip_floor`: small positive floor applied to the likelihood PDF values; must lie in `(0, 1e-6]`
-- `loglin_n_norm`: number of integration samples for the unit-area log-linear background; defaults to `512`
-- `S_bkg_prior`: prior for the unit-area log-linear background normalization
-- `sigma_E_prior_source`: either `calibration` or an explicit numeric prior tuple
-- `float_sigma_E`: allow the common energy resolution to float against its prior
+- `background_norm_points`: number of integration samples for the unit-area log-linear background; defaults to `512`
+- `s_bkg_prior`: prior for the unit-area log-linear background normalization
+- `sigma_e_prior_source`: either `calibration` or an explicit numeric prior tuple
+- `float_sigma_e`: allow the common energy resolution to float against its prior
 - `expected_peaks`: approximate peak centroids used for the initial search
 - `peak_search_method`: `prominence` or `cwt`
 - `peak_search_prominence`, `peak_search_width_adc`, `peak_search_cwt_widths`
@@ -235,8 +235,8 @@ spectral_fit:
   amp_prior_scale: 1.0
   use_emg:
     Po210: true
-  tau_Po210_prior_mean: 0.005
-  tau_Po210_prior_sigma: 0.002
+  tau_po210_prior_mean: 0.005
+  tau_po210_prior_sigma: 0.002
   unbinned_likelihood: false
 ```
 
@@ -306,8 +306,8 @@ time_fit:
 This section controls optional systematic scans and ADC drift corrections.
 
 - `enable`: enable the systematic study
-- `sigma_E_frac`, `tail_fraction`: fractional shifts
-- `energy_shift_keV`: absolute energy shift in keV; converted to MeV internally
+- `sigma_e_frac`, `tail_fraction`: fractional shifts
+- `energy_shift_kev`: absolute energy shift in keV; converted to MeV internally
 - `adc_drift_rate`: linear drift in ADC counts per second
 - `adc_drift_mode`: `linear`, `quadratic`, or `piecewise`
 - `adc_drift_params`: additional parameters for non-linear drift modes

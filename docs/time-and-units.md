@@ -29,7 +29,7 @@ These rules apply to:
 - `run_periods`
 - `radon_interval`
 - `baseline.range`
-- CLI equivalents such as `--baseline_range`, `--spike-period`, and `--run-period`
+- CLI equivalents such as `--baseline-range`, `--spike-period`, and `--run-period`
 
 ## Shared Time Helpers
 
@@ -112,7 +112,7 @@ Examples:
 
 ```bash
 python utils.py 0.5 --to cpd
-python utils.py 0.5 --to bq --volume_liters 10
+python utils.py 0.5 --to bq --volume-liters 10
 ```
 
 `find_adc_bin_peaks(adc_values, expected, window=50, prominence=0.0, width=None, method="prominence")` returns a `{peak: adc_centroid}` mapping in ADC units. Set `method="cwt"` to use wavelet-based peak detection via `find_peaks_cwt`.

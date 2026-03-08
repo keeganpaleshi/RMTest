@@ -6,10 +6,10 @@
 
 ```bash
 python analyze.py --config config.yaml --input merged_data.csv \
-    --output_dir results [--job-id RUN_ID] [--overwrite]
+    --output-dir results [--job-id RUN_ID] [--overwrite]
 ```
 
-If `--output_dir` is omitted it defaults to `results`. If `--job-id` is omitted, the run directory is timestamped automatically.
+If `--output-dir` is omitted it defaults to `results`. If `--job-id` is omitted, the run directory is timestamped automatically. Legacy underscore spellings such as `--output_dir` and `--baseline_range` remain accepted as compatibility aliases.
 
 ## Input Requirements
 
@@ -18,7 +18,7 @@ The input file must be a CSV containing at least:
 - `timestamp`: event time, provided as ISO-8601, Unix epoch seconds, or values parsable by the shared timestamp helpers
 - `adc`: raw ADC value
 
-Additional columns such as `fUniqueID`, `fBits`, `fchannel`, `baseline_adc`, `spike_flag`, `valid`, `temperature`, `run_id`, `pressure`, and `humidity` are ignored unless a downstream step uses them. If your file uses different header names, remap them in the `columns` section of the configuration.
+Additional columns such as `unique_id`, `bits`, `channel`, `baseline_adc`, `spike_flag`, `valid`, `temperature`, `run_id`, `pressure`, and `humidity` are ignored unless a downstream step uses them. If your file uses different header names, remap them in the `columns` section of the configuration.
 
 ## Option Groups
 
@@ -26,7 +26,7 @@ Additional columns such as `fUniqueID`, `fBits`, `fchannel`, `baseline_adc`, `sp
 
 - `--config`, `-c`: configuration file
 - `--input`, `-i`: merged event CSV
-- `--output_dir`, `-o`: parent output directory
+- `--output-dir`, `-o`: parent output directory
 - `--job-id`: explicit output folder name
 - `--overwrite`: replace an existing result directory
 - `--reproduce SUMMARY`: reuse the archived `config_used.json` and stored seed from a previous run's `summary.json`
@@ -45,7 +45,7 @@ See [time-and-units.md](time-and-units.md) for accepted timestamp formats.
 
 ### Baseline and background handling
 
-- `--baseline_range TSTART TEND`: override `baseline.range`
+- `--baseline-range TSTART TEND`: override `baseline.range`
 - `--baseline-mode {none,electronics,radon,all}`: choose what is removed from the assay result
 - `--allow-negative-baseline`: preserve negative baseline-corrected rates instead of clipping them to zero
 - `--allow-negative-activity`: preserve negative total radon values instead of clamping to zero
@@ -56,7 +56,7 @@ See [baseline.md](baseline.md) for the subtraction model and summary fields.
 ### Calibration, filtering, and fit preparation
 
 - `--noise-cutoff`: override `calibration.noise_cutoff`
-- `--calibration-slope`: override `calibration.slope_MeV_per_ch`
+- `--calibration-slope`: override `calibration.slope_mev_per_ch`
 - `--float-slope`: treat a supplied slope as an initial guess instead of fixing it
 - `--calibration-method {two-point,auto}`: override `calibration.method`
 - `--slope`: apply a linear ADC drift correction
@@ -101,14 +101,14 @@ See [output-schema.md](output-schema.md) for the produced artifacts.
 ### Standard run
 
 ```bash
-python analyze.py --config config.yaml --input merged_data.csv --output_dir results
+python analyze.py --config config.yaml --input merged_data.csv --output-dir results
 ```
 
 ### Baseline subtraction
 
 ```bash
-python analyze.py --config assay.yaml --input assay.csv --output_dir results \
-    --baseline_range 2023-07-01T00:00:00Z 2023-07-03T00:00:00Z \
+python analyze.py --config assay.yaml --input assay.csv --output-dir results \
+    --baseline-range 2023-07-01T00:00:00Z 2023-07-03T00:00:00Z \
     --baseline-mode all
 ```
 
@@ -129,5 +129,5 @@ python analyze.py --reproduce results/20260307T101710Z/summary.json
 ### Build a hierarchical summary from prior outputs
 
 ```bash
-python analyze.py --output_dir results --hierarchical-summary result.json
+python analyze.py --output-dir results --hierarchical-summary result.json
 ```

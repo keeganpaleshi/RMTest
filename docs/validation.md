@@ -14,7 +14,7 @@ Configuration loading performs several layers of validation:
 Additional explicit checks include:
 
 - `spectral_fit.clip_floor` must lie in `(0, 1e-6]`
-- `spectral_fit.loglin_n_norm` must be a positive integer
+- `spectral_fit.background_norm_points` must be a positive integer
 - `spectral_fit.max_b1_sigma` must be positive
 - `spectral_fit.b1_prior` must be `[mean, sigma]` with positive sigma
 - `spectral_fit.b1_prior[1]` is clamped to `max_b1_sigma` with a warning when it exceeds the configured cap

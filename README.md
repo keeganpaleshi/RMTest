@@ -15,12 +15,12 @@ pip install -r requirements.txt
 ## Quick Start
 
 ```bash
-python analyze.py --config config.yaml --input merged_data.csv --output_dir results
+python analyze.py --config config.yaml --input merged_data.csv --output-dir results
 ```
 
 The input CSV must contain at least `timestamp` and `adc` columns. Alternate column names can be mapped in the `columns` section of the configuration.
 
-Results are written to `results/<timestamp>/` by default, or `results/<job-id>/` when `--job-id` is supplied. Common artifacts include `summary.json`, `config_used.json`, spectrum plots, isotope time-series plots, and radon activity plots.
+Results are written to `results/<timestamp>/` by default, or `results/<job-id>/` when `--job-id` is supplied. Common artifacts include `summary.json`, `config_used.json`, spectrum plots, isotope time-series plots, and radon activity plots. Hyphenated CLI flags such as `--output-dir` and `--baseline-range` are canonical; the older underscore forms remain accepted.
 
 ## Documentation
 

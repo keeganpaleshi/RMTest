@@ -1,8 +1,10 @@
 # Output Schema and Artifacts
 
-Each analysis run writes a timestamped result directory under `<output_dir>/`, or `<output_dir>/<job-id>/` when `--job-id` is provided.
+Each analysis run writes a timestamped result directory under `<output-dir>/`, or `<output-dir>/<job-id>/` when `--job-id` is provided.
 
 This page documents the stable filenames, the top-level structure of `summary.json`, and a few important semantics that are easy to miss when consuming the outputs programmatically.
+
+Canonical output keys are lowercase (for example `rn_activity_bq` and `sigma_e_error`). Legacy mixed-case aliases are still written for compatibility.
 
 ## Common Files
 
@@ -88,8 +90,8 @@ Typical fields include:
 
 - `coeffs`
 - `covariance`
-- `sigma_E`
-- `sigma_E_error`
+- `sigma_e`
+- `sigma_e_error`
 - `peaks`
 
 ### `spectral_fit`
@@ -112,7 +114,7 @@ This block contains the fitted spectral parameters plus:
 - `cov`
 - `ndf`
 - `background_mode`
-- optional `baseline_rate_Bq` and `baseline_unc_Bq`
+- optional `baseline_rate_bq` and `baseline_unc_bq`
 
 The time-series fitter still fits only Po-214 and Po-218. When `window_po210` is configured, Po-210 is histogrammed and plotted for diagnostics but does not get a decay fit.
 
@@ -121,12 +123,12 @@ The time-series fitter still fits only Po-214 and Po-218. When `window_po210` is
 Typical baseline fields include:
 
 - `analysis_counts`
-- `rate_Bq`
-- `rate_unc_Bq`
+- `rate_bq`
+- `rate_unc_bq`
 - `scales`
 - `dilution_factor`
-- `corrected_rate_Bq`
-- `corrected_sigma_Bq`
+- `corrected_rate_bq`
+- `corrected_sigma_bq`
 - `corrected_activity`
 
 See [baseline.md](baseline.md) for the subtraction model.
@@ -135,18 +137,18 @@ See [baseline.md](baseline.md) for the subtraction model.
 
 This block stores the scalar radon outputs used for reporting:
 
-- `radon_activity_Bq`
-- `radon_concentration_Bq_per_L`
-- `total_radon_in_sample_Bq`
-- optionally `radon_delta_Bq`
+- `radon_activity_bq`
+- `radon_concentration_bq_per_l`
+- `total_radon_in_sample_bq`
+- optionally `radon_delta_bq`
 
 ### `radon`
 
 The `radon` block stores the combined activity estimate and the plotting payloads:
 
 - `isotope_mode`
-- `Rn_activity_Bq`
-- `stat_unc_Bq`
+- `rn_activity_bq`
+- `stat_unc_bq`
 - `components`
 - `time_series`
 - `total_time_series`

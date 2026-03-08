@@ -47,7 +47,7 @@ calibration:
     Po210: 5
     Po218: 5
     Po214: 5
-  slope_MeV_per_ch: 0.00427
+  slope_mev_per_ch: 0.00427
   float_slope: true
   use_two_point: true
   nominal_adc:
@@ -60,7 +60,7 @@ calibration:
   curve_fit_max_evaluations: 10000
   use_emg: true
   init_sigma_adc: 10.0
-  sigma_E_init: null
+  sigma_e_init: null
   init_tau_adc: 1.0
   sanity_tolerance_mev: 1.0
   known_energies:
@@ -95,29 +95,29 @@ spectral_fit:
   b1_prior:
     - 0.0
     - 2.0
-  S_bkg_prior:
+  s_bkg_prior:
     - 0.0
     - 5.0
   # Fitting numerical constants (previously hardcoded)
   tau_bound_expansion: 10.0
   background_norm_points: 512
   emg_tau_floor: 5.0e-4
-  tau_Po210_prior_mean: 0.010
-  tau_Po210_prior_sigma: 0.006
-  tau_Po218_prior_mean: 0.030
-  tau_Po218_prior_sigma: 0.020
-  tau_Po214_prior_mean: 0.010
-  tau_Po214_prior_sigma: 0.005
+  tau_po210_prior_mean: 0.010
+  tau_po210_prior_sigma: 0.006
+  tau_po218_prior_mean: 0.030
+  tau_po218_prior_sigma: 0.020
+  tau_po214_prior_mean: 0.010
+  tau_po214_prior_sigma: 0.005
   spectral_peak_tolerance_mev: 0.2
-  sigma_E_prior_source: "calibration"
-  sigma_E_prior_sigma: 0.015
-  sigma_E_prior_mean: 0.055
+  sigma_e_prior_source: "calibration"
+  sigma_e_prior_sigma: 0.015
+  sigma_e_prior_mean: 0.055
   use_emg:
     Po210: true
     Po218: true
     Po214: true
   max_tau_ratio: 0.75
-  float_sigma_E: false
+  float_sigma_e: false
   peak_search_prominence: 30
   peak_search_width_adc: 3
   peak_search_method: prominence
@@ -130,8 +130,8 @@ spectral_fit:
     sigma0_prior:
       - 0.13
       - 0.05
-    fix_F: true       # fix the Fano factor
-    F_prior:
+    fix_f: true       # fix the Fano factor
+    f_prior:
       - 0.0
       - 0.01
   mu_bounds:
@@ -172,12 +172,12 @@ time_fit:
   n0_guess_fraction: 0.1
   flags:
     fix_background_b: false
-    fix_N0_Po218: false
+    fix_n0_po218: false
 systematics:
   enable: false
-  sigma_E_frac: 0.1
+  sigma_e_frac: 0.1
   tail_fraction: 0.05
-  energy_shift_keV: 0.001
+  energy_shift_kev: 0.001
   adc_drift_rate: 0.0
   adc_drift_mode: linear
   adc_drift_params: null

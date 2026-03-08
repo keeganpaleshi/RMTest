@@ -113,6 +113,164 @@ _DEFAULT_LOGLIN_NORM_SAMPLES = 512
 _DEFAULT_MAX_B1_SIGMA = 10.0
 
 
+@dataclass(frozen=True)
+class _KeyRule:
+    internal: str
+    canonical: str
+    aliases: tuple[str, ...] = ()
+
+
+_CONFIG_KEY_RULES: dict[tuple[str, ...], tuple[_KeyRule, ...]] = {
+    ("columns",): (
+        _KeyRule("fUniqueID", "unique_id", ("funique_id",)),
+        _KeyRule("fBits", "bits", ("fbits",)),
+        _KeyRule("fchannel", "channel"),
+    ),
+    ("calibration",): (
+        _KeyRule("slope_MeV_per_ch", "slope_mev_per_ch"),
+        _KeyRule("sigma_E_init", "sigma_e_init"),
+        _KeyRule("intercept_MeV", "intercept_mev"),
+    ),
+    ("spectral_fit",): (
+        _KeyRule("loglin_n_norm", "background_norm_points"),
+        _KeyRule("S_bkg_prior", "s_bkg_prior"),
+        _KeyRule("sigma_E_prior_source", "sigma_e_prior_source"),
+        _KeyRule("sigma_E_prior_sigma", "sigma_e_prior_sigma"),
+        _KeyRule("sigma_E_prior_mean", "sigma_e_prior_mean"),
+        _KeyRule("float_sigma_E", "float_sigma_e"),
+        _KeyRule("tau_Po210_prior_mean", "tau_po210_prior_mean"),
+        _KeyRule("tau_Po210_prior_sigma", "tau_po210_prior_sigma"),
+        _KeyRule("tau_Po218_prior_mean", "tau_po218_prior_mean"),
+        _KeyRule("tau_Po218_prior_sigma", "tau_po218_prior_sigma"),
+        _KeyRule("tau_Po214_prior_mean", "tau_po214_prior_mean"),
+        _KeyRule("tau_Po214_prior_sigma", "tau_po214_prior_sigma"),
+    ),
+    ("spectral_fit", "flags"): (
+        _KeyRule("fix_F", "fix_f"),
+        _KeyRule("F_prior", "f_prior"),
+    ),
+    ("time_fit",): (
+        _KeyRule("window_po210", "window_po210", ("window_Po210",)),
+        _KeyRule("window_po218", "window_po218", ("window_Po218",)),
+        _KeyRule("window_po214", "window_po214", ("window_Po214",)),
+    ),
+    ("time_fit", "flags"): (
+        _KeyRule("fix_N0_po210", "fix_n0_po210", ("fix_N0_Po210",)),
+        _KeyRule("fix_N0_po218", "fix_n0_po218", ("fix_N0_Po218",)),
+        _KeyRule("fix_N0_po214", "fix_n0_po214", ("fix_N0_Po214",)),
+    ),
+    ("systematics",): (
+        _KeyRule("sigma_E_frac", "sigma_e_frac"),
+        _KeyRule("energy_shift_keV", "energy_shift_kev"),
+    ),
+}
+
+
+def _rule_candidates(rule: _KeyRule) -> tuple[str, ...]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for key in (rule.canonical, *rule.aliases, rule.internal):
+        if key not in seen:
+            ordered.append(key)
+            seen.add(key)
+    return tuple(ordered)
+
+
+def _format_config_path(path: tuple[str, ...], key: str) -> str:
+    return ".".join((*path, key)) if path else key
+
+
+def _coalesce_section_keys(section: dict[str, Any], path: tuple[str, ...]) -> None:
+    for rule in _CONFIG_KEY_RULES.get(path, ()):
+        chosen_key = None
+        chosen_value = None
+        for candidate in _rule_candidates(rule):
+            if candidate not in section:
+                continue
+            if chosen_key is None:
+                chosen_key = candidate
+                chosen_value = section[candidate]
+                continue
+            if section[candidate] != chosen_value:
+                logger.warning(
+                    "Config sets both %s and %s; preferring %s.",
+                    _format_config_path(path, chosen_key),
+                    _format_config_path(path, candidate),
+                    _format_config_path(path, chosen_key),
+                )
+        if chosen_key is None:
+            continue
+        section[rule.internal] = chosen_value
+        for candidate in _rule_candidates(rule):
+            if candidate != rule.internal:
+                section.pop(candidate, None)
+
+
+def _normalize_config_key_aliases(obj: Any, path: tuple[str, ...] = ()) -> Any:
+    if isinstance(obj, Mapping):
+        normalized = dict(obj)
+        _coalesce_section_keys(normalized, path)
+        for key, value in list(normalized.items()):
+            next_path = path + (key,) if isinstance(key, str) else path
+            normalized[key] = _normalize_config_key_aliases(value, next_path)
+        return normalized
+    if isinstance(obj, list):
+        return [_normalize_config_key_aliases(item, path) for item in obj]
+    return obj
+
+
+def _canonicalize_config_keys(obj: Any, path: tuple[str, ...] = ()) -> Any:
+    if isinstance(obj, Mapping):
+        rules = {rule.internal: rule.canonical for rule in _CONFIG_KEY_RULES.get(path, ())}
+        canonicalized: dict[str, Any] = {}
+        for key, value in obj.items():
+            canonical_key = rules.get(key, key)
+            next_path = path + (canonical_key,) if isinstance(canonical_key, str) else path
+            canonicalized[canonical_key] = _canonicalize_config_keys(value, next_path)
+        return canonicalized
+    if isinstance(obj, list):
+        return [_canonicalize_config_keys(item, path) for item in obj]
+    return obj
+
+
+_SUMMARY_KEY_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+    ("Rn_activity", "rn_activity"),
+    ("sigma_E", "sigma_e"),
+    ("S_bkg", "s_bkg"),
+    ("_UL95_", "_ul95_"),
+    ("_Bq_per_L", "_bq_per_l"),
+    ("_Bq_per_m3", "_bq_per_m3"),
+    ("_Bq", "_bq"),
+    ("_MeV", "_mev"),
+    ("_keV", "_kev"),
+)
+
+
+def _canonicalize_summary_key(key: str) -> str:
+    canonical = key
+    for old, new in _SUMMARY_KEY_REPLACEMENTS:
+        canonical = canonical.replace(old, new)
+    return canonical
+
+
+def _with_summary_key_aliases(obj: Any) -> Any:
+    if isinstance(obj, Mapping):
+        aliased: dict[Any, Any] = {}
+        for key, value in obj.items():
+            converted = _with_summary_key_aliases(value)
+            if not isinstance(key, str):
+                aliased[key] = converted
+                continue
+            canonical_key = _canonicalize_summary_key(key)
+            aliased.setdefault(canonical_key, converted)
+            if canonical_key != key:
+                aliased.setdefault(key, converted)
+        return aliased
+    if isinstance(obj, list):
+        return [_with_summary_key_aliases(item) for item in obj]
+    return obj
+
+
 CONFIG_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -513,10 +671,16 @@ def load_config(config_path):
         path = Path(config_path)
         if not path.is_file():
             raise FileNotFoundError(f"Config file not found: {config_path}")
-        if path.suffix not in {".yaml", ".yml"}:
-            raise ValueError("Config file must be YAML")
-        with open(path, "r", encoding="utf-8") as f:
-            cfg = yaml.load(f, Loader=_UniqueKeyLoader) or {}
+        if path.suffix in {".yaml", ".yml"}:
+            with open(path, "r", encoding="utf-8") as f:
+                cfg = yaml.load(f, Loader=_UniqueKeyLoader) or {}
+        elif path.suffix == ".json":
+            with open(path, "r", encoding="utf-8") as f:
+                cfg = json.load(f) or {}
+        else:
+            raise ValueError("Config file must be YAML or JSON")
+
+    cfg = _normalize_config_key_aliases(cfg)
 
     sf = cfg.setdefault("spectral_fit", {})
     analysis_cfg = cfg.setdefault("analysis", {})
@@ -559,9 +723,9 @@ def load_config(config_path):
         try:
             sf["loglin_n_norm"] = int(sf["loglin_n_norm"])
         except Exception as exc:
-            raise ValueError("spectral_fit.loglin_n_norm must be a positive integer") from exc
+            raise ValueError("spectral_fit.background_norm_points (legacy spectral_fit.loglin_n_norm) must be a positive integer") from exc
         if sf["loglin_n_norm"] <= 0:
-            raise ValueError("spectral_fit.loglin_n_norm must be a positive integer")
+            raise ValueError("spectral_fit.background_norm_points (legacy spectral_fit.loglin_n_norm) must be a positive integer")
     else:
         sf["loglin_n_norm"] = _DEFAULT_LOGLIN_NORM_SAMPLES
 
@@ -761,7 +925,15 @@ def load_events(csv_path, *, start=None, end=None, column_map=None):
 
     # Rename columns based on explicit configuration mapping
     if column_map:
-        cfg_rename = {v: k for k, v in column_map.items() if v in df.columns}
+        canonical_column_keys = {
+            "unique_id": "fUniqueID",
+            "bits": "fBits",
+            "channel": "fchannel",
+        }
+        normalized_column_map = {
+            canonical_column_keys.get(key, key): value for key, value in column_map.items()
+        }
+        cfg_rename = {v: k for k, v in normalized_column_map.items() if v in df.columns}
         if cfg_rename:
             df = df.rename(columns=cfg_rename, errors="ignore")
 
@@ -1039,7 +1211,7 @@ def write_summary(
 
     summary_path = results_folder / "summary.json"
 
-    sanitized = to_native(summary_dict)
+    sanitized = _with_summary_key_aliases(to_native(summary_dict))
 
     if "diagnostics" not in sanitized or sanitized["diagnostics"] is None:
         sanitized["diagnostics"] = to_native(DEFAULT_DIAGNOSTICS)
@@ -1077,10 +1249,17 @@ def copy_config(output_dir, config_path, *, exist_ok=False):
 
     dest_path = output_path / "config_used.json"
     if isinstance(config_path, (str, Path)):
-        shutil.copyfile(Path(config_path), dest_path)
-        logger.info(f"Copied config {config_path} -> {dest_path}")
+        try:
+            sanitized = _canonicalize_config_keys(to_native(load_config(config_path)))
+        except Exception:
+            shutil.copyfile(Path(config_path), dest_path)
+            logger.info(f"Copied config {config_path} -> {dest_path}")
+        else:
+            with open(dest_path, "w", encoding="utf-8") as f:
+                json.dump(sanitized, f, indent=4)
+            logger.info(f"Wrote canonical config to {dest_path}")
     else:
-        sanitized = to_native(config_path)
+        sanitized = _canonicalize_config_keys(to_native(config_path))
         with open(dest_path, "w", encoding="utf-8") as f:
             json.dump(sanitized, f, indent=4)
         logger.info(f"Wrote config to {dest_path}")

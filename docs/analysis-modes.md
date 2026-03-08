@@ -84,8 +84,8 @@ Example:
 from hierarchical import fit_hierarchical_runs
 
 run_results = [
-    {"half_life": 160.5, "dhalf_life": 1.2, "slope_MeV_per_ch": 0.001, "dslope": 0.0005},
-    {"half_life": 162.1, "dhalf_life": 1.0, "slope_MeV_per_ch": 0.0011, "dslope": 0.0004},
+    {"half_life": 160.5, "dhalf_life": 1.2, "slope_mev_per_ch": 0.001, "dslope": 0.0005},
+    {"half_life": 162.1, "dhalf_life": 1.0, "slope_mev_per_ch": 0.0011, "dslope": 0.0004},
 ]
 
 summary = fit_hierarchical_runs(run_results)

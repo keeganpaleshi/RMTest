@@ -36,22 +36,22 @@ Examples:
 
 ```bash
 # subtract electronics + radon
-python analyze.py --config assay.yaml --input run.csv --output_dir results \
-    --baseline_range 2023-07-01T00:00:00Z 2023-07-03T00:00:00Z \
+python analyze.py --config assay.yaml --input run.csv --output-dir results \
+    --baseline-range 2023-07-01T00:00:00Z 2023-07-03T00:00:00Z \
     --baseline-mode all
 ```
 
 ```bash
 # keep self-emanation, remove only electronics
-python analyze.py --config assay.yaml --input run.csv --output_dir results \
-    --baseline_range 2023-07-01T00:00:00Z 2023-07-03T00:00:00Z \
+python analyze.py --config assay.yaml --input run.csv --output-dir results \
+    --baseline-range 2023-07-01T00:00:00Z 2023-07-03T00:00:00Z \
     --baseline-mode electronics
 ```
 
 ```bash
 # debugging: no subtraction
-python analyze.py --config assay.yaml --input run.csv --output_dir results \
-    --baseline_range 2023-07-01T00:00:00Z 2023-07-03T00:00:00Z \
+python analyze.py --config assay.yaml --input run.csv --output-dir results \
+    --baseline-range 2023-07-01T00:00:00Z 2023-07-03T00:00:00Z \
     --baseline-mode none
 ```
 
@@ -81,14 +81,14 @@ First analyze the baseline period on its own:
 
 ```bash
 python analyze.py --config examples/long_baseline.yaml --input baseline.csv \
-    --output_dir baseline_results --job-id baseline
+    --output-dir baseline_results --job-id baseline
 ```
 
 Later assay runs can reference that same interval:
 
 ```bash
-python analyze.py --config assay.yaml --input assay.csv --output_dir results \
-    --baseline_range 2023-07-01T00:00:00Z 2023-07-31T23:59:59Z
+python analyze.py --config assay.yaml --input assay.csv --output-dir results \
+    --baseline-range 2023-07-01T00:00:00Z 2023-07-31T23:59:59Z
 ```
 
 When results are written, the metadata may record `background_mode: fixed_from_baseline`, meaning the monitor background was measured in a dedicated baseline run and then held fixed during the assay analysis.
@@ -98,18 +98,18 @@ When results are written, the metadata may record `background_mode: fixed_from_b
 When baseline subtraction is active, `summary.json` records these values under `baseline`:
 
 - `analysis_counts`: unweighted counts in the assay window for each isotope
-- `rate_Bq` and `rate_unc_Bq`: baseline rates and their uncertainties
+- `rate_bq` and `rate_unc_bq`: baseline rates and their uncertainties
 - `dilution_factor`: volume scale factor applied before subtraction
 - `scales`: per-component subtraction multipliers
-- `corrected_rate_Bq` and `corrected_sigma_Bq`: baseline-subtracted rates and uncertainties
+- `corrected_rate_bq` and `corrected_sigma_bq`: baseline-subtracted rates and uncertainties
 - `corrected_activity`: baseline-corrected activity payload used for reporting
 - `background_mode`: whether the time-fit background floated or was fixed from the baseline
 
 Time-fit blocks may also include:
 
 - `background_mode`
-- `baseline_rate_Bq`
-- `baseline_unc_Bq`
+- `baseline_rate_bq`
+- `baseline_unc_bq`
 - provenance fields added by `baseline_handling.apply_time_fit_provenance`
 
 ## Negative-Value Policy

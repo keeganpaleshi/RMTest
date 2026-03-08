@@ -609,9 +609,9 @@ def fixed_slope_calibration(adc_values, cfg, *, status=None):
       the fitted sigma_E in the result.
     """
 
-    a = cfg["calibration"]["slope_MeV_per_ch"]
-
     cal_cfg = cfg.get("calibration", {})
+    a = cal_cfg.get("slope_mev_per_ch", cal_cfg.get("slope_MeV_per_ch"))
+
     fit_maxfev = _resolve_curve_fit_max_evals(cal_cfg)
     expected = {"Po214": cal_cfg["nominal_adc"]["Po214"]}
     window = cal_cfg.get("peak_search_radius", 50)
@@ -656,7 +656,7 @@ def fixed_slope_calibration(adc_values, cfg, *, status=None):
         sigma0 = sigma_cfg
 
     # Optional energy-space width guess -> convert to ADC using fixed slope
-    sigma_E_cfg = cal_cfg.get("sigma_E_init")
+    sigma_E_cfg = cal_cfg.get("sigma_e_init", cal_cfg.get("sigma_E_init"))
     if sigma_E_cfg is not None:
         if isinstance(sigma_E_cfg, Mapping):
             sigma_E_guess = sigma_E_cfg.get("Po214", sigma_E_cfg.get("default"))
@@ -874,16 +874,16 @@ def calibrate_run(adc_values, config, hist_bins=None):
         else:
             sigma0 = sigma_cfg
 
-        sigma_E_cfg = cal_cfg.get("sigma_E_init")
+        sigma_E_cfg = cal_cfg.get("sigma_e_init", cal_cfg.get("sigma_E_init"))
         if sigma_E_cfg is not None:
             if isinstance(sigma_E_cfg, Mapping):
                 sigma_E_guess = sigma_E_cfg.get(iso, sigma_E_cfg.get("default"))
             else:
                 sigma_E_guess = sigma_E_cfg
-            slope_guess = cal_cfg.get("slope_MeV_per_ch")
+            slope_guess = cal_cfg.get("slope_mev_per_ch", cal_cfg.get("slope_MeV_per_ch"))
             if slope_guess is not None and sigma_E_guess is not None:
                 if abs(slope_guess) < 1e-15:
-                    raise ValueError("slope_MeV_per_ch must be nonzero for sigma_E_init conversion")
+                    raise ValueError("slope_mev_per_ch must be nonzero for sigma_e_init conversion")
                 sigma0 = abs(sigma_E_guess) / abs(slope_guess)
 
         tau_cfg = cal_cfg.get("init_tau_adc", 0.0)
@@ -1107,7 +1107,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
 def derive_calibration_constants(adc_values, config):
     """Return calibration constants for ``adc_values`` using ``config``."""
     cal_cfg = config.get("calibration", {})
-    slope = cal_cfg.get("slope_MeV_per_ch")
+    slope = cal_cfg.get("slope_mev_per_ch", cal_cfg.get("slope_MeV_per_ch"))
     float_slope = cal_cfg.get("float_slope", False)
 
     if slope is not None and not float_slope:
@@ -1131,9 +1131,9 @@ def derive_calibration_constants(adc_values, config):
     cfg = config if slope is None or not float_slope else deepcopy(config)
     if slope is not None and float_slope:
         if abs(slope) < 1e-15:
-            raise ValueError("slope_MeV_per_ch must be nonzero when float_slope is enabled")
+            raise ValueError("slope_mev_per_ch must be nonzero when float_slope is enabled")
         energies = {**DEFAULT_KNOWN_ENERGIES, **cal_cfg.get("known_energies", {})}
-        intercept = cal_cfg.get("intercept_MeV", 0.0)
+        intercept = cal_cfg.get("intercept_mev", cal_cfg.get("intercept_MeV", 0.0))
         cfg.setdefault("calibration", {})["nominal_adc"] = {
             iso: int(round((energies[iso] - intercept) / slope)) for iso in ("Po210", "Po218", "Po214")
         }

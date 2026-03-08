@@ -26,8 +26,8 @@ spectral_fit:
     Po210: true
     Po218: false
     Po214: false
-  tau_Po210_prior_mean: 0.005
-  tau_Po210_prior_sigma: 0.002
+  tau_po210_prior_mean: 0.005
+  tau_po210_prior_sigma: 0.002
 
 time_fit:
   do_time_fit: true

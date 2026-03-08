@@ -313,7 +313,7 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Utility conversions")
     p.add_argument("rate_cps", type=float, help="Count rate in cps")
     p.add_argument("--to", choices=["cpd", "bq"], required=True)
-    p.add_argument("--volume_liters", type=float, help="Detector volume in liters")
+    p.add_argument("--volume-liters", "--volume_liters", dest="volume_liters", type=float, help="Detector volume in liters")
     args = p.parse_args()
 
     if args.to == "cpd":

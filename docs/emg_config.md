@@ -76,10 +76,10 @@ You can specify tau priors for individual isotopes in the `spectral_fit` section
 
 ```yaml
 spectral_fit:
-  tau_Po210_prior_mean: 0.004    # Mean tau value for Po210
-  tau_Po210_prior_sigma: 0.001   # Uncertainty in tau
-  tau_Po218_prior_mean: 0.003
-  tau_Po218_prior_sigma: 0.0005
+  tau_po210_prior_mean: 0.004    # Mean tau value for Po210
+  tau_po210_prior_sigma: 0.001   # Uncertainty in tau
+  tau_po218_prior_mean: 0.003
+  tau_po218_prior_sigma: 0.0005
 ```
 
 **Important**: If `tau_{isotope}_prior_mean` is specified for an isotope, EMG is automatically enabled for that isotope, regardless of the `use_emg` setting.
@@ -122,8 +122,8 @@ spectral_fit:
     Po218: 1400
     Po214: 1800
   # Po210 has explicit tau prior (EMG automatically enabled)
-  tau_Po210_prior_mean: 0.005
-  tau_Po210_prior_sigma: 0.002
+  tau_po210_prior_mean: 0.005
+  tau_po210_prior_sigma: 0.002
   # Po218 EMG is OFF (use_emg: false, no prior)
   # Po214 EMG is OFF (use_emg: false, no prior)
 ```

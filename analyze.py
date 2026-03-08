@@ -9,8 +9,8 @@ Usage:
     python analyze.py \
         --config   config.yaml \
         [--input   merged_output.csv] \
-        --output_dir  results \
-        [--baseline_range ISO_START ISO_END]
+        --output-dir  results \
+        [--baseline-range ISO_START ISO_END]
 
 This script performs the following steps:
 
@@ -35,13 +35,13 @@ This script performs the following steps:
        • time‐fit outputs (per isotope)
        • systematics deltas (if requested)
        • baseline info (if provided)
-  9. Save plots (spectrum.png, time_series_Po214.png, time_series_Po218.png) under `output_dir/<timestamp>/`.
+  9. Save plots (spectrum.png, time_series_Po214.png, time_series_Po218.png) under `output-dir/<timestamp>/`.
 
 To run (without baseline) for a single merged CSV:
 
     python analyze.py \
        --config    config.yaml \
-       --output_dir  results
+       --output-dir  results
 """
 
 
@@ -1410,6 +1410,7 @@ def parse_args(argv=None):
         ),
     )
     p.add_argument(
+        "--output-dir",
         "--output_dir",
         "-o",
         default="results",
@@ -1424,6 +1425,7 @@ def parse_args(argv=None):
         help="Timezone for naive input timestamps (default: UTC)",
     )
     p.add_argument(
+        "--baseline-range",
         "--baseline_range",
         nargs=2,
         metavar=("TSTART", "TEND"),
@@ -1579,7 +1581,7 @@ def parse_args(argv=None):
         type=float,
         help=(
             "Fixed MeV per ADC conversion slope. Providing this option overrides "
-            "`calibration.slope_MeV_per_ch` in config.yaml"
+            "`calibration.slope_mev_per_ch` in config.yaml"
         ),
     )
     p.add_argument(
@@ -2744,8 +2746,8 @@ def main(argv=None):
             # Build priors for the unbinned spectrum fit:
             priors_spec = {}
             # Resolution prior: map calibrated sigma_E -> sigma0 parameter
-            sigma_prior_source = spectral_cfg.get("sigma_E_prior_source")
-            sigma_prior_sigma = spectral_cfg.get("sigma_E_prior_sigma", sigE_sigma)
+            sigma_prior_source = spectral_cfg.get("sigma_e_prior_source", spectral_cfg.get("sigma_E_prior_source"))
+            sigma_prior_sigma = spectral_cfg.get("sigma_e_prior_sigma", spectral_cfg.get("sigma_E_prior_sigma", sigE_sigma))
     
             def _coerce_sigma(val):
                 try:
@@ -2765,7 +2767,7 @@ def main(argv=None):
             if not np.isfinite(sigma_E_prior) or sigma_E_prior <= 0.0:
                 sigma_E_prior = max(float(sigE_sigma), 1e-6)
     
-            float_sigma_E = bool(spectral_cfg.get("float_sigma_E", True))
+            float_sigma_E = bool(spectral_cfg.get("float_sigma_e", spectral_cfg.get("float_sigma_E", True)))
     
             priors_spec["sigma_E"] = (sigE_mean, sigma_E_prior)
             # Fit_spectrum expects separate ``sigma0`` and ``F`` resolution terms.
@@ -3291,8 +3293,9 @@ def main(argv=None):
                 "fit_background": not cfg["time_fit"]["flags"].get(
                     "fix_background_b", False
                 ),
-                "fit_initial": not cfg["time_fit"]["flags"].get(
-                    f"fix_N0_{iso.lower()}", False
+                "fit_initial": not (
+                    cfg["time_fit"]["flags"].get(f"fix_n0_{iso.lower()}", False)
+                    or cfg["time_fit"]["flags"].get(f"fix_N0_{iso.lower()}", False)
                 ),
                 "background_guess": cfg["time_fit"].get("background_guess", 0.0),
                 "n0_guess_fraction": cfg["time_fit"].get("n0_guess_fraction", 0.1),
@@ -3609,11 +3612,15 @@ def main(argv=None):
                     continue
     
                 sigma_dict = {}
-                for name in ("sigma_E_frac", "tail_fraction", "energy_shift_keV"):
-                    if name in sys_cfg:
-                        base = name.replace("_frac", "").replace("_keV", "")
-                        if base in priors_time_all.get(iso, {}):
-                            sigma_dict[name] = sys_cfg[name]
+                for name, base in (
+                    ("sigma_e_frac", "sigma_E"),
+                    ("sigma_E_frac", "sigma_E"),
+                    ("tail_fraction", "tail"),
+                    ("energy_shift_kev", "energy_shift"),
+                    ("energy_shift_keV", "energy_shift"),
+                ):
+                    if name in sys_cfg and base in priors_time_all.get(iso, {}):
+                        sigma_dict[name] = sys_cfg[name]
     
                 # Build a wrapper to re‐run fit_time_series with modified priors
                 def fit_wrapper(priors_mod):
@@ -3643,8 +3650,9 @@ def main(argv=None):
                         "fit_background": not cfg["time_fit"]["flags"].get(
                             "fix_background_b", False
                         ),
-                        "fit_initial": not cfg["time_fit"]["flags"].get(
-                            f"fix_N0_{iso.lower()}", False
+                        "fit_initial": not (
+                            cfg["time_fit"]["flags"].get(f"fix_n0_{iso.lower()}", False)
+                            or cfg["time_fit"]["flags"].get(f"fix_N0_{iso.lower()}", False)
                         ),
                         "background_guess": cfg["time_fit"].get("background_guess", 0.0),
                         "n0_guess_fraction": cfg["time_fit"].get("n0_guess_fraction", 0.1),
