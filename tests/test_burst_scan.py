@@ -74,7 +74,7 @@ def test_burst_sensitivity_scan(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--burst-sensitivity-scan",
     ]

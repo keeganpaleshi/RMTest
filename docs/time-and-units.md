@@ -56,7 +56,7 @@ The time-series plots mix two related time axes:
 - absolute UTC timestamps for the real run timeline
 - elapsed hours for the relative-time view used in monitoring plots
 
-When `--dump-time-series-json` is enabled, the exported `*_ts.json` files include:
+When `--dump-ts-json` is enabled, the exported `*_ts.json` files include:
 
 - UTC bin edges and centers
 - Unix-second bin edges and centers

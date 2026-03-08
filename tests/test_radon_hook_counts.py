@@ -71,7 +71,7 @@ def test_radon_hook_counts(tmp_path, monkeypatch):
         "analyze.py",
         "--config", str(cfg_path),
         "--input", str(data_path),
-        "--output_dir", str(tmp_path),
+        "--output-dir", str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
 
@@ -166,7 +166,7 @@ def test_radon_stat_uncertainty_fallback(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -281,7 +281,7 @@ def test_time_fit_counts_fallback(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)

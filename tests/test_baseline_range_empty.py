@@ -113,9 +113,9 @@ def test_cli_baseline_range_empty(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
-        "--baseline_range",
+        "--baseline-range",
         "10",
         "20",
     ]

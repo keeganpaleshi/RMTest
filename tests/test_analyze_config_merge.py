@@ -96,7 +96,7 @@ def test_plot_time_series_receives_merged_config(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -198,7 +198,7 @@ def test_legacy_background_model_key_reaches_summary_and_fit_flags(tmp_path, mon
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -268,7 +268,7 @@ def test_analysis_start_time_applied(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -335,7 +335,7 @@ def test_job_id_overrides_results_folder(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--job-id",
         "JOB123",
@@ -397,7 +397,7 @@ def test_efficiency_json_cli(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--efficiency-json",
         str(eff_path),
@@ -456,7 +456,7 @@ def test_systematics_json_cli(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--systematics-json",
         str(sys_path),
@@ -512,13 +512,13 @@ def test_time_bin_cli(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--plot-time-binning-mode",
         "fixed",
         "--plot-time-bin-width",
         "5",
-        "--dump-time-series-json",
+        "--dump-ts-json",
     ]
     monkeypatch.setattr(sys, "argv", args)
     analyze.main()
@@ -558,7 +558,7 @@ def test_time_bin_override_logs(tmp_path, monkeypatch, caplog):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--plot-time-binning-mode",
         "fd",
@@ -618,7 +618,7 @@ def test_po210_time_series_plot_generated(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -680,7 +680,7 @@ def test_spike_count_cli(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--spike-count",
         "42",
@@ -744,7 +744,7 @@ def test_spike_count_single_call(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--spike-count",
         "42",
@@ -807,7 +807,7 @@ def test_no_spike_cli(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--no-spike",
     ]
@@ -886,7 +886,7 @@ def test_assay_efficiency_list(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -969,7 +969,7 @@ def test_spike_efficiency_list(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -1018,7 +1018,7 @@ def test_debug_flag_sets_log_level(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--debug",
     ]
@@ -1076,7 +1076,7 @@ def test_settle_s_cli(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--settle-s",
         "5",
@@ -1129,7 +1129,7 @@ def test_settle_s_summary(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--settle-s",
         "5",
@@ -1188,7 +1188,7 @@ def test_analysis_end_time_cli(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--analysis-end-time",
         "1970-01-01T00:00:05Z",
@@ -1247,7 +1247,7 @@ def test_analysis_start_time_cli(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--analysis-start-time",
         "1970-01-01T00:00:10Z",
@@ -1306,7 +1306,7 @@ def test_spike_end_time_cli(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--spike-end-time",
         "1970-01-01T00:00:05Z",
@@ -1365,7 +1365,7 @@ def test_spike_start_time_cli(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--spike-start-time",
         "1970-01-01T00:00:05Z",
@@ -1428,7 +1428,7 @@ def test_spike_start_and_end_cli(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--spike-start-time",
         "1970-01-01T00:00:01Z",
@@ -1500,7 +1500,7 @@ def test_spike_period_cli(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--spike-period",
         "1970-01-01T00:00:00Z",
@@ -1563,7 +1563,7 @@ def test_seed_cli_sets_random_seed(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--seed",
         "123",
@@ -1622,7 +1622,7 @@ def test_ambient_concentration_recorded(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--ambient-concentration",
         "1.2",
@@ -1682,7 +1682,7 @@ def test_ambient_concentration_from_config(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -1755,7 +1755,7 @@ def test_ambient_file_interpolation(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--ambient-file",
         str(amb),
@@ -1813,7 +1813,7 @@ def test_burst_mode_from_config(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -1861,7 +1861,7 @@ def test_burst_mode_micro_config(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -1909,7 +1909,7 @@ def test_burst_mode_cli_overrides(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--burst-mode",
         "micro",
@@ -1963,7 +1963,7 @@ def test_burst_mode_summary_config(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--burst-mode",
         "micro",
@@ -2031,7 +2031,7 @@ def test_burst_filter_auto_disabled(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -2082,7 +2082,7 @@ def test_ambient_concentration_default_none(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -2136,7 +2136,7 @@ def test_ambient_concentration_written_to_summary_file(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -2197,7 +2197,7 @@ def test_spike_periods_null_config(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -2254,7 +2254,7 @@ def test_hl_po214_cli_overrides(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--hl-po214",
         "5",
@@ -2312,7 +2312,7 @@ def test_hl_po210_default_used(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -2384,7 +2384,7 @@ def test_time_fields_written_back(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)

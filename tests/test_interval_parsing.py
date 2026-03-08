@@ -15,8 +15,8 @@ def test_cli_interval_parsing_to_datetime():
     args = analyze.parse_args([
         "--config", "cfg.yaml",
         "--input", "data.csv",
-        "--output_dir", "out",
-        "--baseline_range", "1970-01-01T00:00:01Z", "1970-01-01T00:00:02Z",
+        "--output-dir", "out",
+        "--baseline-range", "1970-01-01T00:00:01Z", "1970-01-01T00:00:02Z",
         "--radon-interval", "1970-01-01T00:00:03Z", "1970-01-01T00:00:04Z",
     ])
     tzinfo = gettz(args.timezone)
@@ -44,7 +44,7 @@ def test_parse_allow_negative_activity():
     args = analyze.parse_args([
         "--config", "cfg.yaml",
         "--input", "data.csv",
-        "--output_dir", "out",
+        "--output-dir", "out",
         "--allow-negative-activity",
     ])
     assert args.allow_negative_activity is True

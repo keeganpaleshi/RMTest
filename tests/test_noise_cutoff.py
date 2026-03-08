@@ -77,7 +77,7 @@ def test_noise_cutoff_filters_events(tmp_path, monkeypatch):
         "analyze.py",
         "--config", str(cfg_path),
         "--input", str(data_path),
-        "--output_dir", str(tmp_path),
+        "--output-dir", str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
     analyze.main()
@@ -151,7 +151,7 @@ def test_invalid_noise_cutoff_skips_cut(tmp_path, monkeypatch, caplog):
         "analyze.py",
         "--config", str(cfg_path),
         "--input", str(data_path),
-        "--output_dir", str(tmp_path),
+        "--output-dir", str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
     with pytest.raises(SystemExit):

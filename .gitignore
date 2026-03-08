@@ -75,3 +75,27 @@ dmypy.json
 
 # Test output artifacts
 None/
+
+# Local Codex / pytest scratch space
+.codex_pytest_tmp/
+.codex_tmp_probe/
+.codex_tmp_probe2/
+.pytest_tmp/
+codex_tmp/
+codex_tmp2/
+pytest-cache-files-*/
+*.codex_pytest_tmppid_*pytensorcompiledir/
+*codex_tmp_probeanalysis_runpytensorcompiledir/
+tests/*.codex_pytest_tmppid_*pytensorcompiledir/
+
+# Local preview outputs
+repro_results/desktop_data_preview/
+repro_results/desktop_data_preview_2h/
+repro_results/sample_preview/
+
+
+# Generated analysis run directories
+bg_cli_repro/
+fixed_repro/
+mini_repro/
+repro_results/20*/

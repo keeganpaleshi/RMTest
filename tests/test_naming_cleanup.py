@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -159,9 +160,46 @@ def test_copy_config_writes_canonical_keys(tmp_path):
 
 def test_parse_args_accepts_hyphenated_and_underscore_aliases():
     hyphenated = analyze.parse_args(["--output-dir", "out", "--baseline-range", "1", "2"])
-    underscored = analyze.parse_args(["--output_dir", "out2", "--baseline_range", "3", "4"])
+    with pytest.warns(DeprecationWarning, match="--output_dir is deprecated; use --output-dir"):
+        underscored = analyze.parse_args(["--output_dir", "out2", "--baseline_range", "3", "4"])
 
     assert hyphenated.output_dir == "out"
     assert hyphenated.baseline_range == ["1", "2"]
     assert underscored.output_dir == "out2"
     assert underscored.baseline_range == ["3", "4"]
+
+
+
+def test_parse_args_accepts_hidden_deprecated_aliases():
+    with pytest.warns(DeprecationWarning, match="--analysis_start_time is deprecated; use --analysis-start-time"):
+        args = analyze.parse_args(
+            [
+                "--analysis_start_time",
+                "1",
+                "--plot_time_binning_mode",
+                "fd",
+                "--plot_time_bin_width",
+                "120",
+            ]
+        )
+
+    assert args.analysis_start_time == "1"
+    assert args.time_bin_mode == "fd"
+    assert args.time_bin_width == 120.0
+
+
+
+def test_help_prefers_canonical_flag_names(capsys):
+    with pytest.raises(SystemExit):
+        analyze.parse_args(["--help"])
+
+    out = capsys.readouterr().out
+    assert "Inputs and outputs:" in out
+    assert "Time selection and baseline:" in out
+    assert "Calibration and fit controls:" in out
+    assert "Plotting, diagnostics, and reproducibility:" in out
+    assert "--output-dir" in out
+    assert "--baseline-range" in out
+    assert "--output_dir" not in out
+    assert "--baseline_range" not in out
+    assert "--time-bin-mode" in out

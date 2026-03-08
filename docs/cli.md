@@ -9,7 +9,7 @@ python analyze.py --config config.yaml --input merged_data.csv \
     --output-dir results [--job-id RUN_ID] [--overwrite]
 ```
 
-If `--output-dir` is omitted it defaults to `results`. If `--job-id` is omitted, the run directory is timestamped automatically. Legacy underscore spellings such as `--output_dir` and `--baseline_range` remain accepted as compatibility aliases.
+If `--output-dir` is omitted it defaults to `results`. If `--job-id` is omitted, the run directory is timestamped automatically. Long hyphenated flags are canonical; deprecated underscore spellings such as `--output_dir` and `--baseline_range` remain accepted for compatibility but are hidden from `--help`.
 
 ## Input Requirements
 
@@ -20,7 +20,9 @@ The input file must be a CSV containing at least:
 
 Additional columns such as `unique_id`, `bits`, `channel`, `baseline_adc`, `spike_flag`, `valid`, `temperature`, `run_id`, `pressure`, and `humidity` are ignored unless a downstream step uses them. If your file uses different header names, remap them in the `columns` section of the configuration.
 
-## Option Groups
+## Help Groups
+
+The `--help` output is grouped into the same high-level sections listed below.
 
 ### Inputs and outputs
 
@@ -53,7 +55,7 @@ See [time-and-units.md](time-and-units.md) for accepted timestamp formats.
 
 See [baseline.md](baseline.md) for the subtraction model and summary fields.
 
-### Calibration, filtering, and fit preparation
+### Calibration and fit controls
 
 - `--noise-cutoff`: override `calibration.noise_cutoff`
 - `--calibration-slope`: override `calibration.slope_mev_per_ch`
@@ -81,12 +83,13 @@ See [analysis-modes.md](analysis-modes.md) for the mode definitions and use case
 - `--spike-count`, `--spike-count-err`, `--spike-activity`, `--spike-duration`: override spike-efficiency inputs
 - `--no-spike`: disable spike efficiency entirely
 
-### Plotting and reporting
+### Plotting, diagnostics, and reproducibility
 
 - `--plot-time-binning-mode {auto,fd,fixed}`: override `plotting.plot_time_binning_mode`
 - `--time-bin-mode {auto,fd,fixed}`: deprecated alias for `--plot-time-binning-mode`
 - `--plot-time-bin-width`: override `plotting.plot_time_bin_width_s`
-- `--dump-ts-json`, `--dump-time-series-json`: write `*_ts.json` time-series payloads
+- `--dump-ts-json`: write `*_ts.json` time-series payloads
+- `--dump-time-series-json`: deprecated alias for `--dump-ts-json`
 - `--ambient-file`: time-dependent ambient radon file in Bq/L for equivalent-air plots
 - `--ambient-concentration`: constant ambient radon concentration in Bq/L
 - `--palette`: override the plotting palette

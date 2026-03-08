@@ -81,7 +81,7 @@ def test_time_window_filters_events(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
         "--analysis-end-time",
         "1970-01-01T00:00:06Z",
@@ -143,7 +143,7 @@ def test_invalid_baseline_range_raises(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -221,7 +221,7 @@ def test_time_window_filters_events_config(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -301,7 +301,7 @@ def test_run_period_filters_events(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -389,7 +389,7 @@ def test_baseline_range_iso_strings(tmp_path, monkeypatch, start, end):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -471,7 +471,7 @@ def test_unified_filter_combined_windows(tmp_path, monkeypatch):
         "analyze.py",
         "--config", str(cfg_path),
         "--input", str(data_path),
-        "--output_dir", str(tmp_path),
+        "--output-dir", str(tmp_path),
         "--analysis-end-time", "1970-01-01T00:00:04Z",
         "--spike-end-time", "1970-01-01T00:00:00.5Z",
     ]

@@ -66,7 +66,7 @@ def test_baseline_event_from_unfiltered_data(tmp_path, monkeypatch):
         "analyze.py",
         "--config", str(cfg_path),
         "--input", str(data_path),
-        "--output_dir", str(tmp_path),
+        "--output-dir", str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
     analyze.main()

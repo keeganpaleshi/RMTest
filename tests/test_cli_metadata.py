@@ -66,7 +66,7 @@ def test_summary_includes_git_and_cli(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)

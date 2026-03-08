@@ -136,7 +136,7 @@ def test_auto_background_priors(monkeypatch, tmp_path):
         str(cfg_path),
         "--input",
         str(csv),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)

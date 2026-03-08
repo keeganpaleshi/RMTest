@@ -82,7 +82,7 @@ def test_noise_cutoff_cli_overrides(tmp_path, monkeypatch):
 
         "--config", str(cfg_path),
         "--input", str(data_path),
-        "--output_dir", str(tmp_path),
+        "--output-dir", str(tmp_path),
         "--noise-cutoff", "5",
     ]
     monkeypatch.setattr(sys, "argv", args)

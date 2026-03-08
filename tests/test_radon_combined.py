@@ -70,7 +70,7 @@ def test_radon_combined_hook(tmp_path, monkeypatch):
         "analyze.py",
         "--config", str(cfg_path),
         "--input", str(data_path),
-        "--output_dir", str(tmp_path),
+        "--output-dir", str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
 

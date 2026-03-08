@@ -7,6 +7,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import utils as utils_module
 from utils import (
     cps_to_cpd,
     cps_to_bq,
@@ -116,3 +117,12 @@ def test_to_seconds_numeric_series():
     ser = pd.Series([0.0, 1.5, 2.2])
     out = to_seconds(ser)
     assert np.allclose(out, [0.0, 1.5, 2.2])
+
+
+def test_parse_cli_args_accepts_deprecated_volume_alias():
+    with pytest.warns(DeprecationWarning, match="--volume_liters is deprecated; use --volume-liters"):
+        args = utils_module.parse_cli_args(["2.0", "--to", "bq", "--volume_liters", "10"])
+
+    assert args.rate_cps == pytest.approx(2.0)
+    assert args.to == "bq"
+    assert args.volume_liters == pytest.approx(10.0)

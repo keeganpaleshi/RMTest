@@ -86,7 +86,7 @@ def test_adc_drift_applied(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -140,7 +140,7 @@ def test_adc_drift_zero_noop(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -193,7 +193,7 @@ def test_adc_drift_quadratic_cfg(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -247,7 +247,7 @@ def test_adc_drift_piecewise_cfg(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -294,7 +294,7 @@ def test_adc_drift_warning_on_failure(tmp_path, monkeypatch, caplog):
         "analyze.py",
         "--config", str(cfg_path),
         "--input", str(data_path),
-        "--output_dir", str(tmp_path),
+        "--output-dir", str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)
     with caplog.at_level(logging.WARNING):

@@ -269,7 +269,7 @@ def compute_total_radon(
     if activity_bq < 0:
         if not allow_negative_activity:
             raise RuntimeError(
-                "Negative activity encountered. Re-run with --allow_negative_activity to override"
+                "Negative activity encountered. Re-run with --allow-negative-activity to override"
             )
     if math.isnan(activity_bq):
         raise ValueError("activity_bq must not be NaN")

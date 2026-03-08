@@ -87,7 +87,7 @@ def test_hierarchical_summary(tmp_path, monkeypatch):
         "analyze.py",
         "--config", str(cfg_path),
         "--input", str(data_path),
-        "--output_dir", str(tmp_path),
+        "--output-dir", str(tmp_path),
         "--hierarchical-summary", str(out_json),
     ]
     monkeypatch.setattr(sys, "argv", args)

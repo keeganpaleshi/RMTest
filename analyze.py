@@ -50,6 +50,7 @@ import sys
 import logging
 import random
 import time
+import warnings
 
 logger = logging.getLogger(__name__)
 from datetime import datetime, timezone, timedelta
@@ -1383,320 +1384,545 @@ def _time_fit_weight_scale(
     return min(scale, 1.0)
 
 
+def _override_help(text: str, config_path: str) -> str:
+    """Return help text that explicitly names the overridden config key."""
+
+    return f"{text} Overrides `{config_path}`."
+
+
+
+def _underscore_flag_alias(flag: str) -> str | None:
+    """Return the underscore-spelling alias for a hyphenated long flag."""
+
+    if not flag.startswith("--") or "-" not in flag[2:]:
+        return None
+    return "--" + flag[2:].replace("-", "_")
+
+
+
+def _warn_for_deprecated_cli_aliases(
+    argv: Sequence[str], alias_map: Mapping[str, str]
+) -> None:
+    """Warn when deprecated compatibility aliases are used."""
+
+    seen: set[str] = set()
+    for token in argv:
+        option = token.split("=", 1)[0]
+        canonical = alias_map.get(option)
+        if canonical is None or option in seen:
+            continue
+        warnings.warn(
+            f"{option} is deprecated; use {canonical}",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        seen.add(option)
+
+
+
+def _add_cli_argument(
+    container,
+    *flags: str,
+    alias_map: dict[str, str],
+    aliases: Sequence[str] = (),
+    add_underscore_aliases: bool = True,
+    **kwargs,
+) -> argparse.Action:
+    """Add a CLI argument with hidden compatibility aliases."""
+
+    action = container.add_argument(*flags, **kwargs)
+    canonical = next((flag for flag in flags if flag.startswith("--")), flags[0])
+
+    hidden_aliases: list[str] = []
+    for alias in aliases:
+        if alias not in flags and alias not in hidden_aliases:
+            hidden_aliases.append(alias)
+
+    if add_underscore_aliases:
+        for flag in (*flags, *aliases):
+            alias = _underscore_flag_alias(flag)
+            if alias and alias not in flags and alias not in hidden_aliases:
+                hidden_aliases.append(alias)
+
+    alias_kwargs = dict(kwargs)
+    alias_kwargs["dest"] = action.dest
+    alias_kwargs["help"] = argparse.SUPPRESS
+    alias_kwargs["default"] = argparse.SUPPRESS
+    alias_kwargs.pop("required", None)
+
+    for alias in hidden_aliases:
+        container.add_argument(alias, **alias_kwargs)
+        alias_map[alias] = canonical
+
+    return action
+
+
+
 def parse_args(argv=None):
     """Parse command line arguments."""
+
     p = argparse.ArgumentParser(
-        description="Full Radon Monitor Analysis Pipeline",
+        description="Run the full Radon Monitor analysis pipeline on merged event data.",
         epilog=(
-            "See the README's Opt-in section for details on experimental flags "
-            "such as background_model=loglin_unit and likelihood=extended."
+            "Hyphenated long flags are canonical. Deprecated underscore aliases "
+            "remain accepted for compatibility. Experimental options: "
+            "--background-model loglin_unit and --likelihood extended."
         ),
     )
+    alias_map: dict[str, str] = {}
     default_cfg = Path(__file__).resolve().with_name("config.yaml")
-    p.add_argument(
+    default_input = Path.cwd() / "merged_output.csv"
+
+    inputs_group = p.add_argument_group("Inputs and outputs")
+    time_group = p.add_argument_group("Time selection and baseline")
+    fit_group = p.add_argument_group("Calibration and fit controls")
+    aux_group = p.add_argument_group("Efficiency and systematics inputs")
+    output_group = p.add_argument_group("Plotting, diagnostics, and reproducibility")
+
+    _add_cli_argument(
+        inputs_group,
         "--config",
         "-c",
+        alias_map=alias_map,
         default=str(default_cfg),
-        help="Path to YAML or JSON configuration file (default: config.yaml)",
+        help="YAML or JSON configuration file.",
     )
-    default_input = Path.cwd() / "merged_output.csv"
-    p.add_argument(
+    _add_cli_argument(
+        inputs_group,
         "--input",
         "-i",
+        alias_map=alias_map,
         default=str(default_input),
         help=(
-            "CSV of merged event data (must contain at least: timestamp, adc) "
-            f"(default: {default_input})"
+            "Merged event CSV. Must contain at least `timestamp` and `adc`. "
+            f"Default: {default_input}."
         ),
     )
-    p.add_argument(
+    _add_cli_argument(
+        inputs_group,
         "--output-dir",
-        "--output_dir",
         "-o",
+        alias_map=alias_map,
         default="results",
         help=(
-            "Directory under which to create a timestamped analysis folder "
-            "(override with --job-id; default: results)"
+            "Parent directory for the timestamped results folder. "
+            "Use `--job-id` to choose the folder name. Default: results."
         ),
     )
-    p.add_argument(
-        "--timezone",
-        default="UTC",
-        help="Timezone for naive input timestamps (default: UTC)",
+    _add_cli_argument(
+        inputs_group,
+        "--job-id",
+        alias_map=alias_map,
+        help="Use this exact results folder name instead of an auto-generated timestamp.",
     )
-    p.add_argument(
+    _add_cli_argument(
+        inputs_group,
+        "--overwrite",
+        alias_map=alias_map,
+        action="store_true",
+        help="Replace an existing results folder.",
+    )
+    _add_cli_argument(
+        inputs_group,
+        "--timezone",
+        alias_map=alias_map,
+        default="UTC",
+        help="Timezone applied to naive input timestamps. Default: UTC.",
+    )
+
+    _add_cli_argument(
+        time_group,
+        "--analysis-start-time",
+        alias_map=alias_map,
+        type=str,
+        help=_override_help(
+            "Reference start time for the analysis window (ISO string or epoch).",
+            "analysis.analysis_start_time",
+        ),
+    )
+    _add_cli_argument(
+        time_group,
+        "--analysis-end-time",
+        alias_map=alias_map,
+        type=str,
+        help=_override_help(
+            "Ignore events after this timestamp (ISO string or epoch).",
+            "analysis.analysis_end_time",
+        ),
+    )
+    _add_cli_argument(
+        time_group,
         "--baseline-range",
-        "--baseline_range",
+        alias_map=alias_map,
         nargs=2,
         metavar=("TSTART", "TEND"),
         type=str,
-        help=(
-            "Optional baseline-run interval. Providing this option overrides `baseline.range` in config.yaml. Provide two values (either ISO strings or epoch floats). If set, those events are extracted (same energy cuts) and listed in `baseline` of the summary."
+        help=_override_help(
+            "Baseline interval to extract with the same energy cuts used for the main run. "
+            "Provide ISO timestamps or epoch seconds.",
+            "baseline.range",
         ),
     )
-    p.add_argument(
+    _add_cli_argument(
+        time_group,
         "--baseline-mode",
+        alias_map=alias_map,
         choices=["none", "electronics", "radon", "all"],
         default="all",
-        help="Background removal strategy (default: all)",
+        help="Background removal strategy. Default: all.",
     )
-    p.add_argument(
-        "--iso",
-        choices=["radon", "po218", "po214"],
-        help=(
-            "Select which progeny drives the radon estimate "
-            "(overrides analysis_isotope in config.yaml)"
-        ),
-    )
-    p.add_argument(
+    _add_cli_argument(
+        time_group,
         "--allow-negative-baseline",
+        alias_map=alias_map,
         action="store_true",
-        help="Allow negative baseline-corrected rates",
+        help="Preserve negative baseline-corrected rates instead of clipping them to zero.",
     )
-    p.add_argument(
+    _add_cli_argument(
+        time_group,
         "--allow-negative-activity",
+        alias_map=alias_map,
         action="store_true",
-        help="Continue if radon activity is negative",
+        help="Continue when the inferred total radon activity is negative.",
     )
-    p.add_argument(
+    _add_cli_argument(
+        time_group,
         "--check-baseline-only",
+        alias_map=alias_map,
         action="store_true",
-        help="Exit after printing baseline diagnostics",
+        help="Print baseline diagnostics and exit without running the full analysis.",
     )
-    p.add_argument(
-        "--burst-mode",
-        choices=["none", "micro", "rate", "both"],
-        help="Burst filtering mode to pass to apply_burst_filter. Providing this option overrides `burst_filter.burst_mode` in config.yaml",
-    )
-    p.add_argument(
-        "--burst-sensitivity-scan",
-        action="store_true",
-        help="Scan burst parameters and plot activity vs burst window/multiplier",
-    )
-    p.add_argument(
-        "--job-id",
-        help="Optional identifier used for the results folder instead of the timestamp",
-    )
-    p.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="Overwrite existing results folder if it already exists",
-    )
-    p.add_argument(
-        "--efficiency-json",
-        help="Path to a JSON file containing efficiency inputs to merge into the configuration",
-    )
-    p.add_argument(
-        "--systematics-json",
-        help="Path to a JSON file with systematics settings overriding the config",
-    )
-    p.add_argument(
-        "--spike-count",
-        type=float,
-        help="Counts observed during a spike run for efficiency",
-    )
-    p.add_argument(
-        "--spike-count-err",
-        type=float,
-        help="Uncertainty on spike counts",
-    )
-    p.add_argument(
-        "--spike-activity",
-        type=float,
-        help="Known spike activity in Bq",
-    )
-    p.add_argument(
-        "--spike-duration",
-        type=float,
-        help="Duration of the spike run in seconds",
-    )
-    p.add_argument(
-        "--no-spike",
-        action="store_true",
-        help="Disable spike efficiency",
-    )
-    p.add_argument(
-        "--analysis-end-time",
-        type=str,
-        help="Ignore events occurring after this ISO timestamp. Providing this option overrides `analysis.analysis_end_time` in config.yaml",
-    )
-    p.add_argument(
-        "--analysis-start-time",
-        type=str,
-        help="Reference start time of the analysis (ISO string or epoch). Overrides `analysis.analysis_start_time` in config.yaml",
-    )
-    p.add_argument(
-        "--background-model",
-        choices=["linear", "loglin_unit"],
-        help="Experimental (opt-in) background model. Defaults keep legacy behavior.",
-    )
-    p.add_argument(
-        "--likelihood",
-        choices=["current", "extended"],
-        help="Experimental (opt-in) likelihood. Defaults keep legacy behavior.",
-    )
-    p.add_argument(
+    _add_cli_argument(
+        time_group,
         "--spike-start-time",
-        help="Discard events after this ISO timestamp. Providing this option overrides `analysis.spike_start_time` in config.yaml",
+        alias_map=alias_map,
+        help=_override_help(
+            "Discard events after this timestamp.",
+            "analysis.spike_start_time",
+        ),
     )
-    p.add_argument(
+    _add_cli_argument(
+        time_group,
         "--spike-end-time",
-        help="Discard events before this ISO timestamp. Providing this option overrides `analysis.spike_end_time` in config.yaml",
+        alias_map=alias_map,
+        help=_override_help(
+            "Discard events before this timestamp.",
+            "analysis.spike_end_time",
+        ),
     )
-    p.add_argument(
+    _add_cli_argument(
+        time_group,
         "--spike-period",
+        alias_map=alias_map,
         nargs=2,
         action="append",
         metavar=("START", "END"),
-        help="Discard events between START and END (can be given multiple times). Providing this option overrides `analysis.spike_periods` in config.yaml",
+        help=_override_help(
+            "Discard events between START and END. Repeat the flag to add more windows.",
+            "analysis.spike_periods",
+        ),
     )
-    p.add_argument(
+    _add_cli_argument(
+        time_group,
         "--run-period",
+        alias_map=alias_map,
         nargs=2,
         action="append",
         metavar=("START", "END"),
-        help="Keep events between START and END (can be given multiple times). Providing this option overrides `analysis.run_periods` in config.yaml",
+        help=_override_help(
+            "Keep events between START and END. Repeat the flag to add more windows.",
+            "analysis.run_periods",
+        ),
     )
-    p.add_argument(
+    _add_cli_argument(
+        time_group,
         "--radon-interval",
+        alias_map=alias_map,
         nargs=2,
         metavar=("START", "END"),
-        help="Time interval to evaluate radon delta. Providing this option overrides `analysis.radon_interval` in config.yaml",
-    )
-    p.add_argument(
-        "--slope",
-        type=float,
-        help="Apply a linear ADC drift correction with the given slope. Providing this option overrides `systematics.adc_drift_rate` in config.yaml",
-    )
-    p.add_argument(
-        "--noise-cutoff",
-        type=int,
-        help=(
-            "ADC threshold for the noise cut. Providing this option overrides "
-            "`calibration.noise_cutoff` in config.yaml"
+        help=_override_help(
+            "Time interval used for radon delta calculations.",
+            "analysis.radon_interval",
         ),
     )
-    p.add_argument(
-        "--calibration-slope",
-        type=float,
-        help=(
-            "Fixed MeV per ADC conversion slope. Providing this option overrides "
-            "`calibration.slope_mev_per_ch` in config.yaml"
-        ),
-    )
-    p.add_argument(
-        "--float-slope",
-        action="store_true",
-        help="Allow provided calibration slope to float during the two-point fit",
-    )
-    p.add_argument(
-        "--calibration-method",
-        choices=["two-point", "auto"],
-        help=(
-            "Energy calibration method. Providing this option overrides "
-            "`calibration.method` in config.yaml"
-        ),
-    )
-    p.add_argument(
+    _add_cli_argument(
+        time_group,
         "--settle-s",
+        alias_map=alias_map,
         type=float,
-        help="Discard events occurring this many seconds after the start",
-    )
-    p.add_argument(
-        "--hl-po214",
-        type=float,
-        help=(
-            "Half-life to use for Po-214 in seconds. "
-            "Providing this option overrides `time_fit.hl_po214` in config.yaml"
-        ),
-    )
-    p.add_argument(
-        "--hl-po218",
-        type=float,
-        help=(
-            "Half-life to use for Po-218 in seconds. "
-            "Providing this option overrides `time_fit.hl_po218` in config.yaml"
-        ),
-    )
-    p.add_argument(
-        "--eff-fixed",
-        action="store_true",
-        help="Fix all efficiencies to exactly 1.0 (no prior)",
-    )
-    p.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable debug logging. Providing this option overrides `pipeline.log_level` in config.yaml",
-    )
-    p.add_argument(
-        "--plot-time-binning-mode",
-        dest="time_bin_mode_new",
-        choices=["auto", "fd", "fixed"],
-        help="Time-series binning mode. Providing this option overrides `plotting.plot_time_binning_mode` in config.yaml",
-    )
-    p.add_argument(
-        "--time-bin-mode",
-        dest="time_bin_mode_old",
-        choices=["auto", "fd", "fixed"],
-        help="DEPRECATED alias for --plot-time-binning-mode",
-    )
-    p.add_argument(
-        "--plot-time-bin-width",
-        dest="time_bin_width",
-        type=float,
-        help="Fixed time bin width in seconds. Providing this option overrides `plotting.plot_time_bin_width_s` in config.yaml",
-    )
-    p.add_argument(
-        "--dump-ts-json",
-        "--dump-time-series-json",
-        dest="dump_ts_json",
-        action="store_true",
-        help="Write *_ts.json files containing binned time-series data",
-    )
-    p.add_argument(
-        "--ambient-file",
-        help=(
-            "Two-column text file of timestamp and ambient concentration in Bq/L"
-        ),
-    )
-    p.add_argument(
-        "--ambient-concentration",
-        type=float,
-        help=(
-            "Ambient radon concentration in Bq per liter for "
-            "equivalent air plot. Providing this option overrides "
-            "`analysis.ambient_concentration` in config.yaml"
-        ),
-    )
-    p.add_argument(
-        "--seed",
-        type=int,
-        help="Override random seed used by analysis algorithms. Providing this option overrides `pipeline.random_seed` in config.yaml",
-    )
-    p.add_argument(
-        "--palette",
-        help="Color palette for plots. Providing this option overrides `plotting.palette` in config.yaml",
-    )
-    p.add_argument(
-        "--strict-covariance",
-        action="store_true",
-        help="Fail if fit covariance matrices are not positive definite",
-    )
-    p.add_argument(
-        "--hierarchical-summary",
-        metavar="OUTFILE",
-        help=(
-            "Combine half-life and calibration results from previous runs and "
-            "write a hierarchical fit summary to OUTFILE"
-        ),
-    )
-    p.add_argument(
-        "--reproduce",
-        metavar="SUMMARY",
-        help="Load config and seed from SUMMARY to reproduce a previous run",
+        help="Discard this many seconds from the start before fitting the decay curve.",
     )
 
-    args = p.parse_args(argv)
+    _add_cli_argument(
+        fit_group,
+        "--iso",
+        alias_map=alias_map,
+        choices=["radon", "po218", "po214"],
+        help="Choose which progeny drives the final radon estimate.",
+    )
+    _add_cli_argument(
+        fit_group,
+        "--burst-mode",
+        alias_map=alias_map,
+        choices=["none", "micro", "rate", "both"],
+        help=_override_help(
+            "Burst filtering mode passed to `apply_burst_filter`.",
+            "burst_filter.burst_mode",
+        ),
+    )
+    _add_cli_argument(
+        fit_group,
+        "--burst-sensitivity-scan",
+        alias_map=alias_map,
+        action="store_true",
+        help="Sweep burst parameters and plot activity versus burst window and multiplier.",
+    )
+    _add_cli_argument(
+        fit_group,
+        "--slope",
+        alias_map=alias_map,
+        type=float,
+        help=_override_help(
+            "Apply a linear ADC drift correction with this slope.",
+            "systematics.adc_drift_rate",
+        ),
+    )
+    _add_cli_argument(
+        fit_group,
+        "--noise-cutoff",
+        alias_map=alias_map,
+        type=int,
+        help=_override_help(
+            "ADC threshold for the noise cut.",
+            "calibration.noise_cutoff",
+        ),
+    )
+    _add_cli_argument(
+        fit_group,
+        "--calibration-slope",
+        alias_map=alias_map,
+        type=float,
+        help=_override_help(
+            "Fixed MeV-per-ADC conversion slope.",
+            "calibration.slope_mev_per_ch",
+        ),
+    )
+    _add_cli_argument(
+        fit_group,
+        "--float-slope",
+        alias_map=alias_map,
+        action="store_true",
+        help="Treat a supplied calibration slope as an initial guess instead of fixing it.",
+    )
+    _add_cli_argument(
+        fit_group,
+        "--calibration-method",
+        alias_map=alias_map,
+        choices=["two-point", "auto"],
+        help=_override_help(
+            "Energy calibration strategy.",
+            "calibration.method",
+        ),
+    )
+    _add_cli_argument(
+        fit_group,
+        "--background-model",
+        alias_map=alias_map,
+        choices=["linear", "loglin_unit"],
+        help="Experimental background model. Omitting this keeps the legacy behavior.",
+    )
+    _add_cli_argument(
+        fit_group,
+        "--likelihood",
+        alias_map=alias_map,
+        choices=["current", "extended"],
+        help="Experimental spectral likelihood. Omitting this keeps the legacy behavior.",
+    )
+    _add_cli_argument(
+        fit_group,
+        "--hl-po214",
+        alias_map=alias_map,
+        type=float,
+        help=_override_help(
+            "Po-214 half-life in seconds.",
+            "time_fit.hl_po214",
+        ),
+    )
+    _add_cli_argument(
+        fit_group,
+        "--hl-po218",
+        alias_map=alias_map,
+        type=float,
+        help=_override_help(
+            "Po-218 half-life in seconds.",
+            "time_fit.hl_po218",
+        ),
+    )
+    _add_cli_argument(
+        fit_group,
+        "--eff-fixed",
+        alias_map=alias_map,
+        action="store_true",
+        help="Fix all efficiencies to exactly 1.0 with no prior width.",
+    )
+
+    _add_cli_argument(
+        aux_group,
+        "--efficiency-json",
+        alias_map=alias_map,
+        help="JSON file whose `efficiency` block is merged into the config.",
+    )
+    _add_cli_argument(
+        aux_group,
+        "--systematics-json",
+        alias_map=alias_map,
+        help="JSON file whose `systematics` block overrides the config.",
+    )
+    _add_cli_argument(
+        aux_group,
+        "--spike-count",
+        alias_map=alias_map,
+        type=float,
+        help="Counts observed during the spike run.",
+    )
+    _add_cli_argument(
+        aux_group,
+        "--spike-count-err",
+        alias_map=alias_map,
+        type=float,
+        help="Uncertainty on the observed spike counts.",
+    )
+    _add_cli_argument(
+        aux_group,
+        "--spike-activity",
+        alias_map=alias_map,
+        type=float,
+        help="Known spike activity in Bq.",
+    )
+    _add_cli_argument(
+        aux_group,
+        "--spike-duration",
+        alias_map=alias_map,
+        type=float,
+        help="Spike-run duration in seconds.",
+    )
+    _add_cli_argument(
+        aux_group,
+        "--no-spike",
+        alias_map=alias_map,
+        action="store_true",
+        help="Disable spike-efficiency handling entirely.",
+    )
+
+    _add_cli_argument(
+        output_group,
+        "--plot-time-binning-mode",
+        alias_map=alias_map,
+        dest="time_bin_mode_new",
+        choices=["auto", "fd", "fixed"],
+        help=_override_help(
+            "Time-series binning mode.",
+            "plotting.plot_time_binning_mode",
+        ),
+    )
+    _add_cli_argument(
+        output_group,
+        "--time-bin-mode",
+        alias_map=alias_map,
+        dest="time_bin_mode_old",
+        choices=["auto", "fd", "fixed"],
+        help="Deprecated alias for `--plot-time-binning-mode`.",
+    )
+    _add_cli_argument(
+        output_group,
+        "--plot-time-bin-width",
+        alias_map=alias_map,
+        dest="time_bin_width",
+        type=float,
+        help=_override_help(
+            "Fixed time-bin width in seconds.",
+            "plotting.plot_time_bin_width_s",
+        ),
+    )
+    _add_cli_argument(
+        output_group,
+        "--dump-ts-json",
+        alias_map=alias_map,
+        dest="dump_ts_json",
+        aliases=("--dump-time-series-json",),
+        action="store_true",
+        help="Write `*_ts.json` files with binned time-series data.",
+    )
+    _add_cli_argument(
+        output_group,
+        "--ambient-file",
+        alias_map=alias_map,
+        help="Two-column text file containing timestamp and ambient concentration in Bq/L.",
+    )
+    _add_cli_argument(
+        output_group,
+        "--ambient-concentration",
+        alias_map=alias_map,
+        type=float,
+        help=_override_help(
+            "Constant ambient radon concentration in Bq/L for the equivalent-air plot.",
+            "analysis.ambient_concentration",
+        ),
+    )
+    _add_cli_argument(
+        output_group,
+        "--palette",
+        alias_map=alias_map,
+        help=_override_help(
+            "Color palette used for plots.",
+            "plotting.palette",
+        ),
+    )
+    _add_cli_argument(
+        output_group,
+        "--strict-covariance",
+        alias_map=alias_map,
+        action="store_true",
+        help="Fail instead of continuing when a fit covariance matrix is not positive definite.",
+    )
+    _add_cli_argument(
+        output_group,
+        "--debug",
+        alias_map=alias_map,
+        action="store_true",
+        help=_override_help(
+            "Enable debug logging.",
+            "pipeline.log_level",
+        ),
+    )
+    _add_cli_argument(
+        output_group,
+        "--seed",
+        alias_map=alias_map,
+        type=int,
+        help=_override_help(
+            "Override the random seed used by the analysis.",
+            "pipeline.random_seed",
+        ),
+    )
+    _add_cli_argument(
+        output_group,
+        "--hierarchical-summary",
+        alias_map=alias_map,
+        metavar="OUTFILE",
+        help="Combine previous run summaries and write a hierarchical fit report to OUTFILE.",
+    )
+    _add_cli_argument(
+        output_group,
+        "--reproduce",
+        alias_map=alias_map,
+        metavar="SUMMARY",
+        help="Load config and seed from a previous run's `summary.json`.",
+    )
+
+    argv_list = list(sys.argv[1:] if argv is None else argv)
+    _warn_for_deprecated_cli_aliases(argv_list, alias_map)
+    args = p.parse_args(argv_list)
 
     if args.time_bin_mode_new is not None and args.time_bin_mode_old is not None:
         if args.time_bin_mode_new != args.time_bin_mode_old:
@@ -1713,6 +1939,7 @@ def parse_args(argv=None):
     del args.time_bin_mode_old
 
     return args
+
 
 
 def main(argv=None):

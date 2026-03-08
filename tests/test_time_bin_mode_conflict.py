@@ -43,7 +43,7 @@ def test_time_bin_mode_conflict(tmp_path, monkeypatch):
         "analyze.py",
         "--config", str(cfg_path),
         "--input", str(data_path),
-        "--output_dir", str(tmp_path),
+        "--output-dir", str(tmp_path),
         "--plot-time-binning-mode", "auto",
         "--time-bin-mode", "fd",
     ]

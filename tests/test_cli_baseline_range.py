@@ -108,8 +108,8 @@ def test_cli_baseline_range_overrides_config(tmp_path, monkeypatch):
         "analyze.py",
         "--config", str(cfg_path),
         "--input", str(data_path),
-        "--output_dir", str(tmp_path),
-        "--baseline_range", "1", "2",
+        "--output-dir", str(tmp_path),
+        "--baseline-range", "1", "2",
     ]
     monkeypatch.setattr(sys, "argv", args)
     analyze.main()
@@ -238,7 +238,7 @@ def test_time_fit_background_mode_floated(tmp_path, monkeypatch):
         str(cfg_path),
         "--input",
         str(data_path),
-        "--output_dir",
+        "--output-dir",
         str(tmp_path),
     ]
     monkeypatch.setattr(sys, "argv", args)

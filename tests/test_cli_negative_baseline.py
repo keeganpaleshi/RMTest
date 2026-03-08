@@ -82,8 +82,8 @@ def test_baseline_mode_none_skips_rate_subtraction(tmp_path, monkeypatch):
         "analyze.py",
         "--config", str(cfg_path),
         "--input", str(data_path),
-        "--output_dir", str(tmp_path),
-        "--baseline_range", "1", "2",
+        "--output-dir", str(tmp_path),
+        "--baseline-range", "1", "2",
         "--baseline-mode", "none",
     ]
     monkeypatch.setattr(sys, "argv", args)
@@ -120,8 +120,8 @@ def test_allow_negative_baseline_flag(tmp_path, monkeypatch):
         "analyze.py",
         "--config", str(cfg_path),
         "--input", str(data_path),
-        "--output_dir", str(tmp_path),
-        "--baseline_range", "1", "2",
+        "--output-dir", str(tmp_path),
+        "--baseline-range", "1", "2",
         "--allow-negative-baseline",
         "--allow-negative-activity",
     ]

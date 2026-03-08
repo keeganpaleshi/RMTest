@@ -91,8 +91,8 @@ def test_cli_baseline_range_iso_strings(tmp_path, monkeypatch):
         "analyze.py",
         "--config", str(cfg_path),
         "--input", str(data_path),
-        "--output_dir", str(tmp_path),
-        "--baseline_range", "1970-01-01T00:00:01Z", "1970-01-01T00:00:02Z",
+        "--output-dir", str(tmp_path),
+        "--baseline-range", "1970-01-01T00:00:01Z", "1970-01-01T00:00:02Z",
     ]
     monkeypatch.setattr(sys, "argv", args)
     analyze.main()
@@ -190,9 +190,9 @@ def test_cli_baseline_range_timezone(tmp_path, monkeypatch):
         "analyze.py",
         "--config", str(cfg_path),
         "--input", str(data_path),
-        "--output_dir", str(tmp_path),
+        "--output-dir", str(tmp_path),
         "--timezone", "Europe/Berlin",
-        "--baseline_range", "1970-01-01T01:00:01", "1970-01-01T01:00:02",
+        "--baseline-range", "1970-01-01T01:00:01", "1970-01-01T01:00:02",
     ])
     analyze.main()
     summary = captured.get("summary", {})

@@ -5,6 +5,7 @@ from scipy.signal import find_peaks, find_peaks_cwt
 import math
 from dataclasses import is_dataclass, asdict
 import argparse
+import sys
 from datetime import datetime, timezone, timedelta
 from .time_utils import parse_timestamp as _parse_timestamp, to_epoch_seconds, to_utc_datetime as _to_utc_datetime
 import warnings
@@ -309,15 +310,66 @@ def parse_time_arg(val, tz="UTC") -> datetime:
         raise argparse.ArgumentTypeError(str(e)) from e
 
 
-if __name__ == "__main__":
-    p = argparse.ArgumentParser(description="Utility conversions")
-    p.add_argument("rate_cps", type=float, help="Count rate in cps")
-    p.add_argument("--to", choices=["cpd", "bq"], required=True)
-    p.add_argument("--volume-liters", "--volume_liters", dest="volume_liters", type=float, help="Detector volume in liters")
-    args = p.parse_args()
+def build_cli_parser() -> argparse.ArgumentParser:
+    """Build the lightweight conversion CLI parser."""
+
+    parser = argparse.ArgumentParser(
+        description="Convert count rates between cps, cpd, and Bq.",
+        epilog=(
+            "Hyphenated long flags are canonical. Deprecated underscore aliases "
+            "remain accepted for compatibility."
+        ),
+    )
+    parser.add_argument("rate_cps", type=float, help="Input count rate in counts per second.")
+    parser.add_argument(
+        "--to",
+        choices=["cpd", "bq"],
+        required=True,
+        help="Requested output unit.",
+    )
+    parser.add_argument(
+        "--volume-liters",
+        dest="volume_liters",
+        type=float,
+        help="Detector volume in liters. Required when converting to Bq.",
+    )
+    parser.add_argument(
+        "--volume_liters",
+        dest="volume_liters",
+        type=float,
+        help=argparse.SUPPRESS,
+        default=argparse.SUPPRESS,
+    )
+    return parser
+
+
+
+def parse_cli_args(argv=None):
+    """Parse arguments for the lightweight conversion CLI."""
+
+    argv_list = list(sys.argv[1:] if argv is None else argv)
+    for token in argv_list:
+        if token.split("=", 1)[0] == "--volume_liters":
+            warnings.warn(
+                "--volume_liters is deprecated; use --volume-liters",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            break
+    return build_cli_parser().parse_args(argv_list)
+
+
+
+def main(argv=None):
+    """Run the lightweight conversion CLI."""
+
+    args = parse_cli_args(argv)
 
     if args.to == "cpd":
         print(cps_to_cpd(args.rate_cps))
     else:
         print(cps_to_bq(args.rate_cps, args.volume_liters))
 
+
+if __name__ == "__main__":
+    main()
