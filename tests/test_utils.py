@@ -47,8 +47,8 @@ def test_find_adc_bin_peaks_basic():
     adc = [10, 10, 20, 20, 20, 30]
     expected = {"p1": 10, "p2": 20}
     result = find_adc_bin_peaks(adc, expected, window=2)
-    assert result["p1"] == pytest.approx(10.5)
-    assert result["p2"] == pytest.approx(20.5)
+    assert result["p1"] == pytest.approx(10.0)
+    assert result["p2"] == pytest.approx(20.0)
 
 
 def test_to_epoch_seconds_int():
@@ -126,3 +126,13 @@ def test_parse_cli_args_accepts_deprecated_volume_alias():
     assert args.rate_cps == pytest.approx(2.0)
     assert args.to == "bq"
     assert args.volume_liters == pytest.approx(10.0)
+
+
+def test_adc_hist_edges_align_to_channel_centers():
+    edges = utils_module.adc_hist_edges([10, 11, 12])
+    np.testing.assert_allclose(edges, [9.5, 10.5, 11.5, 12.5])
+
+
+def test_adc_hist_edges_grouped_width_preserves_half_channel_offset():
+    edges = utils_module.adc_hist_edges([10, 11, 12, 13], channel_width=2)
+    np.testing.assert_allclose(edges, [9.5, 11.5, 13.5])

@@ -89,7 +89,7 @@ def build_spectral_intensity(
             if N <= 0.0:
                 continue
             mu = float(params[f"mu_{iso}"])
-            sigma = float(params["sigma0"])
+            sigma = float(params.get(f"sigma_{iso}", params["sigma0"]))
             iso_kind = kind_for_iso(iso)
             tau = (
                 float(params.get(f"tau_{iso}", 0.0))

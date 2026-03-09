@@ -79,7 +79,8 @@ calibration:
     Po218: [5.0e-4, 8.0]
 spectral_fit:
   do_spectral_fit: true
-  spectral_binning_mode: energy
+  spectral_binning_mode: adc
+  adc_bin_width: 1
   energy_bin_width: 0.0130
   fd_hist_bins: 400
   mu_sigma: 0.005
@@ -137,7 +138,7 @@ spectral_fit:
   mu_bounds:
     Po210:
       - 5.20
-      - 5.30
+      - 5.35
     Po218:
       - 5.95
       - 6.05
@@ -228,3 +229,11 @@ plotting:
   overlay_isotopes: true
   save_individual_time_series: false
 
+
+fitting:
+  use_stable_emg: true
+  emg_stable_mode: true
+  emg_tau_min: 5.0e-4
+  per_isotope:
+    Po210:
+      peak_sigma: 0.108

@@ -1,5 +1,7 @@
 import numpy as np
 import pytest
+from scipy.stats import exponnorm
+from rmtest.spectral.shapes import emg_loc_to_mode
 import sys
 from pathlib import Path
 
@@ -534,3 +536,43 @@ def test_calibration_tau_bounds_overrides(monkeypatch):
     assert po210_bounds[1][3] == pytest.approx(9.5)
     assert po218_bounds[0][3] == pytest.approx(0.002)
     assert po218_bounds[1][3] == pytest.approx(3.5)
+
+
+def test_emg_left_matches_mirrored_exponnorm():
+    x = np.linspace(5.0, 5.6, 31)
+    mu, sigma, tau = 5.3, 0.05, 0.10
+    K = tau / sigma
+
+    expected = exponnorm.pdf(2.0 * mu - x, K, loc=mu, scale=sigma)
+    observed = emg_left(x, mu, sigma, tau)
+
+    np.testing.assert_allclose(observed, expected, rtol=1e-10, atol=1e-12)
+    assert observed[x < mu].sum() > observed[x > mu].sum()
+
+
+def test_calibration_reports_emg_peak_mode_not_loc(monkeypatch):
+    adc = _synth_adc_sample(13)
+    cfg = _synth_emg_calibration_cfg()
+
+    popts = [
+        np.array([100.0, 1005.0, 3.0, 6.0]),
+        np.array([100.0, 1506.0, 3.0, 4.0]),
+        np.array([100.0, 2000.0, 3.0]),
+    ]
+
+    def fake_curve_fit(func, xdata, ydata, p0=None, bounds=(-np.inf, np.inf), **kwargs):
+        popt = popts.pop(0)
+        return popt, np.eye(len(popt))
+
+    monkeypatch.setattr(calib_mod, "curve_fit", fake_curve_fit)
+
+    res = derive_calibration_constants(adc, cfg)
+
+    expected_po210 = emg_loc_to_mode(1005.0, 3.0, 6.0)
+    expected_po218 = emg_loc_to_mode(1506.0, 3.0, 4.0)
+
+    assert res.peaks["Po210"]["centroid_adc"] == pytest.approx(expected_po210)
+    assert res.peaks["Po210"]["loc_adc"] == pytest.approx(1005.0)
+    assert res.peaks["Po218"]["centroid_adc"] == pytest.approx(expected_po218)
+    assert res.peaks["Po218"]["loc_adc"] == pytest.approx(1506.0)
+    assert res.peaks["Po214"]["centroid_adc"] == pytest.approx(2000.0)

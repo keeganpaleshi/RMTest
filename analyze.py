@@ -1002,15 +1002,18 @@ def _spectral_fit_with_check(
         priors_mapped.setdefault("sigma0", (mean, sig))
         priors_mapped.setdefault("F", (0.0, sig))
 
+    fit_flags = dict(flags)
+    fit_flags.setdefault("cfg", cfg)
+
     # If F is fixed but no explicit prior is supplied, keep it near zero to
     # avoid unphysical broadening from a large default.
-    if flags.get("fix_F", False) and "F" not in priors:
+    if fit_flags.get("fix_F", False) and "F" not in priors:
         priors_mapped["F"] = (0.0, 0.01)
 
     fit_kwargs = {
         "energies": energies,
         "priors": priors_mapped,
-        "flags": flags,
+        "flags": fit_flags,
     }
     max_tau_ratio = cfg.get("spectral_fit", {}).get("max_tau_ratio")
     if max_tau_ratio is not None:
@@ -3070,19 +3073,20 @@ def main(argv=None):
                         bin_edges = np.arange(e_min, stop + 0.5 * width, width, dtype=float)
                     bins = bin_edges.size - 1
                 else:
-                    # "ADC" binning mode -> fixed width in raw channels
+                    # "ADC" binning mode -> fixed width in raw channels.
                     width = 1
                     if bin_cfg is not None:
                         width = bin_cfg.get("adc_bin_width", 1)
                     else:
                         width = spectral_cfg.get("adc_bin_width", 1)
-                    adc_min = float(np.min(adc_all))
-                    adc_max = float(np.max(adc_all))
-                    bins = int(np.ceil((adc_max - adc_min + 1) / width))
-
-                    # Build edges in ADC units then convert to energy for plotting
-                    bin_edges_adc = np.arange(adc_min, adc_min + bins * width + 1, width)
-                    bin_edges = apply_calibration(bin_edges_adc, a, c, quadratic_coeff=a2)
+                    bin_edges_adc = adc_hist_edges(adc_all, channel_width=width)
+                    bins = bin_edges_adc.size - 1
+                    bin_edges = apply_calibration(
+                        bin_edges_adc,
+                        a,
+                        c,
+                        quadratic_coeff=a2,
+                    )
 
                 expected_peaks = spectral_cfg.get("expected_peaks")
                 if expected_peaks is None:
@@ -3145,13 +3149,32 @@ def main(argv=None):
                 )
 
                 peak_tol = spectral_cfg.get("spectral_peak_tolerance_mev", 0.3)
+                calibration_peak_mev = {}
+                if getattr(cal_result, "peaks", None):
+                    for iso in adc_peaks.keys():
+                        peak_info = cal_result.peaks.get(iso, {})
+                        peak_E = peak_info.get("centroid_mev")
+                        if peak_E is not None:
+                            calibration_peak_mev[iso] = float(peak_E)
                 for peak, centroid_adc in adc_peaks.items():
-                    mu = apply_calibration(centroid_adc, a, c, quadratic_coeff=a2)
+                    mu = calibration_peak_mev.get(
+                        peak,
+                        apply_calibration(centroid_adc, a, c, quadratic_coeff=a2),
+                    )
                     bounds = mu_bounds_fit.get(peak)
                     if bounds is not None:
                         lo, hi = bounds
                         if not (lo <= mu <= hi):
+                            unclipped_mu = float(mu)
                             mu = float(np.clip(mu, lo, hi))
+                            logging.warning(
+                                "Initial spectral mu for %s (%.4f MeV) lies outside configured bounds [%s, %s]; clipping to %.4f MeV",
+                                peak,
+                                unclipped_mu,
+                                lo,
+                                hi,
+                                mu,
+                            )
                     priors_spec[f"mu_{peak}"] = (mu, spectral_cfg.get("mu_sigma"))
                     raw_count = float(
                         (
@@ -3207,6 +3230,7 @@ def main(argv=None):
 
                 # Flags controlling the spectral fit
                 spec_flags = spectral_cfg.get("flags", {}).copy()
+                spec_flags.setdefault("cfg", cfg)
                 bkg_model = analysis_cfg.get("background_model")
                 if bkg_model is not None:
                     spec_flags["background_model"] = bkg_model
@@ -3376,21 +3400,7 @@ def main(argv=None):
                     adc_plot = df_analysis["adc"].to_numpy(dtype=float, copy=False)
                     adc_plot = adc_plot[np.isfinite(adc_plot)]
                     if adc_plot.size:
-                        adc_ref = float(np.min(adc_all))
-                        adc_min_plot = float(np.min(adc_plot))
-                        adc_max_plot = float(np.max(adc_plot))
-                        start_steps = int(np.floor((adc_min_plot - adc_ref) / width))
-                        stop_steps = int(np.ceil((adc_max_plot - adc_ref + 1.0) / width))
-                        plot_edges_adc = adc_ref + width * np.arange(
-                            start_steps,
-                            stop_steps + 1,
-                            dtype=float,
-                        )
-                        if plot_edges_adc.size < 2:
-                            plot_edges_adc = np.array(
-                                [adc_min_plot, adc_min_plot + width],
-                                dtype=float,
-                            )
+                        plot_edges_adc = adc_hist_edges(adc_plot, channel_width=width)
                         plot_bin_edges = apply_calibration(
                             plot_edges_adc,
                             a,

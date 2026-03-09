@@ -701,11 +701,18 @@ def fit_spectrum(
                     priors[f"tau_{iso}"] = (tau_mean, float(tau_prior[1]))
 
             # Override peak_sigma if specified
-            if "peak_sigma" in overrides:
-                key = f"sigma_{iso}"
-                if key in priors:
-                    mean, _ = priors[key]
-                    priors[key] = (float(overrides["peak_sigma"]), priors[key][1])
+            key = f"sigma_{iso}"
+            peak_sigma_prior = overrides.get("peak_sigma_prior")
+            if isinstance(peak_sigma_prior, (list, tuple)) and len(peak_sigma_prior) == 2:
+                priors[key] = (float(peak_sigma_prior[0]), float(peak_sigma_prior[1]))
+            elif "peak_sigma" in overrides:
+                sigma_mean = float(overrides["peak_sigma"])
+                existing = priors.get(key)
+                if existing is None:
+                    sigma_prior = max(abs(sigma_mean) * 0.1, 1.0e-3)
+                else:
+                    sigma_prior = float(existing[1])
+                priors[key] = (sigma_mean, sigma_prior)
 
             # Override peak_scale if specified
             if "peak_scale" in overrides:
@@ -735,6 +742,10 @@ def fit_spectrum(
     for iso in iso_list:
         param_index[f"mu_{iso}"] = len(param_order)
         param_order.append(f"mu_{iso}")
+        sigma_key = f"sigma_{iso}"
+        if sigma_key in priors:
+            param_index[sigma_key] = len(param_order)
+            param_order.append(sigma_key)
         param_index[f"S_{iso}"] = len(param_order)
         param_order.append(f"S_{iso}")
         if use_emg[iso]:
@@ -791,7 +802,7 @@ def fit_spectrum(
             lo = max(lo, _EMG_FLOOR)
             if max_tau_ratio is not None:
                 hi = min(hi, max_tau_ratio * sigma0_mean)
-        if name in ("sigma0", "F"):
+        if name in ("sigma0", "F") or name.startswith("sigma_"):
             lo = max(lo, 0.0)
         if hi <= lo:
             logging.warning(
@@ -846,6 +857,9 @@ def fit_spectrum(
             params_dict["F"] = float(raw_map.get("F", F_val))
         for iso in iso_list:
             params_dict[f"mu_{iso}"] = float(raw_map[f"mu_{iso}"])
+            sigma_key = f"sigma_{iso}"
+            if sigma_key in raw_map:
+                params_dict[sigma_key] = float(raw_map[sigma_key])
             S_val = float(_softplus(raw_map[f"S_{iso}"]))
             params_dict[f"S_{iso}"] = S_val
             params_dict[f"N_{iso}"] = S_val

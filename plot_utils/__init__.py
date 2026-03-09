@@ -17,6 +17,15 @@ from pathlib import Path
 from color_schemes import COLOR_SCHEMES
 from constants import PO214, PO218, PO210, RN222
 from calibration import gaussian, emg_left
+
+try:
+    from rmtest.spectral.shapes import emg_pdf_E as spectral_emg_pdf_E
+except ImportError:  # pragma: no cover - fallback for local scripts
+    try:
+        from src.rmtest.spectral.shapes import emg_pdf_E as spectral_emg_pdf_E
+    except ImportError:  # pragma: no cover - defensive fallback
+        spectral_emg_pdf_E = None
+
 from fitting import make_linear_bkg
 from .paths import get_targets
 from ._time_utils import guard_mpl_times, setup_time_axis
@@ -850,17 +859,20 @@ def plot_spectrum(
             F = 0.0 if "F" not in fit_params else fit_params.get("F", 0.0)
         sigma0 = float(sigma0 if sigma0 is not None else 0.0)
         F = float(F if F is not None else 0.0)
-        sigma_sq = np.clip(sigma0**2 + F * centers_arr, 1e-12, np.inf)
-        sigma_vals = np.sqrt(sigma_sq)
-
         for iso in ("Po210", "Po218", "Po214"):
             mu = fit_params.get(f"mu_{iso}")
             amp = fit_params.get(f"S_{iso}")
             if mu is None or amp is None:
                 continue
             tau = fit_params.get(f"tau_{iso}")
+            sigma_iso = float(fit_params.get(f"sigma_{iso}", sigma0))
+            sigma_sq = np.clip(sigma_iso**2 + F * centers_arr, 1e-12, np.inf)
+            sigma_vals = np.sqrt(sigma_sq)
             if tau is not None:
-                density = emg_left(centers_arr, float(mu), sigma_vals, float(tau))
+                if spectral_emg_pdf_E is not None:
+                    density = spectral_emg_pdf_E(centers_arr, float(mu), sigma_vals, float(tau))
+                else:
+                    density = emg_left(centers_arr, float(mu), sigma_vals, float(tau))
             else:
                 density = gaussian(centers_arr, float(mu), sigma_vals)
             density = np.nan_to_num(density, nan=0.0, posinf=0.0, neginf=0.0)
@@ -1615,4 +1627,3 @@ def plot_activity_grid(result_map, out_png="burst_scan.png", config=None):
 # -----------------------------------------------------
 # End of plot_utils.py
 # -----------------------------------------------------
-

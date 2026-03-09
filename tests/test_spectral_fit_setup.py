@@ -192,3 +192,181 @@ def test_main_spectral_fit_uses_fit_range_and_background_prior(tmp_path, monkeyp
     assert plot_calls[0]["fit_flags"]["fit_energy_range"] == (4.8, 8.3)
     assert plot_calls[0]["bin_edges"][0] == pytest.approx(4.3)
     assert plot_calls[0]["bin_edges"][-1] == pytest.approx(8.8)
+
+
+def test_main_spectral_fit_adc_binning_uses_channel_centered_edges(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "analysis": {"background_model": "loglin_unit"},
+        "calibration": {},
+        "spectral_fit": {
+            "do_spectral_fit": True,
+            "spectral_binning_mode": "adc",
+            "adc_bin_width": 1,
+            "expected_peaks": {"Po210": 5300, "Po218": 6000, "Po214": 7700},
+            "mu_sigma": 0.05,
+            "amp_prior_scale": 1.0,
+            "b0_prior": [0.0, 2.0],
+            "b1_prior": [0.0, 2.0],
+            "S_bkg_prior": [0.0, 5.0],
+            "use_plot_bins_for_fit": True,
+            "float_sigma_e": False,
+            "flags": {"fix_f": True},
+        },
+        "time_fit": {"do_time_fit": False},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    cfg_path = tmp_path / "cfg_adc.yaml"
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+
+    df = pd.DataFrame(
+        {
+            "fUniqueID": np.arange(6),
+            "fBits": np.zeros(6, dtype=int),
+            "timestamp": pd.date_range("1970-01-01", periods=6, freq="s", tz="UTC"),
+            "adc": [5300, 5301, 5302, 6000, 6001, 7700],
+            "fchannel": np.ones(6, dtype=int),
+        }
+    )
+    data_path = tmp_path / "data_adc.csv"
+    df.to_csv(data_path, index=False)
+
+    cal_result = CalibrationResult(
+        coeffs=[0.0, 0.001],
+        cov=np.zeros((2, 2)),
+        peaks={},
+        sigma_E=0.05,
+        sigma_E_error=0.0,
+    )
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_result)
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_result)
+    monkeypatch.setattr(analyze, "apply_burst_filter", lambda df, cfg, mode="rate": (df, 0))
+    monkeypatch.setattr(analyze, "find_adc_bin_peaks", lambda *a, **k: {"Po210": 5300, "Po218": 6000, "Po214": 7700})
+    monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "copy_config", lambda *a, **k: None)
+
+    captured = {}
+    plot_calls = []
+
+    def fake_spectral_fit_with_check(energies, priors, flags, cfg, **kwargs):
+        captured["bin_edges"] = np.asarray(kwargs.get("bin_edges"), dtype=float)
+        return FitResult(FitParams({"fit_valid": True}), np.zeros((0, 0)), 0), {}
+
+    def fake_plot_spectrum(*, energies, fit_vals=None, out_png, bins=None, bin_edges=None, config=None, fit_flags=None, **kwargs):
+        plot_calls.append(None if bin_edges is None else np.asarray(bin_edges, dtype=float))
+        return None
+
+    monkeypatch.setattr(analyze, "_spectral_fit_with_check", fake_spectral_fit_with_check)
+    monkeypatch.setattr(analyze, "plot_spectrum", fake_plot_spectrum)
+    monkeypatch.setattr(analyze, "write_summary", lambda out_dir, summary, timestamp=None: str(tmp_path / "out"))
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "analyze.py",
+            "--config",
+            str(cfg_path),
+            "--input",
+            str(data_path),
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+
+    analyze.main()
+
+    expected_edges = np.array([5.2995, 5.3005, 5.3015, 5.3025, 5.3035, 5.3045, 5.3055, 5.3065, 5.3075])
+    np.testing.assert_allclose(captured["bin_edges"][: expected_edges.size], expected_edges)
+    np.testing.assert_allclose(plot_calls[0][: expected_edges.size], expected_edges)
+
+
+def test_main_spectral_fit_prefers_calibration_centroids_for_mu_priors(tmp_path, monkeypatch):
+    cfg = {
+        "pipeline": {"log_level": "INFO"},
+        "analysis": {"background_model": "loglin_unit"},
+        "calibration": {},
+        "spectral_fit": {
+            "do_spectral_fit": True,
+            "spectral_binning_mode": "energy",
+            "energy_bin_width": 0.5,
+            "fit_energy_range": [4.8, 8.3],
+            "expected_peaks": {"Po210": 5300, "Po218": 6000, "Po214": 7700},
+            "mu_sigma": 0.05,
+            "amp_prior_scale": 1.0,
+            "b0_prior": [0.0, 2.0],
+            "b1_prior": [0.0, 2.0],
+            "S_bkg_prior": [0.0, 5.0],
+            "use_plot_bins_for_fit": True,
+            "float_sigma_e": False,
+            "flags": {"fix_f": True},
+        },
+        "time_fit": {"do_time_fit": False},
+        "systematics": {"enable": False},
+        "plotting": {"plot_save_formats": ["png"]},
+    }
+    cfg_path = tmp_path / "cfg_cal_mu.yaml"
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+
+    df = pd.DataFrame(
+        {
+            "fUniqueID": np.arange(6),
+            "fBits": np.zeros(6, dtype=int),
+            "timestamp": pd.date_range("1970-01-01", periods=6, freq="s", tz="UTC"),
+            "adc": [5300, 5301, 6000, 6001, 7700, 7701],
+            "fchannel": np.ones(6, dtype=int),
+        }
+    )
+    data_path = tmp_path / "data_cal_mu.csv"
+    df.to_csv(data_path, index=False)
+
+    cal_result = CalibrationResult(
+        coeffs=[0.0, 0.001],
+        cov=np.zeros((2, 2)),
+        peaks={
+            "Po210": {"centroid_mev": 5.304},
+            "Po218": {"centroid_mev": 6.002},
+            "Po214": {"centroid_mev": 7.687},
+        },
+        sigma_E=0.05,
+        sigma_E_error=0.0,
+    )
+    monkeypatch.setattr(analyze, "derive_calibration_constants", lambda *a, **k: cal_result)
+    monkeypatch.setattr(analyze, "derive_calibration_constants_auto", lambda *a, **k: cal_result)
+    monkeypatch.setattr(analyze, "apply_burst_filter", lambda df, cfg, mode="rate": (df, 0))
+    monkeypatch.setattr(analyze, "find_adc_bin_peaks", lambda *a, **k: {"Po210": 5200, "Po218": 5900, "Po214": 7600})
+    monkeypatch.setattr(analyze, "cov_heatmap", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "efficiency_bar", lambda *a, **k: Path(a[1]).touch())
+    monkeypatch.setattr(analyze, "copy_config", lambda *a, **k: None)
+
+    captured = {}
+
+    def fake_spectral_fit_with_check(energies, priors, flags, cfg, **kwargs):
+        captured["priors"] = dict(priors)
+        return FitResult(FitParams({"fit_valid": True}), np.zeros((0, 0)), 0), {}
+
+    monkeypatch.setattr(analyze, "_spectral_fit_with_check", fake_spectral_fit_with_check)
+    monkeypatch.setattr(analyze, "plot_spectrum", lambda **kwargs: None)
+    monkeypatch.setattr(analyze, "write_summary", lambda out_dir, summary, timestamp=None: str(tmp_path / "out"))
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "analyze.py",
+            "--config",
+            str(cfg_path),
+            "--input",
+            str(data_path),
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+
+    analyze.main()
+
+    assert captured["priors"]["mu_Po210"] == pytest.approx((5.304, 0.05))
+    assert captured["priors"]["mu_Po218"] == pytest.approx((6.002, 0.05))
+    assert captured["priors"]["mu_Po214"] == pytest.approx((7.687, 0.05))

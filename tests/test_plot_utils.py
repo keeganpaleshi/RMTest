@@ -5,6 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from calibration import gaussian
+from rmtest.spectral.shapes import emg_pdf_E
 from constants import PO210, RN222
 from plot_utils import (
     plot_time_series,
@@ -1680,3 +1681,72 @@ def test_plot_time_series_datetime64(tmp_path):
 
     assert out_png.exists()
 
+
+
+def test_plot_spectrum_prefers_isotope_specific_sigma(tmp_path, monkeypatch):
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    edges = np.array([0.0, 1.0, 2.0, 3.0])
+    energies = np.array([0.2, 0.4, 1.2, 1.4, 2.2, 2.4])
+    fit_vals = {
+        "sigma0": 0.20,
+        "sigma_Po210": 0.05,
+        "F": 0.0,
+        "mu_Po210": 1.1,
+        "S_Po210": 120.0,
+        "b0": 0.0,
+        "b1": 0.0,
+    }
+
+    ax = plot_spectrum(
+        energies,
+        fit_vals=fit_vals,
+        bin_edges=edges,
+        out_png=str(tmp_path / "spec_sigma_iso.png"),
+    )
+
+    centers = edges[:-1] + np.diff(edges) / 2.0
+    widths = np.diff(edges)
+    expected_po210 = fit_vals["S_Po210"] * gaussian(
+        centers,
+        fit_vals["mu_Po210"],
+        np.full_like(centers, fit_vals["sigma_Po210"], dtype=float),
+    ) * widths
+
+    line_map = {line.get_label(): line.get_ydata() for line in ax.get_lines()}
+    np.testing.assert_allclose(line_map["Po210"], expected_po210)
+
+
+def test_plot_spectrum_emg_uses_mode_aligned_shape(tmp_path, monkeypatch):
+    monkeypatch.setattr("plot_utils.plt.savefig", lambda *a, **k: None)
+
+    edges = np.array([0.8, 1.0, 1.2, 1.4])
+    energies = np.array([0.85, 0.95, 1.05, 1.15, 1.25, 1.35])
+    fit_vals = {
+        "sigma0": 0.05,
+        "F": 0.0,
+        "mu_Po210": 1.1,
+        "S_Po210": 120.0,
+        "tau_Po210": 0.10,
+        "b0": 0.0,
+        "b1": 0.0,
+    }
+
+    ax = plot_spectrum(
+        energies,
+        fit_vals=fit_vals,
+        bin_edges=edges,
+        out_png=str(tmp_path / "spec_emg_mode.png"),
+    )
+
+    centers = edges[:-1] + np.diff(edges) / 2.0
+    widths = np.diff(edges)
+    expected_po210 = fit_vals["S_Po210"] * emg_pdf_E(
+        centers,
+        fit_vals["mu_Po210"],
+        np.full_like(centers, fit_vals["sigma0"], dtype=float),
+        fit_vals["tau_Po210"],
+    ) * widths
+
+    line_map = {line.get_label(): line.get_ydata() for line in ax.get_lines()}
+    np.testing.assert_allclose(line_map["Po210"], expected_po210)

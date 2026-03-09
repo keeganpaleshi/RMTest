@@ -940,7 +940,7 @@ def test_spectrum_tail_amplitude_stability():
         rng.normal(6.0, 0.05, 300),
         rng.normal(7.7, 0.05, 300),
     ])
-    tail = 6.0 + rng.exponential(0.15, 100)
+    tail = 6.0 - rng.exponential(0.15, 100)
     energies = np.concatenate([base, tail])
 
     priors = {
@@ -1027,3 +1027,58 @@ def test_rmtest_proxy_emg_stable_mode_sync(tmp_path):
             proxy.EMG_STABLE_MODE = original_mode
         except ImportError:
             pass
+
+
+def test_fit_spectrum_uses_isotope_specific_sigma_prior():
+    rng = np.random.default_rng(52)
+    energies = np.concatenate([
+        rng.normal(5.3, 0.02, 200),
+        rng.normal(6.0, 0.05, 200),
+        rng.normal(7.7, 0.05, 200),
+    ])
+
+    priors = {
+        "sigma0": (0.05, 0.01),
+        "sigma_Po210": (0.02, 0.0),
+        "F": (0.0, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (200, 20),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (200, 20),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (200, 20),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+
+    res = fit_spectrum(energies, priors)
+
+    assert res.params["sigma_Po210"] == pytest.approx(0.02)
+    assert "sigma0" in res.params
+
+def test_fit_spectrum_reads_per_isotope_sigma_from_cfg_flags():
+    rng = np.random.default_rng(53)
+    energies = np.concatenate([
+        rng.normal(5.3, 0.02, 200),
+        rng.normal(6.0, 0.05, 200),
+        rng.normal(7.7, 0.05, 200),
+    ])
+
+    priors = {
+        "sigma0": (0.05, 0.01),
+        "F": (0.0, 0.01),
+        "mu_Po210": (5.3, 0.1),
+        "S_Po210": (200, 20),
+        "mu_Po218": (6.0, 0.1),
+        "S_Po218": (200, 20),
+        "mu_Po214": (7.7, 0.1),
+        "S_Po214": (200, 20),
+        "b0": (0.0, 1.0),
+        "b1": (0.0, 1.0),
+    }
+
+    cfg = {"fitting": {"per_isotope": {"Po210": {"peak_sigma_prior": [0.02, 0.0]}}}}
+
+    res = fit_spectrum(energies, priors, flags={"cfg": cfg})
+
+    assert res.params["sigma_Po210"] == pytest.approx(0.02)

@@ -23,6 +23,15 @@ import emg_stable as _emg_module
 import constants as _constants_module
 from emg_stable import StableEMG, emg_left_stable
 
+try:
+    from rmtest.spectral.shapes import emg_loc_to_mode as _emg_loc_to_mode
+except ImportError:  # pragma: no cover - fallback for local scripts
+    try:
+        from src.rmtest.spectral.shapes import emg_loc_to_mode as _emg_loc_to_mode
+    except ImportError:  # pragma: no cover - defensive fallback
+        def _emg_loc_to_mode(loc, sigma, tau):
+            return loc
+
 _USE_STABLE_EMG_DEFAULT = True
 _LOGGER = logging.getLogger(__name__)
 
@@ -443,12 +452,13 @@ def emg_left(x, mu, sigma, tau):
         return gaussian(x, mu, sigma)
 
     if get_use_stable_emg():
-        # Use the stabilized wrapper around scipy.stats.exponnorm
+        # Mirror the standard exponnorm lineshape so the exponential tail sits on the low-energy side.
         return emg_left_stable(x, mu, sigma, tau, amplitude=1.0, use_log_scale=False)
     else:
-        # Legacy implementation using exponnorm
+        # Legacy implementation using a mirrored exponnorm to produce a left tail.
         K = tau / sigma
-        logpdf = exponnorm.logpdf(x, K, loc=mu, scale=sigma)
+        x_mirror = 2.0 * np.asarray(mu, dtype=float) - np.asarray(x, dtype=float)
+        logpdf = exponnorm.logpdf(x_mirror, K, loc=mu, scale=sigma)
         return _safe_exp(logpdf)
 
 
@@ -459,6 +469,13 @@ def gaussian(x, mu, sigma):
     expo = -0.5 * ((x - mu) / sigma) ** 2
     return _safe_exp(expo) / (sigma * np.sqrt(2 * np.pi))
 
+
+
+def _peak_centroid_from_fit(mu_fit: float, sigma_fit: float, tau_fit: float) -> float:
+    """Return the visible peak centroid from fit parameters."""
+    if tau_fit <= _TAU_MIN:
+        return float(mu_fit)
+    return float(_emg_loc_to_mode(mu_fit, sigma_fit, tau_fit))
 
 def _build_peak_slice(iso: str, centers, hist, x0: float, window: float):
     """Return histogram slices for a peak centered at ``x0`` within ``window``."""
@@ -633,11 +650,9 @@ def fixed_slope_calibration(adc_values, cfg, *, status=None):
     )
     adc_peak = peaks["Po214"]
 
-    # Build histogram with 1 channel per bin for the fit
+    # Build a channel-centered histogram for the fit.
     adc_arr = np.asarray(adc_values, dtype=float)
-    min_adc = int(np.min(adc_arr))
-    max_adc = int(np.max(adc_arr))
-    edges = np.arange(min_adc, max_adc + 2)
+    edges = utils.adc_hist_edges(adc_arr, channel_width=1.0)
     hist, edges = np.histogram(adc_arr, bins=edges)
     centers = 0.5 * (edges[:-1] + edges[1:])
 
@@ -699,8 +714,10 @@ def fixed_slope_calibration(adc_values, cfg, *, status=None):
         A_fit, mu_fit, sigma_fit = popt
         tau_fit = 0.0
 
+    centroid_adc = _peak_centroid_from_fit(mu_fit, sigma_fit, tau_fit)
     peak_info = {
-        "centroid_adc": float(mu_fit),
+        "centroid_adc": float(centroid_adc),
+        "loc_adc": float(mu_fit),
         "sigma_adc": float(sigma_fit),
         "tau_adc": float(tau_fit),
         "amplitude": float(A_fit),
@@ -710,8 +727,9 @@ def fixed_slope_calibration(adc_values, cfg, *, status=None):
     # Intercept from the known Po214 energy and fixed slope
     energies = {**DEFAULT_KNOWN_ENERGIES, **cal_cfg.get("known_energies", {})}
     E_known = energies["Po214"]
-    c = float(E_known - a * mu_fit)
-    peak_info["centroid_mev"] = float(apply_calibration(mu_fit, a, c))
+    c = float(E_known - a * centroid_adc)
+    peak_info["centroid_mev"] = float(apply_calibration(centroid_adc, a, c))
+    peak_info["loc_mev"] = float(apply_calibration(mu_fit, a, c))
 
     # Convert sigma from ADC to energy using fixed slope and propagate errors
     sigma_adc = float(sigma_fit)
@@ -795,17 +813,9 @@ def calibrate_run(adc_values, config, hist_bins=None):
         fitted ``peaks`` mapping.
     """
     # 1) Build histogram
-    min_adc = int(np.min(adc_values))
-    max_adc = int(np.max(adc_values))
-
-    if hist_bins is None:
-        # 1 ADC channel per bin (backwards compatible)
-        edges = np.arange(min_adc, max_adc + 2)
-    else:
-        edges = np.linspace(min_adc, max_adc, hist_bins + 1)
-
+    edges = utils.adc_hist_edges(adc_values, hist_bins=hist_bins)
     hist, edges = np.histogram(adc_values, bins=edges)
-    centers = 0.5 * (edges[:-1] + edges[1:])  # effectively integer centers
+    centers = 0.5 * (edges[:-1] + edges[1:])
 
     # 2) Peak‐finding with SciPy:
     #    We look for up to 5 peaks (Po-210, Po-218, Po-214, maybe background bumps).
@@ -913,8 +923,10 @@ def calibrate_run(adc_values, config, hist_bins=None):
             )
             A_fit, mu_fit, sigma_fit = popt
             tau_fit = 0.0
+        centroid_adc = _peak_centroid_from_fit(mu_fit, sigma_fit, tau_fit)
         peak_fits[iso] = {
-            "centroid_adc": float(mu_fit),
+            "centroid_adc": float(centroid_adc),
+            "loc_adc": float(mu_fit),
             "sigma_adc": float(sigma_fit),
             "tau_adc": float(tau_fit),
             "amplitude": float(A_fit),
@@ -988,6 +1000,11 @@ def calibrate_run(adc_values, config, hist_bins=None):
         info["centroid_mev"] = float(
             apply_calibration(info["centroid_adc"], a, c, quadratic_coeff=a2)
         )
+        if "loc_adc" in info:
+            info["loc_mev"] = float(
+                apply_calibration(info["loc_adc"], a, c, quadratic_coeff=a2)
+            )
+        info["peak_adc"] = float(info["centroid_adc"])
 
     # Sanity check that fitted energies match expectations within tolerance
     tol = float(config.get("calibration", {}).get("sanity_tolerance_mev", 0.5))

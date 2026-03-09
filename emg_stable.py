@@ -260,7 +260,8 @@ def emg_left_stable(x, mu, sigma, tau, amplitude: float = 1.0, use_log_scale: bo
     except KeyError as exc:
         raise ValueError(f"Unknown EMG stable mode: {EMG_STABLE_MODE}") from exc
 
-    return strategy(x, mu, sigma, tau, amplitude=amplitude, use_log_scale=use_log_scale)
+    x_mirror = 2.0 * np.asarray(mu, dtype=float) - np.asarray(x, dtype=float)
+    return strategy(x_mirror, mu, sigma, tau, amplitude=amplitude, use_log_scale=use_log_scale)
 
 
 def _emg_strategy_scipy_safe(x, mu, sigma, tau, *, amplitude: float, use_log_scale: bool) -> np.ndarray:
@@ -469,8 +470,9 @@ def parallel_emg_map(x: Union[np.ndarray, Sequence[float]],
 
     def _evaluate(param_tuple: Tuple[float, float, float, float]) -> np.ndarray:
         mu, sigma, tau, amp = param_tuple
+        x_mirror = 2.0 * np.asarray(mu, dtype=float) - x_arr
         return strategy(
-            x_arr,
+            x_mirror,
             mu,
             sigma,
             tau,

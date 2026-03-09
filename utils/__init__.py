@@ -115,10 +115,8 @@ def find_adc_bin_peaks(
     if adc_arr.size == 0:
         return {k: float(v) for k, v in expected.items()}
 
-    # Build 1-channel histogram to locate maxima
-    min_adc = int(adc_arr.min())
-    max_adc = int(adc_arr.max())
-    edges = np.arange(min_adc, max_adc + 2)
+    # Build a channel-centered histogram so discrete ADC counts stay aligned.
+    edges = adc_hist_edges(adc_arr, channel_width=1.0)
     hist, _ = np.histogram(adc_arr, bins=edges)
     centers = 0.5 * (edges[:-1] + edges[1:])
 
@@ -155,7 +153,7 @@ def find_adc_bin_peaks(
     return results
 
 
-def adc_hist_edges(adc_values, hist_bins=None):
+def adc_hist_edges(adc_values, hist_bins=None, *, channel_width=None):
     """Return histogram bin edges for raw ADC values.
 
     Parameters
@@ -165,6 +163,9 @@ def adc_hist_edges(adc_values, hist_bins=None):
     hist_bins : int or None, optional
         Number of bins to divide the range into. When ``None`` each
         ADC channel becomes its own bin.
+    channel_width : float or None, optional
+        Width of grouped ADC bins. When given, the edges stay centered on the
+        integer ADC channels.
 
     Returns
     -------
@@ -176,13 +177,27 @@ def adc_hist_edges(adc_values, hist_bins=None):
     if adc_arr.size == 0:
         return np.asarray([0.0, 1.0], dtype=float)
 
-    min_adc = int(np.min(adc_arr))
-    max_adc = int(np.max(adc_arr))
+    finite_adc = adc_arr[np.isfinite(adc_arr)]
+    if finite_adc.size == 0:
+        return np.asarray([0.0, 1.0], dtype=float)
+
+    min_adc = int(np.floor(np.min(finite_adc)))
+    max_adc = int(np.ceil(np.max(finite_adc)))
+
+    if channel_width is not None:
+        if hist_bins is not None:
+            raise ValueError("Specify either hist_bins or channel_width, not both")
+        width = float(channel_width)
+        if not np.isfinite(width) or width <= 0.0:
+            raise ValueError("channel_width must be positive")
+        n_bins = max(1, int(np.ceil((max_adc - min_adc + 1) / width)))
+        start = min_adc - 0.5
+        return start + width * np.arange(n_bins + 1, dtype=float)
 
     if hist_bins is None:
-        edges = np.arange(min_adc, max_adc + 2)
+        edges = np.arange(min_adc - 0.5, max_adc + 1.5, dtype=float)
     else:
-        edges = np.linspace(min_adc, max_adc, int(hist_bins) + 1)
+        edges = np.linspace(min_adc - 0.5, max_adc + 0.5, int(hist_bins) + 1)
 
     return edges
 

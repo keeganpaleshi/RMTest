@@ -1,5 +1,6 @@
 import numpy as np
-from rmtest.spectral.shapes import emg_cdf_E
+import pytest
+from rmtest.spectral.shapes import emg_cdf_E, emg_mode_to_loc, emg_pdf_E
 from rmtest.spectral.intensity import build_spectral_intensity, integral_of_intensity
 
 
@@ -26,5 +27,22 @@ def test_extended_mu_equals_sum_of_yields_after_window_renorm():
     mu = integral_of_intensity(params, domain, iso_list=iso_list, use_emg=True)
     _trapz = getattr(np, "trapezoid", None) or np.trapz
     num_mu = _trapz(lam, E)
-    assert abs(mu - (300+400+300)) < 1e-6
+    assert abs(mu - (300 + 400 + 300)) < 1e-6
     assert abs(num_mu - mu) / mu < 1e-3
+
+
+def test_emg_spectral_shapes_use_peak_position_parameterization():
+    from scipy.stats import exponnorm
+
+    E = np.linspace(4.9, 5.7, 2001)
+    mu, sigma, tau = 5.3, 0.05, 0.10
+    K = tau / sigma
+    loc = emg_mode_to_loc(mu, sigma, tau)
+
+    expected_pdf = exponnorm.pdf(2.0 * loc - E, K, loc=loc, scale=sigma)
+    expected_cdf = 1.0 - exponnorm.cdf(2.0 * loc - E, K, loc=loc, scale=sigma)
+    observed_pdf = emg_pdf_E(E, mu, sigma, tau)
+
+    np.testing.assert_allclose(observed_pdf, expected_pdf, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(emg_cdf_E(E, mu, sigma, tau), expected_cdf, rtol=1e-12, atol=1e-12)
+    assert E[np.argmax(observed_pdf)] == pytest.approx(mu, abs=1e-3)
