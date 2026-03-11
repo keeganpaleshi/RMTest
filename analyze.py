@@ -4353,7 +4353,23 @@ def main(argv=None):
                 "events_times": events_p210["timestamp"].values,
                 "events_energy": events_p210["energy_MeV"].values,
             }
-    
+
+        # Also extract Po-212 events for plotting if a window is provided
+        win_p212 = cfg.get("time_fit", {}).get("window_po212")
+        if win_p212 is not None:
+            lo, hi = win_p212
+            mask212 = (
+                (df_analysis["energy_MeV"] >= lo)
+                & (df_analysis["energy_MeV"] <= hi)
+                & (df_analysis["timestamp"] >= to_datetime_utc(t0_global))
+                & (df_analysis["timestamp"] <= t_end_global)
+            )
+            events_p212 = df_analysis[mask212]
+            time_plot_data["Po212"] = {
+                "events_times": events_p212["timestamp"].values,
+                "events_energy": events_p212["energy_MeV"].values,
+            }
+
         # ────────────────────────────────────────────────────────────
     with timer.section("systematics"):
         # 7. Systematics scan (optional)
@@ -5457,7 +5473,7 @@ def main(argv=None):
                     model_errs[iso_key] = sigma_arr
             return model_errs
 
-        for iso in ("Po218", "Po214", "Po210"):
+        for iso in ("Po218", "Po214", "Po210", "Po212"):
             pdata = time_plot_data.get(iso)
             if pdata is None:
                 continue
@@ -5467,7 +5483,7 @@ def main(argv=None):
                 if run_periods_cfg:
                     plot_cfg["run_periods"] = run_periods_cfg
                 # Per-isotope files always show only this isotope
-                for other_iso in ("Po214", "Po218", "Po210"):
+                for other_iso in ("Po214", "Po218", "Po210", "Po212"):
                     if other_iso != iso:
                         plot_cfg[f"window_{other_iso.lower()}"] = None
                 ts_times = pdata["events_times"]

@@ -91,7 +91,7 @@ spectral_fit:
   dnl_correction:
     enabled: true
     iterations: 3
-    min_counts: 50
+    min_counts: 5
     max_correction: 0.5
     smooth_window: 31
   energy_bin_width: 0.0130
@@ -99,7 +99,7 @@ spectral_fit:
   mu_sigma: 0.005
   fit_energy_range:
   - 1.7
-  - 9.5
+  - 10.5
   amp_prior_scale: 5.0
   bkg_mode: "manual"
   clip_floor: 1e-300
@@ -108,10 +108,10 @@ spectral_fit:
     - 4.0
   b1_prior:
     - 0.0
-    - 4.0
+    - 2.0
   b2_prior:
     - 0.0
-    - 0.5
+    - 0.1
   # NOTE: in loglin_unit background model, b0 cancels in the shape
   # normalization (exp(b0) appears in both numerator and denominator).
   # Fix it at 0 to remove the degeneracy with S_bkg.
@@ -182,7 +182,7 @@ spectral_fit:
     - 0.10
   f_shelf_Po212_prior:
     - 0.05
-    - 0.08
+    - 0.04
   sigma_shelf_Po212_prior:
     - 0.15
     - 0.10
@@ -221,8 +221,8 @@ spectral_fit:
     - 0.40
     - 0.15
   f_halo_Po212_prior:
-    - 0.15
-    - 0.15
+    - 0.10
+    - 0.08
   sigma_halo_Po212_prior:
     - 0.30
     - 0.15
@@ -297,9 +297,11 @@ spectral_fit:
     fix_tau_halo_Po218: true
     # Fix thoron chain (Po216, Po212) shape params: low statistics,
     # sigma/mu cannot be well constrained. Fix at physical priors.
-    fix_sigma_Po212: false
+    fix_sigma_Po212: true
     fix_sigma_Po216: true
     fix_tau_Po212: true
+    fix_f_shelf_Po212: true
+    fix_f_halo_Po212: true
     fix_sigma_shelf_Po212: true
     fix_sigma_halo_Po212: true
     fix_tau_halo_Po212: true
@@ -319,6 +321,9 @@ spectral_fit:
       S_Po212:
         - 3000
         - 5000
+      b2:
+        - 0.0
+        - 0.05
   mu_bounds:
     Po210:
       - 5.20
@@ -346,6 +351,9 @@ time_fit:
   window_po210:
     - 5.25
     - 5.37
+  window_po212:
+    - 8.65
+    - 9.05
   eff_po214: 0.99
   eff_po218: null
   eff_po210: null
@@ -378,8 +386,8 @@ radon_inference:
   - Po214
   - Po218
   source_weights:
-    Po214: 0.7
-    Po218: 0.3
+    Po214: 0.5
+    Po218: 0.5
   detection_efficiency:
     Po214: 0.19
     Po218: 0.094
@@ -415,7 +423,7 @@ plotting:
   dump_time_series_json: true
   plot_time_style: lines
   plot_time_show_models: false
-  plot_marker_size: 3.0
+  plot_marker_size: 0.5
   overlay_isotopes: true
   save_individual_time_series: false
 

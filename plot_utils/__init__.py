@@ -15,7 +15,7 @@ import matplotlib.dates as mdates
 from datetime import datetime, timezone
 from pathlib import Path
 from color_schemes import COLOR_SCHEMES
-from constants import PO214, PO218, PO210, RN222
+from constants import PO214, PO218, PO210, PO212, RN222
 from calibration import gaussian, emg_left
 
 try:
@@ -34,7 +34,7 @@ from utils.time_utils import parse_timestamp, to_epoch_seconds
 # Half-life constants used for the time-series overlay [seconds]
 PO214_HALF_LIFE_S = PO214.half_life_s
 PO218_HALF_LIFE_S = PO218.half_life_s
-_DEFAULT_MARKER_SIZE = 3.0
+_DEFAULT_MARKER_SIZE = 0.5
 
 
 def _get_marker_size(config=None, default=_DEFAULT_MARKER_SIZE) -> float:
@@ -71,11 +71,12 @@ def _errorbar_kwargs(color=None, *, label=None, markersize=_DEFAULT_MARKER_SIZE)
 
     kwargs = {
         "fmt": "o",
-        "capsize": 3,
-        "capthick": 1,
-        "elinewidth": 1,
+        "capsize": 0,
+        "capthick": 0,
+        "elinewidth": 0.5,
         "barsabove": True,
         "markersize": float(markersize),
+        "alpha": 0.4,
     }
     if color is not None:
         kwargs["color"] = color
@@ -408,24 +409,43 @@ def plot_time_series(
     if po218_hl <= 0:
         raise ValueError("hl_po218 must be positive")
 
+    # Bi-212 branching ratio: 64.07% beta to Po-212, 35.93% alpha to Tl-208.
+    # To recover the true Bi-212 (thoron chain) decay rate from observed
+    # Po-212 alpha counts, divide by the branch fraction.
+    _BI212_BRANCH_PO212 = 0.6407
+
+    default212 = default_const.get("Po212", PO212).half_life_s
+
     iso_params = {
         "Po210": {
             # Energy window for Po-210 events (optional)
             "window": _cfg_get(config, "window_po210"),
             "eff": _eff_param("eff_po210", 1.0),
             "half_life": _hl_param("hl_po210", default210),
+            "branch_correction": 1.0,
         },
         "Po218": {
             # Energy window for Po-218 events
             "window": _cfg_get(config, "window_po218"),
             "eff": _eff_param("eff_po218", 1.0),
             "half_life": po218_hl,
+            "branch_correction": 1.0,
         },
         "Po214": {
             # Energy window for Po-214 events
             "window": _cfg_get(config, "window_po214"),
             "eff": _eff_param("eff_po214", 1.0),
             "half_life": po214_hl,
+            "branch_correction": 1.0,
+        },
+        "Po212": {
+            # Energy window for Po-212 (thoron chain) events
+            "window": _cfg_get(config, "window_po212"),
+            "eff": _eff_param("eff_po212", 1.0),
+            "half_life": _hl_param("hl_po212", default212),
+            # Correct for Bi-212 branching: only 64.07% of Bi-212
+            # decays produce a Po-212 alpha.
+            "branch_correction": _BI212_BRANCH_PO212,
         },
     }
     iso_list = [iso for iso, p in iso_params.items() if p["window"] is not None]
@@ -576,6 +596,14 @@ def plot_time_series(
                     errors_plot, nan=0.0, posinf=0.0, neginf=0.0
                 )
 
+            # Apply branching ratio correction (e.g. Bi-212 → Po-212
+            # only occurs for 64.07% of Bi-212 decays; dividing by
+            # the branch fraction recovers the true parent rate).
+            _branch = iso_params[iso].get("branch_correction", 1.0)
+            if _branch != 1.0 and _branch > 0:
+                counts_plot = counts_plot / _branch
+                errors_plot = errors_plot / _branch
+
             if counts_plot.size == 0:
                 if model_err_arr is not None:
                     model_err_idx += counts_hist.size
@@ -588,11 +616,12 @@ def plot_time_series(
                 err_kwargs = {
                     "fmt": "o",
                     "color": color,
-                    "capsize": 3,
-                    "elinewidth": 1,
-                    "capthick": 1,
+                    "capsize": 0,
+                    "elinewidth": 0.5,
+                    "capthick": 0,
                     "barsabove": True,
                     "markersize": marker_size,
+                    "alpha": 0.4,
                 }
                 if label is not None:
                     err_kwargs["label"] = label
@@ -602,8 +631,14 @@ def plot_time_series(
                     yerr=errors_plot,
                     **err_kwargs,
                 )
+                # Re-plot markers on top so they are fully opaque
+                plt.plot(
+                    centers_mpl, counts_plot, "o",
+                    color=color, markersize=marker_size,
+                    zorder=5,
+                )
             else:
-                step_kwargs = {"where": "mid", "color": color}
+                step_kwargs = {"where": "mid", "color": color, "linewidth": 0.8}
                 if label is not None:
                     step_kwargs["label"] = label
                 plt.step(centers_mpl, counts_plot, **step_kwargs)
@@ -613,8 +648,9 @@ def plot_time_series(
                     yerr=errors_plot,
                     fmt="none",
                     ecolor=color,
-                    elinewidth=1.0,
-                    capsize=3,
+                    elinewidth=0.5,
+                    capsize=0,
+                    alpha=0.4,
                 )
 
             label_used = label_used or label is not None
@@ -676,7 +712,15 @@ def plot_time_series(
     plt.xlabel("Time (UTC)")
     plt.ylabel("Counts / s" if normalise_rate else "Counts per bin")
     title_isos = " & ".join(iso_list)
-    plt.title(f"{title_isos} Time Series Fit")
+    # Format bin width for display
+    _bw = bin_width_s
+    if _bw >= 3600 and _bw % 3600 == 0:
+        _bw_str = f"{int(_bw // 3600)} h"
+    elif _bw >= 60 and _bw % 60 == 0:
+        _bw_str = f"{int(_bw // 60)} min"
+    else:
+        _bw_str = f"{_bw:.0f} s"
+    plt.title(f"{title_isos} Time Series Fit  (bin = {_bw_str})")
     handles, labels = plt.gca().get_legend_handles_labels()
     if handles:
         plt.legend(fontsize="small")
@@ -690,6 +734,17 @@ def plot_time_series(
     targets = get_targets(config, out_png)
     for p in targets.values():
         plt.savefig(p, dpi=300)
+
+    # Save a log-scale version of the same plot
+    ax.set_yscale("log")
+    ax.set_ylim(bottom=None)  # let matplotlib auto-scale
+    ax.set_title(f"{title_isos} Time Series Fit (log scale)  (bin = {_bw_str})")
+    plt.tight_layout()
+    for p in targets.values():
+        log_path = Path(p)
+        log_stem = log_path.stem + "_log"
+        log_p = log_path.with_name(log_stem + log_path.suffix)
+        plt.savefig(log_p, dpi=300)
     plt.close()
 
     segments_payload = []

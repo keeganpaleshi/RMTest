@@ -13,10 +13,10 @@ import numpy as np
 from plot_utils._time_utils import guard_mpl_times, setup_time_axis
 
 logger = logging.getLogger(__name__)
-_DEFAULT_MARKER_SIZE = 4.5
-_DEFAULT_CAPSIZE = 2
-_DEFAULT_ELINEWIDTH = 0.7
-_DEFAULT_ALPHA = 0.8
+_DEFAULT_MARKER_SIZE = 0.5
+_DEFAULT_CAPSIZE = 0
+_DEFAULT_ELINEWIDTH = 0.5
+_DEFAULT_ALPHA = 0.4
 
 
 def _extract_series(
@@ -135,34 +135,11 @@ def plot_rn_inferred_vs_time(radon_results: Mapping[str, object], out_dir: Path)
         overall_eff = float(meta.get("transport_efficiency", 1.0) or 1.0) * \
                       float(meta.get("retention_efficiency", 1.0) or 1.0)
 
-    # --- Combined plot with per-isotope breakdown ---
+    # --- Rn-222 inferred activity plot (combined, no per-isotope breakdown) ---
     fig, ax = plt.subplots(figsize=(10, 5))
     times_mpl = guard_mpl_times(times=times)
 
-    # Plot per-isotope contributions as smaller, lighter points
-    _iso_colors = {"Po214": "#ff7f0e", "Po218": "#2ca02c", "Po210": "#d62728"}
-    for iso in source_isos:
-        eff = float(det_eff.get(iso, 0.0))
-        w = float(weights.get(iso, 0.0))
-        if eff <= 0 or w <= 0:
-            continue
-        iso_vals = []
-        iso_times = []
-        for entry in series:
-            contrib = entry.get("meta", {}).get("contributions", {})
-            iso_activity = contrib.get(iso)
-            if iso_activity is not None:
-                iso_vals.append(float(iso_activity) * w / overall_eff)
-                iso_times.append(float(entry.get("t", 0.0)))
-        if iso_times:
-            iso_times_mpl = guard_mpl_times(times=iso_times)
-            ax.plot(iso_times_mpl, iso_vals, marker=".", linestyle="None",
-                    markersize=2.5, alpha=0.35,
-                    color=_iso_colors.get(iso, "#999999"),
-                    label=f"{iso} (w={w:.2f})")
-
-    # Plot combined weighted average on top
-    label = "Combined Rn-222"
+    label = "Rn-222"
     if errors is not None:
         ax.errorbar(times_mpl, values, yerr=errors, fmt="o",
                     markersize=_DEFAULT_MARKER_SIZE, label=label,
@@ -174,17 +151,11 @@ def plot_rn_inferred_vs_time(radon_results: Mapping[str, object], out_dir: Path)
                 alpha=_DEFAULT_ALPHA, color="#1f77b4", zorder=5)
     ax.set_ylabel("Inferred Rn-222 Activity [Bq]")
     ax.set_xlabel("Time (UTC)")
-    ax.set_title("Inferred Radon Activity (Po218 + Po214 Combined)", fontsize=11)
+    ax.set_title("Inferred Radon Activity", fontsize=11)
     ax.ticklabel_format(axis="y", style="plain")
     setup_time_axis(ax, times_mpl)
     fig.autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)
-    if label:
-        ax.legend(loc="best", fontsize="small")
-
-    meta_text = _format_meta(radon_results.get("meta"))
-    if meta_text:
-        fig.text(0.01, 0.01, meta_text, fontsize="x-small", va="bottom")
 
     fig.tight_layout()
     fig.savefig(out_dir / "radon_inferred.png", dpi=300)

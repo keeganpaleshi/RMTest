@@ -1153,6 +1153,31 @@ def fit_spectrum(
                     _ratio[_valid] / _ratio_smooth[_valid]
                 )
 
+                # Fill interior gaps in the DNL via linear interpolation.
+                # DNL is a hardware property of the ADC channel, so bins
+                # that fall below the min_counts threshold *between* valid
+                # regions should be interpolated.  Bins beyond the last
+                # valid index (edge extrapolation) stay at 1.0 — we cannot
+                # reliably estimate DNL where the model has negligible
+                # counts, and flat extrapolation of a noisy boundary value
+                # introduces artefacts.
+                _invalid = ~_valid
+                if np.any(_valid) and np.any(_invalid):
+                    _valid_idx = np.flatnonzero(_valid)
+                    _invalid_idx = np.flatnonzero(_invalid)
+                    # Only interpolate *interior* gaps (between first and
+                    # last valid bins).  Edge bins stay at 1.0.
+                    _lo_valid = _valid_idx[0]
+                    _hi_valid = _valid_idx[-1]
+                    _interior = _invalid_idx[
+                        (_invalid_idx > _lo_valid) & (_invalid_idx < _hi_valid)
+                    ]
+                    if _interior.size > 0:
+                        _dnl_resid[_interior] = np.interp(
+                            _interior, _valid_idx,
+                            _dnl_resid[_valid_idx],
+                        )
+
                 # Accumulate and clip
                 _dnl_accum = _dnl_accum * _dnl_resid
                 _dnl_accum = np.clip(
