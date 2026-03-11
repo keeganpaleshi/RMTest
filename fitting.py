@@ -315,6 +315,8 @@ class FitResult:
     param_index: dict[str, int] | None = None
     counts: int | None = None
     likelihood: str | None = None
+    minos_errors: dict[str, tuple[float, float]] | None = None
+    """Per-parameter MINOS asymmetric errors ``{name: (lower, upper)}``."""
     _cov_df: pd.DataFrame | None = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
@@ -583,6 +585,7 @@ def fit_spectrum(
     if widths.size != centers.size:
         raise RuntimeError("width and center size mismatch")
     width_lookup = _WidthLookup(centers, widths)
+    widths_base = widths.copy()  # Preserve original widths for DNL iteration
     if not unbinned:
         hist, _ = np.histogram(e, bins=edges)
 
@@ -595,7 +598,11 @@ def fit_spectrum(
     if background_model == "loglin_unit":
         if "S_bkg" not in priors:
             signal_guess = 0.0
-            for iso_name in ("Po210", "Po218", "Po214"):
+            # Dynamically discover isotopes from priors (any key matching mu_*)
+            _discovered_isos = sorted(
+                k[3:] for k in priors if k.startswith("mu_") and f"S_{k[3:]}" in priors
+            )
+            for iso_name in _discovered_isos:
                 prior_val = priors.get(f"S_{iso_name}")
                 if isinstance(prior_val, (tuple, list)) and len(prior_val) > 0:
                     try:
@@ -647,7 +654,10 @@ def fit_spectrum(
     cfg = flags.get("cfg") or flags.get("config")
 
     # Determine which peaks should include an EMG tail using the shared helper
-    iso_list = ["Po210", "Po218", "Po214"]
+    # Dynamically discover isotopes from priors: any key matching mu_* with S_*
+    iso_list = sorted(
+        k[3:] for k in priors if k.startswith("mu_") and f"S_{k[3:]}" in priors
+    )
     emg_specs = _resolve_emg_usage(
         iso_list,
         priors,
@@ -739,6 +749,32 @@ def fit_spectrum(
     if not fix_F:
         param_index["F"] = len(param_order)
         param_order.append("F")
+    # Determine which peaks include a low-energy shelf component
+    use_shelf = {}
+    if cfg is not None:
+        shelf_cfg = cfg.get("spectral_fit", {}).get("use_shelf", {})
+        if isinstance(shelf_cfg, bool):
+            use_shelf = {iso: shelf_cfg for iso in iso_list}
+        elif isinstance(shelf_cfg, dict):
+            use_shelf = {iso: bool(shelf_cfg.get(iso, False)) for iso in iso_list}
+    # Also enable shelf if f_shelf priors are present
+    for iso in iso_list:
+        if f"f_shelf_{iso}" in priors:
+            use_shelf[iso] = True
+
+    # Determine which peaks include a broad "halo" component (double-peak)
+    use_halo = {}
+    if cfg is not None:
+        halo_cfg = cfg.get("spectral_fit", {}).get("use_halo", {})
+        if isinstance(halo_cfg, bool):
+            use_halo = {iso: halo_cfg for iso in iso_list}
+        elif isinstance(halo_cfg, dict):
+            use_halo = {iso: bool(halo_cfg.get(iso, False)) for iso in iso_list}
+    # Also enable halo if f_halo priors are present
+    for iso in iso_list:
+        if f"f_halo_{iso}" in priors:
+            use_halo[iso] = True
+
     for iso in iso_list:
         param_index[f"mu_{iso}"] = len(param_order)
         param_order.append(f"mu_{iso}")
@@ -751,10 +787,42 @@ def fit_spectrum(
         if use_emg[iso]:
             param_index[f"tau_{iso}"] = len(param_order)
             param_order.append(f"tau_{iso}")
+        # Low-energy shelf fraction
+        if use_shelf.get(iso, False):
+            shelf_key = f"f_shelf_{iso}"
+            param_index[shelf_key] = len(param_order)
+            param_order.append(shelf_key)
+            # Separate shelf width (sigma_shelf) if prior is provided
+            shelf_sigma_key = f"sigma_shelf_{iso}"
+            if shelf_sigma_key in priors:
+                param_index[shelf_sigma_key] = len(param_order)
+                param_order.append(shelf_sigma_key)
+        # Halo (broad) component fraction and width
+        if use_halo.get(iso, False):
+            halo_key = f"f_halo_{iso}"
+            param_index[halo_key] = len(param_order)
+            param_order.append(halo_key)
+            halo_sigma_key = f"sigma_halo_{iso}"
+            if halo_sigma_key in priors:
+                param_index[halo_sigma_key] = len(param_order)
+                param_order.append(halo_sigma_key)
+            # Halo EMG tail (decoupled from core tau)
+            halo_tau_key = f"tau_halo_{iso}"
+            if halo_tau_key in priors:
+                param_index[halo_tau_key] = len(param_order)
+                param_order.append(halo_tau_key)
     param_index["b0"] = len(param_order)
     param_order.append("b0")
     param_index["b1"] = len(param_order)
     param_order.append("b1")
+    # Log-quadratic background term (b2)
+    if "b2" in priors:
+        param_index["b2"] = len(param_order)
+        param_order.append("b2")
+    # Log-cubic background term (b3)
+    if "b3" in priors:
+        param_index["b3"] = len(param_order)
+        param_order.append("b3")
     if background_model == "loglin_unit" or "S_bkg" in priors:
         param_index["S_bkg"] = len(param_order)
         param_order.append("S_bkg")
@@ -804,6 +872,36 @@ def fit_spectrum(
                 hi = min(hi, max_tau_ratio * sigma0_mean)
         if name in ("sigma0", "F") or name.startswith("sigma_"):
             lo = max(lo, 0.0)
+        if name.startswith("f_shelf_"):
+            lo = max(lo, 0.0)
+            hi = min(hi, 0.30)  # shelf fraction capped at 30%
+        if name.startswith("f_halo_"):
+            lo = max(lo, 0.0)
+            hi = min(hi, 0.40)  # halo fraction capped at 40%
+        # sigma_shelf must be physically meaningful (at least 0.03 MeV)
+        if name.startswith("sigma_shelf_"):
+            lo = max(lo, 0.03)
+        # tau_halo: cap at 2× core tau to prevent unrealistically long
+        # right-side EMG tails that bleed into neighbouring peaks.
+        # (brentq fallback in _right_emg_mode_offset handles edge cases.)
+        if name.startswith("tau_halo_"):
+            iso_name = name.replace("tau_halo_", "")
+            tau_core_key = f"tau_{iso_name}"
+            if tau_core_key in priors:
+                core_tau_mean = float(priors[tau_core_key][0])
+                hi = min(hi, core_tau_mean * 5.0)
+        # sigma_halo: enforce a reasonable range relative to core sigma.
+        # Min 1.5× core sigma (must be wider than core).  Max 8× allows
+        # broad halos for dead-layer scattering that can extend 1-2 MeV.
+        if name.startswith("sigma_halo_"):
+            iso_name = name.replace("sigma_halo_", "")
+            sigma_core_key = f"sigma_{iso_name}"
+            if sigma_core_key in priors:
+                core_sigma_mean = float(priors[sigma_core_key][0])
+            else:
+                core_sigma_mean = sigma0_mean
+            lo = max(lo, core_sigma_mean * 1.5)
+            hi = min(hi, core_sigma_mean * 8.0)
         if hi <= lo:
             logging.warning(
                 f"Parameter {name}: upper bound ({hi}) <= lower bound ({lo}). "
@@ -831,6 +929,16 @@ def fit_spectrum(
     if cfg is not None:
         loglin_n_norm = cfg.get("spectral_fit", {}).get("loglin_n_norm")
 
+    use_shelf_map = {iso: bool(use_shelf.get(iso, False)) for iso in iso_list}
+    use_halo_map = {iso: bool(use_halo.get(iso, False)) for iso in iso_list}
+
+    # shelf_range: how far (MeV) the shelf extends below the peak (Gaussian taper)
+    _shelf_range = None
+    if cfg is not None:
+        _sr = cfg.get("spectral_fit", {}).get("shelf_range")
+        if _sr is not None:
+            _shelf_range = float(_sr)
+
     spectral_intensity = build_spectral_intensity(
         iso_list,
         use_emg_map,
@@ -838,6 +946,9 @@ def fit_spectrum(
         clip_floor=clip_floor,
         background_model=background_model,
         loglin_n_norm=loglin_n_norm,
+        use_shelf=use_shelf_map,
+        use_halo=use_halo_map,
+        shelf_range=_shelf_range,
     )
 
     def _build_raw_param_map(params):
@@ -853,6 +964,10 @@ def fit_spectrum(
         params_dict["sigma0"] = float(raw_map.get("sigma0", sigma0_val))
         params_dict["b0"] = float(raw_map["b0"])
         params_dict["b1"] = float(raw_map["b1"])
+        if "b2" in raw_map:
+            params_dict["b2"] = float(raw_map["b2"])
+        if "b3" in raw_map:
+            params_dict["b3"] = float(raw_map["b3"])
         if "F" in raw_map or not fix_F:
             params_dict["F"] = float(raw_map.get("F", F_val))
         for iso in iso_list:
@@ -866,6 +981,21 @@ def fit_spectrum(
             tau_key = f"tau_{iso}"
             if use_emg_map.get(iso, False) and tau_key in raw_map:
                 params_dict[tau_key] = float(raw_map[tau_key])
+            shelf_key = f"f_shelf_{iso}"
+            if use_shelf_map.get(iso, False) and shelf_key in raw_map:
+                params_dict[shelf_key] = float(raw_map[shelf_key])
+            shelf_sigma_key = f"sigma_shelf_{iso}"
+            if shelf_sigma_key in raw_map:
+                params_dict[shelf_sigma_key] = float(raw_map[shelf_sigma_key])
+            halo_key = f"f_halo_{iso}"
+            if use_halo_map.get(iso, False) and halo_key in raw_map:
+                params_dict[halo_key] = float(raw_map[halo_key])
+            halo_sigma_key = f"sigma_halo_{iso}"
+            if halo_sigma_key in raw_map:
+                params_dict[halo_sigma_key] = float(raw_map[halo_sigma_key])
+            halo_tau_key = f"tau_halo_{iso}"
+            if halo_tau_key in raw_map:
+                params_dict[halo_tau_key] = float(raw_map[halo_tau_key])
         if "S_bkg" in raw_map:
             params_dict["S_bkg"] = float(_softplus(raw_map["S_bkg"]))
         return params_dict
@@ -893,6 +1023,9 @@ def fit_spectrum(
         y = _model_density(x, *params)
         return width_lookup.scale(x, y)
 
+    _dnl_iters = 0   # default: no DNL correction
+    _dnl_meta = {}   # populated if DNL correction is applied
+
     if not unbinned:
         popt_cf = pcov_cf = None
         if curve_fit is not _ORIG_CURVE_FIT:
@@ -907,10 +1040,43 @@ def fit_spectrum(
             except Exception:
                 pass
 
+        # Build Gaussian prior penalty map from flags["penalty_priors"].
+        # Each entry is {param_name: [mean, sigma]}.  These add soft
+        # constraints to the NLL so the fitter can't drive params to
+        # boundary values when the likelihood is insensitive.
+        _penalty_map = {}
+        if flags:
+            _pp_cfg = flags.get("penalty_priors", {})
+            if isinstance(_pp_cfg, dict):
+                for _pp_name, _pp_val in _pp_cfg.items():
+                    if (
+                        _pp_name in param_index
+                        and isinstance(_pp_val, (list, tuple))
+                        and len(_pp_val) == 2
+                    ):
+                        _pp_mu = float(_pp_val[0])
+                        _pp_sig = float(_pp_val[1])
+                        if _pp_sig > 0:
+                            _penalty_map[param_index[_pp_name]] = (_pp_mu, _pp_sig)
+        if _penalty_map:
+            logging.info(
+                "Gaussian penalty priors on %d parameters: %s",
+                len(_penalty_map),
+                ", ".join(
+                    f"{param_order[i]}=N({mu:.3g},{sig:.3g})"
+                    for i, (mu, sig) in sorted(_penalty_map.items())
+                ),
+            )
+
         def _nll(*params):
             model = _model_binned(centers, *params)
             model_safe = np.maximum(model, 1e-300)  # Floor to prevent log(0)
-            return float(np.sum(model_safe - hist * np.log(model_safe)))
+            nll_poisson = float(np.sum(model_safe - hist * np.log(model_safe)))
+            # Gaussian prior penalties (0.5 * ((p - mu)/sigma)^2)
+            nll_prior = 0.0
+            for _idx, (_mu, _sig) in _penalty_map.items():
+                nll_prior += 0.5 * ((params[_idx] - _mu) / _sig) ** 2
+            return nll_poisson + nll_prior
 
         m = Minuit(_nll, *p0, name=param_order)
         m.errordef = Minuit.LIKELIHOOD
@@ -922,18 +1088,451 @@ def fit_spectrum(
         if not m.valid:
             m.simplex()
             m.migrad()
-        ndf = max(1, hist.size - len(param_order))
+
+        # ── ADC DNL (differential non-linearity) correction ─────────
+        # Estimate per-bin correction factors from the data/model ratio
+        # and refit with corrected bin widths.  The DNL is a hardware
+        # property of the ADC: some channels have slightly wider or
+        # narrower effective voltage ranges, causing systematic count
+        # excesses/deficits at the ±10–20 % level.
+        #
+        # We use a band-pass approach to isolate DNL from model errors:
+        # 1. Compute raw ratio = data / model
+        # 2. Smooth the ratio with a wide window to capture the trend
+        #    (smooth model errors + baseline)
+        # 3. DNL = ratio / trend → extracts only short-range
+        #    channel-to-channel variations
+        _dnl_cfg = {}
+        if cfg is not None:
+            _dnl_cfg = cfg.get("spectral_fit", {}).get("dnl_correction", {})
+        _dnl_iters = (
+            int(_dnl_cfg.get("iterations", 1))
+            if _dnl_cfg.get("enabled", False)
+            else 0
+        )
+        if _dnl_iters > 0:
+            from scipy.ndimage import uniform_filter1d as _uf1d
+
+            _dnl_min = float(_dnl_cfg.get("min_counts", 50.0))
+            _dnl_max = float(_dnl_cfg.get("max_correction", 0.5))
+            _dnl_window = int(_dnl_cfg.get("smooth_window", 21))
+            if _dnl_window % 2 == 0:
+                _dnl_window += 1  # ensure odd
+
+            # Save pre-DNL MIGRAD errors as a reliable baseline for
+            # covariance recovery.  Post-DNL refits may produce zero
+            # errors when starting at a converged point.
+            _pre_dnl_errs = {p: float(m.errors[p]) for p in param_order}
+
+            # Accumulate DNL across iterations (each iteration
+            # estimates the *residual* DNL on top of the current
+            # correction, then multiplies it in).
+            _dnl_accum = np.ones_like(hist, dtype=float)
+
+            for _di in range(_dnl_iters):
+                _popt_cur = np.array([m.values[p] for p in param_order])
+                _model_cur = _model_binned(centers, *_popt_cur)
+
+                # Step 1: raw ratio of observed to predicted
+                _dnl_mask = _model_cur > _dnl_min
+                _ratio = np.ones_like(hist, dtype=float)
+                _ratio[_dnl_mask] = (
+                    hist[_dnl_mask].astype(float) / _model_cur[_dnl_mask]
+                )
+
+                # Step 2: smooth the ratio to capture long-range trends
+                # (model shape errors vary on 10-100 channel scales)
+                _ratio_smooth = _uf1d(
+                    _ratio, size=_dnl_window, mode="nearest"
+                )
+
+                # Step 3: residual DNL = ratio / trend
+                _dnl_resid = np.ones_like(hist, dtype=float)
+                _valid = _dnl_mask & (_ratio_smooth > 0.1)
+                _dnl_resid[_valid] = (
+                    _ratio[_valid] / _ratio_smooth[_valid]
+                )
+
+                # Accumulate and clip
+                _dnl_accum = _dnl_accum * _dnl_resid
+                _dnl_accum = np.clip(
+                    _dnl_accum, 1.0 - _dnl_max, 1.0 + _dnl_max
+                )
+
+                # Update bin widths with accumulated DNL correction
+                width_lookup = _WidthLookup(
+                    centers, widths_base * _dnl_accum
+                )
+
+                # Refit with DNL-corrected widths
+                _dnl_prev = _dnl_accum_before = _dnl_accum.copy()
+                try:
+                    m_dnl = Minuit(_nll, *_popt_cur, name=param_order)
+                    m_dnl.errordef = Minuit.LIKELIHOOD
+                    for name, lo, hi in zip(
+                        param_order, bounds_lo, bounds_hi
+                    ):
+                        m_dnl.limits[name] = (lo, hi)
+                        if flags.get(f"fix_{name}", False):
+                            m_dnl.fixed[name] = True
+                        # Seed step sizes from previous fit so MIGRAD errors
+                        # are non-zero even when starting at the minimum.
+                        prev_err = float(m.errors[name])
+                        if prev_err > 0:
+                            m_dnl.errors[name] = prev_err
+                        else:
+                            m_dnl.errors[name] = (hi - lo) * 0.01
+                    m_dnl.migrad()
+                    if not m_dnl.valid:
+                        m_dnl.simplex()
+                        m_dnl.migrad()
+                    m = m_dnl  # Accept the successful fit
+                except Exception as _dnl_exc:
+                    logging.warning(
+                        "DNL iteration %d/%d failed (%s); "
+                        "reverting to previous correction",
+                        _di + 1,
+                        _dnl_iters,
+                        _dnl_exc,
+                    )
+                    _dnl_accum = _dnl_prev
+                    width_lookup = _WidthLookup(
+                        centers, widths_base * _dnl_accum
+                    )
+                    break
+
+                _n_corr = int(np.sum(_valid))
+                logging.info(
+                    "DNL iteration %d/%d: NLL=%.1f, "
+                    "%d/%d bins corrected, "
+                    "accum dnl range [%.4f, %.4f], mean %.4f",
+                    _di + 1,
+                    _dnl_iters,
+                    m.fval,
+                    _n_corr,
+                    len(_dnl_accum),
+                    float(_dnl_accum.min()),
+                    float(_dnl_accum.max()),
+                    float(_dnl_accum.mean()),
+                )
+
+        # Store DNL metadata in the result (if correction was applied)
+        _dnl_meta = {}
+        if _dnl_iters > 0:
+            _dnl_meta["dnl_applied"] = True
+            _dnl_meta["dnl_iterations"] = _dnl_iters
+            _dnl_meta["dnl_smooth_window"] = _dnl_window
+            _dnl_meta["dnl_factors"] = _dnl_accum.tolist()
+
+        _n_free = sum(1 for p in param_order if not m.fixed[p])
+        ndf = max(1, hist.size - _n_free)
         out = {}
+        if _dnl_meta:
+            out["_dnl"] = _dnl_meta
         param_index = {name: i for i, name in enumerate(param_order)}
+
+        # Freeze the best-fit parameter values from the DNL-converged minimum.
+        # Subsequent covariance attempts (Hesse, MINOS) may internally move
+        # parameters — we always return popt from the original minimum.
+        popt = np.array([float(m.values[p]) for p in param_order])
+        nll_val = float(m.fval)
+
+        # Save MIGRAD approximate errors *before* hesse() — hesse resets
+        # m.errors to zero when the Hessian computation fails.
+        # Prefer pre-DNL MIGRAD errors when the post-DNL refit left them
+        # at zero (common when starting at a converged point).
+        _migrad_errs = {}
+        _migrad_is_fallback = {}  # track which errors are fallbacks
+        for _pi, _pn in enumerate(param_order):
+            _me = float(m.errors[_pn])
+            if _me <= 0 and _dnl_iters > 0:
+                _me = _pre_dnl_errs.get(_pn, 0.0)
+            if _me <= 0:
+                # Last resort: 1% of the parameter range
+                _me = (bounds_hi[_pi] - bounds_lo[_pi]) * 0.01
+                _migrad_is_fallback[_pn] = True
+            _migrad_errs[_pn] = _me
+
+        # ----------------------------------------------------------
+        # Covariance recovery strategy:
+        #   1. Try Hesse (exact second derivatives)
+        #   2. If Hesse fails (params at bounds), relax bounds and retry
+        #   3. If still fails, compute numerical Hessian via finite diffs
+        #   4. Run MINOS for asymmetric errors (per-parameter)
+        # ----------------------------------------------------------
         m.hesse()
         cov_raw = m.covariance
         covariance_available = cov_raw is not None
+
+        # --- Strategy 2: relax bounds for params sitting at limits ---
         if cov_raw is None:
-            cov_raw = np.zeros((len(param_order), len(param_order)))
+            logging.info(
+                "Hesse failed — attempting with relaxed bounds for "
+                "parameters at their limits"
+            )
+            # Reset parameter values to the saved minimum before retrying
+            for _pi, _pn in enumerate(param_order):
+                m.values[_pn] = float(popt[_pi])
+            _at_bound = []
+            _relax_frac = 0.05  # expand bound by 5% of range
+            for _pi, _pn in enumerate(param_order):
+                if m.fixed[_pn]:
+                    continue
+                _val = float(popt[_pi])
+                _lo, _hi = bounds_lo[_pi], bounds_hi[_pi]
+                _rng = _hi - _lo
+                _tol = _rng * 1e-4
+                if _val <= _lo + _tol or _val >= _hi - _tol:
+                    _at_bound.append((_pn, _pi, _val, _lo, _hi))
+                    _new_lo = _lo - _relax_frac * _rng if _val <= _lo + _tol else _lo
+                    _new_hi = _hi + _relax_frac * _rng if _val >= _hi - _tol else _hi
+                    m.limits[_pn] = (_new_lo, _new_hi)
+            if _at_bound:
+                logging.info(
+                    "Relaxed bounds for %d params at limits: %s",
+                    len(_at_bound),
+                    [t[0] for t in _at_bound],
+                )
+                m.hesse()
+                cov_raw = m.covariance
+                covariance_available = cov_raw is not None
+                # Restore original bounds
+                for _pn, _pi, _val, _lo, _hi in _at_bound:
+                    m.limits[_pn] = (_lo, _hi)
+                if cov_raw is not None:
+                    logging.info("Hesse succeeded after relaxing bounds")
+
+        # --- Strategy 3: numerical Hessian via finite differences ---
+        # Work on the FREE-parameter submatrix only to avoid fixed
+        # parameters (with ±1e-12 bounds) distorting eigenvalues.
+        if cov_raw is None:
+            logging.info(
+                "Hesse still failed — computing numerical Hessian "
+                "via finite differences at the converged minimum"
+            )
+            try:
+                _n_par = len(param_order)
+                _pvals = popt.copy()  # use saved minimum, not m.values
+
+                # Identify free parameters
+                _free_idx = [i for i, p in enumerate(param_order) if not m.fixed[p]]
+                _n_free_h = len(_free_idx)
+
+                _steps = np.array([_migrad_errs[param_order[i]] * 0.1 for i in _free_idx])
+                # Clamp steps to stay within bounds
+                for _si, _pi in enumerate(_free_idx):
+                    _max_step = min(
+                        _pvals[_pi] - bounds_lo[_pi],
+                        bounds_hi[_pi] - _pvals[_pi],
+                    ) * 0.5
+                    if _max_step > 0:
+                        _steps[_si] = min(_steps[_si], _max_step)
+                    if _steps[_si] <= 0:
+                        _steps[_si] = (bounds_hi[_pi] - bounds_lo[_pi]) * 1e-4
+
+                _hess_free = np.zeros((_n_free_h, _n_free_h))
+                _f0 = float(_nll(*_pvals))
+                # Diagonal elements (free params only)
+                for _si, _pi in enumerate(_free_idx):
+                    _pp = _pvals.copy(); _pp[_pi] += _steps[_si]
+                    _pm = _pvals.copy(); _pm[_pi] -= _steps[_si]
+                    _fp = float(_nll(*_pp))
+                    _fm = float(_nll(*_pm))
+                    _hess_free[_si, _si] = (_fp - 2 * _f0 + _fm) / (_steps[_si] ** 2)
+                # Off-diagonal elements (free params only)
+                for _si in range(_n_free_h):
+                    _pi = _free_idx[_si]
+                    for _sj in range(_si + 1, _n_free_h):
+                        _pj = _free_idx[_sj]
+                        _ppp = _pvals.copy(); _ppp[_pi] += _steps[_si]; _ppp[_pj] += _steps[_sj]
+                        _ppm = _pvals.copy(); _ppm[_pi] += _steps[_si]; _ppm[_pj] -= _steps[_sj]
+                        _pmp = _pvals.copy(); _pmp[_pi] -= _steps[_si]; _pmp[_pj] += _steps[_sj]
+                        _pmm = _pvals.copy(); _pmm[_pi] -= _steps[_si]; _pmm[_pj] -= _steps[_sj]
+                        _fpp = float(_nll(*_ppp))
+                        _fpm = float(_nll(*_ppm))
+                        _fmp = float(_nll(*_pmp))
+                        _fmm = float(_nll(*_pmm))
+                        _hess_free[_si, _sj] = (_fpp - _fpm - _fmp + _fmm) / (
+                            4.0 * _steps[_si] * _steps[_sj]
+                        )
+                        _hess_free[_sj, _si] = _hess_free[_si, _sj]
+
+                # Invert the free-parameter submatrix via eigenvalue
+                # regularisation and embed back into the full matrix.
+                try:
+                    _eigvals, _eigvecs = np.linalg.eigh(_hess_free)
+                    _eig_thresh = max(1e-10, 1e-6 * np.max(np.abs(_eigvals)))
+                    _n_clamped = int(np.sum(_eigvals < _eig_thresh))
+                    _eigvals_reg = np.where(
+                        _eigvals < _eig_thresh, _eig_thresh, _eigvals
+                    )
+                    # Regularised inverse of the free submatrix
+                    _cov_free = (_eigvecs / _eigvals_reg) @ _eigvecs.T
+                    _cov_free = 0.5 * (_cov_free + _cov_free.T)
+
+                    # For free params where numerical Hessian gives a
+                    # smaller variance than MIGRAD, use MIGRAD as a floor.
+                    for _si, _pi in enumerate(_free_idx):
+                        _pn = param_order[_pi]
+                        _migrad_var = _migrad_errs[_pn] ** 2
+                        if _cov_free[_si, _si] < _migrad_var:
+                            if _migrad_is_fallback.get(_pn, False):
+                                _cov_free[_si, _si] = _migrad_var
+                            else:
+                                _scale = np.sqrt(
+                                    _migrad_var / max(_cov_free[_si, _si], 1e-30)
+                                )
+                                _cov_free[_si, :] *= _scale
+                                _cov_free[:, _si] *= _scale
+
+                    # Embed into full covariance matrix (fixed params
+                    # get near-zero variance on the diagonal)
+                    cov_raw = np.zeros((_n_par, _n_par))
+                    for _si, _pi in enumerate(_free_idx):
+                        for _sj, _pj in enumerate(_free_idx):
+                            cov_raw[_pi, _pj] = _cov_free[_si, _sj]
+                    # Set fixed params to tiny variance
+                    for _pi in range(_n_par):
+                        if _pi not in _free_idx:
+                            cov_raw[_pi, _pi] = _migrad_errs[param_order[_pi]] ** 2
+
+                    covariance_available = True
+                    if _n_clamped > 0:
+                        logging.info(
+                            "Numerical Hessian: %d/%d free-param eigenvalues "
+                            "clamped (params at bounds). Off-diagonal "
+                            "correlations available for well-determined "
+                            "parameters.",
+                            _n_clamped, _n_free_h,
+                        )
+                    else:
+                        logging.info(
+                            "Numerical Hessian inversion succeeded — "
+                            "full covariance with off-diagonal correlations"
+                        )
+                except np.linalg.LinAlgError:
+                    logging.warning("Numerical Hessian eigendecomposition failed")
+                    cov_raw = None
+            except Exception as _num_exc:
+                logging.warning(
+                    "Numerical Hessian computation failed: %s", _num_exc
+                )
+                cov_raw = None
+
+        # --- Final fallback: MIGRAD diagonal-only ---
+        if cov_raw is None:
+            n_nonzero = sum(1 for v in _migrad_errs.values() if v > 0)
+            logging.warning(
+                "All covariance strategies failed — using MIGRAD approximate "
+                "errors as diagonal fallback (no correlations). "
+                "%d / %d params have non-zero MIGRAD errors.",
+                n_nonzero, len(param_order),
+            )
+            diag = np.array(
+                [_migrad_errs[p] ** 2 for p in param_order]
+            )
+            cov_raw = np.diag(diag)
+
+        # --- Profile likelihood scans for asymmetric errors ---
+        # MINOS requires a "valid" minimum which fails when params are
+        # at bounds.  Instead, scan the NLL along each parameter axis
+        # to find the delta-NLL = 0.5 crossing points (1-sigma).
+        # This is equivalent to MINOS in the 1D-profile approximation.
+        _minos_errors = None
+        _free_params = [p for p in param_order if not m.fixed[p]]
+        logging.info(
+            "Computing profile likelihood errors for %d free parameters...",
+            len(_free_params),
+        )
+        try:
+            _nll_min = float(_nll(*popt))
+            _minos_errors = {}
+            _target = 0.5  # delta-NLL for 1-sigma (likelihood errordef)
+            for _pn in _free_params:
+                _pi = param_order.index(_pn)
+                _val = float(popt[_pi])
+                _err = _migrad_errs.get(_pn, 0)
+                if _err <= 0:
+                    continue
+                _lo_bnd, _hi_bnd = bounds_lo[_pi], bounds_hi[_pi]
+                # Scan downward
+                _lo_cross = None
+                for _mult in np.linspace(0.1, 5.0, 25):
+                    _trial = _val - _mult * _err
+                    if _trial < _lo_bnd:
+                        _trial = _lo_bnd
+                    _pp = popt.copy()
+                    _pp[_pi] = _trial
+                    _dnll = float(_nll(*_pp)) - _nll_min
+                    if _dnll >= _target:
+                        # Linear interpolation between this and previous point
+                        if _mult == 0.1:
+                            _lo_cross = _trial - _val
+                        else:
+                            _prev_mult = _mult - (5.0 - 0.1) / 24
+                            _prev_trial = max(_val - _prev_mult * _err, _lo_bnd)
+                            _pp_prev = popt.copy()
+                            _pp_prev[_pi] = _prev_trial
+                            _dnll_prev = float(_nll(*_pp_prev)) - _nll_min
+                            if _dnll > _dnll_prev:
+                                _frac = (_target - _dnll_prev) / (_dnll - _dnll_prev)
+                                _cross_val = _prev_trial + _frac * (_trial - _prev_trial)
+                            else:
+                                _cross_val = _trial
+                            _lo_cross = _cross_val - _val
+                        break
+                    if _trial <= _lo_bnd:
+                        _lo_cross = _lo_bnd - _val
+                        break
+                # Scan upward
+                _hi_cross = None
+                for _mult in np.linspace(0.1, 5.0, 25):
+                    _trial = _val + _mult * _err
+                    if _trial > _hi_bnd:
+                        _trial = _hi_bnd
+                    _pp = popt.copy()
+                    _pp[_pi] = _trial
+                    _dnll = float(_nll(*_pp)) - _nll_min
+                    if _dnll >= _target:
+                        if _mult == 0.1:
+                            _hi_cross = _trial - _val
+                        else:
+                            _prev_mult = _mult - (5.0 - 0.1) / 24
+                            _prev_trial = min(_val + _prev_mult * _err, _hi_bnd)
+                            _pp_prev = popt.copy()
+                            _pp_prev[_pi] = _prev_trial
+                            _dnll_prev = float(_nll(*_pp_prev)) - _nll_min
+                            if _dnll > _dnll_prev:
+                                _frac = (_target - _dnll_prev) / (_dnll - _dnll_prev)
+                                _cross_val = _prev_trial + _frac * (_trial - _prev_trial)
+                            else:
+                                _cross_val = _trial
+                            _hi_cross = _cross_val - _val
+                        break
+                    if _trial >= _hi_bnd:
+                        _hi_cross = _hi_bnd - _val
+                        break
+                if _lo_cross is not None and _hi_cross is not None:
+                    _minos_errors[_pn] = (float(_lo_cross), float(_hi_cross))
+            if _minos_errors:
+                logging.info(
+                    "Profile likelihood: %d / %d parameters have asymmetric errors",
+                    len(_minos_errors), len(_free_params),
+                )
+            else:
+                logging.warning("Profile likelihood scan failed for all parameters")
+                _minos_errors = None
+        except Exception as _prof_exc:
+            logging.warning("Profile likelihood scan failed: %s", _prof_exc)
+
         pcov = np.array(cov_raw)
-        popt = np.array([m.values[p] for p in param_order])
-        nll_val = float(m.fval)
-        if curve_fit is not _ORIG_CURVE_FIT and popt_cf is not None and pcov_cf is not None:
+        # popt and nll_val already saved at the top of this block
+        if (
+            curve_fit is not _ORIG_CURVE_FIT
+            and popt_cf is not None
+            and pcov_cf is not None
+            and _dnl_iters == 0  # Don't use pre-DNL curve_fit results
+        ):
             pcov = np.array(pcov_cf)
             popt = np.array(popt_cf)
             covariance_available = True
@@ -1003,7 +1602,8 @@ def fit_spectrum(
         if not m.valid:
             m.simplex()
             m.migrad()
-        ndf = max(1, e.size - len(param_order))
+        _n_free_ub = sum(1 for p in param_order if not m.fixed[p])
+        ndf = max(1, e.size - _n_free_ub)
         out = {}
         param_index = {name: i for i, name in enumerate(param_order)}
         m.hesse()
@@ -1135,6 +1735,10 @@ def fit_spectrum(
     out["fit_valid"] = fit_valid
     out["likelihood_path"] = likelihood_path
 
+    # Attach DNL metadata from the binned path (if correction was applied)
+    if not unbinned and _dnl_iters > 0:
+        out["_dnl"] = _dnl_meta
+
     model_counts = _model_binned(centers, *popt)
     # Protect against division by zero: ensure model_counts is always positive
     safe_model_counts = np.maximum(model_counts, 1e-10)
@@ -1143,11 +1747,69 @@ def fit_spectrum(
             model_counts - hist + hist * np.log(np.where(hist > 0, hist / safe_model_counts, 1.0))
         )
     out["chi2"] = float(chi2)
-    ndf = max(1, hist.size - len(popt))
+    n_free = sum(1 for p in param_order if not m.fixed[p])
+    ndf = max(1, hist.size - n_free)
     out["chi2_ndf"] = chi2 / ndf if ndf > 0 else np.nan
     out["nll"] = float(nll_val)
-    k = len(popt)
+    out["n_free_params"] = n_free
+    k = n_free
+    n_bins = hist.size
     out["aic"] = float(2 * nll_val + 2 * k)
+    # BIC penalises complexity more aggressively than AIC for large samples
+    out["bic"] = float(2 * nll_val + k * np.log(n_bins))
+    # AICc: small-sample corrected AIC (converges to AIC for n >> k)
+    if n_bins > k + 1:
+        out["aicc"] = float(2 * nll_val + 2 * k + 2 * k * (k + 1) / (n_bins - k - 1))
+    else:
+        out["aicc"] = float("nan")
+
+    # Effective NDF accounting for DNL correction DOF consumption
+    if not unbinned and _dnl_iters > 0 and _dnl_meta:
+        _dnl_factors = np.array(_dnl_meta.get("dnl_factors", []))
+        _n_corr_bins = int(np.sum(_dnl_factors != 1.0)) if _dnl_factors.size > 0 else 0
+        if _n_corr_bins > 0 and _dnl_window > 0:
+            _dnl_eff_params = float(_dnl_iters * _n_corr_bins / _dnl_window)
+            _ndf_eff = max(1, hist.size - n_free - _dnl_eff_params)
+            out["dnl_effective_params"] = _dnl_eff_params
+            out["ndf_effective"] = float(_ndf_eff)
+            out["chi2_ndf_effective"] = chi2 / _ndf_eff if _ndf_eff > 0 else np.nan
+
+    # ------------------------------------------------------------------
+    # Store full model prediction arrays for accurate plotting.
+    # The plot_spectrum function previously reconstructed the model from
+    # parameters but missed shelf, halo, b2, b3, and DNL corrections.
+    # ------------------------------------------------------------------
+    raw_map = _build_raw_param_map(popt)
+    physical = _physical_params(raw_map)
+
+    # Per-component contributions
+    # Note: _physical_params sets BOTH N_{iso} and S_{iso}, and the intensity
+    # function checks N_{iso} first, so we must zero both to suppress a peak.
+    _plot_components = {}
+    for _iso in iso_list:
+        _iso_params = dict(physical)
+        for _other in iso_list:
+            if _other != _iso:
+                _iso_params[f"S_{_other}"] = 0.0
+                _iso_params[f"N_{_other}"] = 0.0
+        _iso_params["S_bkg"] = 0.0
+        _iso_density = spectral_intensity(centers, _iso_params, domain)
+        _plot_components[_iso] = width_lookup.scale(centers, _iso_density).copy()
+
+    # Background only
+    _bkg_params = dict(physical)
+    for _iso in iso_list:
+        _bkg_params[f"S_{_iso}"] = 0.0
+        _bkg_params[f"N_{_iso}"] = 0.0
+    _bkg_density = spectral_intensity(centers, _bkg_params, domain)
+    _plot_components["Background"] = width_lookup.scale(centers, _bkg_density).copy()
+
+    out["_plot_model_total"] = model_counts
+    out["_plot_components"] = _plot_components
+    out["_plot_centers"] = centers.copy()
+    out["_plot_hist"] = hist.copy()
+    out["_plot_edges"] = edges.copy()
+
     param_index = {name: i for i, name in enumerate(param_order)}
     out = _finalize_signal_params(out)
     return FitResult(
@@ -1157,6 +1819,7 @@ def fit_spectrum(
         param_index,
         counts=int(n_events),
         likelihood=likelihood_mode,
+        minos_errors=_minos_errors,
     )
 
 

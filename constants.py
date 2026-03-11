@@ -48,7 +48,9 @@ _safe_exp = safe_exp
 DEFAULT_NOMINAL_ADC = {
     "Po210": 1250,
     "Po218": 1400,
+    "Po216": 1587,
     "Po214": 1800,
+    "Po212": 2057,
 }
 
 # Default ADC centroids used when the configuration does not
@@ -61,7 +63,9 @@ DEFAULT_ADC_CENTROIDS = DEFAULT_NOMINAL_ADC.copy()
 DEFAULT_KNOWN_ENERGIES = {
     "Po210": 5.304,  # MeV
     "Po218": 6.002,  # MeV
+    "Po216": 6.778,  # MeV (thoron chain: Rn-220 → Po-216)
     "Po214": 7.687,  # MeV
+    "Po212": 8.784,  # MeV (thoron chain: Bi-212 → Po-212)
 }
 
 
@@ -98,12 +102,20 @@ PO210 = NuclideConst(
 RN222 = NuclideConst(
     half_life_s=float(_YAML_DEFAULTS.get("Rn222", {}).get("half_life_s", 3.8235 * 86400.0))
 )
+PO216 = NuclideConst(
+    half_life_s=float(_YAML_DEFAULTS.get("Po216", {}).get("half_life_s", 0.145))
+)
+PO212 = NuclideConst(
+    half_life_s=float(_YAML_DEFAULTS.get("Po212", {}).get("half_life_s", 2.99e-7))
+)
 
 
 _NUCLIDE_DEFAULTS = {
     "Po214": PO214,
+    "Po216": PO216,
     "Po218": PO218,
     "Po210": PO210,
+    "Po212": PO212,
     "Rn222": RN222,
 }
 

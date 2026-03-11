@@ -144,6 +144,10 @@ _CONFIG_KEY_RULES: dict[tuple[str, ...], tuple[_KeyRule, ...]] = {
         _KeyRule("tau_Po218_prior_sigma", "tau_po218_prior_sigma"),
         _KeyRule("tau_Po214_prior_mean", "tau_po214_prior_mean"),
         _KeyRule("tau_Po214_prior_sigma", "tau_po214_prior_sigma"),
+        _KeyRule("tau_Po216_prior_mean", "tau_po216_prior_mean"),
+        _KeyRule("tau_Po216_prior_sigma", "tau_po216_prior_sigma"),
+        _KeyRule("tau_Po212_prior_mean", "tau_po212_prior_mean"),
+        _KeyRule("tau_Po212_prior_sigma", "tau_po212_prior_sigma"),
     ),
     ("spectral_fit", "flags"): (
         _KeyRule("fix_F", "fix_f"),

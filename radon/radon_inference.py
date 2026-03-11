@@ -136,6 +136,8 @@ def _estimate_leak_rate(
     interval_dt: float,
     rn_decay_constant: float,
     initial_interval: bool = False,
+    sigma_mean_activity: float = 0.0,
+    sigma_start_activity: float = 0.0,
 ) -> dict[str, float | bool | str] | None:
     """Estimate leak rate from interval-averaged activity.
 
@@ -144,6 +146,10 @@ def _estimate_leak_rate(
     ``start_activity`` as the inventory at the interval start gives a leak-rate
     estimate that is substantially less sensitive to binning than differencing
     adjacent averages directly.
+
+    When *sigma_mean_activity* and/or *sigma_start_activity* are provided the
+    returned dictionary also contains ``"leak_rate_err_m3_s"`` computed via
+    first-order error propagation through the inventory-balance equation.
     """
 
     if (
@@ -174,8 +180,21 @@ def _estimate_leak_rate(
     if clipped_to_zero:
         method = f"{method}_clipped"
 
+    # --- uncertainty propagation (first-order Jacobian) ---
+    # L = lambda * (A_mean - A_start * w_mean) / (C_ambient * w_leak)
+    denom = ambient_activity * leak_weight
+    dL_dAmean = rn_decay_constant / denom
+    dL_dAstart = -rn_decay_constant * mean_weight / denom
+    sigma_leak = float(np.sqrt(
+        (dL_dAmean * sigma_mean_activity) ** 2
+        + (dL_dAstart * sigma_start_activity) ** 2
+    ))
+    # If leak rate was clipped to zero, the uncertainty is still meaningful
+    # (it tells you how uncertain the "zero" is).
+
     return {
         "leak_rate_m3_s": leak_rate_m3_s,
+        "leak_rate_err_m3_s": sigma_leak,
         "leak_rate_raw_m3_s": float(leak_rate_raw),
         "inventory_equiv_m3": float(mean_activity / ambient_activity),
         "mean_activity_bq": float(mean_activity),
@@ -286,6 +305,7 @@ def run_radon_inference(
         dt = bin_entry.dt
         iso_activity = {}
         weighted_sum = 0.0
+        weighted_var = 0.0  # variance accumulator for uncertainty
         contributing_isotopes = []
         for iso in available_isotopes:
             counts = bin_entry.counts.get(iso)
@@ -295,21 +315,27 @@ def run_radon_inference(
             if eff <= 0:
                 continue
             activity = counts / (eff * dt)
+            # Poisson uncertainty: sigma_activity = sqrt(counts) / (eff * dt)
+            sigma_activity = float(np.sqrt(max(counts, 0.0))) / (eff * dt)
             if chain_correction in ("equilibrium", "assume_equilibrium"):
                 pass  # placeholder for future correction logic
             iso_activity[iso] = activity
-            weighted_sum += weights.get(iso, 0.0) * activity
+            w = weights.get(iso, 0.0)
+            weighted_sum += w * activity
+            weighted_var += (w * sigma_activity) ** 2
             contributing_isotopes.append(iso)
 
         if not contributing_isotopes:
             continue
 
         radon_bq = weighted_sum / overall_eff
+        radon_bq_err = float(np.sqrt(weighted_var)) / overall_eff
         current_t = float(bin_entry.t)
         rn_entry = {
             "t": current_t,
             "dt": dt,
             "rn_bq": radon_bq,
+            "rn_bq_err": radon_bq_err,
             "source": contributing_isotopes[0]
             if len(contributing_isotopes) == 1
             else "weighted",
@@ -323,9 +349,12 @@ def run_radon_inference(
         )
 
     previous_end_activity: float | None = None
+    previous_end_sigma: float = 0.0
+    cumulative_volume_var = 0.0  # running variance for cumulative uncertainty
     for rn_entry in rn_series:
         current_t = float(rn_entry["t"])
         mean_activity = float(rn_entry["rn_bq"])
+        sigma_mean = float(rn_entry.get("rn_bq_err", 0.0))
         interval_dt = float(rn_entry["dt"])
         current_ambient = ambient_lookup.get(round(current_t, 6))
         if current_ambient is None or not np.isfinite(current_ambient) or current_ambient <= 0.0:
@@ -333,6 +362,7 @@ def run_radon_inference(
 
         initial_interval = previous_end_activity is None
         start_activity = mean_activity if initial_interval else float(previous_end_activity)
+        sigma_start = sigma_mean if initial_interval else previous_end_sigma
         leak_estimate = _estimate_leak_rate(
             start_activity=start_activity,
             mean_activity=mean_activity,
@@ -340,6 +370,8 @@ def run_radon_inference(
             interval_dt=interval_dt,
             rn_decay_constant=rn_decay_constant,
             initial_interval=initial_interval,
+            sigma_mean_activity=sigma_mean,
+            sigma_start_activity=sigma_start,
         )
         if leak_estimate is None:
             continue
@@ -348,15 +380,22 @@ def run_radon_inference(
             negative_leak_rate_intervals_clipped += 1
 
         leak_rate_m3_s = float(leak_estimate["leak_rate_m3_s"])
+        leak_rate_err = float(leak_estimate.get("leak_rate_err_m3_s", 0.0))
         delta_volume_m3 = leak_rate_m3_s * interval_dt
+        delta_volume_err = leak_rate_err * interval_dt
         cumulative_volume_m3 += delta_volume_m3
+        cumulative_volume_var += delta_volume_err ** 2
+        cumulative_volume_err = float(np.sqrt(cumulative_volume_var))
         volume_series.append(
             {
                 "t": current_t,
                 "dt": interval_dt,
                 "v_m3": delta_volume_m3,
+                "v_m3_err": delta_volume_err,
                 "v_lpm": leak_rate_m3_s * 60000.0,
+                "v_lpm_err": leak_rate_err * 60000.0,
                 "q_m3_s": leak_rate_m3_s,
+                "q_m3_s_err": leak_rate_err,
                 "meta": {
                     "ambient_rn_bq_m3": float(current_ambient),
                     "inventory_equiv_m3": float(leak_estimate["inventory_equiv_m3"]),
@@ -369,8 +408,17 @@ def run_radon_inference(
                 },
             }
         )
-        cumulative_series.append({"t": current_t, "v_m3_cum": cumulative_volume_m3})
+        cumulative_series.append({
+            "t": current_t,
+            "v_m3_cum": cumulative_volume_m3,
+            "v_m3_cum_err": cumulative_volume_err,
+        })
+        # Propagate end-activity uncertainty for next interval's start_activity.
+        # end = start * survival + L * ambient * response
+        # sigma_end ≈ sigma_start * survival  (leak rate contribution is correlated)
+        survival = float(np.exp(-rn_decay_constant * interval_dt))
         previous_end_activity = float(leak_estimate["end_activity_bq"])
+        previous_end_sigma = sigma_start * survival
 
     if negative_leak_rate_intervals_clipped:
         logger.info(

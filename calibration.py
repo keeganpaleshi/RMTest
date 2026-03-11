@@ -843,7 +843,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
     # radius (in ADC channels) to match found peaks to nominal guesses
     # 2024-03: renamed from ``peak_search_radius_adc`` to ``peak_search_radius``
     radius = cal_cfg["peak_search_radius"]
-    candidates = {iso: [] for iso in ("Po210", "Po218", "Po214")}
+    candidates = {iso: [] for iso in nominal_adc}
     peak_widths_found = props.get("widths", np.zeros_like(peaks))
     for iso, adc_guess in nominal_adc.items():
         req_width = None
@@ -855,12 +855,20 @@ def calibrate_run(adc_values, config, hist_bins=None):
             if abs(centers[idx] - adc_guess) <= radius:
                 candidates[iso].append(idx)
     # If multiple candidates per isotope, pick the one with highest histogram count:
+    # Core isotopes (Po210, Po218, Po214) are required; additional ones are optional.
+    _core_isos = {"Po210", "Po218", "Po214"}
     chosen_idx = {}
     for iso in candidates:
         if not candidates[iso]:
-            raise RuntimeError(
-                f"No candidate peak found for {iso} around ADC={nominal_adc[iso]}."
+            if iso in _core_isos:
+                raise RuntimeError(
+                    f"No candidate peak found for {iso} around ADC={nominal_adc[iso]}."
+                )
+            logging.getLogger(__name__).warning(
+                "No candidate peak found for %s around ADC=%s — skipping (optional isotope).",
+                iso, nominal_adc[iso],
             )
+            continue
         # pick the one with max(hist) among candidates
         best = max(candidates[iso], key=lambda i: hist[i])
         chosen_idx[iso] = best
@@ -1008,7 +1016,9 @@ def calibrate_run(adc_values, config, hist_bins=None):
 
     # Sanity check that fitted energies match expectations within tolerance
     tol = float(config.get("calibration", {}).get("sanity_tolerance_mev", 0.5))
-    for iso in ("Po210", "Po218", "Po214"):
+    for iso in peak_fits:
+        if iso not in energies:
+            continue
         diff = abs(peak_fits[iso]["centroid_mev"] - energies[iso])
         if diff > tol:
             raise RuntimeError(
@@ -1152,7 +1162,7 @@ def derive_calibration_constants(adc_values, config):
         energies = {**DEFAULT_KNOWN_ENERGIES, **cal_cfg.get("known_energies", {})}
         intercept = cal_cfg.get("intercept_mev", cal_cfg.get("intercept_MeV", 0.0))
         cfg.setdefault("calibration", {})["nominal_adc"] = {
-            iso: int(round((energies[iso] - intercept) / slope)) for iso in ("Po210", "Po218", "Po214")
+            iso: int(round((energies[iso] - intercept) / slope)) for iso in energies
         }
     try:
         return calibrate_run(adc_values, cfg)

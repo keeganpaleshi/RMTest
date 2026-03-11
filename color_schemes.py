@@ -6,31 +6,40 @@ COLOR_SCHEMES = {
         "Po214": "#d62728",
         "Po218": "#1f77b4",
         "Po210": "#2ca02c",
+        "Po216": "#e377c2",
+        "Po212": "#9467bd",
         "radon_activity": "#9467bd",
         "equivalent_air": "#2ca02c",
         "efficiency_bar": "#1f77b4",
         "fit": "#ff0000",
         "hist": "#808080",
+        "background": "#8c564b",
     },
     "colorblind": {
         "Po214": "#D55E00",  # orange-red
         "Po218": "#0072B2",  # blue
         "Po210": "#009E73",  # green
+        "Po216": "#56B4E9",  # sky blue
+        "Po212": "#CC79A7",  # pink
         "radon_activity": "#CC79A7",
         "equivalent_air": "#009E73",
         "efficiency_bar": "#0072B2",
         "fit": "#D55E00",
         "hist": "#808080",
+        "background": "#8c564b",
     },
     "grayscale": {
         "Po214": "#000000",
         "Po218": "#696969",
         "Po210": "#808080",
+        "Po216": "#505050",
+        "Po212": "#404040",
         "radon_activity": "#000000",
         "equivalent_air": "#808080",
         "efficiency_bar": "#696969",
         "fit": "#000000",
         "hist": "#d3d3d3",
+        "background": "#a0a0a0",
     },
 }
 

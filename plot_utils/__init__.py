@@ -473,6 +473,8 @@ def plot_time_series(
         ("Po214", "#d62728"),
         ("Po218", "#1f77b4"),
         ("Po210", "#2ca02c"),
+        ("Po216", "#e377c2"),
+        ("Po212", "#9467bd"),
     ):
         if iso_key in iso_list:
             colors[iso_key] = palette.get(iso_key, default)
@@ -837,6 +839,46 @@ def plot_spectrum(
 
     fit_params = _coerce_params(fit_vals)
 
+    # ------------------------------------------------------------------
+    # Try to use pre-computed model arrays from the fit engine.
+    # These include shelf, halo, b2, b3, and DNL corrections that the
+    # old hand-rolled reconstruction was missing entirely.
+    # ------------------------------------------------------------------
+    _stored_model = fit_params.get("_plot_model_total")
+    _stored_components = fit_params.get("_plot_components")
+    _stored_centers = fit_params.get("_plot_centers")
+    _stored_hist = fit_params.get("_plot_hist")
+    _stored_edges = fit_params.get("_plot_edges")
+
+    _have_stored = (
+        _stored_model is not None
+        and _stored_components is not None
+        and _stored_centers is not None
+    )
+
+    def _build_model_from_stored():
+        """Use pre-computed model arrays from the fitting engine."""
+        s_centers = np.asarray(_stored_centers, dtype=float)
+        s_model = np.asarray(_stored_model, dtype=float)
+
+        comps = OrderedDict()
+        # Dynamically iterate all isotope components + Background
+        _comp_keys = [k for k in _stored_components if k not in ("Total",)]
+        for key in _comp_keys:
+                arr = np.asarray(_stored_components[key], dtype=float)
+                if fit_window is not None:
+                    mask = (s_centers >= fit_window[0]) & (s_centers <= fit_window[1])
+                    arr = arr.astype(float, copy=True)
+                    arr[~mask] = np.nan
+                comps[key] = arr
+
+        total = s_model.copy()
+        if fit_window is not None:
+            mask = (s_centers >= fit_window[0]) & (s_centers <= fit_window[1])
+            total[~mask] = np.nan
+
+        return comps, total
+
     def _build_model_components():
         if not fit_params:
             return OrderedDict(), None
@@ -859,7 +901,11 @@ def plot_spectrum(
             F = 0.0 if "F" not in fit_params else fit_params.get("F", 0.0)
         sigma0 = float(sigma0 if sigma0 is not None else 0.0)
         F = float(F if F is not None else 0.0)
-        for iso in ("Po210", "Po218", "Po214"):
+        # Dynamically discover fitted isotopes from parameters
+        _fitted_isos = sorted(
+            k[2:] for k in fit_params if k.startswith("mu_") and f"S_{k[2:]}" in fit_params
+        )
+        for iso in _fitted_isos:
             mu = fit_params.get(f"mu_{iso}")
             amp = fit_params.get(f"S_{iso}")
             if mu is None or amp is None:
@@ -928,7 +974,15 @@ def plot_spectrum(
 
         return comps, total
 
-    model_components, model_total = _build_model_components()
+    if _have_stored:
+        model_components, model_total = _build_model_from_stored()
+        # Use stored bins for plotting to ensure consistency
+        hist = np.asarray(_stored_hist, dtype=float) if _stored_hist is not None else hist
+        centers = np.asarray(_stored_centers, dtype=float)
+        edges_arr = np.asarray(_stored_edges, dtype=float) if _stored_edges is not None else edges
+        width = np.diff(edges_arr)
+    else:
+        model_components, model_total = _build_model_components()
     show_res = model_total is not None
 
     if show_res:
@@ -944,24 +998,34 @@ def plot_spectrum(
     hist_color = palette.get("hist", "#808080")
     ax_main.bar(centers, hist, width=width, color=hist_color, alpha=0.7, label="Data")
 
-    # If an explicit Po-210 window is provided, focus the x-axis on that region
-    win_p210 = None
-    if config is not None:
-        win_p210 = config.get("window_po210")
-    if win_p210 is not None:
-        lo, hi = win_p210
-        ax_main.set_xlim(lo, hi)
+    # Zoom x-axis to the fit energy range (with padding) so we can see detail.
+    # Fall back to Po-210 window if no fit window, or full range otherwise.
+    _xlim_set = False
+    if fit_window is not None:
+        _pad = 0.3 * (fit_window[1] - fit_window[0])
+        ax_main.set_xlim(fit_window[0] - _pad * 0.1, fit_window[1] + _pad * 0.1)
+        _xlim_set = True
+    if not _xlim_set:
+        win_p210 = None
+        if config is not None:
+            win_p210 = config.get("window_po210")
+        if win_p210 is not None:
+            lo, hi = win_p210
+            ax_main.set_xlim(lo, hi)
 
     if model_total is not None:
-        component_colors = {
-            "Po210": palette.get("Po210", "#2ca02c"),
-            "Po218": palette.get("Po218", "#1f77b4"),
-            "Po214": palette.get("Po214", "#d62728"),
-            "Background": palette.get("background", "#8c564b"),
-            "Total": palette.get("fit", "#ff0000"),
+        # Build component colors dynamically from whatever isotopes are present
+        _default_iso_colors = {
+            "Po210": "#2ca02c", "Po218": "#1f77b4", "Po216": "#e377c2",
+            "Po214": "#d62728", "Po212": "#9467bd", "Background": "#8c564b",
         }
+        component_colors = {
+            k: palette.get(k, _default_iso_colors.get(k, "#000000"))
+            for k in list(model_components.keys()) + ["Total"]
+        }
+        component_colors["Total"] = palette.get("fit", "#ff0000")
 
-        for key in ("Po210", "Po218", "Po214", "Background"):
+        for key in model_components:
             if key in model_components:
                 ax_main.plot(
                     centers,
@@ -982,19 +1046,73 @@ def plot_spectrum(
 
         if ax_res is not None:
             residuals = hist.astype(float) - model_total
+            # Use normalized residuals (pulls) to show model quality
+            # independent of bin counts (ADC DNL dominates raw residuals)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                pulls = np.where(
+                    model_total > 5,
+                    residuals / np.sqrt(np.maximum(model_total, 1.0)),
+                    0.0,
+                )
             if fit_window is not None:
                 fit_mask = (centers >= fit_window[0]) & (centers <= fit_window[1])
-                residuals = residuals.astype(float, copy=False)
-                residuals[~fit_mask] = np.nan
+                pulls = pulls.astype(float, copy=False)
+                pulls[~fit_mask] = np.nan
+
+            # Colour pulls by magnitude: green (< 1σ), orange (1-2σ), red (> 2σ)
+            _abs_p = np.abs(pulls)
+            _p_colors = np.where(
+                np.isnan(pulls), "#ffffff",
+                np.where(_abs_p <= 1.0, "#4daf4a",
+                    np.where(_abs_p <= 2.0, "#ff7f00", "#e41a1c"))
+            )
             ax_res.bar(
                 centers,
-                residuals,
+                pulls,
                 width=width,
-                color=hist_color,
+                color=_p_colors,
                 alpha=0.7,
+                linewidth=0,
             )
+            # ±1σ and ±2σ reference bands
+            ax_res.axhspan(-1, 1, color="#4daf4a", alpha=0.06)
+            ax_res.axhspan(-2, -1, color="#ff7f00", alpha=0.04)
+            ax_res.axhspan(1, 2, color="#ff7f00", alpha=0.04)
             ax_res.axhline(0.0, color="#000000", lw=1)
-            ax_res.set_ylabel("Residuals [counts]")
+            ax_res.axhline(2.0, color="#e41a1c", lw=0.7, ls="--", alpha=0.6)
+            ax_res.axhline(-2.0, color="#e41a1c", lw=0.7, ls="--", alpha=0.6)
+            ax_res.set_ylabel("Pull (σ)")
+            ax_res.set_ylim(-5, 5)
+
+            # Annotate fit statistics
+            _valid_pulls = pulls[np.isfinite(pulls)]
+            if _valid_pulls.size > 0:
+                _chi2 = fit_params.get("chi2")
+                _chi2_ndf = fit_params.get("chi2_ndf")
+                _stat_parts = []
+                if _chi2_ndf is not None:
+                    _chi2_ndf_eff = fit_params.get("chi2_ndf_effective")
+                    if _chi2_ndf_eff is not None:
+                        _stat_parts.append(
+                            f"χ²/ndf = {float(_chi2_ndf):.2f}"
+                            f" (eff: {float(_chi2_ndf_eff):.2f})"
+                        )
+                    else:
+                        _stat_parts.append(f"χ²/ndf = {float(_chi2_ndf):.2f}")
+                _stat_parts.append(f"⟨pull⟩ = {_valid_pulls.mean():.2f}")
+                _stat_parts.append(f"σ(pull) = {_valid_pulls.std():.2f}")
+                _n_gt2 = int(np.sum(np.abs(_valid_pulls) > 2))
+                _frac_gt2 = 100.0 * _n_gt2 / _valid_pulls.size
+                _stat_parts.append(f"|pull|>2σ: {_frac_gt2:.1f}%")
+                ax_res.text(
+                    0.01, 0.97,
+                    "  ".join(_stat_parts),
+                    transform=ax_res.transAxes,
+                    fontsize=7,
+                    va="top",
+                    ha="left",
+                    bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8),
+                )
 
     ax_main.set_ylabel("Counts per bin")
     ax_main.set_title("Energy Spectrum")
@@ -1010,7 +1128,268 @@ def plot_spectrum(
         fig.savefig(p, dpi=300)
     plt.close(fig)
 
+    # Generate a log-scale version for tail/background visibility
+    if model_total is not None and _have_stored:
+        _out_path = Path(out_png) if isinstance(out_png, (str, Path)) else Path(str(out_png))
+        _log_name = _out_path.stem + "_log" + _out_path.suffix
+        _log_path = _out_path.parent / _log_name
+        try:
+            _fig_log, (_ax_log, _ax_log_res) = plt.subplots(
+                2, 1, sharex=True, figsize=(10, 6),
+                gridspec_kw={"height_ratios": [3, 1]},
+            )
+            # Data as scatter points (better for log scale)
+            _pos = hist > 0
+            _ax_log.scatter(
+                centers[_pos], hist[_pos],
+                s=1.5, c="#808080", alpha=0.5, label="Data", zorder=1,
+            )
+            # Model components (dynamic iteration)
+            for key in model_components:
+                    _c = model_components[key]
+                    _c_pos = np.asarray(_c, dtype=float) > 0.5
+                    if np.any(_c_pos):
+                        _ax_log.plot(
+                            centers[_c_pos],
+                            np.asarray(_c, dtype=float)[_c_pos],
+                            color=component_colors.get(key, "#000000"),
+                            lw=1.2, alpha=0.8, label=key,
+                        )
+            if show_total_model:
+                _mt_pos = model_total > 0.5
+                _ax_log.plot(
+                    centers[_mt_pos], model_total[_mt_pos],
+                    color=component_colors["Total"], lw=1.5, label="Total model",
+                )
+            _ax_log.set_yscale("log")
+            _ax_log.set_ylim(1, hist.max() * 2)
+            _ax_log.set_ylabel("Counts per bin")
+            _ax_log.set_title("Energy Spectrum (log scale)")
+            _ax_log.legend(fontsize="small", ncol=2)
+            if fit_window is not None:
+                _ax_log.set_xlim(fit_window[0] - 0.03, fit_window[1] + 0.03)
+
+            # Pulls in lower panel
+            _valid_mask = np.isfinite(pulls)
+            _abs_p_log = np.abs(pulls)
+            _colors_log = np.where(
+                ~_valid_mask, "#ffffff",
+                np.where(_abs_p_log <= 1.0, "#4daf4a",
+                    np.where(_abs_p_log <= 2.0, "#ff7f00", "#e41a1c"))
+            )
+            _ax_log_res.bar(
+                centers, np.where(_valid_mask, pulls, 0),
+                width=width, color=_colors_log, alpha=0.7, linewidth=0,
+            )
+            _ax_log_res.axhspan(-1, 1, color="#4daf4a", alpha=0.06)
+            _ax_log_res.axhline(0, color="k", lw=1)
+            _ax_log_res.axhline(2, color="#e41a1c", lw=0.7, ls="--", alpha=0.6)
+            _ax_log_res.axhline(-2, color="#e41a1c", lw=0.7, ls="--", alpha=0.6)
+            _ax_log_res.set_ylabel("Pull (σ)")
+            _ax_log_res.set_ylim(-5, 5)
+            _ax_log_res.set_xlabel("Energy [MeV]")
+
+            _fig_log.tight_layout()
+            _log_targets = get_targets(config, str(_log_path))
+            for _p in _log_targets.values():
+                _fig_log.savefig(_p, dpi=300)
+            plt.close(_fig_log)
+        except Exception:
+            pass  # non-critical: don't fail if log plot has issues
+
     return ax_main
+
+
+def plot_spectrum_dnl_corrected(
+    fit_vals=None,
+    out_png="spectrum_dnl_corrected.png",
+    config=None,
+    *,
+    fit_flags=None,
+):
+    """Plot the energy spectrum with DNL correction applied to the data.
+
+    Divides both histogram counts and model prediction by the per-bin DNL
+    correction factors, removing ADC differential non-linearity oscillations
+    and revealing the underlying physical spectrum shape.
+
+    Parameters
+    ----------
+    fit_vals : Mapping or FitResult-like
+        Fit output containing ``_plot_*`` arrays and ``_dnl`` metadata.
+    out_png : str
+        Output path.
+    config : dict, optional
+        Plotting configuration.
+    fit_flags : Mapping, optional
+        Flags from the fit (used for fit_energy_range).
+    """
+    if fit_vals is None:
+        return
+
+    if isinstance(fit_vals, Mapping):
+        params = dict(fit_vals)
+    else:
+        params = dict(getattr(fit_vals, "params", {}) or {})
+
+    dnl_meta = params.get("_dnl", {})
+    dnl_factors = dnl_meta.get("dnl_factors")
+    if dnl_factors is None or len(dnl_factors) == 0:
+        return  # no DNL correction to apply
+
+    centers = params.get("_plot_centers")
+    hist = params.get("_plot_hist")
+    model_total = params.get("_plot_model_total")
+    components = params.get("_plot_components", {})
+    edges = params.get("_plot_edges")
+
+    if centers is None or hist is None or model_total is None:
+        return
+
+    centers = np.asarray(centers, dtype=float)
+    hist = np.asarray(hist, dtype=float)
+    model_total = np.asarray(model_total, dtype=float)
+    dnl = np.asarray(dnl_factors, dtype=float)
+    edges = np.asarray(edges, dtype=float) if edges is not None else None
+    width = np.diff(edges) if edges is not None else np.ones_like(centers) * 0.013
+
+    if len(dnl) != len(hist):
+        return  # size mismatch
+
+    # Correct for DNL: divide out the per-bin efficiency factor
+    # Where DNL is very small, skip to avoid division artefacts
+    safe = dnl > 0.3
+    hist_corr = np.where(safe, hist / dnl, hist)
+    model_corr = np.where(safe, model_total / dnl, model_total)
+    comp_corr = {}
+    for key, arr in components.items():
+        arr_np = np.asarray(arr, dtype=float)
+        comp_corr[key] = np.where(safe, arr_np / dnl, arr_np)
+
+    # Determine fit window
+    flags = dict(fit_flags) if isinstance(fit_flags, Mapping) else {}
+    fit_window = None
+    fw_cfg = flags.get("fit_energy_range")
+    if fw_cfg is not None:
+        try:
+            fit_lo, fit_hi = float(fw_cfg[0]), float(fw_cfg[1])
+            if np.isfinite(fit_lo) and np.isfinite(fit_hi) and fit_hi > fit_lo:
+                fit_window = (fit_lo, fit_hi)
+        except (TypeError, ValueError, IndexError):
+            pass
+
+    palette_name = str(config.get("palette", "default")) if config else "default"
+    palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
+    # Build component colors dynamically from whatever isotopes are present
+    _default_iso_colors = {
+        "Po210": "#2ca02c", "Po218": "#1f77b4", "Po214": "#d62728",
+        "Po212": "#9467bd", "Background": "#8c564b",
+    }
+    component_colors = {
+        k: palette.get(k, _default_iso_colors.get(k, "#000000"))
+        for k in list(comp_corr.keys()) + ["Total"]
+    }
+    component_colors["Total"] = palette.get("fit", "#ff0000")
+
+    # --- Figure: 3-panel (linear, log, pulls) ---
+    fig, (ax_lin, ax_log, ax_res) = plt.subplots(
+        3, 1, sharex=True, figsize=(10, 8),
+        gridspec_kw={"height_ratios": [2, 2, 1]},
+    )
+
+    # Panel 1: Linear scale
+    ax_lin.bar(
+        centers, hist_corr, width=width,
+        color=palette.get("hist", "#808080"), alpha=0.5,
+        label="Data (DNL-corrected)", linewidth=0,
+    )
+    for key in comp_corr:
+        ax_lin.plot(
+            centers, comp_corr[key],
+            color=component_colors.get(key, "#000000"),
+            lw=1.2, label=key,
+        )
+    ax_lin.plot(
+        centers, model_corr,
+        color=component_colors["Total"], lw=1.8,
+        label="Total model", alpha=0.8,
+    )
+    ax_lin.set_ylabel("Counts / bin (DNL-corrected)")
+    ax_lin.set_title("Energy Spectrum — DNL-Corrected", fontweight="bold")
+    ax_lin.legend(fontsize=7, ncol=3, loc="upper right")
+    if fit_window:
+        ax_lin.set_xlim(fit_window[0] - 0.03, fit_window[1] + 0.03)
+
+    # Panel 2: Log scale
+    pos = hist_corr > 0
+    ax_log.scatter(
+        centers[pos], hist_corr[pos],
+        s=1.5, c="#808080", alpha=0.5, label="Data", zorder=1,
+    )
+    for key in comp_corr:
+            c_arr = comp_corr[key]
+            c_pos = c_arr > 0.5
+            if np.any(c_pos):
+                ax_log.plot(
+                    centers[c_pos], c_arr[c_pos],
+                    color=component_colors.get(key, "#000000"),
+                    lw=1.2, alpha=0.8, label=key,
+                )
+    mt_pos = model_corr > 0.5
+    ax_log.plot(
+        centers[mt_pos], model_corr[mt_pos],
+        color=component_colors["Total"], lw=1.5, label="Total model",
+    )
+    ax_log.set_yscale("log")
+    ax_log.set_ylim(1, hist_corr.max() * 2)
+    ax_log.set_ylabel("Counts / bin (DNL-corrected, log)")
+    ax_log.legend(fontsize=7, ncol=3, loc="upper right")
+
+    # Panel 3: Pulls (same as original — DNL cancels in the ratio)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        pulls = np.where(
+            model_total > 5,
+            (hist - model_total) / np.sqrt(np.maximum(model_total, 1.0)),
+            0.0,
+        )
+    if fit_window:
+        fm = (centers >= fit_window[0]) & (centers <= fit_window[1])
+        pulls = np.where(fm, pulls, np.nan)
+
+    valid_mask = np.isfinite(pulls)
+    abs_p = np.abs(pulls)
+    p_colors = np.where(
+        ~valid_mask, "#ffffff",
+        np.where(abs_p <= 1.0, "#4daf4a",
+            np.where(abs_p <= 2.0, "#ff7f00", "#e41a1c"))
+    )
+    ax_res.bar(
+        centers, np.where(valid_mask, pulls, 0),
+        width=width, color=p_colors, alpha=0.7, linewidth=0,
+    )
+    ax_res.axhspan(-1, 1, color="#4daf4a", alpha=0.06)
+    ax_res.axhline(0, color="k", lw=1)
+    ax_res.axhline(2, color="#e41a1c", lw=0.7, ls="--", alpha=0.6)
+    ax_res.axhline(-2, color="#e41a1c", lw=0.7, ls="--", alpha=0.6)
+    ax_res.set_ylabel("Pull (σ)")
+    ax_res.set_ylim(-5, 5)
+    ax_res.set_xlabel("Energy [MeV]")
+
+    # Annotate with DNL info
+    ax_lin.text(
+        0.01, 0.97,
+        f"DNL correction: {dnl_meta.get('dnl_iterations', '?')} iterations, "
+        f"window={dnl_meta.get('dnl_smooth_window', '?')}, "
+        f"range=[{dnl.min():.3f}, {dnl.max():.3f}]",
+        transform=ax_lin.transAxes, fontsize=7, va="top",
+        bbox=dict(boxstyle="round,pad=0.3", fc="lightyellow", ec="gray", alpha=0.8),
+    )
+
+    fig.tight_layout()
+    targets = get_targets(config, out_png)
+    for p in targets.values():
+        fig.savefig(p, dpi=300)
+    plt.close(fig)
 
 
 def _elapsed_hours(times_mpl: np.ndarray) -> np.ndarray:
@@ -1583,7 +1962,7 @@ def plot_spectrum_comparison(
 
     roi_diff = {}
     if config is not None:
-        for iso in ("Po210", "Po218", "Po214"):
+        for iso in ("Po210", "Po218", "Po216", "Po214", "Po212"):
             win = config.get(f"window_{iso.lower()}")
             if win is None:
                 continue

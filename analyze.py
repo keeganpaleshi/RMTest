@@ -102,7 +102,9 @@ from constants import (
     DEFAULT_NOISE_CUTOFF,
     NEGATIVE_ACTIVITY_CLAMP_UNCERTAINTY_BQ,
     PO210,
+    PO212,
     PO214,
+    PO216,
     PO218,
     RN222,
     DEFAULT_ADC_CENTROIDS,
@@ -111,7 +113,9 @@ from constants import (
 
 NUCLIDES = {
     "Po210": PO210,
+    "Po212": PO212,
     "Po214": PO214,
+    "Po216": PO216,
     "Po218": PO218,
     "Rn222": RN222,
 }
@@ -434,6 +438,7 @@ def _save_stub_spectrum_plot(
 
 from plot_utils import (
     plot_spectrum,
+    plot_spectrum_dnl_corrected,
     plot_time_series,
     plot_equivalent_air,
     plot_radon_activity_full,
@@ -3101,7 +3106,6 @@ def main(argv=None):
                     method=spectral_cfg.get("peak_search_method", "prominence"),
                     cwt_widths=spectral_cfg.get("peak_search_cwt_widths"),
                 )
-
                 # Build priors for the unbinned spectrum fit.
                 priors_spec = {}
                 sigma_prior_source = spectral_cfg.get("sigma_e_prior_source", spectral_cfg.get("sigma_E_prior_source"))
@@ -3194,6 +3198,60 @@ def main(argv=None):
                             spectral_cfg.get(f"tau_{peak}_prior_sigma"),
                         )
 
+                # Per-isotope energy resolution priors
+                per_iso_sigma = spectral_cfg.get("per_isotope_sigma", {})
+                for peak in adc_peaks.keys():
+                    if peak in per_iso_sigma:
+                        sig_prior = per_iso_sigma[peak]
+                        if isinstance(sig_prior, (list, tuple)) and len(sig_prior) == 2:
+                            priors_spec[f"sigma_{peak}"] = (float(sig_prior[0]), float(sig_prior[1]))
+
+                # Low-energy shelf fraction priors
+                use_shelf_cfg = spectral_cfg.get("use_shelf", {})
+                for peak in adc_peaks.keys():
+                    if isinstance(use_shelf_cfg, dict) and use_shelf_cfg.get(peak, False):
+                        shelf_key = f"f_shelf_{peak}_prior"
+                        shelf_prior = spectral_cfg.get(shelf_key)
+                        if shelf_prior is not None and isinstance(shelf_prior, (list, tuple)):
+                            priors_spec[f"f_shelf_{peak}"] = (float(shelf_prior[0]), float(shelf_prior[1]))
+                        else:
+                            # Default shelf prior: small fraction
+                            priors_spec[f"f_shelf_{peak}"] = (0.02, 0.05)
+                        # Separate shelf width prior (optional)
+                        shelf_sigma_key = f"sigma_shelf_{peak}_prior"
+                        shelf_sigma_prior = spectral_cfg.get(shelf_sigma_key)
+                        if shelf_sigma_prior is not None and isinstance(shelf_sigma_prior, (list, tuple)):
+                            priors_spec[f"sigma_shelf_{peak}"] = (float(shelf_sigma_prior[0]), float(shelf_sigma_prior[1]))
+
+                # Halo (broad component) fraction and width priors
+                use_halo_cfg = spectral_cfg.get("use_halo", {})
+                for peak in adc_peaks.keys():
+                    if isinstance(use_halo_cfg, dict) and use_halo_cfg.get(peak, False):
+                        halo_key = f"f_halo_{peak}_prior"
+                        halo_prior = spectral_cfg.get(halo_key)
+                        if halo_prior is not None and isinstance(halo_prior, (list, tuple)):
+                            priors_spec[f"f_halo_{peak}"] = (float(halo_prior[0]), float(halo_prior[1]))
+                        else:
+                            # Default halo prior: moderate fraction
+                            priors_spec[f"f_halo_{peak}"] = (0.10, 0.10)
+                        # Halo width prior
+                        halo_sigma_key = f"sigma_halo_{peak}_prior"
+                        halo_sigma_prior = spectral_cfg.get(halo_sigma_key)
+                        if halo_sigma_prior is not None and isinstance(halo_sigma_prior, (list, tuple)):
+                            priors_spec[f"sigma_halo_{peak}"] = (float(halo_sigma_prior[0]), float(halo_sigma_prior[1]))
+                        else:
+                            # Default: 2x the peak sigma
+                            peak_sig = per_iso_sigma.get(peak)
+                            if peak_sig is not None and isinstance(peak_sig, (list, tuple)):
+                                priors_spec[f"sigma_halo_{peak}"] = (float(peak_sig[0]) * 2.0, float(peak_sig[1]) * 2.0)
+                            else:
+                                priors_spec[f"sigma_halo_{peak}"] = (0.25, 0.10)
+                        # Halo EMG tail prior (decoupled from core tau)
+                        halo_tau_key = f"tau_halo_{peak}_prior"
+                        halo_tau_prior = spectral_cfg.get(halo_tau_key)
+                        if halo_tau_prior is not None and isinstance(halo_tau_prior, (list, tuple)):
+                            priors_spec[f"tau_halo_{peak}"] = (float(halo_tau_prior[0]), float(halo_tau_prior[1]))
+
                 # Continuum priors
                 bkg_mode = str(spectral_cfg.get("bkg_mode", "manual")).lower()
                 if bkg_mode == "auto":
@@ -3227,6 +3285,16 @@ def main(argv=None):
                 else:
                     priors_spec["b0"] = tuple(spectral_cfg.get("b0_prior"))
                     priors_spec["b1"] = tuple(spectral_cfg.get("b1_prior"))
+
+                # Log-quadratic background curvature term (optional)
+                b2_prior = spectral_cfg.get("b2_prior")
+                if b2_prior is not None and isinstance(b2_prior, (list, tuple)):
+                    priors_spec["b2"] = (float(b2_prior[0]), float(b2_prior[1]))
+
+                # Log-cubic background term (optional)
+                b3_prior = spectral_cfg.get("b3_prior")
+                if b3_prior is not None and isinstance(b3_prior, (list, tuple)):
+                    priors_spec["b3"] = (float(b3_prior[0]), float(b3_prior[1]))
 
                 # Flags controlling the spectral fit
                 spec_flags = spectral_cfg.get("flags", {}).copy()
@@ -3356,6 +3424,267 @@ def main(argv=None):
                 except Exception as e:
                     logger.warning("Spectral fit failed -> %s", e)
                     spectrum_results = {}
+
+                # ── Split-half overfitting validation ──────────────────
+                split_half_result = None
+                if (
+                    spectral_cfg.get("split_half_validation", False)
+                    and isinstance(spectrum_results, FitResult)
+                ):
+                    try:
+                        # Odd/even event split: statistically independent samples
+                        # from the same underlying spectrum, free of temporal drift.
+                        _idx = np.arange(len(df_spectrum))
+                        _mask_a = (_idx % 2 == 0)
+                        _mask_b = ~_mask_a
+                        _E_a = df_spectrum.iloc[_mask_a]["energy_MeV"].to_numpy(dtype=float)
+                        _E_b = df_spectrum.iloc[_mask_b]["energy_MeV"].to_numpy(dtype=float)
+                        logger.info(
+                            "Split-half validation: %d + %d events (odd/even split)",
+                            _E_a.size, _E_b.size,
+                        )
+                        _sh_kwargs = {
+                            "priors": priors_spec,
+                            "flags": spec_flags,
+                            "bins": fit_kwargs.get("bins"),
+                            "bin_edges": fit_kwargs.get("bin_edges"),
+                            "bounds": fit_kwargs.get("bounds"),
+                            "unbinned": fit_kwargs.get("unbinned", False),
+                            "strict": False,
+                        }
+                        _fit_a = fit_spectrum(_E_a, **_sh_kwargs)
+                        _fit_b = fit_spectrum(_E_b, **_sh_kwargs)
+                        _pa = _fit_a.params if isinstance(_fit_a, FitResult) else {}
+                        _pb = _fit_b.params if isinstance(_fit_b, FitResult) else {}
+                        # Compute z-scores for free parameters.
+                        # Categorise: amplitude (S_*) and position (mu_*) params
+                        # are expected to differ between time halves (activity and
+                        # calibration drift).  Shape params (sigma, tau, f_*, b*)
+                        # should be stable — these are the overfitting indicators.
+                        _sh_params = []
+                        _skip = {
+                            "_plot_", "_dnl", "fit_valid", "likelihood_path",
+                            "aic", "nll", "chi2", "ndf", "n_free", "cov_",
+                        }
+                        for _k in sorted(_pa.keys()):
+                            if _k.startswith("d") or _k.startswith("_") or _k.startswith("F"):
+                                continue
+                            if any(_k.startswith(s) for s in _skip):
+                                continue
+                            _va = _pa.get(_k)
+                            _vb = _pb.get(_k)
+                            _ea = _pa.get("d" + _k, 0.0)
+                            _eb = _pb.get("d" + _k, 0.0)
+                            if not all(isinstance(x, (int, float)) for x in [_va, _vb, _ea, _eb]):
+                                continue
+                            if _ea <= 0 and _eb <= 0:
+                                continue  # both fixed
+                            _denom = np.sqrt(_ea**2 + _eb**2) if (_ea**2 + _eb**2) > 0 else 1.0
+                            _z = (_va - _vb) / _denom
+                            if _k.startswith("S_") or _k.startswith("s_"):
+                                _cat = "amplitude"
+                            elif _k.startswith("mu_"):
+                                _cat = "position"
+                            else:
+                                _cat = "shape"
+                            _sh_params.append({
+                                "name": _k,
+                                "category": _cat,
+                                "value_A": round(float(_va), 8),
+                                "value_B": round(float(_vb), 8),
+                                "error_A": round(float(_ea), 8),
+                                "error_B": round(float(_eb), 8),
+                                "z_score": round(float(_z), 4),
+                            })
+                        _z_all = [abs(p["z_score"]) for p in _sh_params]
+                        _z_shape = [
+                            abs(p["z_score"]) for p in _sh_params
+                            if p["category"] == "shape"
+                        ]
+                        split_half_result = {
+                            "n_events_A": int(_E_a.size),
+                            "n_events_B": int(_E_b.size),
+                            "chi2_ndf_A": round(float(_pa.get("chi2_ndf", 0)), 4),
+                            "chi2_ndf_B": round(float(_pb.get("chi2_ndf", 0)), 4),
+                            "parameters": _sh_params,
+                            "max_z_all": round(max(_z_all) if _z_all else 0.0, 4),
+                            "max_z_shape": round(
+                                max(_z_shape) if _z_shape else 0.0, 4
+                            ),
+                            "mean_abs_z_shape": round(
+                                float(np.mean(_z_shape)) if _z_shape else 0.0, 4
+                            ),
+                            "n_shape_z_gt_2": sum(1 for z in _z_shape if z > 2.0),
+                            "n_shape_z_gt_3": sum(1 for z in _z_shape if z > 3.0),
+                            "pass": all(z < 3.0 for z in _z_shape),
+                        }
+                        logger.info(
+                            "Split-half validation (shape params): "
+                            "max|z|=%.2f, mean|z|=%.2f, |z|>2: %d, |z|>3: %d -> %s",
+                            split_half_result["max_z_shape"],
+                            split_half_result["mean_abs_z_shape"],
+                            split_half_result["n_shape_z_gt_2"],
+                            split_half_result["n_shape_z_gt_3"],
+                            "PASS" if split_half_result["pass"] else "WARN",
+                        )
+                    except Exception as e:
+                        logger.warning("Split-half validation failed: %s", e)
+
+                # ── Model complexity comparison (AIC/BIC scan) ─────────
+                model_comparison_result = None
+                if (
+                    spectral_cfg.get("split_half_validation", False)
+                    and isinstance(spectrum_results, FitResult)
+                ):
+                    try:
+                        _base_params = spectrum_results.params
+                        _base_nll = float(_base_params.get("nll", 0.0))
+                        _base_aic = float(_base_params.get("aic", 0.0))
+                        _base_bic = float(_base_params.get("bic", 0.0))
+                        _base_aicc = float(_base_params.get("aicc", 0.0))
+                        _base_chi2 = float(_base_params.get("chi2", 0.0))
+                        _base_ndf = int(_base_params.get("ndf", 0))
+                        _base_nfree = int(_base_params.get("n_free_params", 0))
+
+                        # Identify which shape parameters are currently FREE
+                        # (i.e., not fixed by a fix_* flag).
+                        _candidate_fixes = [
+                            ("tau_Po210", "fix_tau_Po210",
+                             "Fix EMG tail (Po210)"),
+                            ("f_halo_Po210", "fix_f_halo_Po210",
+                             "Fix halo fraction (Po210)"),
+                            ("f_shelf_Po214", "fix_f_shelf_Po214",
+                             "Fix shelf fraction (Po214)"),
+                            ("f_halo_Po214", "fix_f_halo_Po214",
+                             "Fix halo fraction (Po214)"),
+                        ]
+                        _reduced_models = []
+                        for _param, _flag, _desc in _candidate_fixes:
+                            if spec_flags.get(_flag, False):
+                                continue  # already fixed
+                            _flags_red = spec_flags.copy()
+                            _flags_red[_flag] = True
+                            try:
+                                _red_result = fit_spectrum(
+                                    E_all,
+                                    priors_spec,
+                                    flags=_flags_red,
+                                    bins=fit_kwargs.get("bins"),
+                                    bin_edges=fit_kwargs.get("bin_edges"),
+                                    bounds=fit_kwargs.get("bounds"),
+                                    unbinned=fit_kwargs.get("unbinned", False),
+                                    strict=False,
+                                )
+                                _rp = (
+                                    _red_result.params
+                                    if isinstance(_red_result, FitResult)
+                                    else _red_result
+                                )
+                                _reduced_models.append({
+                                    "description": _desc,
+                                    "fixed_param": _param,
+                                    "n_free": int(_rp.get("n_free_params", 0)),
+                                    "nll": float(_rp.get("nll", 0.0)),
+                                    "aic": float(_rp.get("aic", 0.0)),
+                                    "bic": float(_rp.get("bic", 0.0)),
+                                    "aicc": float(_rp.get("aicc", 0.0)),
+                                    "chi2": float(_rp.get("chi2", 0.0)),
+                                    "chi2_ndf": float(_rp.get("chi2_ndf", 0.0)),
+                                    "delta_aic": float(_rp.get("aic", 0.0)) - _base_aic,
+                                    "delta_bic": float(_rp.get("bic", 0.0)) - _base_bic,
+                                    "delta_chi2": (
+                                        float(_rp.get("chi2", 0.0)) - _base_chi2
+                                    ),
+                                })
+                            except Exception as _re:
+                                logger.warning(
+                                    "Model comparison: %s failed: %s",
+                                    _desc, _re,
+                                )
+
+                        # Also test minimal model: fix ALL shape params
+                        # except sigma (mu + sigma + S per isotope + b1 + S_bkg)
+                        _flags_min = spec_flags.copy()
+                        for _p, _f, _ in _candidate_fixes:
+                            _flags_min[_f] = True
+                        try:
+                            _min_result = fit_spectrum(
+                                E_all,
+                                priors_spec,
+                                flags=_flags_min,
+                                bins=fit_kwargs.get("bins"),
+                                bin_edges=fit_kwargs.get("bin_edges"),
+                                bounds=fit_kwargs.get("bounds"),
+                                unbinned=fit_kwargs.get("unbinned", False),
+                                strict=False,
+                            )
+                            _mp = (
+                                _min_result.params
+                                if isinstance(_min_result, FitResult)
+                                else _min_result
+                            )
+                            _reduced_models.append({
+                                "description": "Minimal (fix all shape params)",
+                                "fixed_param": "all_shape",
+                                "n_free": int(_mp.get("n_free_params", 0)),
+                                "nll": float(_mp.get("nll", 0.0)),
+                                "aic": float(_mp.get("aic", 0.0)),
+                                "bic": float(_mp.get("bic", 0.0)),
+                                "aicc": float(_mp.get("aicc", 0.0)),
+                                "chi2": float(_mp.get("chi2", 0.0)),
+                                "chi2_ndf": float(_mp.get("chi2_ndf", 0.0)),
+                                "delta_aic": float(_mp.get("aic", 0.0)) - _base_aic,
+                                "delta_bic": float(_mp.get("bic", 0.0)) - _base_bic,
+                                "delta_chi2": (
+                                    float(_mp.get("chi2", 0.0)) - _base_chi2
+                                ),
+                            })
+                        except Exception as _me:
+                            logger.warning(
+                                "Model comparison: minimal failed: %s", _me,
+                            )
+
+                        model_comparison_result = {
+                            "base_model": {
+                                "description": "Full model (current)",
+                                "n_free": _base_nfree,
+                                "nll": _base_nll,
+                                "aic": _base_aic,
+                                "bic": _base_bic,
+                                "aicc": _base_aicc,
+                                "chi2": _base_chi2,
+                                "chi2_ndf": round(
+                                    _base_chi2 / _base_ndf if _base_ndf else 0, 4
+                                ),
+                            },
+                            "reduced_models": _reduced_models,
+                            "conclusion": "full_model_preferred",
+                        }
+                        # If ANY reduced model has lower BIC, the full
+                        # model may be over-parameterised.
+                        for _rm in _reduced_models:
+                            if _rm["delta_bic"] < -2.0:
+                                model_comparison_result["conclusion"] = (
+                                    "simpler_model_preferred"
+                                )
+                                break
+
+                        logger.info(
+                            "Model complexity comparison: %d reduced models, "
+                            "conclusion=%s",
+                            len(_reduced_models),
+                            model_comparison_result["conclusion"],
+                        )
+                        for _rm in _reduced_models:
+                            logger.info(
+                                "  %-40s k=%d  ΔAIC=%+.1f  ΔBIC=%+.1f  "
+                                "Δχ²=%+.1f  χ²/NDF=%.3f",
+                                _rm["description"], _rm["n_free"],
+                                _rm["delta_aic"], _rm["delta_bic"],
+                                _rm["delta_chi2"], _rm["chi2_ndf"],
+                            )
+                    except Exception as e:
+                        logger.warning("Model complexity comparison failed: %s", e)
 
                 fit_vals = None
                 if isinstance(spec_fit_out, FitResult):
@@ -4627,12 +4956,56 @@ def main(argv=None):
             spec_dict["cov"] = spectrum_results.cov.tolist()
             spec_dict["ndf"] = spectrum_results.ndf
             spec_dict["likelihood_path"] = spectrum_results.params.get("likelihood_path")
+            # Add named correlation matrix for diagnostics
+            if spectrum_results.cov is not None and spectrum_results.param_index:
+                _pi = spectrum_results.param_index
+                _names = sorted(_pi, key=lambda k: _pi[k])
+                _cov = np.asarray(spectrum_results.cov, dtype=float)
+                _n = len(_names)
+                if _cov.shape == (_n, _n):
+                    _diag = np.sqrt(np.clip(np.diag(_cov), 1e-30, None))
+                    _corr = _cov / np.outer(_diag, _diag)
+                    np.clip(_corr, -1.0, 1.0, out=_corr)
+                    spec_dict["param_names"] = _names
+                    spec_dict["correlation_matrix"] = _corr.tolist()
+                    # Top correlations (|r| > 0.3) for quick inspection
+                    _top = []
+                    for _ci in range(_n):
+                        for _cj in range(_ci + 1, _n):
+                            if abs(_corr[_ci, _cj]) > 0.3:
+                                _top.append({
+                                    "p1": _names[_ci],
+                                    "p2": _names[_cj],
+                                    "r": round(float(_corr[_ci, _cj]), 4),
+                                })
+                    _top.sort(key=lambda x: -abs(x["r"]))
+                    spec_dict["strong_correlations"] = _top
         elif isinstance(spectrum_results, dict):
             spec_dict = spectrum_results
             spec_dict["likelihood_path"] = spectrum_results.get("likelihood_path")
         if peak_deviation:
             spec_dict["peak_deviation"] = peak_deviation
-    
+        if split_half_result is not None:
+            spec_dict["split_half_validation"] = split_half_result
+        if model_comparison_result is not None:
+            spec_dict["model_comparison"] = model_comparison_result
+
+        # ── Pull-based overfitting diagnostics ────────────────────────
+        _pull_diag_result = {}
+        try:
+            from plot_utils.diagnostics import compute_pull_diagnostics
+
+            _diag_src = (
+                spectrum_results.params
+                if isinstance(spectrum_results, FitResult)
+                else spec_dict
+            )
+            _pull_diag_result = compute_pull_diagnostics(_diag_src)
+            if _pull_diag_result:
+                spec_dict["pull_diagnostics"] = _pull_diag_result
+        except Exception as _e:
+            logger.warning("Pull diagnostics failed: %s", _e)
+
         time_fit_serializable = {}
         for iso, fit in time_fit_results.items():
             if isinstance(fit, FitResult):
@@ -4907,7 +5280,50 @@ def main(argv=None):
                 )
             except Exception as e:
                 logger.warning("Could not create component spectrum plot: %s", e)
-    
+
+            # --- DNL-corrected spectrum plot ---
+            try:
+                _dnl_corr_png = out_dir / "spectrum_dnl_corrected.png"
+                plot_spectrum_dnl_corrected(
+                    fit_vals=spec_plot_data["fit_vals"],
+                    out_png=str(_dnl_corr_png),
+                    config=cfg.get("plotting", {}),
+                    fit_flags=spec_plot_data.get("flags"),
+                )
+            except Exception as e:
+                logger.warning("Could not create DNL-corrected spectrum plot: %s", e)
+
+            # --- Fit diagnostic plots ---
+            try:
+                from plot_utils.diagnostics import (
+                    plot_correlation_matrix,
+                    plot_pull_histogram,
+                    plot_parameter_summary,
+                    plot_split_half_comparison,
+                    plot_overfitting_diagnostics,
+                    plot_model_comparison,
+                )
+                _diag_fit_result = spec_plot_data["fit_vals"]
+                _diag_params = (
+                    _diag_fit_result.params
+                    if hasattr(_diag_fit_result, "params")
+                    else dict(_diag_fit_result)
+                )
+                plot_correlation_matrix(_diag_fit_result, out_dir)
+                plot_pull_histogram(_diag_params, out_dir)
+                _diag_minos = getattr(_diag_fit_result, "minos_errors", None)
+                plot_parameter_summary(_diag_params, out_dir, minos_errors=_diag_minos)
+                if split_half_result is not None:
+                    plot_split_half_comparison(split_half_result, out_dir)
+                if _pull_diag_result:
+                    plot_overfitting_diagnostics(
+                        _diag_params, _pull_diag_result, out_dir
+                    )
+                if model_comparison_result is not None:
+                    plot_model_comparison(model_comparison_result, out_dir)
+            except Exception as e:
+                logger.warning("Could not create fit diagnostic plots: %s", e)
+
         if not spectrum_png.exists():
             try:
                 stub_bins = spec_plot_data["bins"] if spec_plot_data else None
