@@ -99,7 +99,7 @@ spectral_fit:
   mu_sigma: 0.005
   fit_energy_range:
   - 1.7
-  - 10.5
+  - 9.5
   amp_prior_scale: 5.0
   bkg_mode: "manual"
   clip_floor: 1e-300
@@ -108,10 +108,10 @@ spectral_fit:
     - 4.0
   b1_prior:
     - 0.0
-    - 2.0
+    - 4.0
   b2_prior:
     - 0.0
-    - 0.1
+    - 0.5
   # NOTE: in loglin_unit background model, b0 cancels in the shape
   # normalization (exp(b0) appears in both numerator and denominator).
   # Fix it at 0 to remove the degeneracy with S_bkg.
@@ -148,8 +148,6 @@ spectral_fit:
     Po210: true
     Po218: true
     Po214: true
-    Po216: false
-    Po212: true
   # Low-energy shelf (erfc step function) for degraded alphas.
   # shelf_range controls how far below the peak the shelf extends (MeV).
   # A Gaussian taper with this sigma prevents the shelf from reaching
@@ -182,7 +180,7 @@ spectral_fit:
     - 0.10
   f_shelf_Po212_prior:
     - 0.05
-    - 0.04
+    - 0.08
   sigma_shelf_Po212_prior:
     - 0.15
     - 0.10
@@ -221,8 +219,8 @@ spectral_fit:
     - 0.40
     - 0.15
   f_halo_Po212_prior:
-    - 0.10
-    - 0.08
+    - 0.15
+    - 0.15
   sigma_halo_Po212_prior:
     - 0.30
     - 0.15
@@ -269,8 +267,10 @@ spectral_fit:
       - 0.01
     # Fix parameters at bounds (correlation analysis: these are not fitting)
     fix_sigma_shelf_Po210: true
-    fix_sigma_halo_Po210: false
+    fix_sigma_halo_Po210: true
     fix_tau_halo_Po210: true
+    fix_tau_Po210: true
+    fix_f_halo_Po210: true
     # Fix f_shelf_Po210: split-half z=+1.69, correlated with b1 (r=-0.53)
     # and S_bkg (r=-0.60). Fixing breaks this correlation chain.
     fix_f_shelf_Po210: true
@@ -285,6 +285,8 @@ spectral_fit:
     fix_sigma_shelf_Po214: true
     # Fix sigma_halo_Po214: r=-0.95 with f_halo_Po214, nearly degenerate
     fix_sigma_halo_Po214: true
+    fix_f_shelf_Po214: true
+    fix_f_halo_Po214: true
     # Po218: fix all shape params at physically motivated values.
     # The Poisson likelihood (6M events) cannot distinguish Po218's
     # halo/shelf from background+Po210 overlap, so we encode the
@@ -305,6 +307,13 @@ spectral_fit:
     fix_sigma_shelf_Po212: true
     fix_sigma_halo_Po212: true
     fix_tau_halo_Po212: true
+    # Po216: fix ALL shape params (very low statistics, halo/shelf disabled)
+    fix_tau_Po216: true
+    fix_f_shelf_Po216: true
+    fix_f_halo_Po216: true
+    fix_sigma_shelf_Po216: true
+    fix_sigma_halo_Po216: true
+    fix_tau_halo_Po216: true
     # Fix b0: redundant in loglin_unit model (cancels in normalization)
     fix_b0: true
     # Gaussian penalty priors: soft constraints in the NLL for parameters
@@ -321,9 +330,6 @@ spectral_fit:
       S_Po212:
         - 3000
         - 5000
-      b2:
-        - 0.0
-        - 0.05
   mu_bounds:
     Po210:
       - 5.20
@@ -332,8 +338,8 @@ spectral_fit:
       - 5.93
       - 6.07
     Po216:
-      - 6.70
-      - 6.85
+      - 6.65
+      - 6.90
     Po214:
       - 7.60
       - 7.71
@@ -415,7 +421,7 @@ radon_inference:
 plotting:
   plot_spectrum_binsize_adc: 1
   plot_time_binning_mode: fixed
-  plot_time_bin_width_s: 14400
+  plot_time_bin_width_s: 86400
   plot_time_normalise_rate: true
   time_bins_fallback: 1
   plot_save_formats:
