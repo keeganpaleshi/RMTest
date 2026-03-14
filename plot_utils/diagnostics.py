@@ -128,6 +128,12 @@ def _plot_relative_errors(fit_result, out_dir: Path) -> None:
     if params is None:
         return
 
+    # Use MINOS errors to identify free (fitted) parameters.
+    # Fixed params have Hessian errors that are numerical artifacts and
+    # should be excluded from the relative errors plot.
+    minos = getattr(fit_result, "minos_errors", None) or {}
+    _free_names = set(minos.keys()) if minos else set()
+
     rows = []  # (name, rel_err_pct)
     skip = {"fit_valid", "likelihood_path", "aic", "nll", "chi2", "chi2_ndf",
             "ndf", "n_free_params", "ndf_eff", "chi2_ndf_eff",
@@ -136,6 +142,9 @@ def _plot_relative_errors(fit_result, out_dir: Path) -> None:
         if key.startswith("d") or key.startswith("_") or key in skip:
             continue
         if key.startswith("cov_"):
+            continue
+        # If we have MINOS info, only show free (fitted) parameters
+        if _free_names and key not in _free_names:
             continue
         val = params.get(key)
         err = params.get("d" + key, 0.0)

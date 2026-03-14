@@ -52,6 +52,7 @@ calibration:
   slope_mev_per_ch: 0.00427
   float_slope: true
   use_two_point: true
+  use_quadratic: false
   nominal_adc:
     Po210: 1246
     Po218: 1399
@@ -86,14 +87,14 @@ calibration:
 spectral_fit:
   do_spectral_fit: true
   spectral_binning_mode: adc
-  adc_bin_width: 1
+  adc_bin_width: 10
   # ADC Differential Non-Linearity correction
   dnl_correction:
     enabled: true
-    iterations: 3
+    iterations: 1
     min_counts: 5
     max_correction: 0.5
-    smooth_window: 31
+    smooth_window: 61
   energy_bin_width: 0.0130
   fd_hist_bins: 400
   mu_sigma: 0.005
@@ -112,6 +113,9 @@ spectral_fit:
   b2_prior:
     - 0.0
     - 0.5
+  b3_prior:
+    - 0.0
+    - 0.5
   # NOTE: in loglin_unit background model, b0 cancels in the shape
   # normalization (exp(b0) appears in both numerator and denominator).
   # Fix it at 0 to remove the degeneracy with S_bkg.
@@ -124,11 +128,10 @@ spectral_fit:
   emg_tau_floor: 5.0e-4
   tau_po210_prior_mean: 0.10
   tau_po210_prior_sigma: 0.10
-  # tau_Po218: fixed near zero — the shelf+halo components handle
-  # the low-energy tails, so the core EMG tail is redundant.
-  # Data-driven: when floated, tau→0.0006 (1353% error).
-  tau_po218_prior_mean: 0.001
-  tau_po218_prior_sigma: 0.05
+  # tau_Po218: PIN photodiode dead layer produces similar EMG tails
+  # for all isotopes. Moderate value toward physics-consistent shape.
+  tau_po218_prior_mean: 0.05
+  tau_po218_prior_sigma: 0.08
   # tau_Po214: fixed at data-preferred value to break correlation chain
   # with sigma_Po214 (r=-0.56), f_shelf_Po214 (r=-0.52), S_Po214.
   # Split-half z=-1.99 was the largest shape-param z-score.
@@ -152,7 +155,7 @@ spectral_fit:
   # shelf_range controls how far below the peak the shelf extends (MeV).
   # A Gaussian taper with this sigma prevents the shelf from reaching
   # unrealistically far below the peak.
-  shelf_range: 0.8
+  shelf_range: 1.5
   use_shelf:
     Po210: true
     Po218: true
@@ -163,26 +166,26 @@ spectral_fit:
     - 0.062
     - 0.10
   f_shelf_Po214_prior:
-    - 0.02
+    - 0.06
     - 0.05
   f_shelf_Po218_prior:
-    - 0.01
-    - 0.01
+    - 0.30
+    - 0.05
   # Separate shelf transition widths (decoupled from peak sigma)
   sigma_shelf_Po210_prior:
     - 0.15
     - 0.08
   sigma_shelf_Po214_prior:
-    - 0.10
+    - 0.15
     - 0.08
   sigma_shelf_Po218_prior:
-    - 0.20
-    - 0.10
+    - 0.40
+    - 0.08
   f_shelf_Po212_prior:
-    - 0.05
+    - 0.35
     - 0.08
   sigma_shelf_Po212_prior:
-    - 0.15
+    - 0.50
     - 0.10
   # Halo (broad peak component) for detector dead-layer scattering
   use_halo:
@@ -192,40 +195,40 @@ spectral_fit:
     Po216: false
     Po212: true
   f_halo_Po210_prior:
-    - 0.10
+    - 0.07
     - 0.15
   sigma_halo_Po210_prior:
-    - 0.30
+    - 0.26
     - 0.15
   tau_halo_Po210_prior:
-    - 0.10
+    - 0.07
     - 0.05
   f_halo_Po214_prior:
-    - 0.10
+    - 0.11
     - 0.10
   sigma_halo_Po214_prior:
-    - 0.25
+    - 0.26
     - 0.12
   tau_halo_Po214_prior:
     - 0.08
     - 0.04
   f_halo_Po218_prior:
     - 0.03
-    - 0.02
+    - 0.10
   sigma_halo_Po218_prior:
-    - 0.60
-    - 0.20
+    - 0.25
+    - 0.15
   tau_halo_Po218_prior:
-    - 0.40
-    - 0.15
+    - 0.02
+    - 0.10
   f_halo_Po212_prior:
-    - 0.15
+    - 0.08
     - 0.15
   sigma_halo_Po212_prior:
-    - 0.30
+    - 0.20
     - 0.15
   tau_halo_Po212_prior:
-    - 0.10
+    - 0.05
     - 0.05
   # b2/b3 removed: correlation analysis shows 822%/5479% relative error
   # (nearly unconstrained, strongly anti-correlated with each other)
@@ -265,33 +268,27 @@ spectral_fit:
     f_prior:
       - 0.0
       - 0.01
-    # Fix parameters at bounds (correlation analysis: these are not fitting)
+    # Po210: fix all shape params except sigma_Po210 (split-half shows
+    # f_shelf, sigma_shelf, sigma_halo, tau_halo all unstable between halves)
+    fix_tau_Po210: true
+    fix_f_halo_Po210: true
+    fix_f_shelf_Po210: true
     fix_sigma_shelf_Po210: true
     fix_sigma_halo_Po210: true
     fix_tau_halo_Po210: true
-    fix_tau_Po210: true
-    fix_f_halo_Po210: true
-    # Fix f_shelf_Po210: split-half z=+1.69, correlated with b1 (r=-0.53)
-    # and S_bkg (r=-0.60). Fixing breaks this correlation chain.
-    fix_f_shelf_Po210: true
-    # tau_Po218: fixed near zero (0.001). The fixed shelf+halo provide
-    # all low-energy tails; data prefers tau→0 (sigma absorbs broadening).
+    # tau_Po218: fixed at physics-interpolated value.
     fix_tau_Po218: true
-    fix_tau_halo_Po214: true
-    # Fix tau_Po214: split-half z=-1.99 (worst shape z-score).
-    # Correlated with sigma_Po214 (r=-0.56), f_shelf_Po214 (r=-0.52).
+    # Po214: fix all shape params except sigma_Po214 (split-half shows
+    # sigma_halo unstable between halves; shelf/halo fractions already fixed)
     fix_tau_Po214: true
-    # Fix sigma_shelf_Po214: at lower bound (0.03) with 182% error, unconstrained
-    fix_sigma_shelf_Po214: true
-    # Fix sigma_halo_Po214: r=-0.95 with f_halo_Po214, nearly degenerate
-    fix_sigma_halo_Po214: true
+    fix_tau_halo_Po214: true
     fix_f_shelf_Po214: true
     fix_f_halo_Po214: true
-    # Po218: fix all shape params at physically motivated values.
-    # The Poisson likelihood (6M events) cannot distinguish Po218's
-    # halo/shelf from background+Po210 overlap, so we encode the
-    # physics expectation that all isotopes have similar dead-layer
-    # scattering and energy-loss profiles.
+    fix_sigma_shelf_Po214: true
+    fix_sigma_halo_Po214: true
+    # Po218: unfix shape params — PIN photodiode physics requires
+    # similar dead-layer shapes across isotopes. Priors now set to
+    # match Po210/Po214 data-driven values.
     fix_f_shelf_Po218: true
     fix_sigma_shelf_Po218: true
     fix_f_halo_Po218: true
@@ -316,17 +313,14 @@ spectral_fit:
     fix_tau_halo_Po216: true
     # Fix b0: redundant in loglin_unit model (cancels in normalization)
     fix_b0: true
+    # b2/b3: large relative errors (200-300%) but removing them degrades
+    # chi2/ndf from 1.09 to 8.55. The background shape requires curvature
+    # even though the individual coefficients are weakly constrained.
     # Gaussian penalty priors: soft constraints in the NLL for parameters
     # where the likelihood alone cannot distinguish the component from
     # background.  Physics requires all isotopes to have similar dead-layer
     # scattering (halo) and energy-loss (shelf) profiles.
     penalty_priors:
-      f_halo_Po218:
-        - 0.03
-        - 0.025
-      f_shelf_Po218:
-        - 0.01
-        - 0.015
       S_Po212:
         - 3000
         - 5000

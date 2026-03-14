@@ -770,6 +770,98 @@ def _cov_lookup(
     return 0.0
 
 
+def _compute_cal_window_rel_unc(cal_result, cfg: Mapping[str, Any]) -> dict[str, float]:
+    """Return relative efficiency uncertainty per isotope from calibration energy scale.
+
+    For each isotope whose time-fit window is configured, computes the fractional
+    systematic uncertainty on the count rate due to calibration energy scale uncertainty
+    propagated through the Gaussian window efficiency.  When the calibration peak
+    position shifts by δμ (from ``cal_result.uncertainty``), the fraction of events
+    captured in the fixed window [E_lo, E_hi] changes by δf, giving a relative
+    rate uncertainty δf/f.
+
+    Returns
+    -------
+    dict
+        Mapping of isotope name to relative uncertainty (dimensionless fraction).
+    """
+    try:
+        from scipy.stats import norm as _norm
+    except ImportError:
+        return {}
+
+    time_fit_cfg = cfg.get("time_fit", {})
+    result: dict[str, float] = {}
+    iso_map = {
+        "Po218": "window_po218",
+        "Po214": "window_po214",
+        "Po210": "window_po210",
+        "Po212": "window_po212",
+    }
+    peaks = getattr(cal_result, "peaks", None) or {}
+    sigma_e_global = getattr(cal_result, "sigma_E", None)
+
+    for iso, window_key in iso_map.items():
+        window = time_fit_cfg.get(window_key)
+        if window is None or len(window) != 2:
+            continue
+        try:
+            e_lo, e_hi = float(window[0]), float(window[1])
+        except (TypeError, ValueError):
+            continue
+
+        peak = peaks.get(iso, {})
+        mu_mev = peak.get("centroid_mev")
+        if mu_mev is None:
+            mu_mev = (e_lo + e_hi) / 2.0
+
+        # Peak width in MeV
+        sigma_adc = peak.get("sigma_adc")
+        try:
+            a_coeff = float(cal_result.coeffs[1]) if len(cal_result.coeffs) > 1 else 1.0
+        except (IndexError, TypeError, AttributeError):
+            a_coeff = 1.0
+        if sigma_adc is not None and a_coeff != 0:
+            sigma_mev = abs(a_coeff) * float(sigma_adc)
+        elif sigma_e_global is not None and float(sigma_e_global) > 0:
+            sigma_mev = float(sigma_e_global)
+        else:
+            continue
+
+        if sigma_mev <= 0:
+            continue
+
+        # Energy uncertainty at peak from calibration covariance
+        centroid_adc = peak.get("centroid_adc")
+        try:
+            if centroid_adc is not None:
+                delta_mu_mev = float(cal_result.uncertainty(float(centroid_adc)))
+            else:
+                c_coeff = float(cal_result.coeffs[0]) if cal_result.coeffs else 0.0
+                adc_approx = (float(mu_mev) - c_coeff) / a_coeff if a_coeff != 0 else 1000.0
+                delta_mu_mev = float(cal_result.uncertainty(adc_approx))
+        except Exception:
+            continue
+
+        if not math.isfinite(delta_mu_mev) or delta_mu_mev <= 0:
+            continue
+
+        # Gaussian window efficiency: f = Phi(hi_z) - Phi(lo_z)
+        lo_z = (e_lo - float(mu_mev)) / sigma_mev
+        hi_z = (e_hi - float(mu_mev)) / sigma_mev
+        f = _norm.cdf(hi_z) - _norm.cdf(lo_z)
+        if f < 1e-10:
+            continue
+
+        # |df/dmu| = |phi(lo_z) - phi(hi_z)| / sigma_mev
+        df_dmu = abs(_norm.pdf(lo_z) - _norm.pdf(hi_z)) / sigma_mev
+        rel_unc = df_dmu * delta_mu_mev / f
+        if math.isfinite(rel_unc) and rel_unc >= 0:
+            result[iso] = float(rel_unc)
+
+    return result
+
+
 def _fallback_uncertainty(
     rate: float | None, fit_result: FitResult | Mapping[str, float] | None, param: str
 ) -> float:
@@ -836,6 +928,7 @@ def _normalise_mu_bounds(
     slope: float,
     intercept: float,
     quadratic_coeff: float,
+    cubic_coeff: float = 0.0,
 ) -> dict[str, tuple[float, float]]:
     """Return spectral centroid bounds expressed in MeV.
 
@@ -884,6 +977,7 @@ def _normalise_mu_bounds(
                 slope,
                 intercept,
                 quadratic_coeff=quadratic_coeff,
+                cubic_coeff=cubic_coeff,
             )
             lo_val = float(np.min(energies))
             hi_val = float(np.max(energies))
@@ -2628,6 +2722,8 @@ def main(argv=None):
                 raise
             logger.warning("Could not apply ADC drift correction -> %s", e)
 
+    cal_window_rel_unc: dict[str, float] = {}  # populated after calibration
+
     # ────────────────────────────────────────────────────────────
     with timer.section("energy_calibration"):
         # 3. Energy calibration
@@ -2675,11 +2771,12 @@ def main(argv=None):
             a, a_sig = _value_sigma(obj.get("a", 0.0))
             c, c_sig = _value_sigma(obj.get("c", 0.0))
             a2, a2_sig = _value_sigma(obj.get("a2", 0.0))
+            a3, a3_sig = _value_sigma(obj.get("a3", 0.0))
             sigma_E, sigma_E_error = _value_sigma(obj.get("sigma_E", 0.0))
-    
+
             coeffs = [c, a]
             cov = np.array([[c_sig**2, 0.0], [0.0, a_sig**2]])
-    
+
             if "ac_covariance" in obj:
                 cov_matrix = np.asarray(obj["ac_covariance"], dtype=float)
                 if cov_matrix.shape >= (2, 2):
@@ -2687,13 +2784,18 @@ def main(argv=None):
                     cov[0, 1] = cov[1, 0] = cov_ac
                 else:
                     logger.warning(f"ac_covariance matrix has invalid shape {cov_matrix.shape}, expected at least (2,2)")
-    
+
             if "a2" in obj:
                 coeffs.append(a2)
                 cov = np.pad(cov, ((0, 1), (0, 1)), mode="constant", constant_values=0.0)
                 cov[2, 2] = a2_sig**2
                 cov[1, 2] = cov[2, 1] = float(obj.get("cov_a_a2", 0.0))
                 cov[0, 2] = cov[2, 0] = float(obj.get("cov_a2_c", 0.0))
+
+            if "a3" in obj:
+                coeffs.append(a3)
+                cov = np.pad(cov, ((0, 1), (0, 1)), mode="constant", constant_values=0.0)
+                cov[3, 3] = a3_sig**2
     
             return CalibrationResult(
                 coeffs=coeffs,
@@ -2709,6 +2811,7 @@ def main(argv=None):
         if isinstance(cal_params, dict):
             a, a_sig = _value_sigma(cal_params.get("a", 0.0))
             a2, a2_sig = _value_sigma(cal_params.get("a2", 0.0))
+            a3, a3_sig = _value_sigma(cal_params.get("a3", 0.0))
             c, c_sig = _value_sigma(cal_params.get("c", 0.0))
             sigE_mean, sigE_sigma = _value_sigma(cal_params.get("sigma_E", 0.0))
             cov_mat = np.asarray(
@@ -2725,6 +2828,7 @@ def main(argv=None):
             c = cal_params.coeffs[idx[0]] if 0 in idx else 0.0
             a = cal_params.coeffs[idx[1]] if 1 in idx else 0.0
             a2 = cal_params.coeffs[idx[2]] if 2 in idx else 0.0
+            a3 = cal_params.coeffs[idx[3]] if 3 in idx else 0.0
             sigE_mean = cal_params.sigma_E
             sigE_sigma = cal_params.sigma_E_error
             try:
@@ -2739,6 +2843,10 @@ def main(argv=None):
                 a2_sig = float(np.sqrt(cal_params.get_cov("a2", "a2")))
             except KeyError:
                 a2_sig = 0.0
+            try:
+                a3_sig = float(np.sqrt(cal_params.get_cov("a3", "a3")))
+            except KeyError:
+                a3_sig = 0.0
             try:
                 cov_ac = cal_params.get_cov("a", "c")
             except KeyError:
@@ -2772,7 +2880,15 @@ def main(argv=None):
                     peak_E = cal_result.peaks.get(iso, {}).get("centroid_mev")
                     if peak_E is not None:
                         tf_cfg[key] = [float(peak_E - 0.08), float(peak_E + 0.08)]
-    
+
+        # Calibration window efficiency uncertainty (fractional systematic per isotope)
+        cal_window_rel_unc: dict[str, float] = _compute_cal_window_rel_unc(cal_result, cfg)
+        if cal_window_rel_unc:
+            logging.info(
+                "Calibration window rel. uncertainties: %s",
+                {k: f"{v:.4f}" for k, v in cal_window_rel_unc.items()},
+            )
+
         # ────────────────────────────────────────────────────────────
     with timer.section("baseline"):
         # 4. Baseline run (optional)
@@ -3091,6 +3207,7 @@ def main(argv=None):
                         a,
                         c,
                         quadratic_coeff=a2,
+                        cubic_coeff=a3,
                     )
 
                 expected_peaks = spectral_cfg.get("expected_peaks")
@@ -3150,6 +3267,7 @@ def main(argv=None):
                     slope=a,
                     intercept=c,
                     quadratic_coeff=a2,
+                    cubic_coeff=a3,
                 )
 
                 peak_tol = spectral_cfg.get("spectral_peak_tolerance_mev", 0.3)
@@ -3163,7 +3281,7 @@ def main(argv=None):
                 for peak, centroid_adc in adc_peaks.items():
                     mu = calibration_peak_mev.get(
                         peak,
-                        apply_calibration(centroid_adc, a, c, quadratic_coeff=a2),
+                        apply_calibration(centroid_adc, a, c, quadratic_coeff=a2, cubic_coeff=a3),
                     )
                     bounds = mu_bounds_fit.get(peak)
                     if bounds is not None:
@@ -3735,6 +3853,7 @@ def main(argv=None):
                             a,
                             c,
                             quadratic_coeff=a2,
+                            cubic_coeff=a3,
                         )
                         plot_bins = plot_bin_edges.size - 1
 
@@ -5486,6 +5605,8 @@ def main(argv=None):
                 for other_iso in ("Po214", "Po218", "Po210", "Po212"):
                     if other_iso != iso:
                         plot_cfg[f"window_{other_iso.lower()}"] = None
+                if cal_window_rel_unc:
+                    plot_cfg["cal_window_rel_unc_per_iso"] = cal_window_rel_unc
                 ts_times = pdata["events_times"]
                 ts_energy = pdata["events_energy"]
                 fit_obj = time_fit_results.get(iso)
@@ -5521,6 +5642,8 @@ def main(argv=None):
                 overlay_cfg.update(cfg.get("plotting", {}))
                 if run_periods_cfg:
                     overlay_cfg["run_periods"] = run_periods_cfg
+                if cal_window_rel_unc:
+                    overlay_cfg["cal_window_rel_unc_per_iso"] = cal_window_rel_unc
                 overlay_times = df_analysis["timestamp"].values
                 overlay_energy = df_analysis["energy_MeV"].values
                 overlay_fit_dict = {}
@@ -5834,6 +5957,23 @@ def main(argv=None):
                 not np.isfinite(err_arr).any() or np.all(err_arr == 0)
             ):
                 err_arr.fill(radon_unc)
+
+        # Add calibration window efficiency systematic in quadrature to radon activity errors.
+        # The calibration systematic is a fractional uncertainty on the detection efficiency
+        # (energy scale shifts the fraction of events captured in the fixed time-fit window).
+        if activity_arr is not None and err_arr is not None and cal_window_rel_unc:
+            cal_po214 = cal_window_rel_unc.get("Po214", 0.0)
+            cal_po218 = cal_window_rel_unc.get("Po218", 0.0)
+            if A214 is not None and A218 is not None:
+                cal_rel = max(cal_po214, cal_po218)
+            elif A214 is not None:
+                cal_rel = cal_po214
+            elif A218 is not None:
+                cal_rel = cal_po218
+            else:
+                cal_rel = 0.0
+            if cal_rel > 0:
+                err_arr = np.sqrt(err_arr**2 + (activity_arr * cal_rel) ** 2)
 
         if activity_arr is not None and err_arr is not None:
             times_list = [float(t) for t in np.asarray(activity_times, dtype=float)]

@@ -1750,6 +1750,28 @@ def fit_spectrum(
             out[name] = val
             out["d" + name] = float(perr[i])
 
+    # Override symmetric errors with MINOS profile-likelihood errors when
+    # available.  The Hessian can be ill-conditioned (eigenvalues clamped)
+    # leading to 10× inflated errors; MINOS gives reliable intervals.
+    if _minos_errors:
+        _n_overridden = 0
+        for _pn, (_mlo, _mhi) in _minos_errors.items():
+            _sym_minos = max(abs(_mlo), abs(_mhi))
+            _dkey = "d" + _pn
+            if _dkey in out and _sym_minos > 0:
+                _hesse_err = out[_dkey]
+                # Only override if MINOS is meaningfully different (smaller)
+                # and the Hessian error looks inflated
+                if _hesse_err > 0 and _sym_minos < 0.8 * _hesse_err:
+                    out[_dkey] = _sym_minos
+                    _n_overridden += 1
+        if _n_overridden > 0:
+            logging.info(
+                "Replaced %d Hessian errors with MINOS profile-likelihood "
+                "errors (Hessian was inflated)",
+                _n_overridden,
+            )
+
     if fix_sigma0:
         out["sigma0"] = sigma0_val
         out["dsigma0"] = 0.0

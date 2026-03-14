@@ -390,7 +390,7 @@ class CalibrationResult:
 
         if isinstance(label, str):
             key = label.lower()
-            mapping = {"c": 0, "a": 1, "a2": 2}
+            mapping = {"c": 0, "a": 1, "a2": 2, "a3": 3}
             if key in mapping:
                 exp = mapping[key]
             else:
@@ -753,7 +753,7 @@ def fixed_slope_calibration(adc_values, cfg, *, status=None):
     return result
 
 
-def apply_calibration(adc_values, slope, intercept, quadratic_coeff=0.0):
+def apply_calibration(adc_values, slope, intercept, quadratic_coeff=0.0, cubic_coeff=0.0):
     """Convert ADC values to energy using calibration coefficients.
 
     Parameters
@@ -767,10 +767,14 @@ def apply_calibration(adc_values, slope, intercept, quadratic_coeff=0.0):
     quadratic_coeff : float, optional
         Quadratic coefficient ``a2`` when using ``E = a2*ADC**2 + a*ADC + c``.
         Defaults to ``0.0`` for the legacy linear behaviour.
+    cubic_coeff : float, optional
+        Cubic coefficient ``a3`` when using
+        ``E = a3*ADC**3 + a2*ADC**2 + a*ADC + c``.
+        Defaults to ``0.0``.
     """
 
     adc_arr = np.asarray(adc_values, dtype=float)
-    return quadratic_coeff * adc_arr**2 + slope * adc_arr + intercept
+    return cubic_coeff * adc_arr**3 + quadratic_coeff * adc_arr**2 + slope * adc_arr + intercept
 
 
 def _fallback_to_fixed_slope(adc_values, config, exc, warning_message=None):
@@ -978,6 +982,27 @@ def calibrate_run(adc_values, config, hist_bins=None):
         quad_opt = "true" if quad_opt else "false"
     quad_opt = str(quad_opt).lower()
 
+    cubic = quad_opt == "cubic"
+
+    if cubic:
+        # Cubic requires Po216 as the 4th calibration point
+        if "Po216" not in peak_fits:
+            raise RuntimeError(
+                "Cubic calibration requires Po216 peak but it was not found. "
+                "Ensure Po216 is in nominal_adc and the peak is detectable."
+            )
+        adc216 = peak_fits["Po216"]["centroid_adc"]
+        E216 = energies.get("Po216")
+        if E216 is None:
+            raise RuntimeError("Cubic calibration requires Po216 in known_energies.")
+        if not (adc210 < adc218 < adc216 < adc214):
+            raise RuntimeError(
+                "Calibration produced inconsistent peak ordering: "
+                f"Po210={adc210:.3f}, Po218={adc218:.3f}, "
+                f"Po216={adc216:.3f}, Po214={adc214:.3f}"
+            )
+        quadratic = True  # cubic implies quadratic-level support too
+
     if quad_opt == "auto":
         a_lin, c_lin = two_point_calibration([adc210, adc214], [E210, E214])
         resid = abs(apply_calibration(adc218, a_lin, c_lin) - E218)
@@ -985,10 +1010,22 @@ def calibrate_run(adc_values, config, hist_bins=None):
         quadratic = resid > quad_threshold
     elif quad_opt == "true":
         quadratic = True
-    else:
+    elif not cubic:
         quadratic = False
 
-    if quadratic:
+    if cubic:
+        # Solve for cubic coefficients a3, a2, a, c using four peaks
+        A = np.array(
+            [
+                [adc210**3, adc210**2, adc210, 1.0],
+                [adc218**3, adc218**2, adc218, 1.0],
+                [adc216**3, adc216**2, adc216, 1.0],
+                [adc214**3, adc214**2, adc214, 1.0],
+            ]
+        )
+        y = np.array([E210, E218, E216, E214], dtype=float)
+        a3, a2, a, c = np.linalg.solve(A, y)
+    elif quadratic:
         # Solve for quadratic coefficients a2, a, c using all three peaks
         A = np.array(
             [
@@ -999,18 +1036,20 @@ def calibrate_run(adc_values, config, hist_bins=None):
         )
         y = np.array([E210, E218, E214], dtype=float)
         a2, a, c = np.linalg.solve(A, y)
+        a3 = 0.0
     else:
         a, c = two_point_calibration([adc210, adc214], [E210, E214])
         a2 = 0.0
+        a3 = 0.0
 
     # 6) Convert fitted centroids to energy for sanity checks
     for iso, info in peak_fits.items():
         info["centroid_mev"] = float(
-            apply_calibration(info["centroid_adc"], a, c, quadratic_coeff=a2)
+            apply_calibration(info["centroid_adc"], a, c, quadratic_coeff=a2, cubic_coeff=a3)
         )
         if "loc_adc" in info:
             info["loc_mev"] = float(
-                apply_calibration(info["loc_adc"], a, c, quadratic_coeff=a2)
+                apply_calibration(info["loc_adc"], a, c, quadratic_coeff=a2, cubic_coeff=a3)
             )
         info["peak_adc"] = float(info["centroid_adc"])
 
@@ -1037,7 +1076,40 @@ def calibrate_run(adc_values, config, hist_bins=None):
     mu_err_214 = _extract_centroid_error("Po214")
     mu_err_218 = _extract_centroid_error("Po218")
 
-    if quadratic:
+    if cubic:
+        mu_err_216 = _extract_centroid_error("Po216")
+
+        def solve_coeff(m):
+            A = np.array(
+                [
+                    [m[0] ** 3, m[0] ** 2, m[0], 1.0],
+                    [m[1] ** 3, m[1] ** 2, m[1], 1.0],
+                    [m[2] ** 3, m[2] ** 2, m[2], 1.0],
+                    [m[3] ** 3, m[3] ** 2, m[3], 1.0],
+                ]
+            )
+            return np.linalg.solve(A, np.array([E210, E218, E216, E214], dtype=float))
+
+        mus = np.array([adc210, adc218, adc216, adc214], dtype=float)
+        coeff0 = np.array([a3, a2, a, c], dtype=float)
+        eps_rel = cal_cfg.get("jacobian_epsilon", _JACOBIAN_EPSILON_DEFAULT)
+        n_pts = 4
+        J = np.zeros((n_pts, n_pts))
+        for i in range(n_pts):
+            m_step = mus.copy()
+            eps = max(abs(mus[i]) * eps_rel, eps_rel)
+            m_step[i] += eps
+            J[:, i] = (solve_coeff(m_step) - coeff0) / eps
+
+        sigma_vec = np.array([mu_err_210, mu_err_218, mu_err_216, mu_err_214], dtype=float)
+        cov_coeff = J @ np.diag(sigma_vec**2) @ J.T
+        var_a3, var_a2, var_a, var_c = np.diag(cov_coeff)
+        cov_a_a2 = cov_coeff[2, 1]
+        cov_ac = cov_coeff[2, 3]
+        cov_a2_c = cov_coeff[1, 3]
+        var_a3 = cov_coeff[0, 0]
+
+    elif quadratic:
 
         def solve_coeff(m):
             A = np.array(
@@ -1066,6 +1138,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
         cov_a_a2 = cov_coeff[1, 0]
         cov_ac = cov_coeff[1, 2]
         cov_a2_c = cov_coeff[0, 2]
+        var_a3 = 0.0
     else:
         delta = adc214 - adc210
         # Check for sufficient peak separation to avoid numerical instability
@@ -1086,24 +1159,41 @@ def calibrate_run(adc_values, config, hist_bins=None):
         var_a2 = 0.0
         cov_a_a2 = 0.0
         cov_a2_c = 0.0
+        var_a3 = 0.0
 
     # 8) Convert sigma_ADC -> sigma_E (MeV) using local derivative at the Po-214 peak.
-    slope_local = 2 * a2 * adc214 + a
+    slope_local = 3 * a3 * adc214**2 + 2 * a2 * adc214 + a
     sigma_adc214 = peak_fits["Po214"]["sigma_adc"]
     sigma_E = abs(slope_local) * sigma_adc214
 
-    var_slope_local = var_a + (2 * adc214) ** 2 * var_a2 + 2 * (2 * adc214) * cov_a_a2
+    var_slope_local = (
+        var_a
+        + (2 * adc214) ** 2 * var_a2
+        + 2 * (2 * adc214) * cov_a_a2
+        + (3 * adc214**2) ** 2 * var_a3
+    )
     var_sigma_adc = peak_fits["Po214"]["covariance"][2][2]
-    # Note: This approximation assumes slope_local and sigma_adc are uncorrelated.
-    # A more rigorous treatment would include cov(slope_local, sigma_adc).
-    # Use abs(slope_local)**2 for consistency with sigma_E = abs(slope_local) * sigma_adc214
     var_sigma_E = (sigma_adc214**2) * var_slope_local + (
         abs(slope_local)**2
     ) * var_sigma_adc
     dsigma_E = float(np.sqrt(max(var_sigma_E, 0.0)))
 
     # 8) Build result object:
-    if quadratic:
+    if cubic:
+        coeffs = [c, a, a2, a3]
+        cov = np.zeros((4, 4))
+        cov[0, 0] = var_c
+        cov[1, 1] = var_a
+        cov[2, 2] = var_a2
+        cov[3, 3] = var_a3
+        cov[0, 1] = cov[1, 0] = cov_ac
+        cov[0, 2] = cov[2, 0] = cov_a2_c
+        cov[1, 2] = cov[2, 1] = cov_a_a2
+        # Fill cubic cross-terms from full covariance
+        cov[0, 3] = cov[3, 0] = cov_coeff[3, 0]  # c-a3
+        cov[1, 3] = cov[3, 1] = cov_coeff[2, 0]  # a-a3
+        cov[2, 3] = cov[3, 2] = cov_coeff[1, 0]  # a2-a3
+    elif quadratic:
         coeffs = [c, a, a2]
         cov = np.array(
             [
