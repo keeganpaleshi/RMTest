@@ -304,21 +304,24 @@ def plot_volume_equiv_vs_time(
     fig_l.savefig(out_dir / _fname("equivalent_volume_liters.png"), dpi=300)
     plt.close(fig_l)
 
-    # --- flow rate (L/min) ---
+    # --- flow rate (mL/min) — linear and log ---
     if volumes_lpm:
         paired_len = min(len(times_mpl), len(volumes_lpm))
         if paired_len == 0:
             logger.info("Leak-rate data present but no overlapping timestamps; skipping flow plot")
         else:
             times_flow = times_mpl[:paired_len]
-            volumes_flow = volumes_lpm[:paired_len]
-            flow_errs = lpm_errs[:paired_len] if lpm_errs is not None else None
+            # Convert L/min to mL/min
+            volumes_mlpm = [v * 1000.0 for v in volumes_lpm[:paired_len]]
+            flow_errs_ml = [e * 1000.0 for e in lpm_errs[:paired_len]] if lpm_errs is not None else None
+
+            # Linear scale
             fig_flow, ax_flow = plt.subplots(figsize=(10, 5))
-            if flow_errs is not None:
-                ax_flow.errorbar(times_flow, volumes_flow, yerr=flow_errs, color="#ff7f0e", **_eb)
+            if flow_errs_ml is not None:
+                ax_flow.errorbar(times_flow, volumes_mlpm, yerr=flow_errs_ml, color="#ff7f0e", **_eb)
             else:
-                ax_flow.plot(times_flow, volumes_flow, color="#ff7f0e", **_mk)
-            ax_flow.set_ylabel("Leak Rate [L/min]")
+                ax_flow.plot(times_flow, volumes_mlpm, color="#ff7f0e", **_mk)
+            ax_flow.set_ylabel("Leak Rate [mL/min]")
             ax_flow.set_xlabel("Time (UTC)")
             ax_flow.set_title("Equivalent Leak Rate", fontsize=11)
             ax_flow.ticklabel_format(axis="y", style="plain")
@@ -328,6 +331,22 @@ def plot_volume_equiv_vs_time(
             fig_flow.tight_layout()
             fig_flow.savefig(out_dir / _fname("equivalent_flow.png"), dpi=300)
             plt.close(fig_flow)
+
+            # Log scale
+            fig_flow_log, ax_flow_log = plt.subplots(figsize=(10, 5))
+            if flow_errs_ml is not None:
+                ax_flow_log.errorbar(times_flow, volumes_mlpm, yerr=flow_errs_ml, color="#ff7f0e", **_eb)
+            else:
+                ax_flow_log.plot(times_flow, volumes_mlpm, color="#ff7f0e", **_mk)
+            ax_flow_log.set_yscale("log")
+            ax_flow_log.set_ylabel("Leak Rate [mL/min]")
+            ax_flow_log.set_xlabel("Time (UTC)")
+            ax_flow_log.set_title("Equivalent Leak Rate (log)", fontsize=11)
+            setup_time_axis(ax_flow_log, times_flow)
+            fig_flow_log.autofmt_xdate()
+            fig_flow_log.tight_layout()
+            fig_flow_log.savefig(out_dir / _fname("equivalent_flow_log.png"), dpi=300)
+            plt.close(fig_flow_log)
 
     # --- cumulative volume (m^3 and litres) ---
     cumulative_series = radon_results.get("volume_cumulative")

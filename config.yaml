@@ -409,13 +409,6 @@ radon_inference:
     tz: America/Toronto
     interpolation: ffill
     max_gap_seconds: 21600
-  leak_rate_time_bins:
-  - 60      # 1 min
-  - 300     # 5 min
-  - 600     # 10 min
-  - 900     # 15 min
-  - 1800    # 30 min
-  - 3600    # 1 hr
   output:
     write_per_interval: true
     write_cumulative: true

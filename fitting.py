@@ -1285,9 +1285,12 @@ def fit_spectrum(
         #   3. If still fails, compute numerical Hessian via finite diffs
         #   4. Run MINOS for asymmetric errors (per-parameter)
         # ----------------------------------------------------------
+        _covariance_method = "none"
         m.hesse()
         cov_raw = m.covariance
         covariance_available = cov_raw is not None
+        if covariance_available:
+            _covariance_method = "hesse"
 
         # --- Strategy 2: relax bounds for params sitting at limits ---
         if cov_raw is None:
@@ -1325,6 +1328,7 @@ def fit_spectrum(
                 for _pn, _pi, _val, _lo, _hi in _at_bound:
                     m.limits[_pn] = (_lo, _hi)
                 if cov_raw is not None:
+                    _covariance_method = "hesse_relaxed"
                     logging.info("Hesse succeeded after relaxing bounds")
 
         # --- Strategy 3: numerical Hessian via finite differences ---
@@ -1422,6 +1426,7 @@ def fit_spectrum(
                             cov_raw[_pi, _pi] = _migrad_errs[param_order[_pi]] ** 2
 
                     covariance_available = True
+                    _covariance_method = "numerical_hessian"
                     if _n_clamped > 0:
                         logging.info(
                             "Numerical Hessian: %d/%d free-param eigenvalues "
@@ -1446,6 +1451,7 @@ def fit_spectrum(
 
         # --- Final fallback: MIGRAD diagonal-only ---
         if cov_raw is None:
+            _covariance_method = "migrad_diagonal"
             n_nonzero = sum(1 for v in _migrad_errs.values() if v > 0)
             logging.warning(
                 "All covariance strategies failed — using MIGRAD approximate "
@@ -1458,97 +1464,167 @@ def fit_spectrum(
             )
             cov_raw = np.diag(diag)
 
-        # --- Profile likelihood scans for asymmetric errors ---
-        # MINOS requires a "valid" minimum which fails when params are
-        # at bounds.  Instead, scan the NLL along each parameter axis
-        # to find the delta-NLL = 0.5 crossing points (1-sigma).
-        # This is equivalent to MINOS in the 1D-profile approximation.
+        # --- Asymmetric errors via profile likelihood ---
+        # Strategy:
+        #   A. Try iminuit's native MINOS (proper re-profiling)
+        #   B. Manual profile scan with re-minimisation at each point
+        #   C. Projection scan (freeze other params — last resort)
         _minos_errors = None
+        _minos_method = "none"
         _free_params = [p for p in param_order if not m.fixed[p]]
         logging.info(
             "Computing profile likelihood errors for %d free parameters...",
             len(_free_params),
         )
-        try:
-            _nll_min = float(_nll(*popt))
-            _minos_errors = {}
-            _target = 0.5  # delta-NLL for 1-sigma (likelihood errordef)
-            for _pn in _free_params:
-                _pi = param_order.index(_pn)
-                _val = float(popt[_pi])
-                _err = _migrad_errs.get(_pn, 0)
-                if _err <= 0:
-                    continue
-                _lo_bnd, _hi_bnd = bounds_lo[_pi], bounds_hi[_pi]
-                # Scan downward
-                _lo_cross = None
-                for _mult in np.linspace(0.1, 5.0, 25):
-                    _trial = _val - _mult * _err
-                    if _trial < _lo_bnd:
-                        _trial = _lo_bnd
-                    _pp = popt.copy()
-                    _pp[_pi] = _trial
-                    _dnll = float(_nll(*_pp)) - _nll_min
-                    if _dnll >= _target:
-                        # Linear interpolation between this and previous point
-                        if _mult == 0.1:
-                            _lo_cross = _trial - _val
-                        else:
-                            _prev_mult = _mult - (5.0 - 0.1) / 24
-                            _prev_trial = max(_val - _prev_mult * _err, _lo_bnd)
-                            _pp_prev = popt.copy()
-                            _pp_prev[_pi] = _prev_trial
-                            _dnll_prev = float(_nll(*_pp_prev)) - _nll_min
-                            if _dnll > _dnll_prev:
-                                _frac = (_target - _dnll_prev) / (_dnll - _dnll_prev)
-                                _cross_val = _prev_trial + _frac * (_trial - _prev_trial)
-                            else:
-                                _cross_val = _trial
-                            _lo_cross = _cross_val - _val
-                        break
-                    if _trial <= _lo_bnd:
-                        _lo_cross = _lo_bnd - _val
-                        break
-                # Scan upward
-                _hi_cross = None
-                for _mult in np.linspace(0.1, 5.0, 25):
-                    _trial = _val + _mult * _err
-                    if _trial > _hi_bnd:
-                        _trial = _hi_bnd
-                    _pp = popt.copy()
-                    _pp[_pi] = _trial
-                    _dnll = float(_nll(*_pp)) - _nll_min
-                    if _dnll >= _target:
-                        if _mult == 0.1:
-                            _hi_cross = _trial - _val
-                        else:
-                            _prev_mult = _mult - (5.0 - 0.1) / 24
-                            _prev_trial = min(_val + _prev_mult * _err, _hi_bnd)
-                            _pp_prev = popt.copy()
-                            _pp_prev[_pi] = _prev_trial
-                            _dnll_prev = float(_nll(*_pp_prev)) - _nll_min
-                            if _dnll > _dnll_prev:
-                                _frac = (_target - _dnll_prev) / (_dnll - _dnll_prev)
-                                _cross_val = _prev_trial + _frac * (_trial - _prev_trial)
-                            else:
-                                _cross_val = _trial
-                            _hi_cross = _cross_val - _val
-                        break
-                    if _trial >= _hi_bnd:
-                        _hi_cross = _hi_bnd - _val
-                        break
-                if _lo_cross is not None and _hi_cross is not None:
-                    _minos_errors[_pn] = (float(_lo_cross), float(_hi_cross))
-            if _minos_errors:
+
+        # --- Strategy A: iminuit native MINOS ---
+        # Requires valid minimum + covariance.  Re-profiles over all
+        # other parameters at each scan point (true MINOS).
+        if covariance_available and _covariance_method in ("hesse", "hesse_relaxed"):
+            try:
+                # Restore minimum before MINOS
+                for _pi, _pn in enumerate(param_order):
+                    m.values[_pn] = float(popt[_pi])
+                m.minos()
+                _minos_errors = {}
+                for _pn in _free_params:
+                    _me = m.merrors[_pn]
+                    _lo, _hi = float(_me.lower), float(_me.upper)
+                    if _me.is_valid:
+                        _minos_errors[_pn] = (_lo, _hi)
+                if _minos_errors:
+                    _minos_method = "iminuit_minos"
+                    logging.info(
+                        "iminuit MINOS: %d / %d parameters have "
+                        "asymmetric errors (true profile likelihood)",
+                        len(_minos_errors), len(_free_params),
+                    )
+                else:
+                    _minos_errors = None
+                    logging.info(
+                        "iminuit MINOS returned no valid intervals "
+                        "— falling back to manual profile scan"
+                    )
+                # Restore minimum (MINOS may have moved params)
+                for _pi, _pn in enumerate(param_order):
+                    m.values[_pn] = float(popt[_pi])
+            except Exception as _minos_exc:
                 logging.info(
-                    "Profile likelihood: %d / %d parameters have asymmetric errors",
-                    len(_minos_errors), len(_free_params),
+                    "iminuit MINOS failed (%s) — falling back to "
+                    "manual profile scan", _minos_exc
                 )
-            else:
-                logging.warning("Profile likelihood scan failed for all parameters")
                 _minos_errors = None
-        except Exception as _prof_exc:
-            logging.warning("Profile likelihood scan failed: %s", _prof_exc)
+                # Restore minimum
+                for _pi, _pn in enumerate(param_order):
+                    m.values[_pn] = float(popt[_pi])
+
+        # --- Strategy B: manual profile scan with re-minimisation ---
+        # Fix one parameter at a time, re-minimise over all others,
+        # and find the delta-NLL = 0.5 crossing.  This is equivalent
+        # to MINOS but works even when iminuit's MINOS fails.
+        if _minos_errors is None:
+            try:
+                _nll_min = float(_nll(*popt))
+                _minos_errors = {}
+                _target = 0.5  # delta-NLL for 1-sigma
+
+                # Save fixed-state so we can restore
+                _orig_fixed = {p: m.fixed[p] for p in param_order}
+
+                for _pn in _free_params:
+                    _pi = param_order.index(_pn)
+                    _val = float(popt[_pi])
+                    _err = _migrad_errs.get(_pn, 0)
+                    if _err <= 0:
+                        continue
+                    _lo_bnd, _hi_bnd = bounds_lo[_pi], bounds_hi[_pi]
+
+                    def _profile_nll_at(_trial_val):
+                        """Fix _pn at _trial_val, re-minimise others, return NLL."""
+                        # Restore all params to minimum
+                        for _ri, _rn in enumerate(param_order):
+                            m.values[_rn] = float(popt[_ri])
+                            m.fixed[_rn] = _orig_fixed[_rn]
+                        # Fix the parameter under test
+                        m.values[_pn] = _trial_val
+                        m.fixed[_pn] = True
+                        # Re-minimise over remaining free params
+                        m.migrad()
+                        return float(m.fval)
+
+                    # Scan downward
+                    _lo_cross = None
+                    _prev_trial = _val
+                    _prev_dnll = 0.0
+                    for _mult in np.linspace(0.1, 5.0, 25):
+                        _trial = _val - _mult * _err
+                        if _trial < _lo_bnd:
+                            _trial = _lo_bnd
+                        _dnll = _profile_nll_at(_trial) - _nll_min
+                        if _dnll >= _target:
+                            if _prev_dnll < _target and _dnll > _prev_dnll:
+                                _frac = (_target - _prev_dnll) / (_dnll - _prev_dnll)
+                                _cross = _prev_trial + _frac * (_trial - _prev_trial)
+                            else:
+                                _cross = _trial
+                            _lo_cross = _cross - _val
+                            break
+                        if _trial <= _lo_bnd:
+                            _lo_cross = _lo_bnd - _val
+                            break
+                        _prev_trial = _trial
+                        _prev_dnll = _dnll
+
+                    # Scan upward
+                    _hi_cross = None
+                    _prev_trial = _val
+                    _prev_dnll = 0.0
+                    for _mult in np.linspace(0.1, 5.0, 25):
+                        _trial = _val + _mult * _err
+                        if _trial > _hi_bnd:
+                            _trial = _hi_bnd
+                        _dnll = _profile_nll_at(_trial) - _nll_min
+                        if _dnll >= _target:
+                            if _prev_dnll < _target and _dnll > _prev_dnll:
+                                _frac = (_target - _prev_dnll) / (_dnll - _prev_dnll)
+                                _cross = _prev_trial + _frac * (_trial - _prev_trial)
+                            else:
+                                _cross = _trial
+                            _hi_cross = _cross - _val
+                            break
+                        if _trial >= _hi_bnd:
+                            _hi_cross = _hi_bnd - _val
+                            break
+                        _prev_trial = _trial
+                        _prev_dnll = _dnll
+
+                    if _lo_cross is not None and _hi_cross is not None:
+                        _minos_errors[_pn] = (float(_lo_cross), float(_hi_cross))
+
+                # Restore original state
+                for _pi, _pn_r in enumerate(param_order):
+                    m.values[_pn_r] = float(popt[_pi])
+                    m.fixed[_pn_r] = _orig_fixed[_pn_r]
+
+                if _minos_errors:
+                    _minos_method = "profile_scan_reprofiled"
+                    logging.info(
+                        "Profile scan (re-profiled): %d / %d parameters "
+                        "have asymmetric errors",
+                        len(_minos_errors), len(_free_params),
+                    )
+                else:
+                    logging.warning(
+                        "Profile scan (re-profiled) failed for all parameters"
+                    )
+                    _minos_errors = None
+            except Exception as _prof_exc:
+                logging.warning("Profile scan failed: %s", _prof_exc)
+                _minos_errors = None
+                # Restore state on failure
+                for _pi, _pn_r in enumerate(param_order):
+                    m.values[_pn_r] = float(popt[_pi])
+                    m.fixed[_pn_r] = _orig_fixed.get(_pn_r, False)
 
         pcov = np.array(cov_raw)
         # popt and nll_val already saved at the top of this block
@@ -1781,6 +1857,8 @@ def fit_spectrum(
 
     out["fit_valid"] = fit_valid
     out["likelihood_path"] = likelihood_path
+    out["covariance_method"] = _covariance_method
+    out["minos_method"] = _minos_method
 
     # Attach DNL metadata from the binned path (if correction was applied)
     if not unbinned and _dnl_iters > 0:

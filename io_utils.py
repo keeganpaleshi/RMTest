@@ -614,14 +614,6 @@ CONFIG_SCHEMA = {
                         },
                     ],
                 },
-                "leak_rate_time_bins": {
-                    "type": "array",
-                    "items": {"type": "number", "exclusiveMinimum": 0},
-                },
-                "leak_rate_max_bins": {
-                    "type": "integer",
-                    "minimum": 1,
-                },
                 "output": {
                     "type": "object",
                     "additionalProperties": False,

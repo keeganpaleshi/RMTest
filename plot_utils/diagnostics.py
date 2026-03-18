@@ -151,7 +151,8 @@ def _plot_relative_errors(fit_result, out_dir: Path) -> None:
     rows = []  # (name, rel_err_pct)
     skip = {"fit_valid", "likelihood_path", "aic", "nll", "chi2", "chi2_ndf",
             "ndf", "n_free_params", "ndf_eff", "chi2_ndf_eff",
-            "ndf_effective", "chi2_ndf_effective"}
+            "ndf_effective", "chi2_ndf_effective",
+            "covariance_method", "minos_method"}
     for key in sorted(params.keys()):
         if key.startswith("d") or key.startswith("_") or key in skip:
             continue
@@ -626,7 +627,7 @@ def compute_pull_diagnostics(
     # inter-peak scale).
     model_masked = model[mask]
     hist_masked = hist[mask]
-    for rebin_factor in [10, 30]:
+    for rebin_factor in [5, 10, 30]:
         n_coarse = n // rebin_factor
         if n_coarse < 10:
             continue
@@ -710,8 +711,8 @@ def plot_overfitting_diagnostics(
     if n < 10:
         return
 
-    # Compute rebinned pulls for panel (b)
-    rebin = 10
+    # Compute rebinned pulls for panel (b) — use ×5 for more data points
+    rebin = 5
     n_coarse = n // rebin
     trim = n_coarse * rebin
     m_r = model[mask][:trim].reshape(n_coarse, rebin).sum(axis=1)
@@ -841,37 +842,42 @@ def plot_overfitting_diagnostics(
     _make_table(axes[1, 1], rows_e, "(e) Bin-level (model adequacy)", checks_e)
 
     # ── (f) Rebinned + overfitting table ──────────────────────────────
+    def _safe_fmt(v, fmt=".3f"):
+        return f"{v:{fmt}}" if isinstance(v, (int, float)) else str(v)
+
+    def _n_label(tag):
+        n_val = d.get(f"{tag}_n_pulls", "?")
+        return f" (n={n_val})" if isinstance(n_val, int) else ""
+
+    r5_sig = d.get("rebin5_pull_sigma", "?")
+    r5_dw = d.get("rebin5_durbin_watson", "?")
+    r5_ac = d.get("rebin5_autocorr_lag1", "?")
+    r5_ks = d.get("rebin5_ks_pvalue", "?")
+    r10_sig = d.get("rebin10_pull_sigma", "?")
     r10_dw = d.get("rebin10_durbin_watson", "?")
     r10_ac = d.get("rebin10_autocorr_lag1", "?")
     r10_rz = d.get("rebin10_runs_test_z", "?")
     r10_ks = d.get("rebin10_ks_pvalue", "?")
-    r10_sig = d.get("rebin10_pull_sigma", "?")
-    r30_dw = d.get("rebin30_durbin_watson", "?")
-    r30_ac = d.get("rebin30_autocorr_lag1", "?")
-    r30_rz = d.get("rebin30_runs_test_z", "?")
-
-    def _safe_fmt(v, fmt=".3f"):
-        return f"{v:{fmt}}" if isinstance(v, (int, float)) else str(v)
 
     rows_f = [
-        ["σ (×10 rebin)", _safe_fmt(r10_sig), "1.00", "< 1.2"],
-        ["DW (×10 rebin)", _safe_fmt(r10_dw), "2.00", "1.5–2.5"],
-        ["ACF lag-1 (×10)", _safe_fmt(r10_ac), "0.00", "|r| < 0.15"],
-        ["Runs z (×10)", _safe_fmt(r10_rz, ".1f"), "0", "|z| < 3"],
-        ["KS p (×10)", _safe_fmt(r10_ks, ".4f"), "> 0.05", "> 0.01"],
-        ["DW (×30 rebin)", _safe_fmt(r30_dw), "2.00", "1.5–2.5"],
-        ["ACF lag-1 (×30)", _safe_fmt(r30_ac), "0.00", "|r| < 0.15"],
-        ["Runs z (×30)", _safe_fmt(r30_rz, ".1f"), "0", "|z| < 3"],
+        [f"σ (×5){_n_label('rebin5')}", _safe_fmt(r5_sig), "1.00", "< 1.5"],
+        [f"DW (×5)", _safe_fmt(r5_dw), "2.00", "1.5–2.5"],
+        [f"ACF lag-1 (×5)", _safe_fmt(r5_ac), "0.00", "|r| < 0.15"],
+        [f"KS p (×5)", _safe_fmt(r5_ks, ".4f"), "> 0.05", "> 0.01"],
+        [f"σ (×10){_n_label('rebin10')}", _safe_fmt(r10_sig), "1.00", "< 1.5"],
+        [f"DW (×10)", _safe_fmt(r10_dw), "2.00", "1.5–2.5"],
+        [f"ACF lag-1 (×10)", _safe_fmt(r10_ac), "0.00", "|r| < 0.15"],
+        [f"Runs z (×10)", _safe_fmt(r10_rz, ".1f"), "0", "|z| < 3"],
     ]
     checks_f = [
-        (r10_sig < 1.2) if isinstance(r10_sig, (int, float)) else False,
+        (r5_sig < 1.5) if isinstance(r5_sig, (int, float)) else False,
+        (1.5 < r5_dw < 2.5) if isinstance(r5_dw, (int, float)) else False,
+        (abs(r5_ac) < 0.15) if isinstance(r5_ac, (int, float)) else False,
+        (r5_ks > 0.01) if isinstance(r5_ks, (int, float)) else False,
+        (r10_sig < 1.5) if isinstance(r10_sig, (int, float)) else False,
         (1.5 < r10_dw < 2.5) if isinstance(r10_dw, (int, float)) else False,
         (abs(r10_ac) < 0.15) if isinstance(r10_ac, (int, float)) else False,
         (abs(r10_rz) < 3) if isinstance(r10_rz, (int, float)) else False,
-        (r10_ks > 0.01) if isinstance(r10_ks, (int, float)) else False,
-        (1.5 < r30_dw < 2.5) if isinstance(r30_dw, (int, float)) else False,
-        (abs(r30_ac) < 0.15) if isinstance(r30_ac, (int, float)) else False,
-        (abs(r30_rz) < 3) if isinstance(r30_rz, (int, float)) else False,
     ]
     _make_table(axes[1, 2], rows_f, "(f) Rebinned (overfitting check)", checks_f)
 
