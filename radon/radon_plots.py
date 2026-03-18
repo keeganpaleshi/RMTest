@@ -228,6 +228,8 @@ def plot_volume_equiv_vs_time(
     radon_results: Mapping[str, object],
     out_dir: Path,
     volume_units: str | None = None,
+    *,
+    suffix: str = "",
 ) -> None:
     if not isinstance(radon_results, Mapping):
         logger.info("No radon results available for volume plotting")
@@ -260,6 +262,12 @@ def plot_volume_equiv_vs_time(
     _mk = dict(marker="o", linestyle="None", markersize=_DEFAULT_MARKER_SIZE,
                alpha=_DEFAULT_ALPHA)
 
+    def _fname(base: str) -> str:
+        """Insert suffix before the .png extension."""
+        if suffix:
+            return base.replace(".png", f"{suffix}.png")
+        return base
+
     # --- per-interval volume (m^3) ---
     fig, ax1 = plt.subplots(figsize=(10, 5))
     if vol_errs is not None:
@@ -274,7 +282,7 @@ def plot_volume_equiv_vs_time(
     ax1.yaxis.get_offset_text().set_visible(False)
     fig.autofmt_xdate()
     fig.tight_layout()
-    fig.savefig(out_dir / "equivalent_volume.png", dpi=300)
+    fig.savefig(out_dir / _fname("equivalent_volume.png"), dpi=300)
     plt.close(fig)
 
     # --- per-interval volume (litres) ---
@@ -293,7 +301,7 @@ def plot_volume_equiv_vs_time(
     ax_l.yaxis.get_offset_text().set_visible(False)
     fig_l.autofmt_xdate()
     fig_l.tight_layout()
-    fig_l.savefig(out_dir / "equivalent_volume_liters.png", dpi=300)
+    fig_l.savefig(out_dir / _fname("equivalent_volume_liters.png"), dpi=300)
     plt.close(fig_l)
 
     # --- flow rate (L/min) ---
@@ -318,7 +326,7 @@ def plot_volume_equiv_vs_time(
             ax_flow.yaxis.get_offset_text().set_visible(False)
             fig_flow.autofmt_xdate()
             fig_flow.tight_layout()
-            fig_flow.savefig(out_dir / "equivalent_flow.png", dpi=300)
+            fig_flow.savefig(out_dir / _fname("equivalent_flow.png"), dpi=300)
             plt.close(fig_flow)
 
     # --- cumulative volume (m^3 and litres) ---
@@ -352,7 +360,7 @@ def plot_volume_equiv_vs_time(
                 ax_c.yaxis.get_offset_text().set_visible(False)
                 fig_c.autofmt_xdate()
                 fig_c.tight_layout()
-                fig_c.savefig(out_dir / fname, dpi=300)
+                fig_c.savefig(out_dir / _fname(fname), dpi=300)
                 plt.close(fig_c)
         else:
             logger.info("No valid cumulative volume data for plotting")

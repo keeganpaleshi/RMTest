@@ -409,6 +409,13 @@ radon_inference:
     tz: America/Toronto
     interpolation: ffill
     max_gap_seconds: 21600
+  leak_rate_time_bins:
+  - 60      # 1 min
+  - 300     # 5 min
+  - 600     # 10 min
+  - 900     # 15 min
+  - 1800    # 30 min
+  - 3600    # 1 hr
   output:
     write_per_interval: true
     write_cumulative: true
@@ -427,6 +434,46 @@ plotting:
   overlay_isotopes: true
   save_individual_time_series: false
 
+
+lucas_bridge:
+  enabled: true
+  assay_files:
+    - "C:/Users/keega/Downloads/Radon assay results (current, May 2023)(UI, LN2 Plant Assays).csv"
+    - "C:/Users/keega/Downloads/Radon assay results (current, May 2023)(UGboardcalibration).csv"
+  selection:
+    labels: ["Radon Monitor", "Titan Trap + Pretrap"]
+    date_range: null      # [start_iso, end_iso]
+    indices: null         # explicit column indices
+  recompute_from_raw: true
+  comparison_target: "baseline_corrected_combined"
+  volume_convention: "monitor"   # "monitor", "sample", "total"
+  monitor_volume_l: 605.0         # Radon monitor internal volume (liters)
+  ui_volume_l: 4196.0             # UI volume (liters), for provenance only
+  match_window_hours: 2.0          # ±1 h around assay time (noon)
+  use_unclipped_baseline: true
+  skid_background:
+    label: "Background Assay - Titan Trap"
+    date: "2024-08-08"
+  # match_window_hours set above (1.0 h)
+  # Assays to exclude from the aggregate (still plotted as open markers).
+  # 09/12: wrong LC selected, huge uncertainty, useless measurement
+  # 11/01: spike injection day — monitor sees spike, assay is pre-spike
+  # 11/19: background assay — huge uncertainties
+  exclude_from_aggregate:
+    - "2024-09-12"
+    - "2024-11-01"
+    - "2024-11-19"
+  # Detector emanation baseline: measured between spike periods when
+  # monitor runs standalone with no external radon source.  This rate
+  # must be subtracted from the measured activity before computing the
+  # bridge factor, because it represents radon from the detector's own
+  # surfaces rather than from the air sample.
+  emanation_baseline:
+    start: "2024-10-02"
+    end: "2024-10-28"
+    # For UI-connected assays the emanation is diluted over the total
+    # system volume: emanation_rate_UI = emanation_rate × V_monitor / V_total
+    dilute_for_ui: true
 
 fitting:
   use_stable_emg: true

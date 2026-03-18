@@ -9,8 +9,22 @@ from typing import Mapping
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import stats as sp_stats
+from scipy import fft as sp_fft
 
 logger = logging.getLogger(__name__)
+
+# Standard alpha-decay peak energies (MeV) for region definitions
+_PEAK_REGIONS = {
+    "Po210": (5.10, 5.50),
+    "Po218": (5.80, 6.20),
+    "Po214": (7.40, 7.90),
+    "Po212": (8.55, 9.10),
+}
+_INTER_PEAK_REGIONS = {
+    "gap_210_218": (5.50, 5.80),
+    "gap_218_214": (6.20, 7.40),
+    "gap_214_212": (7.90, 8.55),
+}
 
 
 def plot_correlation_matrix(
@@ -992,3 +1006,726 @@ def plot_model_comparison(
         "Saved model comparison to %s",
         out_dir / "fit_model_comparison.png",
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Extended residual diagnostics: multi-type residuals, regional RMS,
+# power spectrum
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def _pearson_residuals(
+    hist: np.ndarray, model: np.ndarray, mask: np.ndarray,
+) -> np.ndarray:
+    """Pearson residual: (d_i - m_i) / sqrt(m_i)."""
+    return (hist[mask] - model[mask]) / np.sqrt(model[mask])
+
+
+def _deviance_residuals(
+    hist: np.ndarray, model: np.ndarray, mask: np.ndarray,
+) -> np.ndarray:
+    """Deviance residual for Poisson data.
+
+    r_i^(D) = sign(d - m) * sqrt(2 * [d*ln(d/m) - (d - m)])
+    Handles d=0 gracefully (term reduces to 2*m).
+    """
+    d = hist[mask].astype(float)
+    m = model[mask].astype(float)
+    sign = np.sign(d - m)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        term = np.where(d > 0, d * np.log(d / m), 0.0) - (d - m)
+    # Clamp numerical noise below zero
+    term = np.maximum(term, 0.0)
+    return sign * np.sqrt(2.0 * term)
+
+
+def _randomized_quantile_residuals(
+    hist: np.ndarray, model: np.ndarray, mask: np.ndarray,
+    rng: np.random.Generator | None = None,
+) -> np.ndarray:
+    """Randomized quantile residuals for Poisson data.
+
+    For each bin with observed count d_i and expected m_i:
+      F(d_i; m_i) = Poisson CDF at d_i
+      F(d_i - 1; m_i) = Poisson CDF at d_i - 1
+      u ~ Uniform(F(d_i-1), F(d_i))
+      r_i = Phi^{-1}(u)
+    These should be exactly N(0,1) if the model is correct.
+    """
+    if rng is None:
+        rng = np.random.default_rng(42)
+    d = hist[mask].astype(float)
+    m = model[mask].astype(float)
+    cdf_upper = sp_stats.poisson.cdf(d, m)
+    cdf_lower = sp_stats.poisson.cdf(d - 1, m)
+    # Clamp to avoid exactly 0 or 1 (would give ±inf from ppf)
+    eps = 1e-12
+    cdf_lower = np.clip(cdf_lower, eps, 1.0 - eps)
+    cdf_upper = np.clip(cdf_upper, eps, 1.0 - eps)
+    u = rng.uniform(cdf_lower, cdf_upper)
+    return sp_stats.norm.ppf(u)
+
+
+def compute_extended_residual_diagnostics(
+    fit_params: Mapping[str, object],
+    min_counts: float = 5.0,
+) -> dict:
+    """Compute Pearson, deviance, and randomized quantile residuals.
+
+    Returns a dict with per-type statistics, regional RMS, and power
+    spectrum data suitable for plotting and inclusion in summary.json.
+    """
+    model = np.asarray(fit_params.get("_plot_model_total", []), dtype=float)
+    hist = np.asarray(fit_params.get("_plot_hist", []), dtype=float)
+    centers = np.asarray(fit_params.get("_plot_centers", []), dtype=float)
+    if model.size == 0 or hist.size == 0 or centers.size == 0:
+        return {}
+
+    mask = model > min_counts
+    n = int(mask.sum())
+    if n < 10:
+        return {}
+
+    energies = centers[mask]
+    result: dict = {"n_bins": n}
+
+    # ── Compute all three residual types ──────────────────────────────
+    pearson = _pearson_residuals(hist, model, mask)
+    deviance = _deviance_residuals(hist, model, mask)
+    rqr = _randomized_quantile_residuals(hist, model, mask)
+
+    residual_types = {
+        "pearson": pearson,
+        "deviance": deviance,
+        "rqr": rqr,
+    }
+
+    # ── Per-type summary statistics ───────────────────────────────────
+    for rtype, resid in residual_types.items():
+        finite = resid[np.isfinite(resid)]
+        if len(finite) < 5:
+            continue
+        result[f"{rtype}_mean"] = round(float(np.mean(finite)), 4)
+        result[f"{rtype}_rms"] = round(float(np.sqrt(np.mean(finite ** 2))), 4)
+        result[f"{rtype}_sigma"] = round(float(np.std(finite, ddof=1)), 4)
+        result[f"{rtype}_skewness"] = round(float(sp_stats.skew(finite)), 4)
+        result[f"{rtype}_kurtosis"] = round(float(sp_stats.kurtosis(finite)), 4)
+        ks_stat, ks_p = sp_stats.kstest(finite, "norm", args=(0, 1))
+        result[f"{rtype}_ks_pvalue"] = round(float(ks_p), 6)
+
+    # ── Regional RMS (by isotope peak and inter-peak gaps) ────────────
+    all_regions = {**_PEAK_REGIONS, **_INTER_PEAK_REGIONS}
+    for region_name, (lo, hi) in all_regions.items():
+        rmask = (energies >= lo) & (energies <= hi)
+        n_r = int(rmask.sum())
+        if n_r < 3:
+            continue
+        for rtype, resid in residual_types.items():
+            r_slice = resid[rmask]
+            finite = r_slice[np.isfinite(r_slice)]
+            if len(finite) < 3:
+                continue
+            rms = float(np.sqrt(np.mean(finite ** 2)))
+            result[f"region_{region_name}_{rtype}_rms"] = round(rms, 4)
+        result[f"region_{region_name}_n_bins"] = n_r
+
+    # ── Power spectrum of Pearson residuals (FFT) ─────────────────────
+    # Use Pearson as the primary; if user wants others, the arrays are
+    # stored for the plot function.
+    finite_pearson = pearson[np.isfinite(pearson)]
+    if len(finite_pearson) >= 16:
+        # Subtract mean to remove DC component, then FFT
+        centered = finite_pearson - np.mean(finite_pearson)
+        N = len(centered)
+        fft_vals = sp_fft.rfft(centered)
+        power = np.abs(fft_vals) ** 2 / N
+        freqs = sp_fft.rfftfreq(N)  # in cycles per bin
+        # Store only summary stats (full arrays go to plot function)
+        # Exclude DC (index 0)
+        if len(power) > 1:
+            power_no_dc = power[1:]
+            freqs_no_dc = freqs[1:]
+            # Mean power should be ~1.0 for white noise (Pearson N(0,1))
+            result["fft_mean_power"] = round(float(np.mean(power_no_dc)), 4)
+            result["fft_max_power"] = round(float(np.max(power_no_dc)), 4)
+            result["fft_max_freq"] = round(float(freqs_no_dc[np.argmax(power_no_dc)]), 6)
+            # Ratio of max to mean — large values indicate spectral peaks
+            if np.mean(power_no_dc) > 0:
+                result["fft_peak_ratio"] = round(
+                    float(np.max(power_no_dc) / np.mean(power_no_dc)), 2
+                )
+
+    # ── Stash arrays for the plotting function (not serialized) ───────
+    result["_arrays"] = {
+        "energies": energies,
+        "pearson": pearson,
+        "deviance": deviance,
+        "rqr": rqr,
+    }
+
+    return result
+
+
+def plot_extended_residual_diagnostics(
+    fit_params: Mapping[str, object],
+    ext_diagnostics: dict,
+    out_dir: str | Path,
+) -> None:
+    """Create extended residual diagnostics figure.
+
+    Panels (3×2):
+      (a) Pearson vs Deviance vs RQR residuals overlaid
+      (b) QQ plots for all three residual types
+      (c) Regional RMS bar chart
+      (d) Power spectrum of Pearson residuals
+      (e) Power spectrum of deviance residuals
+      (f) Residual comparison summary table
+    """
+    out_dir = Path(out_dir)
+    arrays = ext_diagnostics.get("_arrays")
+    if arrays is None:
+        return
+
+    energies = arrays["energies"]
+    pearson = arrays["pearson"]
+    deviance = arrays["deviance"]
+    rqr = arrays["rqr"]
+    n = len(pearson)
+    if n < 10:
+        return
+
+    fig, axes = plt.subplots(3, 2, figsize=(16, 14))
+
+    # ── (a) Three residual types vs energy ────────────────────────────
+    ax = axes[0, 0]
+    ax.scatter(energies, pearson, s=1.5, alpha=0.4, color="#1f77b4", label="Pearson")
+    ax.scatter(energies, deviance, s=1.5, alpha=0.4, color="#ff7f0e", label="Deviance")
+    ax.scatter(energies, rqr, s=1.5, alpha=0.4, color="#2ca02c", label="RQR")
+    ax.axhline(0, color="k", lw=0.5)
+    ax.axhline(2, ls="--", color="gray", alpha=0.5, lw=0.7)
+    ax.axhline(-2, ls="--", color="gray", alpha=0.5, lw=0.7)
+    ax.set_xlabel("Energy [MeV]")
+    ax.set_ylabel("Residual (σ)")
+    ax.set_title("(a) Residual Comparison vs Energy", fontsize=9)
+    ax.legend(fontsize=7, markerscale=4, loc="upper right")
+    ax.set_ylim(-5, 5)
+
+    # ── (b) QQ plots for all three types ──────────────────────────────
+    ax = axes[0, 1]
+    theoretical = sp_stats.norm.ppf((np.arange(1, n + 1) - 0.5) / n)
+    for resid, color, label in [
+        (pearson, "#1f77b4", "Pearson"),
+        (deviance, "#ff7f0e", "Deviance"),
+        (rqr, "#2ca02c", "RQR"),
+    ]:
+        finite = resid[np.isfinite(resid)]
+        if len(finite) < 5:
+            continue
+        sorted_r = np.sort(finite)
+        # Handle size mismatch if some were filtered
+        th = sp_stats.norm.ppf((np.arange(1, len(sorted_r) + 1) - 0.5) / len(sorted_r))
+        ax.scatter(th, sorted_r, s=2, alpha=0.4, color=color, label=label)
+    qq_lim = 4.5
+    ax.plot([-qq_lim, qq_lim], [-qq_lim, qq_lim], "k--", lw=1, alpha=0.6)
+    ax.set_xlabel("Theoretical quantiles [N(0,1)]")
+    ax.set_ylabel("Residual quantiles")
+    ax.set_title("(b) QQ Plots: Pearson / Deviance / RQR", fontsize=9)
+    ax.set_xlim(-qq_lim, qq_lim)
+    ax.set_ylim(-qq_lim, qq_lim)
+    ax.set_aspect("equal")
+    ax.legend(fontsize=7, markerscale=4)
+
+    # ── (c) Regional RMS bar chart ────────────────────────────────────
+    ax = axes[1, 0]
+    all_regions = list(_PEAK_REGIONS.keys()) + list(_INTER_PEAK_REGIONS.keys())
+    rms_data = {}
+    for rtype in ["pearson", "deviance", "rqr"]:
+        vals = []
+        for region in all_regions:
+            key = f"region_{region}_{rtype}_rms"
+            vals.append(ext_diagnostics.get(key, np.nan))
+        rms_data[rtype] = np.array(vals)
+
+    x = np.arange(len(all_regions))
+    bar_w = 0.25
+    for i, (rtype, color) in enumerate([
+        ("pearson", "#1f77b4"), ("deviance", "#ff7f0e"), ("rqr", "#2ca02c"),
+    ]):
+        ax.bar(x + i * bar_w, rms_data[rtype], bar_w, color=color, alpha=0.8,
+               label=rtype.capitalize())
+    ax.axhline(1.0, color="k", ls="--", lw=0.8, alpha=0.5, label="Ideal (1.0)")
+    ax.set_xticks(x + bar_w)
+    short_labels = [r.replace("gap_", "").replace("_", "–") for r in all_regions]
+    ax.set_xticklabels(short_labels, fontsize=7, rotation=30, ha="right")
+    ax.set_ylabel("RMS")
+    ax.set_title("(c) Regional RMS by Residual Type", fontsize=9)
+    ax.legend(fontsize=7, ncol=2)
+
+    # ── (d) Power spectrum of Pearson residuals ───────────────────────
+    ax = axes[1, 1]
+    _plot_power_spectrum(ax, pearson, "(d) Power Spectrum — Pearson", "#1f77b4")
+
+    # ── (e) Power spectrum of deviance residuals ──────────────────────
+    ax = axes[2, 0]
+    _plot_power_spectrum(ax, deviance, "(e) Power Spectrum — Deviance", "#ff7f0e")
+
+    # ── (f) Summary comparison table ──────────────────────────────────
+    ax = axes[2, 1]
+    ax.axis("off")
+    col_labels = ["Metric", "Pearson", "Deviance", "RQR"]
+    rows = []
+    for metric, fmt in [
+        ("rms", ".3f"), ("sigma", ".3f"), ("mean", ".3f"),
+        ("skewness", ".3f"), ("kurtosis", ".3f"), ("ks_pvalue", ".4f"),
+    ]:
+        row = [metric.replace("_", " ").title()]
+        for rtype in ["pearson", "deviance", "rqr"]:
+            v = ext_diagnostics.get(f"{rtype}_{metric}", "?")
+            row.append(f"{v:{fmt}}" if isinstance(v, (int, float)) else str(v))
+        rows.append(row)
+
+    # Add FFT summary row
+    fft_peak = ext_diagnostics.get("fft_peak_ratio", "?")
+    rows.append([
+        "FFT Peak Ratio",
+        f"{fft_peak:.1f}" if isinstance(fft_peak, (int, float)) else str(fft_peak),
+        "—", "—",
+    ])
+
+    table = ax.table(
+        cellText=rows, colLabels=col_labels, loc="center",
+        cellLoc="center", colWidths=[0.28, 0.24, 0.24, 0.24],
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(8)
+    table.scale(1.0, 1.5)
+    for j in range(4):
+        table[0, j].set_facecolor("#e2e3e5")
+        table[0, j].set_text_props(fontweight="bold")
+    # Highlight: green if RMS close to 1, red if far
+    for row_idx in range(1, len(rows) + 1):
+        if rows[row_idx - 1][0] == "Rms":
+            for col_idx in range(1, 4):
+                try:
+                    v = float(rows[row_idx - 1][col_idx])
+                    ok = 0.7 < v < 1.3
+                    table[row_idx, col_idx].set_facecolor(
+                        "#d4edda" if ok else "#f8d7da"
+                    )
+                except (ValueError, IndexError):
+                    pass
+    ax.set_title("(f) Residual Type Comparison", fontsize=9, pad=12)
+
+    fig.suptitle(
+        "Extended Residual Diagnostics: Pearson / Deviance / RQR",
+        fontsize=13, fontweight="bold", y=0.99,
+    )
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    fig.savefig(out_dir / "fit_extended_residuals.png", dpi=200)
+    plt.close(fig)
+    logger.info(
+        "Saved extended residual diagnostics to %s",
+        out_dir / "fit_extended_residuals.png",
+    )
+
+
+def _plot_power_spectrum(
+    ax: plt.Axes,
+    residuals: np.ndarray,
+    title: str,
+    color: str,
+) -> None:
+    """Plot the power spectrum of a residual array on the given axes."""
+    finite = residuals[np.isfinite(residuals)]
+    if len(finite) < 16:
+        ax.text(0.5, 0.5, "Insufficient data", transform=ax.transAxes,
+                ha="center", va="center")
+        ax.set_title(title, fontsize=9)
+        return
+
+    centered = finite - np.mean(finite)
+    N = len(centered)
+    fft_vals = sp_fft.rfft(centered)
+    power = np.abs(fft_vals) ** 2 / N
+    freqs = sp_fft.rfftfreq(N)
+
+    # Skip DC component
+    if len(power) > 1:
+        freqs = freqs[1:]
+        power = power[1:]
+
+    # White noise expectation: mean power ≈ variance ≈ 1 for N(0,1) residuals
+    expected_power = np.var(finite)
+    ax.semilogy(freqs, power, color=color, alpha=0.5, lw=0.7)
+    # Smoothed version (running mean, window=5)
+    if len(power) > 10:
+        w = min(11, len(power) // 3)
+        if w % 2 == 0:
+            w += 1
+        kernel = np.ones(w) / w
+        smoothed = np.convolve(power, kernel, mode="same")
+        ax.semilogy(freqs, smoothed, color=color, lw=1.8, alpha=0.9,
+                     label="Smoothed")
+    ax.axhline(expected_power, color="k", ls="--", lw=0.8, alpha=0.6,
+               label=f"White noise ({expected_power:.2f})")
+    # 95% confidence for white noise (chi2 with 2 DOF per frequency bin)
+    ci_95 = expected_power * sp_stats.chi2.ppf(0.95, 2) / 2
+    ax.axhline(ci_95, color="red", ls=":", lw=0.7, alpha=0.5,
+               label=f"95% CL ({ci_95:.2f})")
+    ax.set_xlabel("Frequency [cycles/bin]")
+    ax.set_ylabel("Power")
+    ax.set_title(title, fontsize=9)
+    ax.legend(fontsize=7)
+    ax.set_xlim(0, 0.5)
+
+
+# ---------------------------------------------------------------------------
+# Lucas-cell assay bridge summary plot
+# ---------------------------------------------------------------------------
+
+def plot_bridge_summary(
+    bridge_results: dict,
+    out_dir: str | Path,
+    spike_results: dict | None = None,
+) -> None:
+    """3-panel diagnostic plot for the Lucas-cell assay bridge.
+
+    Panel 1: Bridge factor per assay (scatter + error bars + aggregate band)
+    Panel 2: Detection efficiency per assay (scatter + error bars + aggregate band)
+              + spike-derived efficiency predictions if available
+    Panel 3: Reference vs measured activity (log-scale grouped bars)
+
+    Parameters
+    ----------
+    bridge_results : dict
+        The ``lucas_bridge`` section from the pipeline summary.
+    out_dir : str or Path
+        Directory for the output PNG.
+    spike_results : dict, optional
+        Output from ``fit_spike_periods()`` — spike-derived efficiency
+        predictions are overlaid on Panel 2.
+    """
+    out_dir = Path(out_dir)
+    assays = bridge_results.get("assays", [])
+    if not assays:
+        logger.info("No assay data for bridge summary plot; skipping")
+        return
+
+    from datetime import datetime
+
+    # --- Parse per-assay data ---
+    dates: list[datetime] = []
+    labels: list[str] = []
+    bfs: list[float] = []
+    bf_uncs: list[float] = []
+    effs: list[float] = []
+    eff_uncs: list[float] = []
+    ref_bqs: list[float] = []
+    ref_uncs: list[float] = []
+    meas_bqs: list[float] = []
+    meas_uncs: list[float] = []
+    categories: list[str] = []  # "RM", "UI", "BG"
+    in_agg: list[bool] = []
+
+    for a in assays:
+        date_str = a.get("assay_date")
+        if not date_str:
+            continue
+        try:
+            dt = datetime.fromisoformat(date_str)
+        except (ValueError, TypeError):
+            continue
+
+        bf = a.get("bridge_factor")
+        bf_u = a.get("bridge_factor_unc")
+        if bf is None or bf_u is None:
+            continue
+
+        dates.append(dt)
+        labels.append(a.get("assay_label", "")[:30])
+        bfs.append(bf)
+        bf_uncs.append(bf_u)
+        effs.append(a.get("detection_efficiency") or 0)
+        eff_uncs.append(a.get("detection_efficiency_unc") or 0)
+        ref_bqs.append(a.get("reference_activity_bq") or 0)
+        ref_uncs.append(a.get("reference_activity_unc_bq") or 0)
+        meas_bqs.append(a.get("measured_activity_bq") or 0)
+        meas_uncs.append(a.get("measured_activity_unc_bq") or 0)
+
+        in_agg.append(a.get("in_aggregate", True))
+
+        lbl = a.get("assay_label", "").lower()
+        is_bg = a.get("is_background_assay", False) or "background" in lbl
+        if is_bg:
+            categories.append("BG")
+        elif "ui connected" in lbl or "ui through" in lbl:
+            categories.append("UI")
+        else:
+            categories.append("RM")
+
+    if not dates:
+        logger.info("No valid assay data for bridge plot; skipping")
+        return
+
+    # Color map
+    cat_colors = {"RM": "#1f77b4", "UI": "#ff7f0e", "BG": "#7f7f7f"}
+    colors = [cat_colors.get(c, "#1f77b4") for c in categories]
+
+    # Aggregate values
+    agg = bridge_results.get("aggregate", {})
+    agg_bf = agg.get("weighted_mean_bridge_factor")
+    agg_bf_unc = agg.get("weighted_mean_unc")
+
+    import matplotlib.dates as mdates
+
+    fig, axes = plt.subplots(3, 1, figsize=(10, 10), constrained_layout=True)
+    fig.suptitle("Lucas-Cell Assay Bridge Summary", fontsize=13, fontweight="bold")
+
+    # ── Panel 1: Bridge Factor ──
+    ax1 = axes[0]
+    from matplotlib.lines import Line2D
+    _MS = 3          # marker size (small so error bars visible)
+    _MEW = 0.6       # marker edge width
+    _ELW = 0.9       # error bar line width
+    _ALPHA = 0.75    # marker translucency
+    for i, (d, bf, bfu, col, ia) in enumerate(zip(dates, bfs, bf_uncs, colors, in_agg)):
+        mfc = col if ia else "none"
+        ax1.errorbar(d, bf, yerr=bfu, fmt="o", color=col, capsize=3,
+                     markersize=_MS, elinewidth=_ELW, zorder=5,
+                     markerfacecolor=mfc, markeredgecolor=col,
+                     markeredgewidth=_MEW, alpha=_ALPHA)
+    if agg_bf is not None and agg_bf_unc is not None:
+        ax1.axhspan(agg_bf - agg_bf_unc, agg_bf + agg_bf_unc,
+                     alpha=0.15, color="#2ca02c", zorder=1)
+        ax1.axhline(agg_bf, color="#2ca02c", ls="--", lw=1, alpha=0.7,
+                     label=f"Weighted mean = {agg_bf:.2f} +/- {agg_bf_unc:.2f}")
+    ax1.set_ylabel("Bridge Factor (ref / meas)")
+    ax1.set_title("Bridge Factor per Assay", fontsize=10)
+    ax1.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+    ax1.tick_params(axis="x", rotation=30, labelsize=7)
+    # Category legend
+    legend_handles = []
+    for cat, col in cat_colors.items():
+        if cat in categories:
+            legend_handles.append(Line2D([0], [0], marker="o", color="w",
+                                         markerfacecolor=col, markersize=3.5, label=cat))
+    if agg_bf is not None:
+        legend_handles.append(Line2D([0], [0], ls="--", color="#2ca02c",
+                                      label=f"Weighted mean = {agg_bf:.2f} ± {agg_bf_unc:.2f}"))
+    ax1.legend(handles=legend_handles, fontsize=7, loc="upper right")
+
+    # ── Panel 2: Detection Efficiency ──
+    ax2 = axes[1]
+    for i, (d, eff, effu, col, ia) in enumerate(zip(dates, effs, eff_uncs, colors, in_agg)):
+        mfc = col if ia else "none"
+        # Clip display values to [0, 1] but keep error bars proportional
+        eff_disp = min(eff, 1.0)
+        # Show error bar even if point is at edge
+        yerr_lo = min(effu, eff_disp) if effu > 0 else 0
+        yerr_hi = effu
+        ax2.errorbar(d, eff_disp, yerr=[[yerr_lo], [yerr_hi]], fmt="o",
+                     color=col, capsize=3, markersize=_MS, elinewidth=_ELW,
+                     zorder=5, markerfacecolor=mfc, markeredgecolor=col,
+                     markeredgewidth=_MEW, alpha=_ALPHA)
+        # Annotate relative uncertainty
+        if eff > 0 and effu > 0:
+            rel_pct = effu / eff * 100
+            y_ann = min(eff_disp + effu + 0.02, 0.95)
+            ax2.annotate(f"±{rel_pct:.0f}%", (d, y_ann), fontsize=5.5,
+                         ha="center", color=col, alpha=0.7)
+    # Aggregate efficiency = 1/BF
+    if agg_bf is not None and agg_bf > 0 and agg_bf_unc is not None:
+        agg_eff = 1.0 / agg_bf
+        agg_eff_unc = agg_bf_unc / agg_bf**2
+        ax2.axhspan(max(agg_eff - agg_eff_unc, 0), min(agg_eff + agg_eff_unc, 1),
+                     alpha=0.15, color="#2ca02c", zorder=1)
+        ax2.axhline(agg_eff, color="#2ca02c", ls="--", lw=1, alpha=0.7,
+                     label=f"Aggregate = {agg_eff:.3f} ± {agg_eff_unc:.3f}")
+    # Overlay spike-derived efficiency on Panel 2
+    if spike_results is not None:
+        spike_periods = spike_results.get("periods", [])
+        for sp in spike_periods:
+            if sp.get("error"):
+                continue
+            # Use spike_efficiency = R0 / ref_bq when available
+            spike_eff = sp.get("spike_efficiency")
+            spike_eff_unc = sp.get("spike_efficiency_unc", 0)
+            if spike_eff is None or spike_eff <= 0:
+                continue
+            label_sp = sp.get("label", sp.get("t_start", ""))
+            # Place the spike marker at the matched assay date, not the
+            # spike injection start date.
+            date_str = sp.get("matched_assay_date") or sp.get("t_start")
+            try:
+                sp_date = datetime.fromisoformat(date_str)
+            except (ValueError, TypeError):
+                continue
+            ax2.errorbar(sp_date, spike_eff, yerr=spike_eff_unc,
+                         fmt="d", color="#d62728",
+                         capsize=2, markersize=3, elinewidth=0.8, zorder=10,
+                         markerfacecolor="#d62728", markeredgecolor="k",
+                         markeredgewidth=0.4, alpha=0.75,
+                         label=f"Spike eff: {label_sp}")
+        if any(sp.get("spike_efficiency") for sp in spike_periods):
+            ax2.annotate("◆ = Spike-derived efficiency (R₀/ref)",
+                         xy=(0.02, 0.02), xycoords="axes fraction",
+                         fontsize=5.5, color="#d62728", alpha=0.7)
+
+    ax2.set_ylim(0, 1.0)
+    ax2.set_ylabel("Detection Efficiency (1/BF)")
+    ax2.set_title("Detection Efficiency per Assay", fontsize=10)
+    ax2.legend(fontsize=7, loc="upper right")
+    ax2.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+    ax2.tick_params(axis="x", rotation=30, labelsize=7)
+
+    # ── Panel 3: Reference vs Measured Activity (log scale) ──
+    ax3 = axes[2]
+    n = len(dates)
+    x = np.arange(n)
+    bar_w = 0.35
+    bars_ref = ax3.bar(x - bar_w / 2, ref_bqs, bar_w, yerr=ref_uncs,
+                       label="Reference (assay)", color="#1f77b4", alpha=0.7,
+                       capsize=2, ecolor="#333")
+    bars_meas = ax3.bar(x + bar_w / 2, meas_bqs, bar_w, yerr=meas_uncs,
+                        label="Measured (monitor)", color="#ff7f0e", alpha=0.7,
+                        capsize=2, ecolor="#333")
+    ax3.set_yscale("log")
+    ax3.set_xticks(x)
+    short_labels = [f"{d.strftime('%m/%d')}\n{l[:20]}" for d, l in zip(dates, labels)]
+    ax3.set_xticklabels(short_labels, fontsize=6, rotation=30, ha="right")
+    ax3.set_ylabel("Activity (Bq)")
+    ax3.set_title("Reference vs Measured Activity", fontsize=10)
+    ax3.legend(fontsize=8)
+
+    # Save
+    out_path = out_dir / "assay_bridge_summary.png"
+    fig.savefig(out_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    logger.info("Saved assay bridge summary to %s", out_path)
+
+
+def plot_spike_decay_fits(
+    spike_results: dict,
+    isotope_series: dict,
+    out_dir: str | Path,
+) -> None:
+    """Plot spike decay fits — data + model for each spike period.
+
+    Creates one subplot per spike period showing:
+    - Binned count rate data (isotopes summed)
+    - Best-fit exponential decay curve
+    - Residuals
+
+    Parameters
+    ----------
+    spike_results : dict
+        Output from ``fit_spike_periods()``.
+    isotope_series : dict
+        Per-isotope time series data.
+    out_dir : str or Path
+        Output directory for the plot.
+    """
+    import math
+    from datetime import datetime
+
+    out_dir = Path(out_dir)
+    periods = spike_results.get("periods", [])
+    valid_periods = [p for p in periods if not p.get("error") and p.get("R0")]
+
+    if not valid_periods:
+        logger.info("No valid spike fits to plot")
+        return
+
+    n = len(valid_periods)
+    fig, axes = plt.subplots(n, 1, figsize=(10, 4.5 * n), squeeze=False)
+
+    isotopes = ("Po214", "Po218")
+    half_life_days = spike_results.get("half_life_days_fixed", 3.8235)
+    lam = math.log(2) / (half_life_days * 86400.0)
+
+    for idx, period in enumerate(valid_periods):
+        ax = axes[idx, 0]
+
+        t_start_iso = period["t_start"]
+        t_end_iso = period["t_end"]
+        t0 = datetime.fromisoformat(t_start_iso).timestamp()
+        t1 = datetime.fromisoformat(t_end_iso).timestamp()
+
+        R0 = period["R0"]
+        B = period["B"]
+        R0_unc = period.get("R0_unc", 0)
+        B_unc = period.get("B_unc", 0)
+        chi2_ndf = period.get("chi2_ndf", float("nan"))
+        label = period.get("label", f"{t_start_iso} → {t_end_iso}")
+
+        # Collect binned data
+        time_bins: dict[float, list[tuple[float, float]]] = {}
+        for iso in isotopes:
+            for entry in isotope_series.get(iso, []):
+                t = entry.get("t")
+                c = entry.get("counts", 0.0)
+                dt = entry.get("dt", 0.0)
+                if t is None or not np.isfinite(t) or dt <= 0:
+                    continue
+                if t0 <= t <= t1:
+                    if t not in time_bins:
+                        time_bins[t] = []
+                    time_bins[t].append((c, dt))
+
+        if not time_bins:
+            continue
+
+        t_arr = []
+        r_arr = []
+        u_arr = []
+        for t_mid in sorted(time_bins.keys()):
+            entries = time_bins[t_mid]
+            total_c = sum(c for c, _ in entries)
+            dt = entries[0][1]
+            t_arr.append(t_mid)
+            r_arr.append(total_c / dt)
+            u_arr.append(math.sqrt(max(total_c, 1.0)) / dt)
+
+        t_arr = np.array(t_arr)
+        r_arr = np.array(r_arr)
+        u_arr = np.array(u_arr)
+
+        # Time in days since start
+        t_days = (t_arr - t0) / 86400.0
+        skip_days = period.get("skip_initial_days", 0.5)
+
+        # Split data into skipped (injection) and fitted regions
+        fit_mask = t_days >= skip_days
+        skip_mask = ~fit_mask
+
+        # Model curve (smooth) — starts from skip_days
+        t_model = np.linspace(skip_days, (t1 - t0) / 86400.0, 200)
+        r_model = R0 * np.exp(-lam * t_model * 86400.0) + B
+
+        # Plot skipped bins (grayed out)
+        if np.any(skip_mask):
+            ax.errorbar(t_days[skip_mask], r_arr[skip_mask], yerr=u_arr[skip_mask],
+                         fmt=".", color="gray", markersize=3, alpha=0.3,
+                         label=f"Skipped ({skip_days:.1f}d injection)")
+        # Plot fitted bins
+        ax.errorbar(t_days[fit_mask], r_arr[fit_mask], yerr=u_arr[fit_mask],
+                     fmt=".", color="C0", markersize=3, alpha=0.6,
+                     label="Data (Po214+Po218)")
+        ax.plot(t_model, r_model, "-", color="C3", lw=1.5,
+                label=(f"Fit: R₀={R0:.4f}±{R0_unc:.4f}, "
+                       f"B={B:.5f}±{B_unc:.5f}\n"
+                       f"χ²/ndf={chi2_ndf:.2f}"))
+        ax.axhline(B, color="gray", ls="--", alpha=0.5, label=f"Baseline B={B:.5f}")
+        # Mark the skip boundary
+        ax.axvline(skip_days, color="orange", ls=":", alpha=0.6, lw=1)
+
+        ax.set_xlabel(f"Days since {t_start_iso}")
+        ax.set_ylabel("Count rate (Hz)")
+        ax.set_title(f"{label}  (t½={half_life_days:.4f} d fixed)")
+        ax.legend(fontsize=7, loc="upper right")
+
+    fig.tight_layout()
+    out_path = out_dir / "spike_decay_fits.png"
+    fig.savefig(out_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    logger.info("Saved spike decay fits to %s", out_path)

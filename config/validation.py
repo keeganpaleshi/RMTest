@@ -136,3 +136,69 @@ def validate_radon_inference(cfg: dict) -> None:
                 raise ValueError(
                     "radon_inference.external_rn.file_path must be provided when mode is 'file'"
                 )
+
+
+def validate_lucas_bridge(cfg: dict) -> None:
+    """Validate the ``lucas_bridge`` configuration section.
+
+    Parameters
+    ----------
+    cfg : dict
+        Full pipeline configuration.
+
+    Raises
+    ------
+    ValueError
+        If any lucas_bridge settings are invalid.
+    """
+    bridge = cfg.get("lucas_bridge")
+    if not bridge or not isinstance(bridge, Mapping):
+        return
+    if not bridge.get("enabled", False):
+        return
+
+    # Validate comparison_target
+    valid_targets = {
+        "baseline_corrected_combined",
+        "radon_activity",
+        "radon_combined",
+        "po214",
+        "po218",
+    }
+    target = bridge.get("comparison_target", "baseline_corrected_combined")
+    if target not in valid_targets:
+        raise ValueError(
+            f"lucas_bridge.comparison_target must be one of {valid_targets}, "
+            f"got {target!r}"
+        )
+
+    # Validate volume_convention
+    valid_volumes = {"monitor", "sample", "total"}
+    vol_conv = bridge.get("volume_convention", "monitor")
+    if vol_conv not in valid_volumes:
+        raise ValueError(
+            f"lucas_bridge.volume_convention must be one of {valid_volumes}, "
+            f"got {vol_conv!r}"
+        )
+
+    # Validate assay_files exist
+    assay_files = bridge.get("assay_files", [])
+    if not assay_files:
+        logger = logging.getLogger(__name__)
+        logger.warning("lucas_bridge is enabled but no assay_files specified")
+
+    # Validate date_range if provided
+    selection = bridge.get("selection") or {}
+    date_range = selection.get("date_range")
+    if date_range is not None:
+        if not isinstance(date_range, (list, tuple)) or len(date_range) != 2:
+            raise ValueError(
+                "lucas_bridge.selection.date_range must be [start_iso, end_iso]"
+            )
+        try:
+            datetime.fromisoformat(str(date_range[0]))
+            datetime.fromisoformat(str(date_range[1]))
+        except (ValueError, TypeError) as exc:
+            raise ValueError(
+                f"lucas_bridge.selection.date_range contains invalid ISO dates: {exc}"
+            ) from exc

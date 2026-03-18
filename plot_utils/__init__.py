@@ -571,9 +571,16 @@ def plot_time_series(
             seg["counts"].setdefault(iso, counts_hist.astype(int))
             raw_segment_counts.append(counts_hist.astype(float))
 
-            # Poisson stat error + calibration window efficiency systematic in quadrature.
-            # cal_window_rel_unc_per_iso gives fractional systematic on the count rate
-            # from energy-scale uncertainty shifting the fraction of events in the window.
+            # Error per bin: Poisson counting statistics + calibration window
+            # efficiency systematic in quadrature.
+            #   σ² = N + (N·cal_rel)²
+            # The calibration systematic (energy scale shift changes the
+            # fraction of events captured in the window) is a true uncertainty
+            # on the measured count rate.
+            # The bridge detection efficiency uncertainty is NOT included here
+            # because it enters at the counts→activity conversion, not the
+            # raw count rate.  It is propagated in radon_inference and the
+            # radon_activity error bars downstream.
             _cal_unc_dict = config.get("cal_window_rel_unc_per_iso", {})
             _cal_rel = float(_cal_unc_dict.get(iso, 0.0)) if isinstance(_cal_unc_dict, dict) else 0.0
             errors_seg = np.sqrt(counts_hist + (counts_hist * _cal_rel) ** 2)

@@ -1527,6 +1527,97 @@ def dedupe_isotope_series(isotope_series_data, tol_seconds=0.5):
     return deduplicated
 
 
+def _rebin_isotope_series(
+    time_plot_data: dict,
+    cfg: dict,
+    bin_width_s: float,
+    t_start: float,
+    t_end: float,
+) -> dict:
+    """Re-bin raw isotope events at a given time bin width.
+
+    Returns isotope_series_data in the same format as
+    ``_segments_to_isotope_series``: ``{iso: [{t, counts, dt, ...}, ...]}``.
+
+    This avoids running the full ``plot_time_series`` (which creates plots)
+    and instead directly bins the events using ``_build_time_segments``.
+    """
+    from plot_utils import _build_time_segments, _resolve_run_periods
+
+    tf_cfg = cfg.get("time_fit", {})
+    plot_cfg = cfg.get("plotting", {})
+
+    merged_cfg = dict(tf_cfg)
+    merged_cfg.update(plot_cfg)
+
+    periods = _resolve_run_periods(merged_cfg, t_start, t_end)
+    segments = _build_time_segments(
+        np.array([t_start, t_end]),
+        periods=periods,
+        bin_mode="fixed",
+        bin_width_s=bin_width_s,
+        time_bins_fallback=1,
+        t_start=t_start,
+    )
+    if not segments:
+        segments = _build_time_segments(
+            np.array([t_start, t_end]),
+            periods=[(t_start, t_end)],
+            bin_mode="fixed",
+            bin_width_s=bin_width_s,
+            time_bins_fallback=1,
+            t_start=t_start,
+        )
+
+    iso_map: dict[str, list[dict]] = {}
+    for iso, pdata in time_plot_data.items():
+        if pdata is None:
+            continue
+        raw_times = np.asarray(pdata.get("events_times", []))
+        # Convert datetime64 (nanoseconds) to UNIX seconds (float)
+        if np.issubdtype(raw_times.dtype, np.datetime64):
+            events_times = raw_times.astype("int64").astype(float) / 1e9
+        else:
+            events_times = raw_times.astype(float)
+        events_energy = np.asarray(pdata.get("events_energy", []), dtype=float)
+
+        win_key = f"window_{iso.lower()}"
+        window = tf_cfg.get(win_key) if isinstance(tf_cfg, Mapping) else None
+        if window is None:
+            continue
+        emin, emax = window
+
+        mask = (events_energy >= emin) & (events_energy <= emax)
+        ts_filtered = events_times[mask]
+
+        all_entries: list[dict] = []
+        for seg_idx, seg in enumerate(segments):
+            edges = seg["edges_abs"]
+            centers = seg["centers_abs"]
+            widths = seg["bin_widths"]
+            seg_mask = (ts_filtered >= seg["start"]) & (ts_filtered < seg["end"])
+            seg_times = ts_filtered[seg_mask]
+            counts_hist = np.histogram(seg_times, bins=edges)[0].astype(float)
+            n = min(counts_hist.size, centers.size, widths.size)
+            # Vectorised valid-bin mask
+            valid = (np.isfinite(centers[:n]) & np.isfinite(widths[:n])
+                     & (widths[:n] > 0))
+            idx_arr = np.where(valid)[0]
+            c_vals = centers[idx_arr]
+            w_vals = widths[idx_arr]
+            cnt_vals = counts_hist[idx_arr]
+            all_entries.extend(
+                {"t": float(c_vals[i]), "counts": float(cnt_vals[i]),
+                 "dt": float(w_vals[i]), "segment_index": seg_idx,
+                 "bin_index": int(idx_arr[i])}
+                for i in range(len(idx_arr))
+            )
+        all_entries.sort(key=lambda row: row["t"])
+        iso_map[iso] = all_entries
+
+    return iso_map
+
+
 def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
     """Propagate fit parameter errors to the model curve."""
     if fit_obj is None:
@@ -5127,8 +5218,12 @@ def main(argv=None):
 
         # ── Pull-based overfitting diagnostics ────────────────────────
         _pull_diag_result = {}
+        _ext_resid_result = {}
         try:
-            from plot_utils.diagnostics import compute_pull_diagnostics
+            from plot_utils.diagnostics import (
+                compute_pull_diagnostics,
+                compute_extended_residual_diagnostics,
+            )
 
             _diag_src = (
                 spectrum_results.params
@@ -5138,6 +5233,15 @@ def main(argv=None):
             _pull_diag_result = compute_pull_diagnostics(_diag_src)
             if _pull_diag_result:
                 spec_dict["pull_diagnostics"] = _pull_diag_result
+
+            _ext_resid_result = compute_extended_residual_diagnostics(_diag_src)
+            if _ext_resid_result:
+                # Store serializable subset (exclude numpy arrays)
+                _ext_serial = {
+                    k: v for k, v in _ext_resid_result.items()
+                    if k != "_arrays"
+                }
+                spec_dict["extended_residual_diagnostics"] = _ext_serial
         except Exception as _e:
             logger.warning("Pull diagnostics failed: %s", _e)
 
@@ -5437,6 +5541,7 @@ def main(argv=None):
                     plot_split_half_comparison,
                     plot_overfitting_diagnostics,
                     plot_model_comparison,
+                    plot_extended_residual_diagnostics,
                 )
                 _diag_fit_result = spec_plot_data["fit_vals"]
                 _diag_params = (
@@ -5453,6 +5558,10 @@ def main(argv=None):
                 if _pull_diag_result:
                     plot_overfitting_diagnostics(
                         _diag_params, _pull_diag_result, out_dir
+                    )
+                if _ext_resid_result:
+                    plot_extended_residual_diagnostics(
+                        _diag_params, _ext_resid_result, out_dir
                     )
                 if model_comparison_result is not None:
                     plot_model_comparison(model_comparison_result, out_dir)
@@ -5729,7 +5838,170 @@ def main(argv=None):
                 # Keep ``radon_trend.png`` sourced from the radon concentration
                 # series. ``rn_inferred`` is detector-cell activity in Bq and is
                 # reported separately in ``radon_inferred.png``.
-    
+
+        # ── Leak-rate time-bin sweep ──────────────────────────────────
+        leak_rate_bins = cfg.get("radon_inference", {}).get(
+            "leak_rate_time_bins", []
+        )
+        if leak_rate_bins and time_plot_data and radon_inference_cfg and radon_inference_cfg.get("enabled", False):
+            logger.info("Starting leak-rate time-bin sweep: %s", leak_rate_bins)
+            try:
+                _sweep_ext = external_series
+            except NameError:
+                _sweep_ext = None
+            for bin_s in leak_rate_bins:
+                bin_s = float(bin_s)
+                if bin_s <= 0:
+                    continue
+                # Human-readable label
+                if bin_s >= 3600:
+                    label = f"{int(bin_s // 3600)}hr"
+                elif bin_s >= 60:
+                    label = f"{int(bin_s // 60)}min"
+                else:
+                    label = f"{int(bin_s)}s"
+                try:
+                    duration_s = t_end_global_ts - t0_global.timestamp()
+                    est_bins = int(duration_s / bin_s)
+                    max_bins = int(cfg.get("radon_inference", {}).get(
+                        "leak_rate_max_bins", 100000))
+                    if est_bins > max_bins:
+                        logger.warning(
+                            "Leak-rate sweep: %s would produce ~%d bins "
+                            "(max %d); skipping", label, est_bins, max_bins)
+                        continue
+                    logger.info("Leak-rate sweep: rebinning at %s (%d s, ~%d bins)...",
+                                label, int(bin_s), est_bins)
+                    rebinned = _rebin_isotope_series(
+                        time_plot_data, cfg, bin_s,
+                        t0_global.timestamp(), t_end_global_ts,
+                    )
+                    n_total = sum(len(v) for v in rebinned.values())
+                    logger.info("Leak-rate sweep: %s -> %d bins across %d isotopes",
+                                label, n_total, len(rebinned))
+                    if not rebinned:
+                        logger.info("No data after rebinning at %s; skipping", label)
+                        continue
+
+                    lr_results = run_radon_inference(rebinned, cfg, _sweep_ext)
+                    if lr_results:
+                        lr_dir = Path(out_dir) / f"leak_rate_{label}"
+                        lr_dir.mkdir(parents=True, exist_ok=True)
+                        plot_rn_inferred_vs_time(lr_results, lr_dir)
+                        plot_volume_equiv_vs_time(lr_results, lr_dir)
+                        logger.info("Leak-rate sweep: %s bin -> %d points",
+                                    label, len(lr_results.get("volume_equiv", [])))
+                except Exception as exc:
+                    logger.warning("Leak-rate sweep %s failed: %s", label, exc)
+
+    # ── Lucas-cell assay bridge ──────────────────────────────────────
+    with timer.section("lucas_bridge"):
+        bridge_cfg = cfg.get("lucas_bridge")
+        if isinstance(bridge_cfg, Mapping) and bridge_cfg.get("enabled", False):
+            try:
+                from assay_bridge import compute_bridge, get_bridge_detection_efficiency
+
+                bridge_files = bridge_cfg.get("assay_files", [])
+                bridge_results = compute_bridge(
+                    bridge_files, summary, cfg,
+                    isotope_series=isotope_series_data or None,
+                    cal_window_rel_unc=cal_window_rel_unc or None,
+                )
+                if bridge_results:
+                    summary.lucas_bridge = bridge_results
+                    logger.info(
+                        "Lucas bridge: %d assays processed",
+                        bridge_results.get("n_assays", 0),
+                    )
+
+                    # ── Feed bridge efficiency back into radon inference ──
+                    bridge_eff = get_bridge_detection_efficiency(bridge_results)
+                    if bridge_eff and isotope_series_data:
+                        # Separate the relative uncertainty from the isotope values
+                        bridge_eff_rel_unc = bridge_eff.pop("rel_unc", 0.0)
+                        radon_inference_cfg = cfg.get("radon_inference")
+                        if isinstance(radon_inference_cfg, Mapping) and radon_inference_cfg.get("enabled", False):
+                            # Store original values for reference
+                            original_det_eff = dict(radon_inference_cfg.get("detection_efficiency", {}))
+                            summary.lucas_bridge["original_detection_efficiency"] = original_det_eff
+                            summary.lucas_bridge["bridge_eff_rel_unc"] = bridge_eff_rel_unc
+
+                            # Override with bridge-derived values
+                            radon_inference_cfg["detection_efficiency"] = bridge_eff
+                            radon_inference_cfg["detection_efficiency_rel_unc"] = bridge_eff_rel_unc
+                            logger.info(
+                                "Re-running radon inference with bridge-derived "
+                                "detection efficiency: %s (rel unc %.1f%%) (was: %s)",
+                                bridge_eff, bridge_eff_rel_unc * 100, original_det_eff,
+                            )
+
+                            # external_series may not be in scope if inference didn't run
+                            try:
+                                _ext_series = external_series
+                            except NameError:
+                                _ext_series = None
+                            try:
+                                radon_inference_results_bridge = run_radon_inference(
+                                    isotope_series_data,
+                                    cfg,
+                                    _ext_series,
+                                )
+                                if radon_inference_results_bridge:
+                                    summary["radon_inference"] = radon_inference_results_bridge
+                                    try:
+                                        plot_rn_inferred_vs_time(radon_inference_results_bridge, Path(out_dir))
+                                        plot_ambient_rn_vs_time(radon_inference_results_bridge, Path(out_dir))
+                                        plot_volume_equiv_vs_time(radon_inference_results_bridge, Path(out_dir))
+                                    except Exception as exc:
+                                        logger.warning(
+                                            "Failed to re-plot radon inference with bridge eff: %s", exc
+                                        )
+                            except Exception as exc:
+                                logger.warning(
+                                    "Failed to re-run radon inference with bridge eff: %s", exc
+                                )
+                                # Restore original values
+                                radon_inference_cfg["detection_efficiency"] = original_det_eff
+
+                    # ── Spike decay fitting (independent efficiency) ──
+                    spike_fit_results = None
+                    try:
+                        from assay_bridge import fit_spike_periods
+                        spike_fit_results = fit_spike_periods(
+                            isotope_series_data or {}, cfg,
+                            assay_results=summary.lucas_bridge.get("assays"),
+                        )
+                        if spike_fit_results.get("periods"):
+                            summary.lucas_bridge["spike_fits"] = spike_fit_results
+                            for sp in spike_fit_results["periods"]:
+                                if sp.get("error"):
+                                    logger.warning(
+                                        "Spike fit %s: %s",
+                                        sp.get("label", "?"), sp["error"],
+                                    )
+                            # Plot spike decay fits
+                            try:
+                                from plot_utils.diagnostics import plot_spike_decay_fits
+                                plot_spike_decay_fits(
+                                    spike_fit_results, isotope_series_data or {},
+                                    out_dir,
+                                )
+                            except Exception as exc:
+                                logger.warning("Failed to plot spike decay: %s", exc)
+                    except Exception as exc:
+                        logger.warning("Spike decay fitting failed: %s", exc)
+
+                    # ── Bridge summary plot (after spike so we can overlay) ──
+                    try:
+                        from plot_utils.diagnostics import plot_bridge_summary
+                        plot_bridge_summary(bridge_results, out_dir,
+                                            spike_results=spike_fit_results)
+                    except Exception as exc:
+                        logger.warning("Failed to create bridge summary plot: %s", exc)
+
+            except Exception as exc:
+                logger.warning("Lucas-cell assay bridge failed: %s", exc)
+
     # Additional visualizations
     with timer.section("additional_visualizations"):
         if efficiency_results.get("sources"):
@@ -5958,22 +6230,31 @@ def main(argv=None):
             ):
                 err_arr.fill(radon_unc)
 
-        # Add calibration window efficiency systematic in quadrature to radon activity errors.
-        # The calibration systematic is a fractional uncertainty on the detection efficiency
-        # (energy scale shifts the fraction of events captured in the fixed time-fit window).
-        if activity_arr is not None and err_arr is not None and cal_window_rel_unc:
-            cal_po214 = cal_window_rel_unc.get("Po214", 0.0)
-            cal_po218 = cal_window_rel_unc.get("Po218", 0.0)
-            if A214 is not None and A218 is not None:
-                cal_rel = max(cal_po214, cal_po218)
-            elif A214 is not None:
-                cal_rel = cal_po214
-            elif A218 is not None:
-                cal_rel = cal_po218
-            else:
-                cal_rel = 0.0
-            if cal_rel > 0:
-                err_arr = np.sqrt(err_arr**2 + (activity_arr * cal_rel) ** 2)
+        # Add systematic uncertainties in quadrature to radon activity errors.
+        if activity_arr is not None and err_arr is not None:
+            # 1. Calibration window efficiency systematic (energy scale shift
+            #    changes the fraction of events captured in the fixed window).
+            cal_rel = 0.0
+            if cal_window_rel_unc:
+                cal_po214 = cal_window_rel_unc.get("Po214", 0.0)
+                cal_po218 = cal_window_rel_unc.get("Po218", 0.0)
+                if A214 is not None and A218 is not None:
+                    cal_rel = max(cal_po214, cal_po218)
+                elif A214 is not None:
+                    cal_rel = cal_po214
+                elif A218 is not None:
+                    cal_rel = cal_po218
+
+            # 2. Bridge detection efficiency systematic (correlated across
+            #    isotopes; does not average down).
+            try:
+                _bridge_rel = float(bridge_eff_rel_unc) if bridge_eff_rel_unc else 0.0
+            except (NameError, TypeError):
+                _bridge_rel = 0.0
+
+            total_syst_rel2 = cal_rel**2 + _bridge_rel**2
+            if total_syst_rel2 > 0:
+                err_arr = np.sqrt(err_arr**2 + (activity_arr**2) * total_syst_rel2)
 
         if activity_arr is not None and err_arr is not None:
             times_list = [float(t) for t in np.asarray(activity_times, dtype=float)]

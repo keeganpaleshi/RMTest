@@ -238,6 +238,9 @@ def run_radon_inference(
         logger.warning("Invalid detection_efficiency configuration; skipping radon inference")
         return None
 
+    # Fractional (relative) uncertainty on detection efficiency from bridge
+    det_eff_rel_unc = float(radon_cfg.get("detection_efficiency_rel_unc", 0.0))
+
     available_isotopes: list[str] = []
     for iso in requested_isotopes:
         if iso not in SUPPORTED_ISOTOPES:
@@ -305,7 +308,7 @@ def run_radon_inference(
         dt = bin_entry.dt
         iso_activity = {}
         weighted_sum = 0.0
-        weighted_var = 0.0  # variance accumulator for uncertainty
+        weighted_poisson_var = 0.0  # uncorrelated (Poisson) variance
         contributing_isotopes = []
         for iso in available_isotopes:
             counts = bin_entry.counts.get(iso)
@@ -315,21 +318,26 @@ def run_radon_inference(
             if eff <= 0:
                 continue
             activity = counts / (eff * dt)
-            # Poisson uncertainty: sigma_activity = sqrt(counts) / (eff * dt)
-            sigma_activity = float(np.sqrt(max(counts, 0.0))) / (eff * dt)
+            # Poisson uncertainty on activity (uncorrelated between isotopes)
+            sigma_poisson = float(np.sqrt(max(counts, 1.0))) / (eff * dt)
             if chain_correction in ("equilibrium", "assume_equilibrium"):
                 pass  # placeholder for future correction logic
             iso_activity[iso] = activity
             w = weights.get(iso, 0.0)
             weighted_sum += w * activity
-            weighted_var += (w * sigma_activity) ** 2
+            weighted_poisson_var += (w * sigma_poisson) ** 2
             contributing_isotopes.append(iso)
 
         if not contributing_isotopes:
             continue
 
         radon_bq = weighted_sum / overall_eff
-        radon_bq_err = float(np.sqrt(weighted_var)) / overall_eff
+        # Detection efficiency uncertainty is 100% correlated across isotopes
+        # (same bridge factor).  It does NOT average down when combining.
+        #   σ² = σ²_poisson(uncorrelated) + (A · σ_ε/ε)²(correlated)
+        poisson_err = float(np.sqrt(weighted_poisson_var)) / overall_eff
+        syst_err = radon_bq * det_eff_rel_unc
+        radon_bq_err = float(np.sqrt(poisson_err**2 + syst_err**2))
         current_t = float(bin_entry.t)
         rn_entry = {
             "t": current_t,
@@ -434,6 +442,7 @@ def run_radon_inference(
         },
         "transport_efficiency": transport_eff,
         "retention_efficiency": retention_eff,
+        "detection_efficiency_rel_unc": det_eff_rel_unc,
         "chain_correction": chain_correction,
         "rn222_half_life_s": rn_half_life_s,
         "rn222_decay_constant_s": rn_decay_constant,

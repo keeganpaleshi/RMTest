@@ -19,7 +19,7 @@ from utils import to_native
 from utils.time_utils import parse_timestamp, to_epoch_seconds, tz_convert_utc
 import jsonschema
 from reporting import DEFAULT_DIAGNOSTICS
-from config.validation import validate_radon_inference
+from config.validation import validate_lucas_bridge, validate_radon_inference
 
 
 def extract_time_series_events(events, cfg):
@@ -92,6 +92,7 @@ class Summary(Mapping[str, Any]):
     cli_args: list[str] = field(default_factory=list)
     analysis: dict = field(default_factory=dict)
     diagnostics: dict | None = None
+    lucas_bridge: dict = field(default_factory=dict)
 
     def __getitem__(self, key: str) -> Any:  # type: ignore[override]
         return getattr(self, key)
@@ -613,6 +614,14 @@ CONFIG_SCHEMA = {
                         },
                     ],
                 },
+                "leak_rate_time_bins": {
+                    "type": "array",
+                    "items": {"type": "number", "exclusiveMinimum": 0},
+                },
+                "leak_rate_max_bins": {
+                    "type": "integer",
+                    "minimum": 1,
+                },
                 "output": {
                     "type": "object",
                     "additionalProperties": False,
@@ -625,6 +634,7 @@ CONFIG_SCHEMA = {
             "required": ["enabled"],
         },
         "efficiency": {"type": "object"},
+        "lucas_bridge": {"type": "object"},
     },
     "required": [
         "pipeline",
@@ -783,6 +793,7 @@ def load_config(config_path):
         raise
 
     validate_radon_inference(cfg)
+    validate_lucas_bridge(cfg)
 
     cfg["nuclide_constants"] = load_nuclide_overrides(cfg)
 
