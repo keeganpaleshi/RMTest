@@ -1,7 +1,9 @@
 import numpy as np
 from .shapes import (
     emg_pdf_E, emg_cdf_E,
+    right_emg_pdf_E, right_emg_cdf_E,
     gaussian_pdf_E, gaussian_cdf_E,
+    split_gaussian_pdf_E, split_gaussian_cdf_E,
     shelf_pdf_E,
 )
 
@@ -12,8 +14,13 @@ def _component_p_in_window(kind, E_lo, E_hi, mu, sigma, tau=None, **kwargs):
     """Probability mass of a single component inside [E_lo, E_hi]."""
     if kind == "emg":
         p = float(emg_cdf_E(E_hi, mu, sigma, tau) - emg_cdf_E(E_lo, mu, sigma, tau))
+    elif kind == "right_emg":
+        p = float(right_emg_cdf_E(E_hi, mu, sigma, tau) - right_emg_cdf_E(E_lo, mu, sigma, tau))
     elif kind == "gauss":
         p = float(gaussian_cdf_E(E_hi, mu, sigma) - gaussian_cdf_E(E_lo, mu, sigma))
+    elif kind == "split_gauss":
+        sigma_right = kwargs.get("sigma_right", sigma)
+        p = float(split_gaussian_cdf_E(E_hi, mu, sigma, sigma_right) - split_gaussian_cdf_E(E_lo, mu, sigma, sigma_right))
     elif kind == "shelf":
         # shelf_pdf_E is already normalized to [E_lo, E_hi], so p_in_window = 1.
         p = 1.0
@@ -26,13 +33,20 @@ def component_pdf(kind, E, mu, sigma, tau=None, E_lo=None, E_hi=None, **kwargs):
     """Raw (global) pdf on E."""
     if kind == "emg":
         return emg_pdf_E(E, mu, sigma, tau)
+    elif kind == "right_emg":
+        return right_emg_pdf_E(E, mu, sigma, tau)
     elif kind == "gauss":
         return gaussian_pdf_E(E, mu, sigma)
+    elif kind == "split_gauss":
+        sigma_right = kwargs.get("sigma_right", sigma)
+        return split_gaussian_pdf_E(E, mu, sigma, sigma_right)
     elif kind == "shelf":
         if E_lo is None or E_hi is None:
             raise ValueError("shelf kind requires E_lo and E_hi")
         shelf_range = kwargs.get("shelf_range")
-        return shelf_pdf_E(E, mu, sigma, E_lo, E_hi, shelf_range=shelf_range)
+        shelf_cutoff_delta = kwargs.get("shelf_cutoff_delta")
+        return shelf_pdf_E(E, mu, sigma, E_lo, E_hi, shelf_range=shelf_range,
+                           shelf_cutoff_delta=shelf_cutoff_delta)
     else:
         raise ValueError(f"unknown kind {kind}")
 

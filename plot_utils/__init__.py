@@ -1382,7 +1382,7 @@ def plot_spectrum_dnl_corrected(
         label="Total model", alpha=0.8,
     )
     ax_lin.set_ylabel("Counts / bin (DNL-corrected)")
-    ax_lin.set_title("Energy Spectrum — DNL-Corrected", fontweight="bold")
+    ax_lin.set_title("Energy Spectrum - DNL-Corrected", fontweight="bold")
     ax_lin.legend(fontsize=7, ncol=3, loc="upper right")
     if fit_window:
         ax_lin.set_xlim(fit_window[0] - 0.03, fit_window[1] + 0.03)
@@ -1412,7 +1412,7 @@ def plot_spectrum_dnl_corrected(
     ax_log.set_ylabel("Counts / bin (DNL-corrected, log)")
     ax_log.legend(fontsize=7, ncol=3, loc="upper right")
 
-    # Panel 3: Pulls (same as original — DNL cancels in the ratio)
+    # Panel 3: Pulls (same as original - DNL cancels in the ratio)
     with np.errstate(divide="ignore", invalid="ignore"):
         pulls = np.where(
             model_total > 5,
@@ -1993,7 +1993,7 @@ def plot_spectrum_comparison(
 ):
     """Overlay spectra before and after filtering and return ROI differences.
 
-    When ``bin_edges`` is not supplied a fixed ``0 – 1 MeV`` range is used
+    When ``bin_edges`` is not supplied a fixed ``0 - 1 MeV`` range is used
     for the histogram binning.  Using deterministic bin edges avoids
     differences between runs that could arise from data-dependent bin
     calculations and makes generated plots reproducible.
@@ -2022,6 +2022,11 @@ def plot_spectrum_comparison(
     ax.set_xlabel("Energy (MeV)")
     ax.set_ylabel("Counts per bin")
     ax.legend()
+    # Auto-trim x-axis to where there's actually data (avoid empty space)
+    nonzero = np.where((hist_pre > 0) | (hist_post > 0))[0]
+    if len(nonzero) > 0:
+        margin = max(0.2, (edges[nonzero[-1] + 1] - edges[nonzero[0]]) * 0.03)
+        ax.set_xlim(edges[nonzero[0]] - margin, edges[nonzero[-1] + 1] + margin)
     plt.tight_layout()
     Path(out_png).parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_png, dpi=300)

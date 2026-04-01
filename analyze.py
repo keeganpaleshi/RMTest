@@ -6,41 +6,37 @@ Full Radon Monitor Analysis Pipeline
 ====================================
 
 Usage:
-    python analyze.py \
-        --config   config.yaml \
-        [--input   merged_output.csv] \
-        --output-dir  results \
+    python analyze.py \\
+        --config   config.yaml \\
+        [--input   merged_output.csv] \\
+        --output-dir  results \\
         [--baseline-range ISO_START ISO_END]
 
-This script performs the following steps:
+Pipeline steps:
 
   1. Load configuration (YAML or JSON).
-  2. Load “merged” CSV of event data (timestamps, ADC, etc.).
-  3. Perform energy calibration (either two‐point or auto, per config).
-     -> Append `energy_MeV` to every event.
-  4. (Optional) Extract a “baseline” interval for background estimation.
-  5. (Optional) Spectral fit (Po‐210, Po‐218, Po‐214) using unbinned likelihood.
-     -> Can bin either in “1 ADC‐channel per bin” or Freedman‐Diaconis (per config).
-     -> Uses EMG tails for Po‐210/Po‐218 if requested.
-     -> Overlays fit on the spectrum plot.
-  6. Time‐series decay fit (Po‐218 and Po‐214 separately).
-     -> Extract events in each isotope’s energy window.
-     -> Subtract global t₀ so that model always starts at t=0.
-     -> Fit unbinned decay (with efficiency, background, N₀, half‐life priors).
-     -> Overlay fit curve on a time‐binned histogram (default 1 h bins), at 95% CL.
+  2. Load merged CSV of event data (timestamps, ADC channels).
+  3. Energy calibration (two-point or auto) - assigns energy_MeV to each event.
+  4. (Optional) Baseline interval extraction for background estimation.
+  5. Spectral fit (Po-210, Po-218, Po-214, Po-216, Po-212) via binned
+     chi-squared minimization with Gaussian + EMG tail + shelf + halo
+     peak shapes. Supports ADC-width binning with optional DNL correction
+     (Fourier parameterized or bandpass self-estimated). The two-stage
+     full-resolution pipeline estimates Fourier DNL at bin_width=1, then
+     rebins before the final fit. Per-period crossvalidation selects
+     which Fourier harmonics improve held-out NLL.
+  6. Time-series analysis per isotope energy window - binned count rates
+     with Poisson + calibration-uncertainty error bars, optional decay
+     model overlays.
   7. (Optional) Systematics scan around user-specified sigma shifts.
-  8. Produce a single JSON summary with:
-       • calibration parameters
-       • spectral‐fit outputs
-       • time‐fit outputs (per isotope)
-       • systematics deltas (if requested)
-       • baseline info (if provided)
-  9. Save plots (spectrum.png, time_series_Po214.png, time_series_Po218.png) under `output-dir/<timestamp>/`.
+  8. JSON summary output (calibration, spectral fit, time-series,
+     pull diagnostics, split-half validation, DNL crossval results).
+  9. Plots saved under output-dir/<timestamp>/.
 
-To run (without baseline) for a single merged CSV:
+Example:
 
-    python analyze.py \
-       --config    config.yaml \
+    python analyze.py \\
+       --config    config.yaml \\
        --output-dir  results
 """
 
@@ -475,6 +471,8 @@ from visualize import cov_heatmap, efficiency_bar
 from utils import (
     find_adc_bin_peaks,
     adc_hist_edges,
+    rebin_histogram,
+    fd_rebin_factor,
     parse_time_arg,
     to_utc_datetime,
 )
@@ -1081,6 +1079,430 @@ def _estimate_loglin_background_prior(
     return float(mean), float(sigma)
 
 
+def _preprocess_full_resolution_dnl(
+    adc_all: np.ndarray,
+    energies: np.ndarray,
+    cal_slope: float,
+    cal_intercept: float,
+    cal_a2: float,
+    cal_a3: float,
+    priors: Mapping[str, tuple[float, float]],
+    flags: Mapping[str, object],
+    cfg: Mapping[str, Any],
+    *,
+    bounds: Mapping[str, tuple[float | None, float | None]] | None = None,
+    timestamps: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray, dict, dict]:
+    """Two-stage DNL: estimate Fourier DNL at bin_width=1, apply, then rebin.
+
+    Returns
+    -------
+    rebinned_hist : np.ndarray
+        DNL-corrected, rebinned histogram counts.
+    rebinned_edges_mev : np.ndarray
+        Bin edges in MeV for the rebinned histogram.
+    dnl_meta : dict
+        DNL metadata for the result.
+    info : dict
+        Additional info (rebin_factor, n_bins_full_res, etc.).
+    """
+    from fitting import fit_spectrum, FitResult
+
+    dnl_cfg = cfg.get("spectral_fit", {}).get("dnl_correction", {})
+    fourier_periods = dnl_cfg.get(
+        "fourier_periods_codes", [4, 8, 16, 32, 64, 128, 256, 512]
+    )
+
+    # ── 1. Histogram at bin_width=1 (full ADC resolution) ──────────
+    edges_adc_full = adc_hist_edges(adc_all, channel_width=1)
+    hist_full, _ = np.histogram(adc_all, bins=edges_adc_full)
+    edges_mev_full = apply_calibration(
+        edges_adc_full, cal_slope, cal_intercept,
+        quadratic_coeff=cal_a2, cubic_coeff=cal_a3,
+    )
+    n_full = hist_full.size
+    logger.info(
+        "Full-resolution DNL: %d bins at bin_width=1", n_full
+    )
+
+    # ── 2. Preliminary fit at full resolution (DNL disabled) ───────
+    prelim_flags = dict(flags)
+    prelim_priors = dict(priors)
+    # Build a cfg copy with DNL disabled for the preliminary fit
+    import copy
+    prelim_cfg = copy.deepcopy(dict(cfg))
+    prelim_dnl = prelim_cfg.get("spectral_fit", {}).get("dnl_correction", {})
+    prelim_dnl["enabled"] = False
+    prelim_dnl["full_resolution_estimate"] = False
+
+    # If the main fit uses "none" background, the prelim fit still needs a
+    # polynomial background to estimate DNL residuals properly.
+    _prelim_bkg_model = str(prelim_flags.get("background_model", "")).lower()
+    if _prelim_bkg_model == "none":
+        prelim_flags["background_model"] = "loglin_unit"
+        # Add default b0/b1 priors for the prelim fit
+        if "b0" not in prelim_priors:
+            prelim_priors["b0"] = (0.0, 4.0)
+        if "b1" not in prelim_priors:
+            prelim_priors["b1"] = (0.0, 4.0)
+        logger.info(
+            "Prelim fit: overriding 'none' background → loglin_unit for DNL estimation"
+        )
+
+    prelim_flags["cfg"] = prelim_cfg
+
+    prelim_result = fit_spectrum(
+        energies,
+        prelim_priors,
+        flags=prelim_flags,
+        bin_edges=edges_mev_full,
+        bounds=bounds,
+        skip_minos=True,
+    )
+    if isinstance(prelim_result, FitResult):
+        prelim_params = prelim_result.params
+        logger.info("Preliminary fit returned FitResult with %d param keys", len(prelim_params))
+    else:
+        prelim_params = prelim_result
+        logger.info("Preliminary fit returned dict with %d keys", len(prelim_params))
+
+    # ── 3. Compute residuals and fit Fourier DNL ───────────────────
+    # Reconstruct model prediction at full resolution
+    model_total = prelim_params.get("_plot_model_total")
+    logger.info(
+        "Preliminary fit _plot_model_total: %s (type=%s)",
+        "present" if model_total is not None else "MISSING",
+        type(model_total).__name__ if model_total is not None else "None",
+    )
+    if model_total is None:
+        # Log available keys for debugging
+        _internal_keys = [k for k in prelim_params if k.startswith("_")]
+        logger.warning(
+            "Full-resolution preliminary fit did not return model_total; "
+            "cannot estimate Fourier DNL. Internal keys: %s",
+            _internal_keys,
+        )
+        # Fall back: return un-corrected histogram at requested binning
+        rebin_spec = dnl_cfg.get("post_dnl_rebin", "fd")
+        factor = _resolve_rebin(rebin_spec, adc_all, cal_slope, n_full)
+        rebinned, rebinned_edges_adc = rebin_histogram(
+            hist_full.astype(float), edges_adc_full, factor
+        )
+        rebinned_edges_mev = apply_calibration(
+            rebinned_edges_adc, cal_slope, cal_intercept,
+            quadratic_coeff=cal_a2, cubic_coeff=cal_a3,
+        )
+        return rebinned, rebinned_edges_mev, {}, {"rebin_factor": factor}
+
+    model_arr = np.asarray(model_total, dtype=float)
+    if model_arr.size != n_full:
+        logger.warning(
+            "Model size (%d) != histogram size (%d); skipping DNL",
+            model_arr.size, n_full,
+        )
+        rebin_spec = dnl_cfg.get("post_dnl_rebin", "fd")
+        factor = _resolve_rebin(rebin_spec, adc_all, cal_slope, n_full)
+        rebinned, rebinned_edges_adc = rebin_histogram(
+            hist_full.astype(float), edges_adc_full, factor
+        )
+        rebinned_edges_mev = apply_calibration(
+            rebinned_edges_adc, cal_slope, cal_intercept,
+            quadratic_coeff=cal_a2, cubic_coeff=cal_a3,
+        )
+        return rebinned, rebinned_edges_mev, {}, {"rebin_factor": factor}
+
+    # Residuals: (data / model) - 1
+    safe_model = np.where(model_arr > 0, model_arr, 1.0)
+    residuals = (hist_full.astype(float) / safe_model) - 1.0
+    valid_mask = model_arr > float(dnl_cfg.get("min_counts", 5))
+    bin_indices = np.arange(n_full)
+
+    # ── 3a. Per-period crossval: auto-select validated frequencies ────
+    # Split events by time into two halves, histogram each, compute
+    # per-period Fourier coefficients independently, keep only periods
+    # where the two halves agree (real hardware DNL vs noise).
+    periods_bin = [p / 1.0 for p in fourier_periods]  # bin_width=1
+    resolvable = [
+        (pc, pb) for pc, pb in zip(fourier_periods, periods_bin) if pb >= 2.0
+    ]
+    per_period_crossval = {}  # {period: {amp_A, amp_B, phase_A, phase_B, ...}}
+
+    if resolvable and timestamps is not None and len(timestamps) >= 200:
+        order = np.argsort(timestamps)
+        mid = len(order) // 2
+        idx_A, idx_B = order[:mid], order[mid:]
+        adc_A, adc_B = adc_all[idx_A], adc_all[idx_B]
+
+        hist_A, _ = np.histogram(adc_A, bins=edges_adc_full)
+        hist_B, _ = np.histogram(adc_B, bins=edges_adc_full)
+
+        # Model scales linearly with counts  - use half the full model
+        model_half = safe_model * 0.5
+        model_half_safe = np.where(model_half > 0, model_half, 1.0)
+        resid_A = (hist_A.astype(float) / model_half_safe) - 1.0
+        resid_B = (hist_B.astype(float) / model_half_safe) - 1.0
+
+        # Require slightly more counts for half-data validity
+        valid_half = model_half > max(float(dnl_cfg.get("min_counts", 5)) * 0.5, 2.0)
+        valid_idx_half = np.flatnonzero(valid_half)
+
+        if valid_idx_half.size > 2 * len(resolvable):
+            # Fit each period individually on each half
+            for pc, pb in resolvable:
+                # 2-column design matrix for this single period
+                phase_v = 2.0 * np.pi * bin_indices[valid_idx_half] / pb
+                A_single = np.column_stack([np.cos(phase_v), np.sin(phase_v)])
+
+                coeff_A, _, _, _ = np.linalg.lstsq(A_single, resid_A[valid_idx_half], rcond=None)
+                coeff_B, _, _, _ = np.linalg.lstsq(A_single, resid_B[valid_idx_half], rcond=None)
+
+                amp_A = np.hypot(coeff_A[0], coeff_A[1])
+                amp_B = np.hypot(coeff_B[0], coeff_B[1])
+                phase_A = np.arctan2(coeff_A[1], coeff_A[0])
+                phase_B = np.arctan2(coeff_B[1], coeff_B[0])
+
+                # Phase difference (wrapped to [-pi, pi])
+                d_phase = (phase_A - phase_B + np.pi) % (2 * np.pi) - np.pi
+
+                # Amplitude agreement: ratio closer to 1 = better
+                amp_ratio = min(amp_A, amp_B) / max(amp_A, amp_B) if max(amp_A, amp_B) > 0 else 0.0
+
+                # Noise floor estimate: for N valid bins and Poisson stats,
+                # the expected amplitude of a noise-only Fourier component is
+                # ~ 1/sqrt(N_valid) * sqrt(2/N_valid) for the residual.
+                # Use the actual residual RMS as a scale.
+                resid_rms_A = float(np.std(resid_A[valid_idx_half]))
+                resid_rms_B = float(np.std(resid_B[valid_idx_half]))
+                noise_amp = np.sqrt(2.0 / valid_idx_half.size) * 0.5 * (resid_rms_A + resid_rms_B)
+                snr_A = amp_A / noise_amp if noise_amp > 0 else 0.0
+                snr_B = amp_B / noise_amp if noise_amp > 0 else 0.0
+
+                per_period_crossval[pc] = {
+                    "amp_A": float(amp_A),
+                    "amp_B": float(amp_B),
+                    "phase_A": float(phase_A),
+                    "phase_B": float(phase_B),
+                    "d_phase": float(d_phase),
+                    "amp_ratio": float(amp_ratio),
+                    "snr_A": float(snr_A),
+                    "snr_B": float(snr_B),
+                    "noise_amp": float(noise_amp),
+                }
+
+            # Auto-select: keep periods where both halves have SNR > 2
+            # AND amplitude ratio > 0.3 AND phase difference < 90°
+            validated = []
+            rejected = []
+            for pc, pb in resolvable:
+                m = per_period_crossval.get(pc, {})
+                snr_ok = m.get("snr_A", 0) > 2.0 and m.get("snr_B", 0) > 2.0
+                amp_ok = m.get("amp_ratio", 0) > 0.3
+                phase_ok = abs(m.get("d_phase", np.pi)) < np.pi / 2
+                if snr_ok and amp_ok and phase_ok:
+                    validated.append((pc, pb))
+                    logger.info(
+                        "  Period %4d: PASS  amp=%.4f/%.4f  ratio=%.2f  "
+                        "dφ=%+.1f°  SNR=%.1f/%.1f",
+                        pc, m["amp_A"], m["amp_B"], m["amp_ratio"],
+                        np.degrees(m["d_phase"]), m["snr_A"], m["snr_B"],
+                    )
+                else:
+                    rejected.append(pc)
+                    logger.info(
+                        "  Period %4d: FAIL  amp=%.4f/%.4f  ratio=%.2f  "
+                        "dφ=%+.1f°  SNR=%.1f/%.1f  [%s]",
+                        pc, m.get("amp_A", 0), m.get("amp_B", 0),
+                        m.get("amp_ratio", 0),
+                        np.degrees(m.get("d_phase", 0)),
+                        m.get("snr_A", 0), m.get("snr_B", 0),
+                        ", ".join(
+                            f for f, ok in [("snr", snr_ok), ("amp", amp_ok), ("phase", phase_ok)]
+                            if not ok
+                        ),
+                    )
+
+            logger.info(
+                "Per-period crossval: %d/%d periods validated, %d rejected %s",
+                len(validated), len(resolvable), len(rejected), rejected,
+            )
+
+            # Replace resolvable with validated periods only
+            if validated:
+                resolvable = validated
+            else:
+                logger.warning("No Fourier periods passed per-period crossval; using all")
+        else:
+            logger.info("Per-period crossval: too few valid half-bins (%d); skipping",
+                        valid_idx_half.size)
+    elif resolvable and timestamps is None:
+        logger.info("Per-period crossval: no timestamps provided; skipping auto-selection")
+
+    # ── 3b. Fit Fourier DNL using validated periods ──────────────────
+    if not resolvable:
+        logger.warning("No resolvable Fourier periods at bin_width=1")
+        dnl_factors = np.ones(n_full, dtype=float)
+        fourier_coeffs = {}
+    else:
+        valid_idx = np.flatnonzero(valid_mask)
+        n_terms = len(resolvable)
+        A = np.zeros((valid_idx.size, 2 * n_terms))
+        for k, (pc, pb) in enumerate(resolvable):
+            phase = 2.0 * np.pi * bin_indices[valid_idx] / pb
+            A[:, 2 * k] = np.cos(phase)
+            A[:, 2 * k + 1] = np.sin(phase)
+        b = residuals[valid_idx]
+        result_lstsq, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
+
+        dnl_model = np.zeros(n_full, dtype=float)
+        fourier_coeffs = {}
+        for k, (pc, pb) in enumerate(resolvable):
+            a_k = float(result_lstsq[2 * k])
+            b_k = float(result_lstsq[2 * k + 1])
+            phase = 2.0 * np.pi * bin_indices / pb
+            dnl_model += a_k * np.cos(phase) + b_k * np.sin(phase)
+            fourier_coeffs[pc] = (a_k, b_k)
+
+        dnl_factors = 1.0 + dnl_model
+        logger.info(
+            "Fourier DNL estimated: %d validated terms, amplitude RMS=%.4f",
+            len(fourier_coeffs),
+            float(np.sqrt(np.mean(dnl_model ** 2))),
+        )
+
+    # ── 4. Apply DNL correction to full-resolution counts ──────────
+    # DNL factor > 1 means the channel is wider, collecting more counts.
+    # Corrected counts = raw / dnl_factor (normalize to nominal width).
+    corrected = hist_full.astype(float) / np.clip(dnl_factors, 0.5, 2.0)
+
+    # ── 5. Rebin the corrected histogram ───────────────────────────
+    rebin_spec = dnl_cfg.get("post_dnl_rebin", "fd")
+    factor = _resolve_rebin(rebin_spec, adc_all, cal_slope, n_full)
+
+    rebinned, rebinned_edges_adc = rebin_histogram(
+        corrected, edges_adc_full, factor
+    )
+    rebinned_edges_mev = apply_calibration(
+        rebinned_edges_adc, cal_slope, cal_intercept,
+        quadratic_coeff=cal_a2, cubic_coeff=cal_a3,
+    )
+    logger.info(
+        "Post-DNL rebin: factor=%d, %d -> %d bins",
+        factor, n_full, rebinned.size,
+    )
+
+    # ── 6. Build metadata ──────────────────────────────────────────
+    dnl_meta = {
+        "dnl_applied": True,
+        "dnl_iterations": 1,
+        "operator_class": "full_resolution_fourier_rebin",
+        "calibration_source": "self",
+        "fourier_coefficients": {
+            str(k): list(v) for k, v in fourier_coeffs.items()
+        },
+        "effective_dnl_params": 2 * len(fourier_coeffs),
+        "full_resolution_bins": n_full,
+        "rebin_factor": factor,
+        "rebinned_bins": int(rebinned.size),
+        "post_dnl_rebin_spec": str(rebin_spec),
+        "dnl_factors_full_res": dnl_factors.tolist(),
+        "dnl_amplitude_rms": float(
+            np.sqrt(np.mean((dnl_factors - 1.0) ** 2))
+        ),
+        "statistical_model": "fourier_corrected_rebinned_poisson",
+    }
+    if per_period_crossval:
+        dnl_meta["per_period_crossval"] = {
+            str(k): v for k, v in per_period_crossval.items()
+        }
+        dnl_meta["validated_periods"] = [pc for pc, _ in resolvable]
+        dnl_meta["auto_selected"] = True
+
+    # Extract prelim fit background params for seeding the main fit
+    _prelim_bkg_params = {}
+    for _bk in ("b0", "b1", "b2", "b3", "S_bkg"):
+        _bv = prelim_params.get(_bk)
+        if _bv is not None and np.isfinite(float(_bv)):
+            _prelim_bkg_params[_bk] = float(_bv)
+    if _prelim_bkg_params:
+        logger.info(
+            "Prelim fit background params: %s",
+            ", ".join(f"{k}={v:.4f}" for k, v in _prelim_bkg_params.items()),
+        )
+
+    # Save prelim fit plot data for per-stage diagnostic plotting
+    _prelim_plot_data = None
+    try:
+        _prelim_plot_data = {
+            "fit_vals": dict(prelim_params) if isinstance(prelim_params, dict) else dict(prelim_params.params) if hasattr(prelim_params, 'params') else {},
+            "bins": n_full,
+            "bin_edges": edges_mev_full,
+            "flags": dict(prelim_flags),
+        }
+    except Exception as _pex:
+        logger.debug("Could not assemble prelim plot data: %s", _pex)
+
+    info = {
+        "rebin_factor": factor,
+        "n_bins_full_res": n_full,
+        "fourier_coeffs": fourier_coeffs,
+        "dnl_factors_full_res": dnl_factors,
+        "prelim_chi2_ndf": prelim_params.get("chi2_ndf"),
+        "per_period_crossval": per_period_crossval,
+        # Full-res corrected histogram + ADC edges for 3-stage re-rebinning
+        "corrected_full_res": corrected,
+        "edges_adc_full": edges_adc_full,
+        # Prelim fit background params for seeding main fit
+        "prelim_bkg_params": _prelim_bkg_params,
+        # Prelim fit plot data for per-stage diagnostics
+        "prelim_plot_data": _prelim_plot_data,
+    }
+
+    return rebinned, rebinned_edges_mev, dnl_meta, info
+
+
+def _resolve_rebin(
+    rebin_spec: str | int | float,
+    adc_all: np.ndarray,
+    cal_slope: float,
+    n_bins: int,
+) -> int:
+    """Resolve a rebin specification to an integer rebin factor.
+
+    Parameters
+    ----------
+    rebin_spec : str or int or float
+        ``"fd"`` for Freedman-Diaconis rule, an integer for a fixed rebin
+        factor, or a float ending with ``"w"`` (e.g. ``"5w"``) to specify
+        a target bin width in ADC channels.
+    adc_all : np.ndarray
+        Raw ADC values (for FD calculation).
+    cal_slope : float
+        Calibration slope MeV/channel.
+    n_bins : int
+        Number of full-resolution bins (for sanity clamp).
+    """
+    spec = str(rebin_spec).strip().lower()
+    if spec == "fd":
+        factor = fd_rebin_factor(adc_all, cal_slope, n_full_bins=n_bins)
+    elif spec.endswith("w"):
+        # Interpret as target bin width in ADC channels
+        try:
+            target_width = float(spec[:-1])
+            factor = max(1, round(target_width))
+        except ValueError:
+            logger.warning("Invalid rebin spec '%s', using fd", rebin_spec)
+            factor = fd_rebin_factor(adc_all, cal_slope, n_full_bins=n_bins)
+    else:
+        try:
+            factor = max(1, int(float(spec)))
+        except (ValueError, TypeError):
+            logger.warning("Invalid rebin spec '%s', using fd", rebin_spec)
+            factor = fd_rebin_factor(adc_all, cal_slope, n_full_bins=n_bins)
+    # Sanity: don't rebin more than half the bins away
+    factor = min(factor, max(1, n_bins // 4))
+    return factor
+
+
 def _spectral_fit_with_check(
     energies: np.ndarray,
     priors: Mapping[str, tuple[float, float]],
@@ -1092,6 +1514,8 @@ def _spectral_fit_with_check(
     bounds: Mapping[str, tuple[float | None, float | None]] | None = None,
     unbinned: bool = False,
     strict: bool = False,
+    pre_binned_hist: np.ndarray | None = None,
+    pre_dnl_meta: dict | None = None,
 ) -> tuple[FitResult | dict[str, float], dict[str, float]]:
     """Run :func:`fit_spectrum` and apply centroid consistency checks."""
 
@@ -1125,6 +1549,15 @@ def _spectral_fit_with_check(
         fit_kwargs["unbinned"] = True
     if strict:
         fit_kwargs["strict"] = True
+    if pre_binned_hist is not None:
+        fit_kwargs["pre_binned_hist"] = pre_binned_hist
+    if pre_dnl_meta is not None:
+        fit_kwargs["pre_dnl_meta"] = pre_dnl_meta
+
+    # skip_minos: use Hesse diagonal errors instead of profile likelihood
+    _skip_minos = cfg.get("spectral_fit", {}).get("skip_minos", False)
+    if _skip_minos:
+        fit_kwargs["skip_minos"] = True
 
     result = fit_spectrum(**fit_kwargs)
     params = result.params if isinstance(result, FitResult) else result
@@ -1164,7 +1597,17 @@ def _spectral_fit_with_check(
                 f"{iso} centroid deviates by {dval:.3f} MeV from calibration"
             )
 
+    _centroid_refit_triggered = False
+    _centroid_refit_accepted = False
+    _centroid_refit_isotopes = []
     if any(d > 0.5 * tol for d in dev.values()):
+        _centroid_refit_isotopes = [iso for iso, d in dev.items() if d > 0.5 * tol]
+        _centroid_refit_triggered = True
+        logging.info(
+            "Centroid refit triggered: isotopes=%s, deviations=%s",
+            _centroid_refit_isotopes,
+            {iso: f"{dev[iso]:.4f}" for iso in _centroid_refit_isotopes},
+        )
         new_bounds = dict(bounds or {})
         for iso, dval in dev.items():
             if dval > 0.5 * tol:
@@ -1176,6 +1619,21 @@ def _spectral_fit_with_check(
         ref_dev = _centroid_deviation(ref_params, known)
         if max(ref_dev.values(), default=0.0) < max(dev.values(), default=0.0):
             result, dev = refit, ref_dev
+            _centroid_refit_accepted = True
+            logging.info("Centroid refit accepted (improved deviations)")
+        else:
+            logging.info("Centroid refit rejected (did not improve)")
+
+    # Attach refit metadata to result
+    _refit_meta = {
+        "centroid_refit_triggered": _centroid_refit_triggered,
+        "centroid_refit_accepted": _centroid_refit_accepted,
+        "centroid_refit_isotopes": _centroid_refit_isotopes,
+    }
+    if isinstance(result, FitResult):
+        result.params["_centroid_refit"] = _refit_meta
+    elif isinstance(result, dict):
+        result["_centroid_refit"] = _refit_meta
 
     return result, dev
 
@@ -2807,7 +3265,7 @@ def main(argv=None):
     
         cal_result = _as_cal_result(cal_params)
     
-        # Save “a, c, sigma_E” so we can reconstruct energies
+        # Save "a, c, sigma_E" so we can reconstruct energies
         if isinstance(cal_params, dict):
             a, a_sig = _value_sigma(cal_params.get("a", 0.0))
             a2, a2_sig = _value_sigma(cal_params.get("a2", 0.0))
@@ -2860,7 +3318,7 @@ def main(argv=None):
             except KeyError:
                 cov_a2_c = 0.0
     
-        # Apply calibration -> new column “energy_MeV” and its uncertainty
+        # Apply calibration -> new column "energy_MeV" and its uncertainty
         energies = cal_result.predict(df_analysis["adc"])
         df_analysis["energy_MeV"] = energies
         df_analysis["denergy_MeV"] = cal_result.uncertainty(df_analysis["adc"])
@@ -3114,6 +3572,13 @@ def main(argv=None):
         spectrum_results = {}
         spec_plot_data = None
         peak_deviation = {}
+        split_half_result = None
+        model_comparison_result = None
+        _pre_info = {}
+        _stage2_plot_data = None
+        shelf_halo_result = None
+        dnl_crossval_result = None
+        _per_period_crossval_data = None
         if cfg.get("spectral_fit", {}).get("do_spectral_fit", False):
             # Decide binning: new 'binning' dict or legacy keys
             spectral_cfg = cfg["spectral_fit"]
@@ -3223,6 +3688,17 @@ def main(argv=None):
                     method=spectral_cfg.get("peak_search_method", "prominence"),
                     cwt_widths=spectral_cfg.get("peak_search_cwt_widths"),
                 )
+                # Ensure all expected isotopes are present — inject at
+                # nominal ADC if the peak finder couldn't locate them.
+                _force_all_isotopes = spectral_cfg.get("force_all_isotopes", True)
+                if _force_all_isotopes:
+                    for _fiso, _fadc in expected_peaks.items():
+                        if _fiso not in adc_peaks:
+                            adc_peaks[_fiso] = float(_fadc)
+                            logger.info(
+                                "Injecting missing isotope %s at nominal ADC=%.0f",
+                                _fiso, float(_fadc),
+                            )
                 # Build priors for the unbinned spectrum fit.
                 priors_spec = {}
                 sigma_prior_source = spectral_cfg.get("sigma_e_prior_source", spectral_cfg.get("sigma_E_prior_source"))
@@ -3310,11 +3786,22 @@ def main(argv=None):
                     )
                     priors_spec[f"S_{peak}"] = (mu_amp, sigma_amp)
 
-                    if spectral_cfg.get("use_emg", {}).get(peak, False):
-                        priors_spec[f"tau_{peak}"] = (
-                            spectral_cfg.get(f"tau_{peak}_prior_mean"),
-                            spectral_cfg.get(f"tau_{peak}_prior_sigma"),
-                        )
+                    _use_emg_dict = spectral_cfg.get("use_emg", {})
+                    _use_emg_for_peak = _use_emg_dict.get(peak, False) if isinstance(_use_emg_dict, dict) else bool(_use_emg_dict)
+                    if _use_emg_for_peak:
+                        # Config keys use lowercase isotope names (tau_po210_prior_mean)
+                        # while peak names are capitalized (Po210). Try both.
+                        _tau_mean = spectral_cfg.get(f"tau_{peak}_prior_mean")
+                        if _tau_mean is None:
+                            _tau_mean = spectral_cfg.get(f"tau_{peak.lower()}_prior_mean")
+                        _tau_sigma = spectral_cfg.get(f"tau_{peak}_prior_sigma")
+                        if _tau_sigma is None:
+                            _tau_sigma = spectral_cfg.get(f"tau_{peak.lower()}_prior_sigma")
+                        if _tau_mean is not None and _tau_sigma is not None:
+                            priors_spec[f"tau_{peak}"] = (
+                                float(_tau_mean),
+                                float(_tau_sigma),
+                            )
 
                 # Per-isotope energy resolution priors
                 per_iso_sigma = spectral_cfg.get("per_isotope_sigma", {})
@@ -3370,9 +3857,12 @@ def main(argv=None):
                         if halo_tau_prior is not None and isinstance(halo_tau_prior, (list, tuple)):
                             priors_spec[f"tau_halo_{peak}"] = (float(halo_tau_prior[0]), float(halo_tau_prior[1]))
 
-                # Continuum priors
+                # Continuum priors (skip entirely for "none" background model)
+                _early_bkg_model = str(analysis_cfg.get("background_model", "")).lower()
                 bkg_mode = str(spectral_cfg.get("bkg_mode", "manual")).lower()
-                if bkg_mode == "auto":
+                if _early_bkg_model == "none":
+                    logger.info("No-background model: skipping continuum (b0/b1) priors")
+                elif bkg_mode == "auto":
                     from background import estimate_linear_background
 
                     mu_map = {k: priors_spec[f"mu_{k}"][0] for k in adc_peaks.keys()}
@@ -3445,13 +3935,191 @@ def main(argv=None):
                 if use_emg_cfg is not None:
                     spec_flags["use_emg"] = dict(use_emg_cfg)
 
-                if spec_flags.get("background_model") == "loglin_unit":
+                # Pass configurable halo/shelf bound parameters to the fitter
+                for _bound_key in ("max_f_halo", "max_f_shelf", "sigma_halo_min_mult", "sigma_halo_max_mult", "tau_halo_max_mult", "sigma_shelf_min"):
+                    _bound_val = spectral_cfg.get(_bound_key)
+                    if _bound_val is not None:
+                        spec_flags[_bound_key] = float(_bound_val)
+
+                _bkg_model_name = spec_flags.get("background_model", "")
+                if _bkg_model_name in ("loglin_unit", "sigmoid_unit", "exp_unit", "double_logit_unit"):
                     priors_spec["S_bkg"] = _estimate_loglin_background_prior(
                         E_all,
                         {k: priors_spec[f"mu_{k}"][0] for k in adc_peaks.keys()},
                         peak_width=peak_tol,
                         prior_hint=spectral_cfg.get("S_bkg_prior", spectral_cfg.get("s_bkg_prior")),
                     )
+                elif _bkg_model_name == "none":
+                    # No polynomial background — halos + shelves do all the work.
+                    # Optional S_bkg for flat microphonics / residual noise floor.
+                    _sbkg_hint = spectral_cfg.get("S_bkg_prior", spectral_cfg.get("s_bkg_prior"))
+                    if _sbkg_hint is not None:
+                        priors_spec["S_bkg"] = tuple(_sbkg_hint)
+                    else:
+                        # Auto-estimate: whatever isn't under peaks might be microphonics
+                        _total_signal = sum(
+                            priors_spec.get(f"S_{k}", (0,))[0] for k in adc_peaks.keys()
+                        )
+                        _remaining = max(float(len(E_all)) - _total_signal, 0.0)
+                        priors_spec["S_bkg"] = (max(_remaining, 1.0), max(_remaining * 2.0, 100.0))
+                    # Remove b0/b1/b2/b3 — not used by "none" model
+                    priors_spec.pop("b0", None)
+                    priors_spec.pop("b1", None)
+                    priors_spec.pop("b2", None)
+                    priors_spec.pop("b3", None)
+                    logger.info(
+                        "No-background model: S_bkg (microphonics) prior=%.1f±%.1f",
+                        priors_spec["S_bkg"][0], priors_spec["S_bkg"][1],
+                    )
+
+                # For sigmoid/exp background, override b0/b1 priors with
+                # physically meaningful values and remove b2/b3 (unused).
+                if _bkg_model_name == "sigmoid_unit":
+                    # b0 → E_half: sigmoid midpoint (center of energy range)
+                    _E_mid = 0.5 * (E_all.min() + E_all.max())
+                    _E_span = E_all.max() - E_all.min()
+                    priors_spec["b0"] = (float(_E_mid), float(_E_span * 0.3))
+                    # b1 → slope: positive = high on left, low on right
+                    priors_spec["b1"] = (1.0, 2.0)
+                    # Remove b2/b3 — not used by sigmoid
+                    priors_spec.pop("b2", None)
+                    priors_spec.pop("b3", None)
+                    logger.info(
+                        "Sigmoid background: E_half prior=%.2f±%.2f, slope prior=1.0±2.0",
+                        float(_E_mid), float(_E_span * 0.3),
+                    )
+                elif _bkg_model_name == "exp_unit":
+                    # b0 → unused (set to 0, fixed)
+                    priors_spec["b0"] = (0.0, 0.01)
+                    # b1 → alpha: decay rate (MeV^-1)
+                    priors_spec["b1"] = (0.5, 1.0)
+                    priors_spec.pop("b2", None)
+                    priors_spec.pop("b3", None)
+                    spec_flags["fix_b0"] = True
+                    logger.info("Exponential background: alpha prior=0.5±1.0")
+                elif _bkg_model_name == "double_logit_unit":
+                    # Double-logit: two sigmoid transitions
+                    # b0 → E_half1 (low-energy sigmoid midpoint)
+                    # b1 → slope1 (low-energy sigmoid steepness)
+                    # b2 → E_half2 (high-energy sigmoid midpoint)
+                    # b3 → slope2 (high-energy sigmoid steepness)
+                    _E_lo_fit = float(spectral_cfg.get("fit_energy_range", [1.3, 17.4])[0])
+                    _E_hi_fit = float(spectral_cfg.get("fit_energy_range", [1.3, 17.4])[1])
+                    # Low-energy transition: around 3-5 MeV (microphonics → alpha region)
+                    _dl_b0 = spectral_cfg.get("b0_prior", [3.5, 2.0])
+                    priors_spec["b0"] = (float(_dl_b0[0]), float(_dl_b0[1]))
+                    # Low-energy slope: positive = high on left
+                    _dl_b1 = spectral_cfg.get("b1_prior", [2.0, 3.0])
+                    priors_spec["b1"] = (float(_dl_b1[0]), float(_dl_b1[1]))
+                    # High-energy transition: around 9-12 MeV (above last alpha peak)
+                    _dl_b2 = spectral_cfg.get("b2_prior", [10.0, 3.0])
+                    priors_spec["b2"] = (float(_dl_b2[0]), float(_dl_b2[1]))
+                    # High-energy slope: positive = drops off at high energy
+                    _dl_b3 = spectral_cfg.get("b3_prior", [1.0, 3.0])
+                    priors_spec["b3"] = (float(_dl_b3[0]), float(_dl_b3[1]))
+                    logger.info(
+                        "Double-logit background: E_half1=%.1f±%.1f, slope1=%.1f±%.1f, "
+                        "E_half2=%.1f±%.1f, slope2=%.1f±%.1f",
+                        priors_spec["b0"][0], priors_spec["b0"][1],
+                        priors_spec["b1"][0], priors_spec["b1"][1],
+                        priors_spec["b2"][0], priors_spec["b2"][1],
+                        priors_spec["b3"][0], priors_spec["b3"][1],
+                    )
+
+                # ── Extra peaks (unknown signals, pile-up, etc.) ─────────
+                _extra_peaks = spectral_cfg.get("extra_peaks", {})
+                if _extra_peaks and isinstance(_extra_peaks, dict):
+                    for _ep_name, _ep_cfg in _extra_peaks.items():
+                        _ep_energy = float(_ep_cfg.get("energy", 0.0))
+                        if _ep_energy <= 0.0:
+                            continue
+                        _ep_sigma = _ep_cfg.get("sigma", [0.5, 0.3])
+                        if isinstance(_ep_sigma, (list, tuple)):
+                            _ep_sig_mu, _ep_sig_sig = float(_ep_sigma[0]), float(_ep_sigma[1])
+                        else:
+                            _ep_sig_mu, _ep_sig_sig = float(_ep_sigma), 0.3
+                        _ep_amp = _ep_cfg.get("amplitude", [500, 1000])
+                        if isinstance(_ep_amp, (list, tuple)):
+                            _ep_amp_mu, _ep_amp_sig = float(_ep_amp[0]), float(_ep_amp[1])
+                        else:
+                            _ep_amp_mu, _ep_amp_sig = float(_ep_amp), float(_ep_amp) * 2.0
+                        _ep_mu_sigma = float(_ep_cfg.get("mu_sigma", 0.3))
+
+                        priors_spec[f"mu_{_ep_name}"] = (_ep_energy, _ep_mu_sigma)
+                        priors_spec[f"S_{_ep_name}"] = (_ep_amp_mu, _ep_amp_sig)
+                        priors_spec[f"sigma_{_ep_name}"] = (_ep_sig_mu, _ep_sig_sig)
+
+                        # Optional mu bounds
+                        _ep_mu_bounds = _ep_cfg.get("mu_bounds")
+                        if _ep_mu_bounds is not None and isinstance(_ep_mu_bounds, (list, tuple)):
+                            mu_bounds_fit[_ep_name] = (float(_ep_mu_bounds[0]), float(_ep_mu_bounds[1]))
+
+                        # ── EMG tail for extra peak ──────────────────────
+                        _ep_use_emg = _ep_cfg.get("use_emg", False)
+                        if _ep_use_emg:
+                            # Inject into use_emg config dict so fitting.py sees it
+                            if "use_emg" not in spec_flags:
+                                spec_flags["use_emg"] = {}
+                            spec_flags["use_emg"][_ep_name] = True
+                            # tau prior for the extra peak
+                            _ep_tau = _ep_cfg.get("tau", [0.05, 0.05])
+                            if isinstance(_ep_tau, (list, tuple)):
+                                priors_spec[f"tau_{_ep_name}"] = (float(_ep_tau[0]), float(_ep_tau[1]))
+                            else:
+                                priors_spec[f"tau_{_ep_name}"] = (float(_ep_tau), float(_ep_tau) * 0.5)
+
+                        # ── Shelf for extra peak ─────────────────────────
+                        _ep_use_shelf = _ep_cfg.get("use_shelf", False)
+                        if _ep_use_shelf:
+                            # Inject into use_shelf config dict
+                            if isinstance(use_shelf_cfg, dict):
+                                use_shelf_cfg[_ep_name] = True
+                            _ep_f_shelf = _ep_cfg.get("f_shelf", [0.05, 0.10])
+                            if isinstance(_ep_f_shelf, (list, tuple)):
+                                priors_spec[f"f_shelf_{_ep_name}"] = (float(_ep_f_shelf[0]), float(_ep_f_shelf[1]))
+                            else:
+                                priors_spec[f"f_shelf_{_ep_name}"] = (float(_ep_f_shelf), 0.10)
+                            _ep_sigma_shelf = _ep_cfg.get("sigma_shelf", [0.3, 0.15])
+                            if isinstance(_ep_sigma_shelf, (list, tuple)):
+                                priors_spec[f"sigma_shelf_{_ep_name}"] = (float(_ep_sigma_shelf[0]), float(_ep_sigma_shelf[1]))
+                            else:
+                                priors_spec[f"sigma_shelf_{_ep_name}"] = (float(_ep_sigma_shelf), 0.15)
+
+                        # ── Halo for extra peak ──────────────────────────
+                        _ep_use_halo = _ep_cfg.get("use_halo", False)
+                        if _ep_use_halo:
+                            # Inject into use_halo config dict
+                            if isinstance(use_halo_cfg, dict):
+                                use_halo_cfg[_ep_name] = True
+                            _ep_f_halo = _ep_cfg.get("f_halo", [0.08, 0.10])
+                            if isinstance(_ep_f_halo, (list, tuple)):
+                                priors_spec[f"f_halo_{_ep_name}"] = (float(_ep_f_halo[0]), float(_ep_f_halo[1]))
+                            else:
+                                priors_spec[f"f_halo_{_ep_name}"] = (float(_ep_f_halo), 0.10)
+                            _ep_sigma_halo = _ep_cfg.get("sigma_halo", [0.5, 0.25])
+                            if isinstance(_ep_sigma_halo, (list, tuple)):
+                                priors_spec[f"sigma_halo_{_ep_name}"] = (float(_ep_sigma_halo[0]), float(_ep_sigma_halo[1]))
+                            else:
+                                priors_spec[f"sigma_halo_{_ep_name}"] = (float(_ep_sigma_halo), 0.25)
+                            _ep_tau_halo = _ep_cfg.get("tau_halo", [0.03, 0.05])
+                            if isinstance(_ep_tau_halo, (list, tuple)):
+                                priors_spec[f"tau_halo_{_ep_name}"] = (float(_ep_tau_halo[0]), float(_ep_tau_halo[1]))
+                            else:
+                                priors_spec[f"tau_halo_{_ep_name}"] = (float(_ep_tau_halo), 0.05)
+
+                        # Fix flags from config
+                        _ep_fix = _ep_cfg.get("fix", {})
+                        if isinstance(_ep_fix, dict):
+                            for _fk, _fv in _ep_fix.items():
+                                spec_flags[f"fix_{_fk}_{_ep_name}"] = bool(_fv)
+
+                        logger.info(
+                            "Extra peak '%s': E=%.2f±%.2f MeV, sigma=%.2f±%.2f, amp=%.0f±%.0f, "
+                            "use_emg=%s, use_shelf=%s, use_halo=%s",
+                            _ep_name, _ep_energy, _ep_mu_sigma,
+                            _ep_sig_mu, _ep_sig_sig, _ep_amp_mu, _ep_amp_sig,
+                            _ep_use_emg, _ep_use_shelf, _ep_use_halo,
+                        )
 
                 # Launch the spectral fit
                 spec_fit_out = None
@@ -3476,6 +4144,141 @@ def main(argv=None):
                         if bounds_map:
                             fit_kwargs["bounds"] = bounds_map
 
+                    # ── Two-stage DNL: Fourier at full res, then rebin ──
+                    _dnl_cfg_main = spectral_cfg.get("dnl_correction", {})
+                    _full_res_dnl = (
+                        _dnl_cfg_main.get("full_resolution_estimate", False)
+                        and _dnl_cfg_main.get("enabled", False)
+                    )
+                    _pre_hist = None
+                    _pre_dnl_meta = None
+                    if _full_res_dnl and method == "adc":
+                        logger.info("Two-stage DNL pipeline: full-res Fourier + rebin")
+                        # Extract timestamps for per-period crossval
+                        _frd_timestamps = None
+                        if "timestamp" in df_spectrum.columns:
+                            try:
+                                _frd_timestamps = (
+                                    pd.to_datetime(
+                                        df_spectrum["timestamp"], utc=True, errors="coerce"
+                                    ).astype(np.int64).to_numpy(dtype=float)
+                                )
+                            except Exception:
+                                _frd_timestamps = np.arange(len(df_spectrum), dtype=float)
+                        else:
+                            _frd_timestamps = np.arange(len(df_spectrum), dtype=float)
+                        try:
+                            _pre_hist, _pre_edges, _pre_dnl_meta, _pre_info = (
+                                _preprocess_full_resolution_dnl(
+                                    adc_all, E_all,
+                                    cal_slope=a,
+                                    cal_intercept=c,
+                                    cal_a2=a2,
+                                    cal_a3=a3,
+                                    priors=priors_spec,
+                                    flags=spec_flags,
+                                    cfg=cfg,
+                                    bounds=fit_kwargs.get("bounds"),
+                                    timestamps=_frd_timestamps,
+                                )
+                            )
+                            # Override bin_edges with the rebinned edges
+                            bin_edges = _pre_edges
+                            bins = bin_edges.size - 1
+                            fit_kwargs["bin_edges"] = bin_edges
+                            fit_kwargs["bins"] = bins
+                            logger.info(
+                                "Two-stage DNL: rebin_factor=%d, %d bins for fit",
+                                _pre_info.get("rebin_factor", -1), bins,
+                            )
+                        except Exception as _frd_exc:
+                            import traceback
+                            logger.error(
+                                "Two-stage DNL preprocessing failed: %s\n%s",
+                                _frd_exc, traceback.format_exc(),
+                            )
+                            _pre_hist = None
+                            _pre_dnl_meta = None
+                            _pre_info = {}
+
+                    # Store per-period crossval for summary output
+                    _per_period_crossval_data = (
+                        _pre_info.get("per_period_crossval") if _pre_dnl_meta else None
+                    )
+
+                    # ── Seed priors from prelim fit ────────────────────────
+                    _use_prelim_bkg = spectral_cfg.get(
+                        "seed_bkg_from_prelim", False
+                    )
+                    if _use_prelim_bkg and _pre_info:
+                        _pbp = _pre_info.get("prelim_bkg_params", {})
+                        if _pbp:
+                            for _bk in ("b1", "b2", "b3"):
+                                if _bk in _pbp and f"{_bk}" in priors_spec:
+                                    _old = priors_spec[_bk]
+                                    _new_mu = _pbp[_bk]
+                                    # Use prelim value as mean, keep sigma
+                                    # from config (allows some flexibility)
+                                    priors_spec[_bk] = (_new_mu, _old[1])
+                            if "S_bkg" in _pbp and "S_bkg" in priors_spec:
+                                _old_s = priors_spec["S_bkg"]
+                                _prelim_sbkg = _pbp["S_bkg"]
+                                # Guard: if prelim S_bkg collapsed to ~0, keep
+                                # the original prior (don't seed a bad value).
+                                if _prelim_sbkg > 1.0:
+                                    priors_spec["S_bkg"] = (
+                                        _prelim_sbkg,
+                                        max(_old_s[1], abs(_prelim_sbkg) * 0.5),
+                                    )
+                                else:
+                                    logger.warning(
+                                        "Prelim S_bkg=%.2f collapsed to ~0; "
+                                        "keeping original prior for stage 2",
+                                        _prelim_sbkg,
+                                    )
+                            logger.info(
+                                "Seeded background priors from prelim fit: %s",
+                                {k: f"{v:.4f}" for k, v in _pbp.items()},
+                            )
+
+                        # Also seed shape params (shelf, tau, sigma, etc.)
+                        # from the prelim fit.  The full-resolution prelim fit
+                        # has much better shape information; fix these at the
+                        # prelim values so the rebinned fit doesn't diverge.
+                        _prelim_fv = _pre_info.get("prelim_plot_data", {}).get("fit_vals", {})
+                        _seed_shape_mode = str(spectral_cfg.get(
+                            "seed_shape_from_prelim", "fix"
+                        )).lower()  # "fix", "seed", or "off"
+                        if _prelim_fv and _seed_shape_mode != "off":
+                            _shape_prefixes = (
+                                "tau_", "f_shelf_", "sigma_shelf_",
+                                "f_halo_", "sigma_halo_", "tau_halo_",
+                            )
+                            _seeded_shape = {}
+                            for _sk, _sv in _prelim_fv.items():
+                                if any(_sk.startswith(pfx) for pfx in _shape_prefixes):
+                                    if _sk in priors_spec:
+                                        try:
+                                            _sv_f = float(_sv)
+                                            if np.isfinite(_sv_f):
+                                                _old_mu, _old_sig = priors_spec[_sk]
+                                                if _seed_shape_mode == "fix":
+                                                    # Fix at prelim value with very tight prior
+                                                    priors_spec[_sk] = (_sv_f, _old_sig * 0.1)
+                                                    spec_flags[f"fix_{_sk}"] = True
+                                                else:
+                                                    # Seed: use prelim value as mean
+                                                    priors_spec[_sk] = (_sv_f, _old_sig)
+                                                _seeded_shape[_sk] = _sv_f
+                                        except (TypeError, ValueError):
+                                            pass
+                            if _seeded_shape:
+                                logger.info(
+                                    "Seeded %d shape priors from prelim (%s mode): %s",
+                                    len(_seeded_shape), _seed_shape_mode,
+                                    ", ".join(f"{k}={v:.4f}" for k, v in sorted(_seeded_shape.items())),
+                                )
+
                     spec_fit_out, peak_deviation = _spectral_fit_with_check(
                         E_all,
                         priors_spec,
@@ -3486,6 +4289,8 @@ def main(argv=None):
                         bounds=fit_kwargs.get("bounds"),
                         unbinned=fit_kwargs.get("unbinned", False),
                         strict=fit_kwargs.get("strict", False),
+                        pre_binned_hist=_pre_hist,
+                        pre_dnl_meta=_pre_dnl_meta,
                     )
                     if isinstance(spec_fit_out, FitResult) and not spec_fit_out.params.get(
                         "fit_valid", True
@@ -3508,6 +4313,7 @@ def main(argv=None):
                                 bounds=fit_kwargs.get("bounds"),
                                 unbinned=fit_kwargs.get("unbinned", False),
                                 strict=fit_kwargs.get("strict", False),
+                                skip_minos=cfg.get("spectral_fit", {}).get("skip_minos", False),
                             )
                             if isinstance(refit, FitResult) and refit.params.get(
                                 "fit_valid", False
@@ -3528,6 +4334,7 @@ def main(argv=None):
                                         bounds=fit_kwargs.get("bounds"),
                                         unbinned=fit_kwargs.get("unbinned", False),
                                         strict=fit_kwargs.get("strict", False),
+                                        skip_minos=cfg.get("spectral_fit", {}).get("skip_minos", False),
                                     )
                                     if (
                                         isinstance(free_fit, FitResult)
@@ -3539,6 +4346,150 @@ def main(argv=None):
                                     else:
                                         spec_fit_out = refit
                     spectrum_results = spec_fit_out
+
+                    # Save stage 2 (main fit) plot data for per-stage diagnostics
+                    _stage2_plot_data = None
+                    if isinstance(spec_fit_out, FitResult):
+                        try:
+                            _s2_fv = dict(spec_fit_out.params)
+                            _stage2_plot_data = {
+                                "fit_vals": _s2_fv,
+                                "bins": fit_kwargs.get("bins"),
+                                "bin_edges": fit_kwargs.get("bin_edges"),
+                                "flags": dict(spec_flags),
+                            }
+                        except Exception as _s2ex:
+                            logger.debug("Could not assemble stage 2 plot data: %s", _s2ex)
+
+                    # ── Three-stage binning: stage 3 refit at coarser bins ──
+                    _three_stage_cfg = spectral_cfg.get("three_stage_binning", {})
+                    _three_stage_enabled = (
+                        _three_stage_cfg.get("enabled", False)
+                        and _full_res_dnl
+                        and _pre_info is not None
+                        and isinstance(spectrum_results, FitResult)
+                    )
+                    if _three_stage_enabled:
+                        try:
+                            _s2_params = spectrum_results.params
+                            _s3_rebin = int(_three_stage_cfg.get("stage3_rebin", 15))
+                            _corrected_full = _pre_info.get("corrected_full_res")
+                            _edges_adc_full = _pre_info.get("edges_adc_full")
+
+                            if _corrected_full is None or _edges_adc_full is None:
+                                logger.warning(
+                                    "Three-stage: full-res corrected data not available, skipping stage 3"
+                                )
+                            else:
+                                logger.info(
+                                    "Three-stage binning: stage 2 chi2/ndf=%.3f at %d bins, "
+                                    "now rebinning to factor=%d for stage 3",
+                                    _s2_params.get("chi2_ndf", float("nan")),
+                                    _s2_params.get("n_bins", -1),
+                                    _s3_rebin,
+                                )
+
+                                # Rebin DNL-corrected full-res histogram to stage 3
+                                _s3_hist, _s3_edges_adc = rebin_histogram(
+                                    _corrected_full, _edges_adc_full, _s3_rebin
+                                )
+                                _s3_edges_mev = apply_calibration(
+                                    _s3_edges_adc, a, c,
+                                    quadratic_coeff=a2, cubic_coeff=a3,
+                                )
+                                logger.info(
+                                    "Stage 3: %d bins (rebin factor %d from %d full-res)",
+                                    _s3_hist.size, _s3_rebin, len(_corrected_full),
+                                )
+
+                                # Extract stage 2 shape param values and fix them
+                                _s3_priors = dict(priors_spec)
+                                _s3_flags = dict(spec_flags)
+                                _shape_prefixes = [
+                                    "tau_", "f_shelf_", "sigma_shelf_",
+                                    "f_halo_", "sigma_halo_", "tau_halo_",
+                                    "sigma_",
+                                ]
+                                _isotopes = ["Po210", "Po218", "Po214", "Po216", "Po212"]
+                                # Include extra peaks in the seed list
+                                _extra_peaks_cfg = spectral_cfg.get("extra_peaks", {})
+                                if _extra_peaks_cfg and isinstance(_extra_peaks_cfg, dict):
+                                    _isotopes = _isotopes + list(_extra_peaks_cfg.keys())
+                                _s3_shape_seeds = {}
+                                for _iso in _isotopes:
+                                    for _pfx in _shape_prefixes:
+                                        _pkey = f"{_pfx}{_iso}"
+                                        _s2_val = _s2_params.get(_pkey)
+                                        if _s2_val is not None and np.isfinite(float(_s2_val)):
+                                            # Update prior to stage 2 best-fit value with tight sigma
+                                            _s2_val_f = float(_s2_val)
+                                            if _pkey in _s3_priors:
+                                                _old_mu, _old_sig = _s3_priors[_pkey]
+                                                _s3_priors[_pkey] = (_s2_val_f, _old_sig * 0.1)
+                                            # Fix the shape parameter
+                                            _fix_key = f"fix_{_pkey}"
+                                            _s3_flags[_fix_key] = True
+                                            _s3_shape_seeds[_pkey] = _s2_val_f
+
+                                logger.info(
+                                    "Stage 3: fixed %d shape params from stage 2: %s",
+                                    len(_s3_shape_seeds),
+                                    ", ".join(f"{k}={v:.4f}" for k, v in sorted(_s3_shape_seeds.items())),
+                                )
+
+                                # Build stage 3 DNL metadata (same DNL, different binning)
+                                _s3_dnl_meta = dict(_pre_dnl_meta) if _pre_dnl_meta else {}
+                                _s3_dnl_meta["stage3_rebin_factor"] = _s3_rebin
+                                _s3_dnl_meta["rebinned_bins"] = int(_s3_hist.size)
+                                _s3_dnl_meta["statistical_model"] = "fourier_corrected_rebinned_poisson"
+
+                                # Run stage 3 fit
+                                _s3_result, _s3_peak_dev = _spectral_fit_with_check(
+                                    E_all,
+                                    _s3_priors,
+                                    _s3_flags,
+                                    cfg,
+                                    bins=_s3_hist.size,
+                                    bin_edges=_s3_edges_mev,
+                                    bounds=fit_kwargs.get("bounds"),
+                                    unbinned=False,
+                                    strict=False,
+                                    pre_binned_hist=_s3_hist,
+                                    pre_dnl_meta=_s3_dnl_meta,
+                                )
+
+                                if isinstance(_s3_result, FitResult):
+                                    _s3_p = _s3_result.params
+                                    logger.info(
+                                        "Three-stage complete: stage2 chi2/ndf=%.3f (%d bins), "
+                                        "stage3 chi2/ndf=%.3f (%d bins)",
+                                        _s2_params.get("chi2_ndf", float("nan")),
+                                        _s2_params.get("n_bins", -1),
+                                        _s3_p.get("chi2_ndf", float("nan")),
+                                        _s3_p.get("n_bins", -1),
+                                    )
+                                    # Store stage 2 metadata inside stage 3 result
+                                    _s3_p["_three_stage"] = {
+                                        "stage2_chi2_ndf": _s2_params.get("chi2_ndf"),
+                                        "stage2_n_bins": _s2_params.get("n_bins"),
+                                        "stage2_rebin": _pre_info.get("rebin_factor"),
+                                        "stage3_rebin": _s3_rebin,
+                                        "stage2_shape_seeds": _s3_shape_seeds,
+                                    }
+                                    # Stage 3 becomes the primary result
+                                    spectrum_results = _s3_result
+                                else:
+                                    logger.warning(
+                                        "Stage 3 fit did not return FitResult; "
+                                        "keeping stage 2 result as primary"
+                                    )
+                        except Exception as _s3_exc:
+                            import traceback
+                            logger.error(
+                                "Three-stage binning stage 3 failed: %s\n%s",
+                                _s3_exc, traceback.format_exc(),
+                            )
+
                 except Exception as e:
                     logger.warning("Spectral fit failed -> %s", e)
                     spectrum_results = {}
@@ -3578,7 +4529,7 @@ def main(argv=None):
                         # Categorise: amplitude (S_*) and position (mu_*) params
                         # are expected to differ between time halves (activity and
                         # calibration drift).  Shape params (sigma, tau, f_*, b*)
-                        # should be stable — these are the overfitting indicators.
+                        # should be stable  - these are the overfitting indicators.
                         _sh_params = []
                         _skip = {
                             "_plot_", "_dnl", "fit_valid", "likelihood_path",
@@ -3803,6 +4754,237 @@ def main(argv=None):
                             )
                     except Exception as e:
                         logger.warning("Model complexity comparison failed: %s", e)
+
+                # ── D2: Shelf/halo held-out cross-validation ──────────
+                shelf_halo_result = None
+                if (
+                    spectral_cfg.get("shelf_halo_test", False)
+                    and isinstance(spectrum_results, FitResult)
+                ):
+                    try:
+                        logger.info("Running shelf/halo held-out test...")
+                        _sh_idx = np.arange(len(df_spectrum))
+                        _sh_even = (_sh_idx % 2 == 0)
+                        _sh_odd = ~_sh_even
+                        E_even = E_all[_sh_even]
+                        E_odd = E_all[_sh_odd]
+
+                        # Full model on even events
+                        _sh_full_even = fit_spectrum(
+                            E_even, priors_spec, flags=spec_flags,
+                            bins=fit_kwargs.get("bins"),
+                            bin_edges=fit_kwargs.get("bin_edges"),
+                            bounds=fit_kwargs.get("bounds"),
+                            unbinned=fit_kwargs.get("unbinned", False),
+                            strict=False,
+                        )
+
+                        # Reduced model: fix shelf and halo fractions to 0
+                        _sh_flags_reduced = dict(spec_flags)
+                        for _iso in ["Po210", "Po218", "Po214", "Po212"]:
+                            _sh_flags_reduced[f"fix_f_shelf_{_iso}"] = True
+                            _sh_flags_reduced[f"fix_f_halo_{_iso}"] = True
+                        _sh_priors_reduced = dict(priors_spec)
+                        for _iso in ["Po210", "Po218", "Po214", "Po212"]:
+                            _sh_priors_reduced[f"f_shelf_{_iso}"] = (0.0, 0.001)
+                            _sh_priors_reduced[f"f_halo_{_iso}"] = (0.0, 0.001)
+
+                        _sh_red_even = fit_spectrum(
+                            E_even, _sh_priors_reduced,
+                            flags=_sh_flags_reduced,
+                            bins=fit_kwargs.get("bins"),
+                            bin_edges=fit_kwargs.get("bin_edges"),
+                            bounds=fit_kwargs.get("bounds"),
+                            unbinned=fit_kwargs.get("unbinned", False),
+                            strict=False,
+                        )
+
+                        # Evaluate on held-out odd events
+                        _sh_full_odd = fit_spectrum(
+                            E_odd, priors_spec, flags=spec_flags,
+                            bins=fit_kwargs.get("bins"),
+                            bin_edges=fit_kwargs.get("bin_edges"),
+                            bounds=fit_kwargs.get("bounds"),
+                            unbinned=fit_kwargs.get("unbinned", False),
+                            strict=False,
+                        )
+                        _sh_red_odd = fit_spectrum(
+                            E_odd, _sh_priors_reduced,
+                            flags=_sh_flags_reduced,
+                            bins=fit_kwargs.get("bins"),
+                            bin_edges=fit_kwargs.get("bin_edges"),
+                            bounds=fit_kwargs.get("bounds"),
+                            unbinned=fit_kwargs.get("unbinned", False),
+                            strict=False,
+                        )
+
+                        def _get_nll(r):
+                            p = r.params if isinstance(r, FitResult) else r
+                            return float(p.get("nll", float("inf")))
+
+                        _nll_full_in = _get_nll(_sh_full_even)
+                        _nll_red_in = _get_nll(_sh_red_even)
+                        _nll_full_out = _get_nll(_sh_full_odd)
+                        _nll_red_out = _get_nll(_sh_red_odd)
+
+                        _in_sample_impr = _nll_red_in - _nll_full_in
+                        _held_out_impr = _nll_red_out - _nll_full_out
+
+                        shelf_halo_result = {
+                            "in_sample_improvement": round(float(_in_sample_impr), 2),
+                            "held_out_improvement": round(float(_held_out_impr), 2),
+                            "n_events_train": int(_sh_even.sum()),
+                            "n_events_test": int(_sh_odd.sum()),
+                            "verdict": (
+                                "justified"
+                                if _held_out_impr > 1.0
+                                else "marginal"
+                                if _held_out_impr > 0.0
+                                else "overfitting"
+                            ),
+                        }
+                        logger.info(
+                            "Shelf/halo test: in-sample ΔNLL=%.1f, "
+                            "held-out ΔNLL=%.1f -> %s",
+                            _in_sample_impr, _held_out_impr,
+                            shelf_halo_result["verdict"],
+                        )
+                    except Exception as e:
+                        logger.warning("Shelf/halo test failed: %s", e)
+
+                # ── DNL cross-validation ────────────────────────────────
+                dnl_crossval_result = None
+                _dnl_cv_cfg = spectral_cfg.get("dnl_correction", {})
+                if (
+                    _dnl_cv_cfg.get("crossval", False)
+                    and _dnl_cv_cfg.get("enabled", False)
+                    and isinstance(spectrum_results, FitResult)
+                ):
+                    try:
+                        from src.rmtest.spectral.dnl_crossval import run_dnl_crossval
+
+                        _cv_timestamps = None
+                        if "timestamp" in df_spectrum.columns:
+                            _ts_raw = df_spectrum["timestamp"]
+                            try:
+                                _cv_timestamps = (
+                                    pd.to_datetime(_ts_raw, utc=True, errors="coerce")
+                                    .astype(np.int64).to_numpy(dtype=float)
+                                )
+                            except Exception:
+                                _cv_timestamps = np.arange(len(df_spectrum), dtype=float)
+                        else:
+                            _cv_timestamps = np.arange(len(df_spectrum), dtype=float)
+
+                        # Ensure bin_edges are always passed so both halves
+                        # use identical binning (required for cross-applying
+                        # DNL factors).  Fall back to bin_edges from the
+                        # spectral fit result if not in fit_kwargs.
+                        _cv_bin_edges = fit_kwargs.get("bin_edges")
+                        if _cv_bin_edges is None and isinstance(spectrum_results, FitResult):
+                            _plot_edges = spectrum_results.params.get("_plot_edges")
+                            if _plot_edges is not None:
+                                _cv_bin_edges = np.asarray(_plot_edges, dtype=float)
+                                logger.info(
+                                    "DNL crossval: recovered bin_edges from fit "
+                                    "result (%d edges)", len(_cv_bin_edges),
+                                )
+                        _cv_fit_kwargs = {
+                            "priors": priors_spec,
+                            "flags": spec_flags,
+                            "bins": fit_kwargs.get("bins"),
+                            "bin_edges": _cv_bin_edges,
+                            "bounds": fit_kwargs.get("bounds"),
+                            "unbinned": fit_kwargs.get("unbinned", False),
+                            "strict": False,
+                        }
+                        dnl_crossval_result = run_dnl_crossval(
+                            energies=E_all,
+                            timestamps=_cv_timestamps,
+                            fit_kwargs=_cv_fit_kwargs,
+                            cfg=cfg,
+                        )
+                        logger.info(
+                            "DNL cross-validation: verdict=%s, corr=%.3f",
+                            dnl_crossval_result.verdict,
+                            dnl_crossval_result.dnl_correlation,
+                        )
+
+                        # ── B1: Auto-disable DNL on overfitting ───────────
+                        # If the self-estimated DNL correction is not
+                        # reproducible across time halves, disable it and
+                        # refit with raw bin widths.  The model without DNL
+                        # is statistically more honest: bins are independent
+                        # Poisson with no self-reference covariance.
+                        if dnl_crossval_result.verdict == "overfitting":
+                            logger.warning(
+                                "DNL cross-validation indicates overfitting "
+                                "(r=%.3f). Disabling self-estimated DNL "
+                                "and refitting with raw bin widths.",
+                                dnl_crossval_result.dnl_correlation,
+                            )
+                            _no_dnl_flags = dict(spec_flags)
+                            _no_dnl_flags["cfg"] = dict(cfg)
+                            _no_dnl_sc = dict(
+                                _no_dnl_flags["cfg"].get("spectral_fit", {})
+                            )
+                            _no_dnl_dc = dict(
+                                _no_dnl_sc.get("dnl_correction", {})
+                            )
+                            _no_dnl_dc["enabled"] = False
+                            _no_dnl_sc["dnl_correction"] = _no_dnl_dc
+                            _no_dnl_flags["cfg"]["spectral_fit"] = _no_dnl_sc
+
+                            _no_dnl_skip = cfg.get("spectral_fit", {}).get(
+                                "skip_minos", False
+                            )
+                            _no_dnl_result = fit_spectrum(
+                                E_all,
+                                priors_spec,
+                                flags=_no_dnl_flags,
+                                bins=fit_kwargs.get("bins"),
+                                bin_edges=fit_kwargs.get("bin_edges"),
+                                bounds=fit_kwargs.get("bounds"),
+                                unbinned=fit_kwargs.get("unbinned", False),
+                                strict=fit_kwargs.get("strict", False),
+                                skip_minos=_no_dnl_skip,
+                            )
+                            if isinstance(_no_dnl_result, FitResult):
+                                _no_dnl_p = _no_dnl_result.params
+                                _no_dnl_p["dnl_status"] = "disabled_by_crossval"
+                                _no_dnl_p.setdefault("_dnl", {})
+                                _no_dnl_p["_dnl"]["operator_class"] = (
+                                    "disabled_by_crossval"
+                                )
+                                _no_dnl_p["_dnl"]["statistical_model"] = (
+                                    "independent_poisson"
+                                )
+                                _no_dnl_p["_dnl"]["covariance_note"] = (
+                                    "Bins are independent Poisson; no "
+                                    "self-estimated DNL correction applied."
+                                )
+                                # Keep the old fit for comparison
+                                _old_nll = float(
+                                    spec_fit_out.params.get("nll", float("inf"))
+                                    if isinstance(spec_fit_out, FitResult)
+                                    else spec_fit_out.get("nll", float("inf"))
+                                    if isinstance(spec_fit_out, dict)
+                                    else float("inf")
+                                )
+                                _new_nll = float(
+                                    _no_dnl_p.get("nll", float("inf"))
+                                )
+                                logger.info(
+                                    "Refit without DNL: NLL %.1f -> %.1f "
+                                    "(delta=%.1f)",
+                                    _old_nll, _new_nll,
+                                    _new_nll - _old_nll,
+                                )
+                                spec_fit_out = _no_dnl_result
+                                spectrum_results = spec_fit_out
+
+                    except Exception as e:
+                        logger.warning("DNL cross-validation failed: %s", e)
 
                 fit_vals = None
                 if isinstance(spec_fit_out, FitResult):
@@ -5120,18 +6302,201 @@ def main(argv=None):
             spec_dict["likelihood_path"] = spectrum_results.get("likelihood_path")
         if peak_deviation:
             spec_dict["peak_deviation"] = peak_deviation
+        # Spectral fit timing breakdown
+        _timers = spec_dict.pop("_fit_timers", None)
+        if _timers:
+            spec_dict["fit_timers"] = {
+                k: round(v, 2) if isinstance(v, float) else v
+                for k, v in _timers.items()
+            }
+        # Centroid refit tracking
+        _cr_meta = spec_dict.pop("_centroid_refit", None)
+        if _cr_meta:
+            spec_dict["centroid_refit"] = _cr_meta
+        # Three-stage binning metadata
+        _ts_meta = spec_dict.pop("_three_stage", None)
+        if _ts_meta:
+            spec_dict["three_stage_binning"] = {
+                k: (round(v, 4) if isinstance(v, float) else v)
+                for k, v in _ts_meta.items()
+            }
         if split_half_result is not None:
             spec_dict["split_half_validation"] = split_half_result
         if model_comparison_result is not None:
             spec_dict["model_comparison"] = model_comparison_result
+        if dnl_crossval_result is not None:
+            spec_dict["dnl_crossval"] = dnl_crossval_result.to_dict()
+        if _per_period_crossval_data:
+            spec_dict["per_period_crossval"] = _per_period_crossval_data
+        if shelf_halo_result is not None:
+            spec_dict["shelf_halo_crossval"] = shelf_halo_result
 
-        # ── Pull-based overfitting diagnostics ────────────────────────
+        # ── Adequacy verdict ────────────────────────────────────────
+        _adequacy = {"level": "uncalibrated", "reasons": []}
+        if dnl_crossval_result is not None:
+            _cv = dnl_crossval_result
+            _reasons = []
+            if _cv.verdict == "hardware_signal":
+                _reasons.append(
+                    "DNL cross-validation confirms hardware signal"
+                )
+                # Check rebin10 pull sigma if available
+                _r10_sigma = None
+                if isinstance(spectrum_results, FitResult):
+                    _dnl_meta_check = spectrum_results.params.get("_dnl", {})
+                _pull_diag_check = spec_dict.get("pull_diagnostics", {})
+                _r10_sigma = _pull_diag_check.get("rebin10_pull_sigma")
+                if _r10_sigma is not None and _r10_sigma < 2.0:
+                    _adequacy["level"] = "inference_ready"
+                    _reasons.append(
+                        f"rebin10 pull sigma = {_r10_sigma:.2f} < 2.0"
+                    )
+                else:
+                    _adequacy["level"] = "descriptive_only"
+                    if _r10_sigma is not None:
+                        _reasons.append(
+                            f"rebin10 pull sigma = {_r10_sigma:.2f} >= 2.0"
+                        )
+                    else:
+                        _reasons.append(
+                            "rebin10 pull sigma not available"
+                        )
+            elif _cv.verdict == "overfitting":
+                # DNL was overfitting, but B1 auto-disabled it and refitted.
+                # The refit has independent Poisson bins, so evaluate the
+                # refit's diagnostics to decide between descriptive_only and
+                # inference_ready.
+                _reasons.append(
+                    "DNL cross-validation detected overfitting; "
+                    "self-estimated DNL auto-disabled and spectrum refitted"
+                )
+                _dnl_st = (
+                    spectrum_results.params.get("dnl_status", "")
+                    if isinstance(spectrum_results, FitResult)
+                    else ""
+                )
+                if _dnl_st == "disabled_by_crossval":
+                    _reasons.append(
+                        "Refit without DNL: bins are independent Poisson"
+                    )
+                    # Evaluate refit quality via rebin10 pull sigma
+                    _pull_diag_refit = spec_dict.get(
+                        "pull_diagnostics", {}
+                    )
+                    _r10_refit = _pull_diag_refit.get(
+                        "rebin10_pull_sigma"
+                    )
+                    # Also check split-half shape stability
+                    _sh = spec_dict.get("split_half_validation", {})
+                    _sh_pass = _sh.get("pass", True)
+                    if (
+                        _r10_refit is not None
+                        and _r10_refit < 2.0
+                        and _sh_pass
+                    ):
+                        _adequacy["level"] = "inference_ready"
+                        _reasons.append(
+                            f"rebin10 pull sigma = {_r10_refit:.2f} < 2.0; "
+                            "split-half shape stable"
+                        )
+                    else:
+                        _adequacy["level"] = "descriptive_only"
+                        if _r10_refit is not None:
+                            _reasons.append(
+                                f"rebin10 pull sigma = {_r10_refit:.2f}"
+                            )
+                        if not _sh_pass:
+                            _reasons.append(
+                                "split-half shape stability failed"
+                            )
+                else:
+                    _adequacy["level"] = "descriptive_only"
+                    _reasons.append(
+                        "DNL overfitting detected but auto-disable did "
+                        "not produce a valid refit"
+                    )
+            elif _cv.verdict == "mixed":
+                _adequacy["level"] = "descriptive_only"
+                _reasons.append(
+                    "DNL cross-validation is inconclusive (mixed signal)"
+                )
+            else:
+                _reasons.append(f"DNL crossval verdict: {_cv.verdict}")
+            _adequacy["reasons"] = _reasons
+
+            # D1: Add split-half interpretation (applies to all DNL
+            # crossval paths).  The split-half shape-params-only result
+            # should be reported accurately: if max |z| < 2 for shape
+            # parameters, the core shape family is stable, not
+            # overfitting.
+            _sh_d1 = spec_dict.get("split_half_validation", {})
+            _sh_max_z = _sh_d1.get("max_z_shape")
+            _sh_pass_d1 = _sh_d1.get("pass", True)
+            if _sh_max_z is not None:
+                if _sh_pass_d1:
+                    _adequacy["reasons"].append(
+                        f"Core shape family passes split-half stability "
+                        f"(max |z| = {_sh_max_z:.2f})"
+                    )
+                else:
+                    _adequacy["reasons"].append(
+                        f"Split-half shape instability detected "
+                        f"(max |z| = {_sh_max_z:.2f})"
+                    )
+                    # Downgrade if we were inference_ready
+                    if _adequacy["level"] == "inference_ready":
+                        _adequacy["level"] = "descriptive_only"
+
+        elif (
+            isinstance(spectrum_results, FitResult)
+            and spectrum_results.params.get("_dnl", {}).get("dnl_applied")
+        ):
+            _adequacy["reasons"].append(
+                "DNL applied but cross-validation not run"
+            )
+        else:
+            _adequacy["reasons"].append("No DNL correction applied")
+            _adequacy["level"] = "inference_ready"
+
+        # Add a recommendation field
+        if _adequacy["level"] == "inference_ready":
+            _adequacy["recommendation"] = (
+                "Peak areas, centroids, and derived activity are "
+                "suitable for quantitative inference."
+            )
+        elif _adequacy["level"] == "descriptive_only":
+            _adequacy["recommendation"] = (
+                "Model provides a good descriptive fit but has not "
+                "been fully calibrated through the DNL/residual "
+                "pipeline. Treat quantitative uncertainties as "
+                "approximate."
+            )
+        else:
+            _adequacy["recommendation"] = (
+                "Statistical claims require DNL-aware residual "
+                "calibration (e.g. pseudoexperiments through the "
+                "full pipeline)."
+            )
+
+        spec_dict["adequacy_verdict"] = _adequacy
+        logger.info(
+            "Adequacy verdict: %s  - %s",
+            _adequacy["level"],
+            "; ".join(_adequacy["reasons"]),
+        )
+
+        # ── Fit diagnostics (overfitting + validation) ─────────────────
         _pull_diag_result = {}
-        _ext_resid_result = {}
+        _fit_val_result = {}
+        _code_diag = {}
+        _bias_metrics = {}
         try:
             from plot_utils.diagnostics import (
                 compute_pull_diagnostics,
-                compute_extended_residual_diagnostics,
+                compute_fit_validation_diagnostics,
+                compute_code_domain_diagnostics,
+                compute_signed_bias_metrics,
+                compute_whitened_residuals,
             )
 
             _diag_src = (
@@ -5139,20 +6504,58 @@ def main(argv=None):
                 if isinstance(spectrum_results, FitResult)
                 else spec_dict
             )
+
+            # ── Overfitting diagnostics (pull structure) ──────────────
             _pull_diag_result = compute_pull_diagnostics(_diag_src)
             if _pull_diag_result:
                 spec_dict["pull_diagnostics"] = _pull_diag_result
 
-            _ext_resid_result = compute_extended_residual_diagnostics(_diag_src)
-            if _ext_resid_result:
-                # Store serializable subset (exclude numpy arrays)
-                _ext_serial = {
-                    k: v for k, v in _ext_resid_result.items()
+            # ── Fit-validation diagnostics (model adequacy) ───────────
+            _fit_val_result = compute_fit_validation_diagnostics(_diag_src)
+            if _fit_val_result:
+                spec_dict["fit_validation"] = _fit_val_result
+
+            # ── Code-domain diagnostics (DNL-specific) ────────────────
+            _code_diag = compute_code_domain_diagnostics(_diag_src)
+            if _code_diag:
+                _code_serial = {
+                    k: v for k, v in _code_diag.items()
                     if k != "_arrays"
                 }
-                spec_dict["extended_residual_diagnostics"] = _ext_serial
+                spec_dict["code_domain_diagnostics"] = _code_serial
+
+            # ── Signed-bias metrics per peak window ───────────────────
+            _bias_metrics = compute_signed_bias_metrics(_diag_src)
+            if _bias_metrics:
+                spec_dict["signed_bias_metrics"] = _bias_metrics
+
+            # ── Covariance-aware whitened residuals ────────────────────
+            # Only computed when self-estimated bandpass DNL is active
+            _whitened = compute_whitened_residuals(_diag_src)
+            if _whitened:
+                spec_dict["whitened_residuals"] = _whitened
         except Exception as _e:
             logger.warning("Pull diagnostics failed: %s", _e)
+
+        # ── C4: Pseudoexperiment threshold calibration ────────────────
+        _n_pseudo = int(
+            cfg.get("spectral_fit", {}).get("pseudoexperiment_trials", 0)
+        )
+        if _n_pseudo > 0 and isinstance(spectrum_results, FitResult):
+            try:
+                from src.rmtest.spectral.pseudoexperiments import (
+                    run_pseudoexperiment_calibration,
+                )
+                _pseudo_result = run_pseudoexperiment_calibration(
+                    fit_params=spectrum_results.params,
+                    fit_kwargs=fit_kwargs,
+                    cfg=cfg,
+                    n_trials=_n_pseudo,
+                )
+                if _pseudo_result:
+                    spec_dict["pseudoexperiment_calibration"] = _pseudo_result
+            except Exception as _pe:
+                logger.warning("Pseudoexperiment calibration failed: %s", _pe)
 
         time_fit_serializable = {}
         for iso, fit in time_fit_results.items():
@@ -5351,7 +6754,7 @@ def main(argv=None):
         copy_config(results_dir, cfg, exist_ok=args.overwrite)
         out_dir = Path(write_summary(results_dir, summary))
         out_dir.mkdir(parents=True, exist_ok=True)
-    
+
         radon_background_mode = locals().get("background_mode")
         if (
             iso_mode == "radon"
@@ -5429,6 +6832,42 @@ def main(argv=None):
             except Exception as e:
                 logger.warning("Could not create component spectrum plot: %s", e)
 
+            # --- Per-stage spectrum plots (prelim full-res + stage 2) ---
+            # Stage 0: prelim fit at bin_width=1 (full resolution)
+            if _pre_info and _pre_info.get("prelim_plot_data"):
+                try:
+                    _s0pd = _pre_info["prelim_plot_data"]
+                    _s0_png = Path(out_dir) / "spectrum_stage0_fullres.png"
+                    _ = plot_spectrum(
+                        energies=spec_plot_data["energies"],
+                        fit_vals=_s0pd["fit_vals"],
+                        out_png=_s0_png,
+                        bins=_s0pd["bins"],
+                        bin_edges=_s0pd["bin_edges"],
+                        config=cfg.get("plotting", {}),
+                        fit_flags=_s0pd.get("flags"),
+                    )
+                    logger.info("Saved stage 0 (full-res) spectrum plot to %s", _s0_png)
+                except Exception as e:
+                    logger.warning("Could not create stage 0 spectrum plot: %s", e)
+
+            # Stage 2: main fit at moderate rebin (before 3-stage override)
+            if _stage2_plot_data is not None:
+                try:
+                    _s2_png = Path(out_dir) / "spectrum_stage2_rebin.png"
+                    _ = plot_spectrum(
+                        energies=spec_plot_data["energies"],
+                        fit_vals=_stage2_plot_data["fit_vals"],
+                        out_png=_s2_png,
+                        bins=_stage2_plot_data["bins"],
+                        bin_edges=_stage2_plot_data["bin_edges"],
+                        config=cfg.get("plotting", {}),
+                        fit_flags=_stage2_plot_data.get("flags"),
+                    )
+                    logger.info("Saved stage 2 (moderate rebin) spectrum plot to %s", _s2_png)
+                except Exception as e:
+                    logger.warning("Could not create stage 2 spectrum plot: %s", e)
+
             # --- DNL-corrected spectrum plot ---
             try:
                 _dnl_corr_png = out_dir / "spectrum_dnl_corrected.png"
@@ -5450,7 +6889,6 @@ def main(argv=None):
                     plot_split_half_comparison,
                     plot_overfitting_diagnostics,
                     plot_model_comparison,
-                    plot_extended_residual_diagnostics,
                 )
                 _diag_fit_result = spec_plot_data["fit_vals"]
                 _diag_params = (
@@ -5468,12 +6906,17 @@ def main(argv=None):
                     plot_overfitting_diagnostics(
                         _diag_params, _pull_diag_result, out_dir
                     )
-                if _ext_resid_result:
-                    plot_extended_residual_diagnostics(
-                        _diag_params, _ext_resid_result, out_dir
-                    )
                 if model_comparison_result is not None:
                     plot_model_comparison(model_comparison_result, out_dir)
+                if dnl_crossval_result is not None:
+                    from plot_utils.diagnostics import plot_dnl_crossval
+                    plot_dnl_crossval(dnl_crossval_result, out_dir)
+                # C1: Code-domain diagnostics plot
+                if _code_diag:
+                    from plot_utils.diagnostics import (
+                        plot_code_domain_diagnostics,
+                    )
+                    plot_code_domain_diagnostics(_code_diag, out_dir)
             except Exception as e:
                 logger.warning("Could not create fit diagnostic plots: %s", e)
 
@@ -5538,7 +6981,7 @@ def main(argv=None):
             )
         except Exception as e:
             logger.warning("Could not create pre/post spectrum plot -> %s", e)
-    
+
         if args.burst_sensitivity_scan and scan_results:
             try:
                 plot_activity_grid(
@@ -5743,6 +7186,13 @@ def main(argv=None):
                     plot_volume_equiv_vs_time(radon_inference_results, Path(out_dir))
                 except Exception as exc:
                     logger.warning("Failed to create radon inference plots: %s", exc)
+                # Henry's law derived plots: radon-in-liquid and argon-from-leak
+                try:
+                    from radon.radon_plots import plot_radon_in_liquid, plot_argon_from_leak
+                    plot_radon_in_liquid(radon_inference_results, Path(out_dir), cfg=cfg)
+                    plot_argon_from_leak(radon_inference_results, Path(out_dir), cfg=cfg)
+                except Exception as exc:
+                    logger.warning("Failed to create Henry's law plots: %s", exc)
 
                 # Keep ``radon_trend.png`` sourced from the radon concentration
                 # series. ``rn_inferred`` is detector-cell activity in Bq and is
@@ -5809,6 +7259,14 @@ def main(argv=None):
                                     except Exception as exc:
                                         logger.warning(
                                             "Failed to re-plot radon inference with bridge eff: %s", exc
+                                        )
+                                    try:
+                                        from radon.radon_plots import plot_radon_in_liquid, plot_argon_from_leak
+                                        plot_radon_in_liquid(radon_inference_results_bridge, Path(out_dir), cfg=cfg)
+                                        plot_argon_from_leak(radon_inference_results_bridge, Path(out_dir), cfg=cfg)
+                                    except Exception as exc:
+                                        logger.warning(
+                                            "Failed to re-plot Henry's law with bridge eff: %s", exc
                                         )
                             except Exception as exc:
                                 logger.warning(

@@ -27,6 +27,184 @@ _INTER_PEAK_REGIONS = {
 }
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# Fit-validation diagnostics (complementary to overfitting diagnostics)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def compute_fit_validation_diagnostics(
+    fit_params: Mapping[str, object],
+    min_counts: float = 5.0,
+) -> dict:
+    """Assess whether the spectral model adequately describes the data.
+
+    While pull diagnostics focus on *overfitting* (are residuals
+    suspiciously structured?), these metrics focus on *goodness-of-fit*
+    (does the model actually describe the data?).
+
+    Metrics
+    -------
+    Global fit quality
+    ~~~~~~~~~~~~~~~~~~
+    chi2_pvalue : p-value from chi2 CDF with ``ndf`` degrees of freedom.
+        Very small values (< 0.001) indicate the model is rejected.
+    deviance : sum of deviance residuals (2 * Σ[d·ln(d/m) - (d-m)]).
+        The correct Poisson GoF statistic; converges to chi2(ndf) for
+        large counts.  More accurate than Pearson chi2 for low-count bins.
+    deviance_pvalue : p-value of the deviance statistic.
+    baker_cousins : Baker-Cousins statistic = 2·Σ[m - d + d·ln(d/m)].
+        Equivalent to -2·log(L_saturated/L_fit); the recommended GoF
+        for Poisson binned maximum-likelihood fits.
+    baker_cousins_pvalue : p-value from chi2(ndf).
+
+    Per-peak quality
+    ~~~~~~~~~~~~~~~~
+    peak_<iso>_chi2 : Pearson chi2 in the peak window.
+    peak_<iso>_ndf : number of bins in the peak window.
+    peak_<iso>_chi2_ndf : ratio (should be ~1.0 for a good fit).
+    peak_<iso>_deviance : deviance restricted to the peak window.
+    peak_<iso>_pvalue : per-peak chi2 p-value.
+
+    Parameter health
+    ~~~~~~~~~~~~~~~~
+    n_at_bound : number of free parameters at their bound limits.
+    params_at_bound : list of parameter names hitting bounds.
+    n_large_correlation : number of |correlation| > 0.95 pairs.
+    max_abs_correlation : maximum off-diagonal |correlation|.
+    """
+    model = np.asarray(fit_params.get("_plot_model_total", []), dtype=float)
+    hist = np.asarray(fit_params.get("_plot_hist", []), dtype=float)
+    centers = np.asarray(fit_params.get("_plot_centers", []), dtype=float)
+    if model.size == 0 or hist.size == 0:
+        return {}
+
+    mask = model > min_counts
+    n = int(mask.sum())
+    if n < 10:
+        return {}
+
+    d = hist[mask]
+    m = model[mask]
+    e = centers[mask] if centers.size == model.size else np.arange(n, dtype=float)
+
+    ndf = int(fit_params.get("ndf", n - int(fit_params.get("n_free_params", 0))))
+    if ndf < 1:
+        ndf = max(1, n - int(fit_params.get("n_free_params", 0)))
+
+    result: dict = {}
+
+    # ── Global Pearson chi2 p-value ──────────────────────────────────
+    chi2 = float(fit_params.get("chi2", np.sum((d - m) ** 2 / m)))
+    result["chi2"] = round(chi2, 2)
+    result["ndf"] = ndf
+    result["chi2_ndf"] = round(chi2 / ndf, 4) if ndf > 0 else float("nan")
+    result["chi2_pvalue"] = float(sp_stats.chi2.sf(chi2, ndf))
+
+    # ── Deviance (Poisson GoF) ───────────────────────────────────────
+    # G^2 = 2 * Σ[ d*ln(d/m) - (d - m) ]  for d > 0
+    # For d == 0 bins: contribution is 2 * m
+    pos = d > 0
+    deviance = np.zeros_like(d)
+    deviance[pos] = 2.0 * (d[pos] * np.log(d[pos] / m[pos]) - (d[pos] - m[pos]))
+    deviance[~pos] = 2.0 * m[~pos]
+    total_deviance = float(np.sum(deviance))
+    result["deviance"] = round(total_deviance, 2)
+    result["deviance_ndf"] = round(total_deviance / ndf, 4) if ndf > 0 else float("nan")
+    result["deviance_pvalue"] = float(sp_stats.chi2.sf(total_deviance, ndf))
+
+    # ── Baker-Cousins statistic ──────────────────────────────────────
+    # C_min = 2 * Σ[ m - d + d*ln(d/m) ]  for d > 0
+    # For d == 0: contribution is 2 * m
+    bc = np.zeros_like(d)
+    bc[pos] = 2.0 * (m[pos] - d[pos] + d[pos] * np.log(d[pos] / m[pos]))
+    bc[~pos] = 2.0 * m[~pos]
+    total_bc = float(np.sum(bc))
+    result["baker_cousins"] = round(total_bc, 2)
+    result["baker_cousins_ndf"] = round(total_bc / ndf, 4) if ndf > 0 else float("nan")
+    result["baker_cousins_pvalue"] = float(sp_stats.chi2.sf(total_bc, ndf))
+
+    # ── Per-peak chi2 and deviance ───────────────────────────────────
+    n_free_per_peak = int(fit_params.get("n_free_params", 0))
+    n_peaks = sum(
+        1 for iso, (lo, hi) in _PEAK_REGIONS.items()
+        if np.any((e >= lo) & (e <= hi))
+    )
+    # Rough per-peak free params: total free / n_peaks (approximate)
+    k_per_peak = max(1, n_free_per_peak // max(n_peaks, 1))
+
+    for iso, (lo, hi) in _PEAK_REGIONS.items():
+        rmask = (e >= lo) & (e <= hi)
+        nr = int(rmask.sum())
+        if nr < 3:
+            continue
+        d_r = d[rmask]
+        m_r = m[rmask]
+        chi2_r = float(np.sum((d_r - m_r) ** 2 / np.maximum(m_r, 1.0)))
+        ndf_r = max(1, nr - k_per_peak)
+
+        pos_r = d_r > 0
+        dev_r = np.zeros_like(d_r)
+        dev_r[pos_r] = 2.0 * (d_r[pos_r] * np.log(d_r[pos_r] / m_r[pos_r])
+                               - (d_r[pos_r] - m_r[pos_r]))
+        dev_r[~pos_r] = 2.0 * m_r[~pos_r]
+
+        result[f"peak_{iso}_chi2"] = round(chi2_r, 2)
+        result[f"peak_{iso}_ndf"] = ndf_r
+        result[f"peak_{iso}_chi2_ndf"] = round(chi2_r / ndf_r, 4)
+        result[f"peak_{iso}_deviance"] = round(float(np.sum(dev_r)), 2)
+        result[f"peak_{iso}_pvalue"] = float(sp_stats.chi2.sf(chi2_r, ndf_r))
+
+    # ── Parameter-at-bound check ─────────────────────────────────────
+    bounds = fit_params.get("_bounds", {})
+    at_bound = []
+    param_names = fit_params.get("param_names", [])
+    if isinstance(param_names, (list, tuple)):
+        for pname in param_names:
+            val = fit_params.get(pname)
+            err = fit_params.get(f"d{pname}", 0.0)
+            if not isinstance(val, (int, float)) or not isinstance(err, (int, float)):
+                continue
+            if err <= 0:
+                continue  # fixed parameter, not relevant
+            # Check against explicit bounds if available
+            b = bounds.get(pname)
+            if isinstance(b, (list, tuple)) and len(b) == 2:
+                lo_b, hi_b = b
+                if isinstance(lo_b, (int, float)) and abs(val - lo_b) < 1e-6 * max(abs(lo_b), 1):
+                    at_bound.append(pname)
+                elif isinstance(hi_b, (int, float)) and abs(val - hi_b) < 1e-6 * max(abs(hi_b), 1):
+                    at_bound.append(pname)
+    result["n_at_bound"] = len(at_bound)
+    result["params_at_bound"] = at_bound
+
+    # ── Correlation matrix health ────────────────────────────────────
+    cov = fit_params.get("correlation_matrix")
+    if cov is None:
+        cov = fit_params.get("cov")
+    if cov is not None:
+        try:
+            cov_arr = np.asarray(cov, dtype=float)
+            if cov_arr.ndim == 2:
+                n_p = cov_arr.shape[0]
+                # Normalise to correlation if not already (diagonal >> 1 → covariance)
+                diag = np.diag(cov_arr)
+                if np.any(diag > 1.5):
+                    # This is a covariance matrix, convert to correlation
+                    sd = np.sqrt(np.maximum(diag, 1e-30))
+                    corr = cov_arr / np.outer(sd, sd)
+                else:
+                    corr = cov_arr
+                # Mask diagonal and fixed params (zero row/col)
+                np.fill_diagonal(corr, 0.0)
+                abs_corr = np.abs(corr)
+                result["max_abs_correlation"] = round(float(np.max(abs_corr)), 4)
+                result["n_large_correlation"] = int(np.sum(abs_corr > 0.95) // 2)
+        except Exception:
+            pass
+
+    return result
+
+
 def plot_correlation_matrix(
     fit_result,
     out_dir: str | Path,
@@ -86,8 +264,10 @@ def plot_correlation_matrix(
 
     ax.set_xticks(range(nf))
     ax.set_yticks(range(nf))
-    ax.set_xticklabels(short_names, rotation=55, ha="right", fontsize=7)
+    ax.set_xticklabels(short_names, rotation=45, ha="right", fontsize=7)
     ax.set_yticklabels(short_names, fontsize=7)
+    # Extra bottom margin so rotated x-labels aren't clipped
+    fig.subplots_adjust(bottom=0.18)
 
     n_fixed = n - nf
     title = "Parameter Correlation Matrix"
@@ -188,18 +368,30 @@ def _plot_relative_errors(fit_result, out_dir: Path) -> None:
             colors.append("#fbc02d")  # yellow
         else:
             colors.append("#388e3c")  # green
+    # Use log scale if the range spans more than 10x to avoid
+    # one huge bar squashing everything else
+    use_log = max(vals_plot) > 10 * (np.median(vals_plot) + 1)
+
     bars = ax.barh(range(len(rows)), vals_plot, color=colors, alpha=0.8,
                    edgecolor="white", linewidth=0.3)
     ax.set_yticks(range(len(rows)))
     ax.set_yticklabels(names_plot, fontsize=7)
-    ax.set_xlabel("Relative uncertainty (%)")
     ax.set_title("Parameter Relative Uncertainties", fontsize=11)
-    ax.axvline(10, color="gray", linestyle="--", linewidth=0.5, alpha=0.5)
-    ax.axvline(50, color="gray", linestyle="--", linewidth=0.5, alpha=0.5)
+
+    if use_log:
+        ax.set_xscale("log")
+        ax.set_xlabel("Relative uncertainty (%, log scale)")
+        ax.axvline(10, color="gray", linestyle="--", linewidth=0.5, alpha=0.5)
+        ax.axvline(50, color="gray", linestyle="--", linewidth=0.5, alpha=0.5)
+        ax.axvline(100, color="gray", linestyle="--", linewidth=0.5, alpha=0.5)
+    else:
+        ax.set_xlabel("Relative uncertainty (%)")
+        ax.axvline(10, color="gray", linestyle="--", linewidth=0.5, alpha=0.5)
+        ax.axvline(50, color="gray", linestyle="--", linewidth=0.5, alpha=0.5)
 
     # Add value labels
     for bar, v in zip(bars, vals_plot):
-        x_pos = bar.get_width() + 0.5
+        x_pos = bar.get_width() * (1.15 if use_log else 1.0) + (0 if use_log else 0.5)
         ax.text(x_pos, bar.get_y() + bar.get_height() / 2,
                 f"{v:.1f}%", va="center", fontsize=6)
 
@@ -438,7 +630,7 @@ def plot_split_half_comparison(
                    edgecolor="white", linewidth=0.3)
     ax.set_yticks(range(len(names)))
     ax.set_yticklabels(names, fontsize=7)
-    ax.set_xlabel("z-score (half A \u2212 half B)")
+    ax.set_xlabel("z-score (half A - half B)")
 
     # Reference lines
     for z_ref in [-2, -1, 1, 2]:
@@ -448,6 +640,17 @@ def plot_split_half_comparison(
     # Shade bands
     ax.axvspan(-1, 1, alpha=0.06, color="green")
     ax.axvspan(-2, 2, alpha=0.03, color="orange")
+
+    # Clip x-range so outlier bars don't squash the interesting region.
+    # Add value annotations for any bars that extend past the limit.
+    max_abs_z = max(abs(z) for z in z_scores) if z_scores else 3
+    xlim = min(max_abs_z * 1.1, max(5.0, np.percentile(np.abs(z_scores), 90) * 1.5))
+    ax.set_xlim(-xlim, xlim)
+    for bar, z, name in zip(bars, z_scores, names):
+        if abs(z) > xlim * 0.95:
+            ax.text(xlim * 0.97 * np.sign(z), bar.get_y() + bar.get_height() / 2,
+                    f" {z:+.1f}", va="center", ha="right" if z > 0 else "left",
+                    fontsize=6, fontweight="bold")
 
     # Draw category separator line
     n_shape = sum(1 for c in categories if c == "shape")
@@ -610,7 +813,7 @@ def compute_pull_diagnostics(
     result["ks_statistic"] = round(float(ks_stat), 6)
     result["ks_pvalue"] = float(ks_p)  # keep full precision
 
-    # Anderson-Darling (tests normality — more sensitive in tails than KS)
+    # Anderson-Darling (tests normality, more sensitive in tails than KS)
     ad_result = sp_stats.anderson(pulls, dist="norm")
     result["ad_statistic"] = round(float(ad_result.statistic), 4)
     # Provide critical values and significance levels for interpretation
@@ -690,8 +893,8 @@ def plot_overfitting_diagnostics(
     """Create a 2×3 overfitting diagnostics figure.
 
     Panels:
-      (a) Raw pull autocorrelation (bin-level — dominated by ADC DNL)
-      (b) Rebinned pull autocorrelation (×10 — model-level structure)
+      (a) Raw pull autocorrelation (bin-level, dominated by ADC DNL)
+      (b) Rebinned pull autocorrelation (x10, model-level structure)
       (c) QQ plot of pulls vs N(0,1)
       (d) Pull run sequence (coloured by sign, vs energy)
       (e) Bin-level metric table (model adequacy)
@@ -711,7 +914,7 @@ def plot_overfitting_diagnostics(
     if n < 10:
         return
 
-    # Compute rebinned pulls for panel (b) — use ×5 for more data points
+    # Compute rebinned pulls for panel (b) - use x5 for more data points
     rebin = 5
     n_coarse = n // rebin
     trim = n_coarse * rebin
@@ -740,7 +943,7 @@ def plot_overfitting_diagnostics(
     ax.axhline(0, color="black", alpha=0.3, lw=0.5)
     ax.set_xlabel("Lag (bins, 0.013 MeV)")
     ax.set_ylabel("Autocorrelation")
-    ax.set_title("(a) Raw ACF (bin-level — DNL dominated)", fontsize=9)
+    ax.set_title("(a) Raw ACF (bin-level, DNL dominated)", fontsize=9)
     ax.set_xlim(0.5, max_lag + 0.5)
 
     # ── (b) Rebinned autocorrelation ──────────────────────────────────
@@ -824,7 +1027,7 @@ def plot_overfitting_diagnostics(
         ["|pull| > 2σ", _fv("frac_gt_2sigma_pct", ".1f") + "%", "4.6%", "< 10%"],
         ["|pull| > 3σ", _fv("frac_gt_3sigma_pct", ".1f") + "%", "0.3%", "< 2%"],
         ["Kurtosis", _fv("pull_kurtosis"), "0.00", "|κ| < 1"],
-        ["DW (bin)", _fv("durbin_watson"), "2.00", "1.5–2.5"],
+        ["DW (bin)", _fv("durbin_watson"), "2.00", "1.5-2.5"],
         ["ACF lag-1 (bin)", _fv("autocorr_lag1"), "0.00", "|r| < 0.1"],
         ["Runs z (bin)", _fv("runs_test_z", ".1f"), "0", "|z| < 3"],
         ["KS p-val (bin)", _fv("ks_pvalue", ".4f"), "> 0.05", "> 0.01"],
@@ -861,11 +1064,11 @@ def plot_overfitting_diagnostics(
 
     rows_f = [
         [f"σ (×5){_n_label('rebin5')}", _safe_fmt(r5_sig), "1.00", "< 1.5"],
-        [f"DW (×5)", _safe_fmt(r5_dw), "2.00", "1.5–2.5"],
+        [f"DW (×5)", _safe_fmt(r5_dw), "2.00", "1.5-2.5"],
         [f"ACF lag-1 (×5)", _safe_fmt(r5_ac), "0.00", "|r| < 0.15"],
         [f"KS p (×5)", _safe_fmt(r5_ks, ".4f"), "> 0.05", "> 0.01"],
         [f"σ (×10){_n_label('rebin10')}", _safe_fmt(r10_sig), "1.00", "< 1.5"],
-        [f"DW (×10)", _safe_fmt(r10_dw), "2.00", "1.5–2.5"],
+        [f"DW (×10)", _safe_fmt(r10_dw), "2.00", "1.5-2.5"],
         [f"ACF lag-1 (×10)", _safe_fmt(r10_ac), "0.00", "|r| < 0.15"],
         [f"Runs z (×10)", _safe_fmt(r10_rz, ".1f"), "0", "|z| < 3"],
     ]
@@ -921,7 +1124,7 @@ def plot_model_comparison(
         n_free.append(rm["n_free"])
 
     n = len(labels)
-    fig, axes = plt.subplots(1, 2, figsize=(12, max(3.5, 1.0 + 0.6 * n)))
+    fig, axes = plt.subplots(1, 2, figsize=(14, max(4.5, 2.0 + 0.8 * n)))
 
     # Panel (a): ΔAIC and ΔBIC bars
     y = np.arange(n)
@@ -955,9 +1158,9 @@ def plot_model_comparison(
     table_data.append([
         "Full (current)",
         str(base.get("n_free", "?")),
-        "—",
-        "—",
-        "—",
+        "-",
+        "-",
+        "-",
         "baseline",
     ])
     cell_colors.append(["#f0f0f0"] * 6)
@@ -1002,7 +1205,7 @@ def plot_model_comparison(
 
     conclusion = model_comparison.get("conclusion", "unknown")
     fig.suptitle(
-        f"Model Complexity Comparison — {conclusion.replace('_', ' ').title()}",
+        f"Model Complexity Comparison - {conclusion.replace('_', ' ').title()}",
         fontsize=12, fontweight="bold", y=0.99,
     )
     fig.tight_layout(rect=[0, 0, 1, 0.94])
@@ -1155,7 +1358,7 @@ def compute_extended_residual_diagnostics(
             result["fft_mean_power"] = round(float(np.mean(power_no_dc)), 4)
             result["fft_max_power"] = round(float(np.max(power_no_dc)), 4)
             result["fft_max_freq"] = round(float(freqs_no_dc[np.argmax(power_no_dc)]), 6)
-            # Ratio of max to mean — large values indicate spectral peaks
+            # Ratio of max to mean - large values indicate spectral peaks
             if np.mean(power_no_dc) > 0:
                 result["fft_peak_ratio"] = round(
                     float(np.max(power_no_dc) / np.mean(power_no_dc)), 2
@@ -1261,7 +1464,7 @@ def plot_extended_residual_diagnostics(
                label=rtype.capitalize())
     ax.axhline(1.0, color="k", ls="--", lw=0.8, alpha=0.5, label="Ideal (1.0)")
     ax.set_xticks(x + bar_w)
-    short_labels = [r.replace("gap_", "").replace("_", "–") for r in all_regions]
+    short_labels = [r.replace("gap_", "").replace("_", "-") for r in all_regions]
     ax.set_xticklabels(short_labels, fontsize=7, rotation=30, ha="right")
     ax.set_ylabel("RMS")
     ax.set_title("(c) Regional RMS by Residual Type", fontsize=9)
@@ -1269,11 +1472,11 @@ def plot_extended_residual_diagnostics(
 
     # ── (d) Power spectrum of Pearson residuals ───────────────────────
     ax = axes[1, 1]
-    _plot_power_spectrum(ax, pearson, "(d) Power Spectrum — Pearson", "#1f77b4")
+    _plot_power_spectrum(ax, pearson, "(d) Power Spectrum - Pearson", "#1f77b4")
 
     # ── (e) Power spectrum of deviance residuals ──────────────────────
     ax = axes[2, 0]
-    _plot_power_spectrum(ax, deviance, "(e) Power Spectrum — Deviance", "#ff7f0e")
+    _plot_power_spectrum(ax, deviance, "(e) Power Spectrum - Deviance", "#ff7f0e")
 
     # ── (f) Summary comparison table ──────────────────────────────────
     ax = axes[2, 1]
@@ -1295,7 +1498,7 @@ def plot_extended_residual_diagnostics(
     rows.append([
         "FFT Peak Ratio",
         f"{fft_peak:.1f}" if isinstance(fft_peak, (int, float)) else str(fft_peak),
-        "—", "—",
+        "-", "-",
     ])
 
     table = ax.table(
@@ -1324,10 +1527,11 @@ def plot_extended_residual_diagnostics(
 
     fig.suptitle(
         "Extended Residual Diagnostics: Pearson / Deviance / RQR",
-        fontsize=13, fontweight="bold", y=0.99,
+        fontsize=13, fontweight="bold", y=1.01,
     )
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
-    fig.savefig(out_dir / "fit_extended_residuals.png", dpi=200)
+    fig.tight_layout(rect=[0, 0, 1, 0.97])
+    fig.savefig(out_dir / "fit_extended_residuals.png", dpi=200,
+                bbox_inches="tight")
     plt.close(fig)
     logger.info(
         "Saved extended residual diagnostics to %s",
@@ -1341,7 +1545,12 @@ def _plot_power_spectrum(
     title: str,
     color: str,
 ) -> None:
-    """Plot the power spectrum of a residual array on the given axes."""
+    """Plot the power spectrum of a residual array on log-log axes.
+
+    Log frequency axis spreads out the low-frequency region where model
+    misfit and DNL structure live, instead of wasting space on flat
+    high-frequency noise. Secondary top axis shows period in bins.
+    """
     finite = residuals[np.isfinite(residuals)]
     if len(finite) < 16:
         ax.text(0.5, 0.5, "Insufficient data", transform=ax.transAxes,
@@ -1360,29 +1569,55 @@ def _plot_power_spectrum(
         freqs = freqs[1:]
         power = power[1:]
 
-    # White noise expectation: mean power ≈ variance ≈ 1 for N(0,1) residuals
+    # White noise expectation: mean power ~ variance ~ 1 for N(0,1) residuals
     expected_power = np.var(finite)
-    ax.semilogy(freqs, power, color=color, alpha=0.5, lw=0.7)
-    # Smoothed version (running mean, window=5)
-    if len(power) > 10:
-        w = min(11, len(power) // 3)
-        if w % 2 == 0:
-            w += 1
-        kernel = np.ones(w) / w
-        smoothed = np.convolve(power, kernel, mode="same")
-        ax.semilogy(freqs, smoothed, color=color, lw=1.8, alpha=0.9,
-                     label="Smoothed")
+
+    # Log-log plot
+    ax.loglog(freqs, power, color=color, alpha=0.4, lw=0.5)
+
+    # Smoothed version using log-spaced binning (geometric averaging)
+    if len(power) > 20:
+        n_smooth_bins = min(40, len(power) // 3)
+        log_edges = np.geomspace(freqs[0], freqs[-1], n_smooth_bins + 1)
+        smooth_f = []
+        smooth_p = []
+        for i in range(n_smooth_bins):
+            mask = (freqs >= log_edges[i]) & (freqs < log_edges[i + 1])
+            if np.any(mask):
+                smooth_f.append(np.sqrt(log_edges[i] * log_edges[i + 1]))
+                smooth_p.append(np.mean(power[mask]))
+        if smooth_f:
+            ax.loglog(smooth_f, smooth_p, color=color, lw=2.0, alpha=0.9,
+                      label="Smoothed")
+
     ax.axhline(expected_power, color="k", ls="--", lw=0.8, alpha=0.6,
                label=f"White noise ({expected_power:.2f})")
     # 95% confidence for white noise (chi2 with 2 DOF per frequency bin)
     ci_95 = expected_power * sp_stats.chi2.ppf(0.95, 2) / 2
     ax.axhline(ci_95, color="red", ls=":", lw=0.7, alpha=0.5,
                label=f"95% CL ({ci_95:.2f})")
-    ax.set_xlabel("Frequency [cycles/bin]")
     ax.set_ylabel("Power")
     ax.set_title(title, fontsize=9)
     ax.legend(fontsize=7)
-    ax.set_xlim(0, 0.5)
+
+    # Frequency axis: log scale, from lowest resolvable to Nyquist
+    f_min = freqs[0] * 0.8 if len(freqs) > 0 else 1e-3
+    ax.set_xlim(f_min, 0.5)
+    ax.set_xlabel("Frequency [cycles/bin]")
+
+    # Secondary top axis: period in bins
+    ax2 = ax.secondary_xaxis(
+        "top",
+        functions=(lambda f: np.where(f > 0, 1.0 / f, np.inf),
+                   lambda p: np.where(p > 0, 1.0 / p, np.inf)),
+    )
+    ax2.set_xlabel("Period [bins]", fontsize=7)
+    # Pick period ticks that fall within the frequency range
+    all_ticks = [2, 4, 8, 16, 32, 64, 128, 256, 512]
+    period_max = 1.0 / f_min if f_min > 0 else 1000
+    valid_ticks = [t for t in all_ticks if 2 <= t <= period_max]
+    ax2.set_ticks(valid_ticks)
+    ax2.set_xticklabels([str(t) for t in valid_ticks], fontsize=6)
 
 
 # ---------------------------------------------------------------------------
@@ -1408,7 +1643,7 @@ def plot_bridge_summary(
     out_dir : str or Path
         Directory for the output PNG.
     spike_results : dict, optional
-        Output from ``fit_spike_periods()`` — spike-derived efficiency
+        Output from ``fit_spike_periods()`` - spike-derived efficiency
         predictions are overlaid on Panel 2.
     """
     out_dir = Path(out_dir)
@@ -1615,7 +1850,7 @@ def plot_spike_decay_fits(
     isotope_series: dict,
     out_dir: str | Path,
 ) -> None:
-    """Plot spike decay fits — data + model for each spike period.
+    """Plot spike decay fits - data + model for each spike period.
 
     Creates one subplot per spike period showing:
     - Binned count rate data (isotopes summed)
@@ -1704,7 +1939,7 @@ def plot_spike_decay_fits(
         fit_mask = t_days >= skip_days
         skip_mask = ~fit_mask
 
-        # Model curve (smooth) — starts from skip_days
+        # Model curve (smooth) - starts from skip_days
         t_model = np.linspace(skip_days, (t1 - t0) / 86400.0, 200)
         r_model = R0 * np.exp(-lam * t_model * 86400.0) + B
 
@@ -1735,3 +1970,579 @@ def plot_spike_decay_fits(
     fig.savefig(out_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
     logger.info("Saved spike decay fits to %s", out_path)
+
+
+def plot_dnl_crossval(
+    crossval_result,
+    out_dir: str | Path,
+    bin_centers: np.ndarray | None = None,
+) -> None:
+    """Three-panel DNL cross-validation diagnostic plot.
+
+    Panel 1: DNL factors from half-A vs half-B (scatter + correlation).
+    Panel 2: NLL comparison bar chart (no-DNL / self-DNL / cross-DNL).
+    Panel 3: Per-bin signed delta-NLL contribution from cross-DNL vs no-DNL.
+
+    Parameters
+    ----------
+    crossval_result : DNLCrossValResult
+        Result from ``run_dnl_crossval``.
+    out_dir : str or Path
+        Directory to save the plot.
+    bin_centers : ndarray, optional
+        ADC bin centers for x-axis of panel 3.  If None, uses bin index.
+    """
+    out_dir = Path(out_dir)
+    r = crossval_result
+
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5.5))
+
+    # -- Panel 1: DNL factor scatter --
+    ax = axes[0]
+    if r.dnl_factors_A is not None and r.dnl_factors_B is not None:
+        fa, fb = r.dnl_factors_A, r.dnl_factors_B
+        if fa.shape == fb.shape:
+            valid = (fa != 1.0) | (fb != 1.0)
+            if np.any(valid):
+                ax.scatter(fa[valid], fb[valid], s=4, alpha=0.4, c="steelblue",
+                           edgecolors="none")
+                lims = [
+                    min(fa[valid].min(), fb[valid].min()) - 0.02,
+                    max(fa[valid].max(), fb[valid].max()) + 0.02,
+                ]
+                ax.plot(lims, lims, "--", color="grey", linewidth=0.8, alpha=0.6)
+                ax.set_xlim(lims)
+                ax.set_ylim(lims)
+            corr_str = f"r = {r.dnl_correlation:.3f}" if not np.isnan(r.dnl_correlation) else "r = N/A"
+            ax.set_title(f"DNL Factor Correlation ({corr_str})", fontsize=9)
+        else:
+            ax.text(0.5, 0.5, "Shape mismatch", transform=ax.transAxes,
+                    ha="center", va="center")
+            ax.set_title("DNL Factor Correlation", fontsize=9)
+    else:
+        ax.text(0.5, 0.5, "DNL factors unavailable", transform=ax.transAxes,
+                ha="center", va="center")
+        ax.set_title("DNL Factor Correlation", fontsize=9)
+    ax.set_xlabel("DNL factors (half A)", fontsize=8)
+    ax.set_ylabel("DNL factors (half B)", fontsize=8)
+    ax.tick_params(labelsize=7)
+    ax.set_aspect("equal", adjustable="datalim")
+
+    # ── Panel 2: NLL bar chart ──────────────────────────────────
+    ax = axes[1]
+    labels = ["No DNL", "Self DNL", "Cross DNL"]
+    vals_A = [r.nll_no_dnl_A, r.nll_self_dnl_A, r.nll_cross_dnl_A]
+    vals_B = [r.nll_no_dnl_B, r.nll_self_dnl_B, r.nll_cross_dnl_B]
+
+    # Normalise to no-DNL baseline for readability (show delta-NLL)
+    def _delta(vals):
+        base = vals[0]
+        if base is None or np.isnan(base):
+            return [0.0] * len(vals)
+        return [float(v - base) if v is not None and not np.isnan(v) else 0.0
+                for v in vals]
+
+    delta_A = _delta(vals_A)
+    delta_B = _delta(vals_B)
+
+    x = np.arange(len(labels))
+    w = 0.35
+    bars_a = ax.bar(x - w / 2, delta_A, w, label="Half A", color="steelblue",
+                    alpha=0.8)
+    bars_b = ax.bar(x + w / 2, delta_B, w, label="Half B", color="coral",
+                    alpha=0.8)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, fontsize=8)
+    ax.set_ylabel(r"$\Delta$NLL (vs no-DNL)", fontsize=8)
+    ax.set_title("NLL Improvement from DNL", fontsize=9)
+    ax.axhline(0, color="grey", linewidth=0.5)
+    ax.legend(fontsize=7, loc="upper right")
+    ax.tick_params(labelsize=7)
+
+    # Annotate bars
+    for bars in [bars_a, bars_b]:
+        for bar in bars:
+            h = bar.get_height()
+            if abs(h) > 0.5:
+                ax.text(bar.get_x() + bar.get_width() / 2, h,
+                        f"{h:.0f}", ha="center",
+                        va="bottom" if h > 0 else "top",
+                        fontsize=6, color="black")
+
+    # ── Panel 3: Verdict summary ────────────────────────────────
+    ax = axes[2]
+    ax.axis("off")
+    verdict_color = {
+        "hardware_signal": "#2e7d32",
+        "mixed": "#f57f17",
+        "overfitting": "#c62828",
+        "unknown": "#757575",
+        "insufficient_data": "#757575",
+    }
+    vc = verdict_color.get(r.verdict, "#757575")
+
+    lines = [
+        f"Verdict: {r.verdict.replace('_', ' ').upper()}",
+        "",
+    ]
+    lines.extend(r.verdict_reasons)
+    lines.append("")
+    if not np.isnan(r.self_improvement_A):
+        lines.append(f"Self-DNL improvement:  A={r.self_improvement_A:.1f}  B={r.self_improvement_B:.1f}")
+    if not np.isnan(r.cross_improvement_A):
+        lines.append(f"Cross-DNL improvement: A={r.cross_improvement_A:.1f}  B={r.cross_improvement_B:.1f}")
+    if not np.isnan(r.overfitting_indicator_A):
+        lines.append(f"Overfitting indicator: A={r.overfitting_indicator_A:.1f}  B={r.overfitting_indicator_B:.1f}")
+
+    text = "\n".join(lines)
+    ax.text(0.05, 0.95, text, transform=ax.transAxes,
+            fontsize=9, verticalalignment="top", fontfamily="monospace",
+            linespacing=1.4,
+            bbox=dict(boxstyle="round,pad=0.5", facecolor=vc, alpha=0.15))
+    ax.set_title("DNL Cross-Validation Summary", fontsize=10)
+
+    fig.tight_layout()
+    out_path = out_dir / "dnl_crossval.png"
+    fig.savefig(out_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    logger.info("Saved DNL cross-validation plot to %s", out_path)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# C1: Code-domain diagnostics
+# ═══════════════════════════════════════════════════════════════════════
+
+def compute_code_domain_diagnostics(
+    fit_params: Mapping[str, object],
+    min_counts: float = 5.0,
+    dnl_period: int = 64,
+) -> dict:
+    """Compute DNL-specific residual diagnostics in raw ADC-code space.
+
+    DNL is a code-locked hardware effect: it depends on the ADC code
+    number, not on energy.  This function computes DNL-specific metrics
+    that complement the energy-domain pull diagnostics:
+
+    - Code-phase residual structure (bin_index mod *dnl_period*)
+    - Spectral power at the expected DNL frequency
+    - Correlation between pulls and DNL correction factors
+
+    Generic autocorrelation and periodogram statistics are already
+    covered by ``compute_pull_diagnostics``; this function focuses on
+    what is unique to the ADC code domain.
+
+    Parameters
+    ----------
+    fit_params : dict
+        Must contain ``_plot_hist``, ``_plot_model_total``, and
+        optionally ``_dnl`` with ``dnl_factors``.
+    min_counts : float
+        Minimum model prediction to include a bin.
+    dnl_period : int
+        Expected DNL periodicity from ADC subranging (default 64).
+
+    Returns
+    -------
+    dict
+        Scalar metrics and ``_arrays`` for plotting.
+    """
+    model = np.asarray(fit_params.get("_plot_model_total", []), dtype=float)
+    hist = np.asarray(fit_params.get("_plot_hist", []), dtype=float)
+    if model.size == 0 or hist.size == 0:
+        return {}
+
+    n_bins = model.size
+    mask = model > min_counts
+    n = int(mask.sum())
+    if n < 16:
+        return {}
+
+    # Raw bin indices (proxy for ADC code)
+    bin_idx = np.arange(n_bins)[mask]
+    pulls = (hist[mask] - model[mask]) / np.sqrt(np.maximum(model[mask], 1.0))
+
+    result: dict = {"n_bins": n}
+
+    # ── Code-phase residual (mod dnl_period) ──────────────────────────
+    # Mean pull per phase bin — reveals periodic hardware structure
+    phases = bin_idx % dnl_period
+    phase_mean = np.full(dnl_period, np.nan)
+    phase_count = np.zeros(dnl_period, dtype=int)
+    for ph in range(dnl_period):
+        sel = phases == ph
+        if sel.sum() >= 2:
+            phase_mean[ph] = float(np.mean(pulls[sel]))
+            phase_count[ph] = int(sel.sum())
+    valid_phases = np.isfinite(phase_mean)
+    if valid_phases.sum() > 0:
+        result["code_phase_pull_rms"] = round(
+            float(np.sqrt(np.nanmean(phase_mean[valid_phases] ** 2))), 4
+        )
+        result["code_phase_pull_max"] = round(
+            float(np.nanmax(np.abs(phase_mean[valid_phases]))), 4
+        )
+        result["code_phase_n_valid"] = int(valid_phases.sum())
+
+    # ── ACF and periodogram (kept for plotting) ───────────────────────
+    pull_centered = pulls - np.mean(pulls)
+    var = float(np.var(pulls))
+    max_lag = min(50, n // 4)
+    acf = np.zeros(max_lag)
+    if var > 0:
+        for lag in range(max_lag):
+            if lag == 0:
+                acf[lag] = 1.0
+            else:
+                acf[lag] = float(
+                    np.mean(pull_centered[:-lag] * pull_centered[lag:])
+                ) / var
+
+    N = len(pull_centered)
+    fft_vals = sp_fft.rfft(pull_centered)
+    power = np.abs(fft_vals) ** 2 / N
+    freqs = sp_fft.rfftfreq(N)  # cycles per bin
+
+    # ── DNL-specific: power at expected DNL frequency ─────────────────
+    if len(power) > 1:
+        power_no_dc = power[1:]
+        freqs_no_dc = freqs[1:]
+        mean_p = float(np.mean(power_no_dc))
+        if dnl_period > 0 and N > dnl_period and mean_p > 0:
+            target_freq = 1.0 / dnl_period
+            idx_target = int(np.argmin(np.abs(freqs_no_dc - target_freq)))
+            lo_i = max(0, idx_target - 2)
+            hi_i = min(len(power_no_dc), idx_target + 3)
+            peak_power = float(np.max(power_no_dc[lo_i:hi_i]))
+            result["code_fft_power_at_dnl_period"] = round(peak_power, 4)
+            result["code_fft_dnl_period_ratio"] = round(
+                peak_power / mean_p, 2
+            )
+
+    # ── DNL factor diagnostics (if available) ─────────────────────────
+    dnl_meta = fit_params.get("_dnl", {})
+    dnl_factors = dnl_meta.get("dnl_factors")
+    if dnl_factors is not None:
+        dnl_arr = np.asarray(dnl_factors, dtype=float)
+        if dnl_arr.size == n_bins:
+            dnl_masked = dnl_arr[mask]
+            result["dnl_pull_correlation"] = round(
+                float(np.corrcoef(pulls, dnl_masked - 1.0)[0, 1])
+                if len(pulls) > 2 else 0.0,
+                4,
+            )
+
+    # ── Stash arrays for plotting ─────────────────────────────────────
+    result["_arrays"] = {
+        "bin_idx": bin_idx,
+        "pulls": pulls,
+        "phases": phases,
+        "phase_mean": phase_mean,
+        "acf": acf,
+        "power": power,
+        "freqs": freqs,
+    }
+
+    return result
+
+
+def plot_code_domain_diagnostics(
+    diag_result: dict,
+    out_dir: str | Path,
+    dnl_period: int = 64,
+) -> None:
+    """Plot code-domain residual diagnostics (4 panels).
+
+    Panel 1: Pull vs raw ADC bin index
+    Panel 2: Mean pull vs code phase (mod *dnl_period*)
+    Panel 3: Code-domain ACF
+    Panel 4: Code-domain periodogram
+    """
+    out_dir = Path(out_dir)
+    arrays = diag_result.get("_arrays")
+    if arrays is None:
+        return
+
+    bin_idx = arrays["bin_idx"]
+    pulls = arrays["pulls"]
+    phase_mean = arrays["phase_mean"]
+    acf = arrays["acf"]
+    power = arrays["power"]
+    freqs = arrays["freqs"]
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 9))
+
+    # Panel 1: Pull vs ADC bin index
+    ax = axes[0, 0]
+    ax.scatter(bin_idx, pulls, s=1.5, alpha=0.6, color="steelblue", rasterized=True)
+    ax.axhline(0, color="k", lw=0.5)
+    ax.axhline(2, color="orange", lw=0.5, ls="--")
+    ax.axhline(-2, color="orange", lw=0.5, ls="--")
+    ax.set_xlabel("ADC bin index (code number)")
+    ax.set_ylabel("Pull (data−model)/√model")
+    ax.set_title("Residual vs Raw ADC Code")
+
+    # Panel 2: Mean pull vs code phase
+    ax = axes[0, 1]
+    valid = np.isfinite(phase_mean)
+    ph_idx = np.arange(len(phase_mean))
+    colors = np.where(phase_mean[valid] > 0, "tomato", "steelblue")
+    ax.bar(ph_idx[valid], phase_mean[valid], color=colors, width=0.8, alpha=0.7)
+    ax.axhline(0, color="k", lw=0.5)
+    rms = diag_result.get("code_phase_pull_rms", 0)
+    ax.set_xlabel(f"Code phase (mod {dnl_period})")
+    ax.set_ylabel("Mean pull")
+    ax.set_title(f"Residual vs Code Phase (RMS={rms:.3f})")
+
+    # Panel 3: Code-domain ACF
+    ax = axes[1, 0]
+    lags = np.arange(len(acf))
+    ax.bar(lags, acf, color="steelblue", width=0.8, alpha=0.7)
+    ax.axhline(0, color="k", lw=0.5)
+    # 95% confidence band for white noise: ±1.96/√N
+    n = len(pulls)
+    ci = 1.96 / np.sqrt(n) if n > 0 else 0
+    ax.axhline(ci, color="orange", lw=0.5, ls="--")
+    ax.axhline(-ci, color="orange", lw=0.5, ls="--")
+    ax.set_xlabel("Lag (bins)")
+    ax.set_ylabel("Autocorrelation")
+    ax.set_title("Code-Domain ACF")
+    ax.set_xlim(-0.5, min(30, len(acf)) - 0.5)
+
+    # Panel 4: Code-domain periodogram (log-log)
+    ax = axes[1, 1]
+    if len(power) > 1:
+        f_plot = freqs[1:]
+        p_plot = power[1:]
+        ax.loglog(f_plot, p_plot, color="steelblue", lw=0.5, alpha=0.6)
+        mean_p = float(np.mean(p_plot))
+        ax.axhline(mean_p, color="k", lw=0.5, ls="--", label=f"Mean={mean_p:.2f}")
+        # Log-spaced smoothing
+        if len(p_plot) > 20:
+            n_sb = min(30, len(p_plot) // 3)
+            log_edges = np.geomspace(f_plot[0], f_plot[-1], n_sb + 1)
+            sf, sp = [], []
+            for i in range(n_sb):
+                m = (f_plot >= log_edges[i]) & (f_plot < log_edges[i + 1])
+                if np.any(m):
+                    sf.append(np.sqrt(log_edges[i] * log_edges[i + 1]))
+                    sp.append(np.mean(p_plot[m]))
+            if sf:
+                ax.loglog(sf, sp, color="steelblue", lw=1.8, alpha=0.9)
+        # Mark expected DNL period
+        if dnl_period > 0:
+            target_freq = 1.0 / dnl_period
+            ax.axvline(
+                target_freq, color="red", lw=0.8, ls="--",
+                label=f"1/{dnl_period} cycles/bin",
+            )
+        ax.legend(fontsize=7)
+        ax.set_xlim(f_plot[0] * 0.8, 0.5)
+    ax.set_xlabel("Frequency (cycles/bin)")
+    ax.set_ylabel("Power")
+    ax.set_title("Code-Domain Periodogram")
+
+    fig.suptitle("Code-Domain Residual Diagnostics (C1)", fontsize=11, y=1.01)
+    fig.tight_layout()
+    out_path = out_dir / "fit_code_domain_diagnostics.png"
+    fig.savefig(out_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    logger.info("Saved code-domain diagnostics to %s", out_path)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# C3: Local peak-window signed-bias metrics
+# ═══════════════════════════════════════════════════════════════════════
+
+def compute_signed_bias_metrics(
+    fit_params: Mapping[str, object],
+    min_counts: float = 5.0,
+) -> dict:
+    """Compute signed-bias, area-bias, run-length, and asymmetry metrics
+    per isotope peak window.
+
+    These aggregate statistics are valid under both DNL-corrected and
+    uncorrected models because they summarise collective residual
+    behaviour rather than individual bin pulls.
+
+    Metrics per peak window
+    -----------------------
+    signed_bias : mean(data−model) / mean(model)
+        Fractional systematic over/undershoot.
+    area_bias_sigma : (Σdata − Σmodel) / √(Σmodel)
+        Number of σ the total area is off.
+    max_run_length : longest consecutive run of same-sign residuals
+        Catches coherent structure within the peak.
+    lo_negative_frac : fraction of low-energy-side bins with negative
+        residuals (asymmetry misfit indicator).
+    """
+    model = np.asarray(fit_params.get("_plot_model_total", []), dtype=float)
+    hist = np.asarray(fit_params.get("_plot_hist", []), dtype=float)
+    centers = np.asarray(fit_params.get("_plot_centers", []), dtype=float)
+    if model.size == 0 or hist.size == 0 or centers.size == 0:
+        return {}
+
+    result: dict = {}
+
+    for iso, (lo, hi) in _PEAK_REGIONS.items():
+        rmask = (centers >= lo) & (centers <= hi) & (model > min_counts)
+        n_r = int(rmask.sum())
+        if n_r < 5:
+            continue
+
+        d = hist[rmask]
+        m = model[rmask]
+        c = centers[rmask]
+        resid = d - m
+
+        # Signed bias (fractional)
+        mean_m = float(np.mean(m))
+        signed_bias = float(np.mean(resid)) / mean_m if mean_m > 0 else 0.0
+        result[f"{iso}_signed_bias"] = round(signed_bias, 6)
+
+        # Area bias in sigma
+        sum_d = float(np.sum(d))
+        sum_m = float(np.sum(m))
+        area_bias = (sum_d - sum_m) / np.sqrt(max(sum_m, 1.0))
+        result[f"{iso}_area_bias_sigma"] = round(float(area_bias), 3)
+
+        # Longest same-sign run
+        signs = np.sign(resid)
+        run_lengths = []
+        current_run = 1
+        for i in range(1, len(signs)):
+            if signs[i] == signs[i - 1] and signs[i] != 0:
+                current_run += 1
+            else:
+                run_lengths.append(current_run)
+                current_run = 1
+        run_lengths.append(current_run)
+        result[f"{iso}_max_run_length"] = int(max(run_lengths))
+        result[f"{iso}_n_bins"] = n_r
+
+        # Low-energy-side negative fraction (asymmetry indicator)
+        # Split the window at the peak centroid (middle of window)
+        mid_e = (lo + hi) / 2.0
+        lo_side = (c < mid_e)
+        if lo_side.sum() >= 2:
+            lo_neg = float(np.mean(resid[lo_side] < 0))
+            result[f"{iso}_lo_negative_frac"] = round(lo_neg, 3)
+
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# C2: Covariance-aware (whitened) residuals for self-estimated DNL
+# ═══════════════════════════════════════════════════════════════════════
+
+def compute_whitened_residuals(
+    fit_params: Mapping[str, object],
+    min_counts: float = 5.0,
+) -> dict:
+    """Compute whitened residuals that account for smoothing covariance
+    introduced by self-estimated band-pass DNL correction.
+
+    The band-pass filter (``uniform_filter1d`` with window *W*) creates
+    inter-bin covariance because neighbouring bins share smoothed
+    information.  The approximate covariance structure of the corrected
+    counts is:
+
+        Cov(n_i, n_j) ≈ δ_{ij} · n_i  +  n_i · n_j · K(|i-j|)
+
+    where K is the triangular autocorrelation of the uniform kernel:
+
+        K(lag) = max(0, (W - |lag|) / W²)
+
+    Whitening via Cholesky decomposition produces residuals that are
+    approximately N(0, 1) under the correct model even when naive pulls
+    are correlated.
+
+    Only computed when ``operator_class == "self_estimated_bandpass"``.
+    """
+    dnl_meta = fit_params.get("_dnl", {})
+    if dnl_meta.get("operator_class") != "self_estimated_bandpass":
+        return {}
+
+    model = np.asarray(fit_params.get("_plot_model_total", []), dtype=float)
+    hist = np.asarray(fit_params.get("_plot_hist", []), dtype=float)
+    if model.size == 0 or hist.size == 0:
+        return {}
+
+    W = int(dnl_meta.get("dnl_smooth_window", 61))
+    mask = model > min_counts
+    n = int(mask.sum())
+    if n < 20:
+        return {}
+
+    d = hist[mask]
+    m = model[mask]
+
+    # ── Build approximate covariance matrix ───────────────────────────
+    # Poisson diagonal + smoothing-induced off-diagonal
+    C = np.diag(m.copy())  # Poisson variance on diagonal
+    for i in range(n):
+        for j in range(i + 1, min(i + W, n)):
+            lag = j - i
+            k_val = max(0.0, (W - lag) / (W * W))
+            off_diag = m[i] * m[j] * k_val
+            C[i, j] += off_diag
+            C[j, i] += off_diag
+
+    # ── Cholesky whitening ────────────────────────────────────────────
+    try:
+        L = np.linalg.cholesky(C)
+        raw_resid = d - m
+        whitened = np.linalg.solve(L, raw_resid)
+    except np.linalg.LinAlgError:
+        # Covariance not positive definite - add jitter
+        jitter = 1e-6 * np.mean(np.diag(C))
+        C += jitter * np.eye(n)
+        try:
+            L = np.linalg.cholesky(C)
+            raw_resid = d - m
+            whitened = np.linalg.solve(L, raw_resid)
+        except np.linalg.LinAlgError:
+            return {"error": "Cholesky decomposition failed"}
+
+    result: dict = {"n_bins": n, "dnl_smooth_window": W}
+
+    # ── Whitened statistics ───────────────────────────────────────────
+    result["whitened_pull_mean"] = round(float(np.mean(whitened)), 4)
+    result["whitened_pull_sigma"] = round(float(np.std(whitened, ddof=1)), 4)
+
+    # Whitened Durbin-Watson
+    ss = float(np.sum(whitened ** 2))
+    if ss > 0:
+        result["whitened_dw"] = round(
+            float(np.sum(np.diff(whitened) ** 2) / ss), 4
+        )
+
+    # Whitened lag-1 ACF
+    wc = whitened - np.mean(whitened)
+    wvar = float(np.var(whitened))
+    if wvar > 0 and n > 1:
+        result["whitened_acf_lag1"] = round(
+            float(np.mean(wc[:-1] * wc[1:])) / wvar, 4
+        )
+
+    # ── Naive (unwhitened) for comparison ─────────────────────────────
+    naive_pulls = (d - m) / np.sqrt(np.maximum(m, 1.0))
+    result["naive_pull_sigma"] = round(float(np.std(naive_pulls, ddof=1)), 4)
+    nss = float(np.sum(naive_pulls ** 2))
+    if nss > 0:
+        result["naive_dw"] = round(
+            float(np.sum(np.diff(naive_pulls) ** 2) / nss), 4
+        )
+
+    # ── Flag if they disagree ─────────────────────────────────────────
+    w_sig = result.get("whitened_pull_sigma", 1.0)
+    n_sig = result.get("naive_pull_sigma", 1.0)
+    if abs(w_sig - n_sig) > 0.15:
+        result["interpretation_note"] = (
+            f"Whitened (σ={w_sig:.3f}) and naive (σ={n_sig:.3f}) pull "
+            f"sigmas disagree by {abs(w_sig - n_sig):.3f}. The "
+            f"whitened value is the correct one under self-estimated "
+            f"band-pass DNL; the naive value is inflated by smoothing "
+            f"covariance."
+        )
+
+    return result

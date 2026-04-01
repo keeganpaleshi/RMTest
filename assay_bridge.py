@@ -942,6 +942,10 @@ def compute_bridge(
     valid_bfs: list[tuple[float, float, float, float]] = []
 
     for assay in filtered:
+        # Per-assay overrides from config
+        _assay_date_key = assay.assay_date.strftime("%Y-%m-%d") if assay.assay_date else ""
+        _override = bridge_cfg.get("per_assay_overrides", {}).get(_assay_date_key, {})
+
         # Bridge always uses monitor volume (measured activity is per monitor)
         volume_l = monitor_volume_l
 
@@ -993,6 +997,17 @@ def compute_bridge(
             gross_atoms_monitor = math.nan
             gross_atoms_monitor_unc = math.nan
 
+        # Apply per-assay background override (shallow copy to avoid
+        # mutating the original assay object)
+        if "lc_background_cpd" in _override:
+            import copy as _copy_mod
+            assay = _copy_mod.copy(assay)
+            assay.lc_background_cpd = float(_override["lc_background_cpd"])
+            logger.info(
+                "Per-assay override %s: lc_background_cpd=%.1f",
+                _assay_date_key, assay.lc_background_cpd,
+            )
+
         if skid_bg is not None:
             net_atoms, net_atoms_unc, ref_bq, ref_unc = _subtract_skid_background(
                 assay, skid_bg, volume_l, recompute=recompute,
@@ -1020,15 +1035,32 @@ def compute_bridge(
             net_atoms_unc = math.nan
 
         # Time-matched or fallback measured activity
-        # All assays are performed around noon (12:00–13:00).  If the
-        # assay_date has no time component (midnight), shift to noon.
+        # Default match time is configurable (default 18:00 = post-spike).
+        # If the assay_date has no time component (midnight), shift to
+        # the default match time.
         time_matched = False
         _sens_results: list[tuple[float, float, float]] = []
         if use_time_match and assay.assay_date is not None:
             dt_assay = assay.assay_date
             if dt_assay.hour == 0 and dt_assay.minute == 0:
-                dt_assay = dt_assay.replace(hour=12)
+                _def_time = bridge_cfg.get("default_match_time", "18:00")
+                _def_hh, _def_mm = map(int, str(_def_time).split(":"))
+                dt_assay = dt_assay.replace(hour=_def_hh, minute=_def_mm)
+            # Per-assay time override (e.g. pre-spike assays at 05:30)
+            if "match_time" in _override:
+                _hh, _mm = map(int, _override["match_time"].split(":"))
+                dt_assay = dt_assay.replace(hour=_hh, minute=_mm)
+                logger.info(
+                    "Per-assay override %s: match_time=%s",
+                    _assay_date_key, _override["match_time"],
+                )
             target_unix = dt_assay.timestamp()
+
+            # Per-assay match window override (half-width in hours)
+            if "match_window_hours" in _override:
+                _per_assay_mwd = float(_override["match_window_hours"]) / 24.0
+            else:
+                _per_assay_mwd = match_window_days
 
             # Multi-window sensitivity: try several windows (in hours),
             # use configured one for the actual bridge, log all.
@@ -1048,13 +1080,13 @@ def compute_bridge(
                     for h, m, u in _sens_results
                 )
                 logger.info(
-                    "Time-match sensitivity %s (noon %s): %s",
+                    "Time-match sensitivity %s (%s): %s",
                     assay.label[:40], dt_assay.strftime("%Y-%m-%d %H:%M"),
                     _sens_str,
                 )
 
             meas_bq, meas_unc = _extract_activity_at_time(
-                isotope_series, target_unix, match_window_days,
+                isotope_series, target_unix, _per_assay_mwd,
                 cal_window_rel_unc=cal_window_rel_unc,
             )
             if not math.isnan(meas_bq):
@@ -1064,7 +1096,7 @@ def compute_bridge(
                     "No time-matched data for %s (%s) within ±%.1f h — SKIPPING "
                     "(no fallback to dataset average)",
                     assay.label[:40], dt_assay.isoformat(),
-                    match_window_days * 24,
+                    _per_assay_mwd * 24,
                 )
                 continue
         else:

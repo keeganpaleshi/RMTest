@@ -117,6 +117,41 @@ def emg_cdf_E(E, mu, sigma, tau):
     return 1.0 - exponnorm.cdf(E_mirror, K, loc=loc, scale=sigma)
 
 
+def right_emg_pdf_E(E, mu, sigma, tau):
+    """Right-skewed exponentially modified Gaussian PDF.
+
+    Standard (non-mirrored) EMG: the exponential tail extends to HIGHER
+    energies.  Models slight right-side broadening from electronic effects
+    or detector response asymmetry.
+
+    ``mu`` is the visible peak mode, converted internally to the underlying
+    ``exponnorm`` location parameter so the peak stays at *mu*.
+    """
+    E = np.asarray(E, dtype=float)
+    sigma = np.asarray(sigma, dtype=float)
+    if np.any(sigma <= 0) or tau <= 0:
+        return np.zeros_like(E, dtype=float)
+    K = tau / sigma
+    # Standard right-EMG: mode is shifted LEFT of loc by the mode offset.
+    # We want peak at mu, so loc = mu + offset (shift loc right so mode
+    # lands at mu).
+    offset = _right_emg_mode_offset(float(sigma.flat[0]) if sigma.ndim else float(sigma), float(tau))
+    loc = np.asarray(mu, dtype=float) + offset
+    return exponnorm.pdf(E, K, loc=loc, scale=sigma)
+
+
+def right_emg_cdf_E(E, mu, sigma, tau):
+    """CDF of the right-skewed EMG (standard exponnorm)."""
+    E = np.asarray(E, dtype=float)
+    sigma = np.asarray(sigma, dtype=float)
+    if np.any(sigma <= 0) or tau <= 0:
+        return np.zeros_like(E, dtype=float)
+    K = tau / sigma
+    offset = _right_emg_mode_offset(float(sigma.flat[0]) if sigma.ndim else float(sigma), float(tau))
+    loc = np.asarray(mu, dtype=float) + offset
+    return exponnorm.cdf(E, K, loc=loc, scale=sigma)
+
+
 def gaussian_pdf_E(E, mu, sigma):
     E = np.asarray(E, dtype=float)
     sigma = np.asarray(sigma, dtype=float)
@@ -133,23 +168,55 @@ def gaussian_cdf_E(E, mu, sigma):
     return norm.cdf(E, loc=mu, scale=sigma)
 
 
+# ── Split (asymmetric) Gaussian ──────────────────────────────────────────
+
+def split_gaussian_pdf_E(E, mu, sigma_left, sigma_right):
+    """Asymmetric Gaussian PDF with different widths on each side of mu.
+
+    Continuous at E=mu.  Normalized so the total integral is 1.
+    """
+    E = np.asarray(E, dtype=float)
+    sl = float(sigma_left)
+    sr = float(sigma_right)
+    if sl <= 0 or sr <= 0:
+        return np.zeros_like(E, dtype=float)
+    # Normalization: integral = sqrt(2*pi)/2 * (sigma_L + sigma_R)
+    norm_const = np.sqrt(2.0 * np.pi) * 0.5 * (sl + sr)
+    result = np.where(
+        E <= mu,
+        np.exp(-0.5 * ((E - mu) / sl) ** 2),
+        np.exp(-0.5 * ((E - mu) / sr) ** 2),
+    )
+    return result / norm_const
+
+
+def split_gaussian_cdf_E(E, mu, sigma_left, sigma_right):
+    """CDF of the split (asymmetric) Gaussian."""
+    E = np.asarray(E, dtype=float)
+    sl = float(sigma_left)
+    sr = float(sigma_right)
+    if sl <= 0 or sr <= 0:
+        return np.zeros_like(E, dtype=float)
+    w_l = sl / (sl + sr)  # weight of left half
+    w_r = sr / (sl + sr)  # weight of right half
+    # Left of mu: use left-sigma Gaussian CDF, scaled to [0, w_l]
+    # Right of mu: use right-sigma Gaussian CDF, scaled from [w_l, 1]
+    cdf_left = w_l * 2.0 * norm.cdf(E, loc=mu, scale=sl)   # 2× because half-Gaussian
+    cdf_right = w_l + w_r * 2.0 * (norm.cdf(E, loc=mu, scale=sr) - 0.5)
+    return np.where(E <= mu, cdf_left, cdf_right)
+
+
 # ── Low-energy shelf (erfc step) for alpha spectroscopy ─────────────────
 
-def shelf_pdf_E(E, mu, sigma, E_lo, E_hi, shelf_range=None):
+def shelf_pdf_E(E, mu, sigma, E_lo, E_hi, shelf_range=None, shelf_cutoff_delta=None):
     """Low-energy shelf PDF for degraded alpha particles.
 
     Models the flat continuum of alphas that lose variable amounts of energy
-    in the source material or detector dead layer.  The shape is an erfc step
-    that transitions at the peak energy ``mu``, multiplied by a one-sided
-    Gaussian taper that limits how far below the peak the shelf extends:
+    in the detector dead layer or source material.  Degraded alphas can only
+    LOSE energy, so the shelf is strictly zero above the cutoff point.
 
-        shape(E) ∝ erfc((E − μ) / (σ√2)) × taper(E)
-
-    where taper(E) = 1 for E ≥ μ, and for E < μ:
-
-        taper(E) = exp(−(E − μ)² / (2 × shelf_range²))
-
-    This prevents the shelf from extending unrealistically far below the peak.
+    The cutoff is at ``mu - Δ`` where Δ (shelf_cutoff_delta) is a shared
+    absolute energy offset in MeV below the peak centroid.
 
     Parameters
     ----------
@@ -164,6 +231,9 @@ def shelf_pdf_E(E, mu, sigma, E_lo, E_hi, shelf_range=None):
     shelf_range : float, optional
         1-sigma range (MeV) of the one-sided Gaussian taper below the peak.
         Controls how far the shelf extends.  Default ``1.0`` MeV.
+    shelf_cutoff_delta : float, optional
+        Absolute energy offset (MeV) below the peak at which the shelf
+        cuts off.  Default ``0.12`` MeV (~1 sigma).
 
     Returns
     -------
@@ -179,28 +249,29 @@ def shelf_pdf_E(E, mu, sigma, E_lo, E_hi, shelf_range=None):
         shelf_range = 1.0
     shelf_range = max(float(shelf_range), 0.01)
 
+    if shelf_cutoff_delta is None:
+        shelf_cutoff_delta = 0.12
+    _cutoff_E = mu - float(shelf_cutoff_delta)
+
     from scipy.special import erfc
 
     shape = erfc((E - mu) / (sigma * _SQRT_TWO))
 
-    # One-sided Gaussian taper: only attenuate below the peak
-    taper = np.where(
-        E >= mu,
-        1.0,
-        np.exp(-0.5 * ((E - mu) / shelf_range) ** 2),
-    )
-    shape = shape * taper
+    # Hard cutoff below the peak: shelf is zero above mu - cutoff_offset.
+    # This prevents shelf from creating a notch at the peak centroid.
+    shape = np.where(E <= _cutoff_E, shape, 0.0)
+
+    # Gaussian taper below the peak to limit shelf extent
+    _below = np.minimum(E - mu, 0.0)
+    shape = shape * np.exp(-0.5 * (_below / shelf_range) ** 2)
 
     # Normalize over [E_lo, E_hi] via numerical integration
     n_pts = 2048
     grid = np.linspace(E_lo, E_hi, n_pts)
     shape_grid = erfc((grid - mu) / (sigma * _SQRT_TWO))
-    taper_grid = np.where(
-        grid >= mu,
-        1.0,
-        np.exp(-0.5 * ((grid - mu) / shelf_range) ** 2),
-    )
-    shape_grid = shape_grid * taper_grid
+    shape_grid = np.where(grid <= _cutoff_E, shape_grid, 0.0)
+    _below_g = np.minimum(grid - mu, 0.0)
+    shape_grid = shape_grid * np.exp(-0.5 * (_below_g / shelf_range) ** 2)
     _trapz = getattr(np, "trapezoid", None) or np.trapz
     Z = _trapz(shape_grid, grid)
     Z = max(Z, 1e-300)
@@ -208,7 +279,7 @@ def shelf_pdf_E(E, mu, sigma, E_lo, E_hi, shelf_range=None):
     return shape / Z
 
 
-def shelf_cdf_E(E, mu, sigma, E_lo, E_hi, shelf_range=None):
+def shelf_cdf_E(E, mu, sigma, E_lo, E_hi, shelf_range=None, shelf_cutoff_delta=None):
     """CDF of the shelf component (integral from E_lo to E).
 
     Used by :func:`normalize_pdf_to_window` for window-normalized shelf
@@ -223,16 +294,19 @@ def shelf_cdf_E(E, mu, sigma, E_lo, E_hi, shelf_range=None):
         shelf_range = 1.0
     shelf_range = max(float(shelf_range), 0.01)
 
+    if shelf_cutoff_delta is None:
+        shelf_cutoff_delta = 0.12
+    _cutoff_E = mu - float(shelf_cutoff_delta)
+
     from scipy.special import erfc
 
     def _shelf_shape(grid):
         s = erfc((grid - mu) / (sigma * _SQRT_TWO))
-        taper = np.where(
-            grid >= mu,
-            1.0,
-            np.exp(-0.5 * ((grid - mu) / shelf_range) ** 2),
-        )
-        return s * taper
+        # Hard cutoff below the peak (matches shelf_pdf_E)
+        s = np.where(grid <= _cutoff_E, s, 0.0)
+        # Left-side taper
+        _below = np.minimum(grid - mu, 0.0)
+        return s * np.exp(-0.5 * (_below / shelf_range) ** 2)
 
     n_pts = 2048
     # Compute the full integral for normalization

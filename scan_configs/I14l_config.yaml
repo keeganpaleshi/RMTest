@@ -1,0 +1,527 @@
+# I14l: sigma_asym shared + halo left-side only + all shape params shared
+# Changes from I14k:
+#   - sigma_asym back to SHARED (prevents sigma↔asym trading)
+#   - Halo cutoff at mu-delta (left-side only, same as shelf)
+#   - All detector-response params shared: tau(E), sigma_asym, f_shelf,
+#     sigma_shelf, f_halo, sigma_halo, tau_halo
+#   - Per-isotope: only mu, S, sigma (constrained by calibration)
+allow_fallback: true
+analysis_isotope: radon
+allow_negative_baseline: false
+pipeline:
+  log_level: INFO
+  random_seed: 67
+analysis:
+  analysis_start_time: null
+  analysis_end_time: null
+  spike_end_time: null
+  spike_periods: []
+  run_periods: []
+  radon_interval: null
+  ambient_concentration: null
+  background_model: exp_unit
+columns:
+  timestamp: timestamps
+  adc: adc_channels
+baseline:
+  range:
+  - '2024-09-28T00:00:00Z'
+  - '2024-10-28T23:59:59Z'
+  monitor_volume_l: 605.0
+  sample_volume_l: 4196.0
+  isotopes_to_subtract:
+  - noise
+burst_filter:
+  burst_mode: none
+  burst_window_size_s: 60
+  rolling_median_window: 5
+  burst_multiplier: 5
+  micro_window_size_s: 1
+  micro_count_threshold: 3
+calibration:
+  method: two-point
+  noise_cutoff: 303
+  hist_bins: 2000
+  peak_search_radius: 100
+  peak_prominence: 5
+  peak_width: 5
+  peak_widths:
+    Po210: 5
+    Po218: 5
+    Po214: 5
+    Po216: 5
+    Po212: 5
+  slope_mev_per_ch: 0.00427
+  float_slope: true
+  use_two_point: true
+  use_quadratic: true
+  nominal_adc:
+    Po210: 1246
+    Po218: 1399
+    Po216: 1587
+    Po214: 1802
+    Po212: 2057
+  fit_window_adc: 40
+  fit_retry_window: 60
+  fit_maxfev: 15000
+  curve_fit_max_evaluations: 10000
+  use_emg: true
+  init_sigma_adc: 10.0
+  sigma_e_init: null
+  init_tau_adc: 1.0
+  sanity_tolerance_mev: 1.0
+  known_energies:
+    Po210: 5.304
+    Po218: 6.002
+    Po216: 6.778
+    Po214: 7.687
+    Po212: 8.784
+  min_peak_separation_adc: 10.0
+  gaussian_sigma_upper_bound: 500.0
+  emg_sigma_upper_bound: 250.0
+  emg_tau_upper_bound: 200.0
+  quadratic_residual_threshold_mev: 0.005
+  jacobian_epsilon: 1.0e-06
+  tau_bounds_adc:
+    default:
+    - 0.0005
+    - 50.0
+    Po218:
+    - 0.0005
+    - 8.0
+spectral_fit:
+  do_spectral_fit: true
+  spectral_binning_mode: adc
+  adc_bin_width: 1
+  dnl_correction:
+    enabled: true
+    iterations: 1
+    min_counts: 5
+    max_correction: 0.5
+    smooth_window: 61
+    crossval: false
+    external_map_path: null
+    parameterized: true
+    fourier_periods_codes:
+    - 4
+    - 8
+    - 16
+    - 32
+    - 64
+    - 128
+    - 256
+    - 512
+    full_resolution_estimate: true
+    post_dnl_rebin: 10
+  max_f_halo: 0.65
+  max_f_shelf: 0.40                    # <<< no single shelf should dominate
+  sigma_halo_max_mult: 15.0
+  seed_bkg_from_prelim: true
+  seed_shape_from_prelim: "off"        # <<< DON'T fix shapes from prelim — let rebinned fit optimize
+  extra_peaks:
+    Unknown1:
+      energy: 15.8
+      sigma: [0.5, 0.1]
+      amplitude: [500, 300]            # <<< loosened — data has more counts here
+      mu_sigma: 0.3
+      mu_bounds: [15.0, 16.5]
+      use_emg: true                    # <<< small EMG tail
+      tau: [0.01, 0.01]               # <<< tiny tau
+      use_shelf: true                  # <<< small shelf
+      f_shelf: [0.02, 0.02]           # <<< tiny shelf fraction
+      sigma_shelf: [0.10, 0.05]       # <<< narrow shelf
+      fix:
+        sigma: true
+  shared_shape_params:
+    tau: false                           # <<< handled by tau_energy_model instead
+    f_shelf: true                        # <<< same transition ratio for all peaks
+    sigma_shelf: true                    # <<< shared — same shelf width for all isotopes
+    f_halo: true                          # <<< shared halo to capture broad continuum
+    sigma_halo: true                      # <<< shared
+    tau_halo: true                        # <<< shared
+  # Tau linear energy model: tau(E) = tau_0 + tau_slope * (E - E_ref)
+  # Enforces smooth energy dependence with only 2 parameters
+  tau_energy_model: linear
+  tau_energy_model_E_ref: 7.0           # MeV — center of alpha energy range
+  tau_0_prior:
+  - 0.12                                # baseline tau at E_ref (7.0 MeV)
+  - 0.08                                # broad prior
+  tau_slope_prior:
+  - 0.0                                 # start at zero slope (no energy dependence)
+  - 0.05                                # allow moderate slope in either direction
+  # Shelf cutoff: shelf is zero above mu - Δ (shared absolute energy offset)
+  # Prevents notches at peak and ensures consistent shelf-to-peak distance
+  shelf_cutoff_delta: 0.12              # MeV — ~1 sigma below peak centroid
+  # Right-side broadening: SHARED sigma_asym (same detector asymmetry for all peaks)
+  # sigma_right = sigma * (1 + sigma_asym), prevents sigma↔asym trading
+  use_right_emg: false
+  use_sigma_asym: true
+  sigma_asym_prior:
+  - 0.20
+  - 0.20
+  f_shelf_shared_prior:
+  - 0.20
+  - 0.12                                # <<< same shelf fraction for all peaks
+  sigma_shelf_shared_prior:
+  - 0.25
+  - 0.15
+  f_halo_shared_prior:
+  - 0.07
+  - 0.1
+  sigma_halo_shared_prior:
+  - 0.24
+  - 0.12
+  tau_halo_shared_prior:
+  - 0.05
+  - 0.05
+  energy_bin_width: 0.013
+  fd_hist_bins: 400
+  mu_sigma: 0.005
+  fit_energy_range:
+  - 3.0
+  - 16.5
+  amp_prior_scale: 5.0
+  bkg_mode: manual
+  clip_floor: 1e-300
+  b0_prior:
+  - 0.0
+  - 0.01
+  b1_prior:
+  - 1.5
+  - 3.0
+  s_bkg_prior:
+  - 0.0
+  - 5.0
+  tau_bound_expansion: 10.0
+  background_norm_points: 512
+  emg_tau_floor: 0.0005
+  tau_po210_prior_mean: 0.1
+  tau_po210_prior_sigma: 0.1
+  tau_po218_prior_mean: 0.08
+  tau_po218_prior_sigma: 0.03
+  tau_po214_prior_mean: 0.087
+  tau_po214_prior_sigma: 0.08
+  tau_po216_prior_mean: 0.06
+  tau_po216_prior_sigma: 0.05
+  tau_po212_prior_mean: 0.09
+  tau_po212_prior_sigma: 0.05
+  skip_minos: true
+  spectral_peak_tolerance_mev: 0.2
+  sigma_e_prior_source: calibration
+  sigma_e_prior_sigma: 0.015
+  sigma_e_prior_mean: 0.055
+  use_emg:
+    Po210: true
+    Po218: true
+    Po214: true
+    Po216: true                        # <<< added — thoron chain peak
+    Po212: true                        # <<< added — share left-side work with shelf
+  # Shared shelf_range: single value for all isotopes (same detector physics)
+  # Normalization handles truncation at data boundaries (e.g. Po210 shelf extends past E_lo)
+  shelf_range: 1.5
+  use_shelf:
+    Po210: true
+    Po218: true
+    Po214: true
+    Po216: true                # <<< enabled for I14c
+    Po212: true
+  # Shelf priors — relaxed to let fitter find optimal values
+  # Peak gaps: Po210(5.30)→Po218(6.00)=0.70, Po218→Po216(6.78)=0.78,
+  #            Po216→Po214(7.69)=0.91, Po214→Po212(8.78)=1.09
+  f_shelf_Po210_prior:
+  - 0.10
+  - 0.10
+  f_shelf_Po214_prior:
+  - 0.15
+  - 0.12
+  f_shelf_Po218_prior:
+  - 0.15
+  - 0.12
+  sigma_shelf_Po210_prior:
+  - 0.25
+  - 0.12                   # relaxed (was 0.08) — let it find optimal width
+  sigma_shelf_Po214_prior:
+  - 0.25
+  - 0.12                   # relaxed (was 0.08)
+  sigma_shelf_Po218_prior:
+  - 0.15
+  - 0.10                   # relaxed (was 0.06) — gap to Po210=0.70
+  f_shelf_Po212_prior:
+  - 0.10
+  - 0.08                   # tightened — EMG now shares left-side work
+  sigma_shelf_Po212_prior:
+  - 0.25
+  - 0.10                   # modest width
+  f_shelf_Po216_prior:
+  - 0.10
+  - 0.10
+  sigma_shelf_Po216_prior:
+  - 0.20
+  - 0.10
+  use_halo:
+    Po210: true
+    Po218: true
+    Po214: true
+    Po216: true
+    Po212: true
+  # Halo priors kept for reference but all disabled
+  f_halo_Po210_prior:
+  - 0.12
+  - 0.20
+  sigma_halo_Po210_prior:
+  - 0.4
+  - 0.25
+  tau_halo_Po210_prior:
+  - 0.07
+  - 0.05
+  f_halo_Po214_prior:
+  - 0.18
+  - 0.20
+  sigma_halo_Po214_prior:
+  - 0.4
+  - 0.25
+  tau_halo_Po214_prior:
+  - 0.08
+  - 0.04
+  f_halo_Po218_prior:
+  - 0.08
+  - 0.15
+  sigma_halo_Po218_prior:
+  - 0.4
+  - 0.25
+  tau_halo_Po218_prior:
+  - 0.02
+  - 0.1
+  f_halo_Po216_prior:
+  - 0.05
+  - 0.10
+  sigma_halo_Po216_prior:
+  - 0.3
+  - 0.20
+  tau_halo_Po216_prior:
+  - 0.02
+  - 0.05
+  f_halo_Po212_prior:
+  - 0.12
+  - 0.20
+  sigma_halo_Po212_prior:
+  - 0.4
+  - 0.25
+  tau_halo_Po212_prior:
+  - 0.05
+  - 0.05
+  per_isotope_sigma:
+    Po210:
+    - 0.107
+    - 0.03
+    Po218:
+    - 0.12
+    - 0.03
+    Po216:
+    - 0.12
+    - 0.03
+    Po214:
+    - 0.13
+    - 0.03
+    Po212:
+    - 0.13
+    - 0.05
+  max_tau_ratio: 2.0
+  float_sigma_e: false
+  peak_search_prominence: 30
+  peak_search_width_adc: 3
+  peak_search_method: prominence
+  peak_search_cwt_widths: null
+  refit_aic_threshold: 2.0
+  use_plot_bins_for_fit: true
+  unbinned_likelihood: false
+  split_half_validation: false
+  shelf_halo_test: false
+  pseudoexperiment_trials: 0
+  flags:
+    fix_sigma0: true
+    sigma0_prior:
+    - 0.13
+    - 0.05
+    fix_f: true
+    f_prior:
+    - 0.0
+    - 0.01
+    sigma_shelf_min: 0.001             # <<< essentially no floor
+    # Shelf-only model: all shelves FREE, no halos
+    fix_tau_Po210: false
+    fix_f_shelf_Po210: false
+    fix_sigma_shelf_Po210: false
+    fix_tau_Po218: false                 # <<< unfixed — shared tau handles consistency
+    fix_f_shelf_Po218: false
+    fix_sigma_shelf_Po218: false
+    fix_tau_Po214: false
+    fix_f_shelf_Po214: false
+    fix_sigma_shelf_Po214: false
+    fix_sigma_Po212: true
+    fix_sigma_Po216: true
+    fix_tau_Po212: false                 # <<< unfixed — shared tau handles consistency
+    fix_f_shelf_Po212: false
+    fix_sigma_shelf_Po212: false
+    fix_tau_Po216: false                 # <<< freed for I14c
+    fix_f_shelf_Po216: false             # <<< freed for I14c
+    fix_sigma_shelf_Po216: false         # <<< freed for I14c
+    fix_b0: true
+    penalty_priors:
+      S_Po212:
+      - 3000
+      - 5000
+      S_Po216:                           # <<< prevent Po216 from collapsing to zero
+      - 2000
+      - 3000
+  mu_bounds:
+    Po210:
+    - 5.2
+    - 5.35
+    Po218:
+    - 5.93
+    - 6.07
+    Po216:
+    - 6.65
+    - 6.9
+    Po214:
+    - 7.6
+    - 7.71
+    Po212:
+    - 8.7
+    - 8.9
+time_fit:
+  do_time_fit: true
+  window_po214:
+  - 7.55
+  - 7.8
+  window_po218:
+  - 5.9
+  - 6.1
+  window_po210:
+  - 5.25
+  - 5.37
+  window_po212:
+  - 8.65
+  - 9.05
+  eff_po214: 0.99
+  eff_po218: null
+  eff_po210: null
+  hl_po214: null
+  hl_po218: null
+  bkg_po214:
+  - 0.0
+  - 0.2
+  bkg_po218:
+  - 0.0
+  - 0.0
+  sig_n0_po214: 1.0
+  sig_n0_po218: 1.0
+  background_guess: 0.0
+  n0_guess_fraction: 0.1
+  flags:
+    fix_background_b: false
+    fix_n0_po218: false
+systematics:
+  enable: false
+  sigma_e_frac: 0.1
+  tail_fraction: 0.05
+  energy_shift_kev: 0.001
+  adc_drift_rate: 0.0
+  adc_drift_mode: linear
+  adc_drift_params: null
+gas_dissolution:
+  radon_henry_constant: 11.0
+  argon_henry_constant: 1.0
+  argon_atmospheric_fraction: 0.00934
+radon_inference:
+  enabled: true
+  source_isotopes:
+  - Po214
+  - Po218
+  source_weights:
+    Po214: 0.5
+    Po218: 0.5
+  detection_efficiency:
+    Po214: 0.19
+    Po218: 0.094
+  transport_efficiency: 1.0
+  retention_efficiency: 1.0
+  chain_correction: none
+  external_rn:
+    mode: file
+    fallback_bq_per_m3: 120.0
+    file_path: rad_4996_pico40l.xls
+    time_columns:
+      year: Year
+      month: Month
+      day: Day
+      hour: Hour
+      minute: Minute
+      year_format: two_digit
+    value_column: Radon Bq/m^3
+    tz: America/Toronto
+    interpolation: ffill
+    max_gap_seconds: 21600
+  output:
+    write_per_interval: true
+    write_cumulative: true
+plotting:
+  plot_spectrum_binsize_adc: 1
+  plot_time_binning_mode: fixed
+  plot_time_bin_width_s: 86400
+  plot_time_normalise_rate: true
+  time_bins_fallback: 1
+  plot_save_formats:
+  - png
+  dump_time_series_json: true
+  plot_time_style: lines
+  plot_time_show_models: false
+  plot_marker_size: 0.5
+  overlay_isotopes: true
+  save_individual_time_series: false
+lucas_bridge:
+  enabled: true
+  assay_files:
+  - C:/Users/keega/Downloads/Radon assay results (current, May 2023)(UI, LN2 Plant
+    Assays).csv
+  - C:/Users/keega/Downloads/Radon assay results (current, May 2023)(UGboardcalibration).csv
+  selection:
+    labels:
+    - Radon Monitor
+    - Titan Trap + Pretrap
+    date_range: null
+    indices: null
+  recompute_from_raw: true
+  comparison_target: baseline_corrected_combined
+  volume_convention: monitor
+  monitor_volume_l: 605.0
+  ui_volume_l: 4196.0
+  match_window_hours: 2.0
+  default_match_time: '18:00'
+  use_unclipped_baseline: true
+  skid_background:
+    label: Background Assay - Titan Trap
+    date: '2024-08-08'
+  per_assay_overrides:
+    '2024-09-12':
+      match_time: 05:30
+      match_window_hours: 5.5
+    '2024-11-01':
+      match_time: 05:30
+      match_window_hours: 5.5
+    '2024-12-05':
+      lc_background_cpd: 16.5
+  exclude_from_aggregate:
+  - '2024-11-19'
+  emanation_baseline:
+    start: '2024-10-02'
+    end: '2024-10-28'
+    dilute_for_ui: true
+fitting:
+  use_stable_emg: true
+  emg_stable_mode: true
+  emg_tau_min: 0.0005
+  per_isotope:
+    Po210:
+      peak_sigma: 0.108

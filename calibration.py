@@ -1,5 +1,7 @@
 import logging
 import numpy as np
+
+logger = logging.getLogger(__name__)
 from dataclasses import dataclass
 from collections.abc import Sequence, Mapping
 from copy import deepcopy
@@ -869,7 +871,7 @@ def calibrate_run(adc_values, config, hist_bins=None):
                     f"No candidate peak found for {iso} around ADC={nominal_adc[iso]}."
                 )
             logging.getLogger(__name__).warning(
-                "No candidate peak found for %s around ADC=%s — skipping (optional isotope).",
+                "No candidate peak found for %s around ADC=%s -- skipping (optional isotope).",
                 iso, nominal_adc[iso],
             )
             continue
@@ -1014,17 +1016,34 @@ def calibrate_run(adc_values, config, hist_bins=None):
         quadratic = False
 
     if cubic:
-        # Solve for cubic coefficients a3, a2, a, c using four peaks
+        # Build calibration matrix from available peaks (4+ points for cubic)
+        cal_adcs = [adc210, adc218, adc216, adc214]
+        cal_Es = [E210, E218, E216, E214]
+        # Add Po212 if available for overdetermined least-squares
+        if "Po212" in peak_fits:
+            adc212 = peak_fits["Po212"]["centroid_adc"]
+            E212 = energies.get("Po212")
+            if E212 is not None and adc212 > adc214:
+                cal_adcs.append(adc212)
+                cal_Es.append(E212)
+                logger.info(
+                    "Cubic calibration: using 5 peaks (including Po212 at ADC=%.1f)",
+                    adc212,
+                )
         A = np.array(
-            [
-                [adc210**3, adc210**2, adc210, 1.0],
-                [adc218**3, adc218**2, adc218, 1.0],
-                [adc216**3, adc216**2, adc216, 1.0],
-                [adc214**3, adc214**2, adc214, 1.0],
-            ]
+            [[x**3, x**2, x, 1.0] for x in cal_adcs]
         )
-        y = np.array([E210, E218, E216, E214], dtype=float)
-        a3, a2, a, c = np.linalg.solve(A, y)
+        y = np.array(cal_Es, dtype=float)
+        if len(cal_adcs) > 4:
+            # Overdetermined: least-squares fit
+            result, residuals, _, _ = np.linalg.lstsq(A, y, rcond=None)
+            a3, a2, a, c = result
+            if len(residuals) > 0:
+                rms_resid = float(np.sqrt(residuals[0] / len(cal_adcs)))
+                logger.info("Cubic calibration residual RMS: %.6f MeV", rms_resid)
+        else:
+            # Exact solve with 4 peaks
+            a3, a2, a, c = np.linalg.solve(A, y)
     elif quadratic:
         # Solve for quadratic coefficients a2, a, c using all three peaks
         A = np.array(

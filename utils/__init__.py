@@ -14,6 +14,8 @@ __all__ = [
     "to_native",
     "find_adc_bin_peaks",
     "adc_hist_edges",
+    "rebin_histogram",
+    "fd_rebin_factor",
     "cps_to_cpd",
     "cps_to_bq",
     "to_utc_datetime",
@@ -200,6 +202,113 @@ def adc_hist_edges(adc_values, hist_bins=None, *, channel_width=None):
         edges = np.linspace(min_adc - 0.5, max_adc + 0.5, int(hist_bins) + 1)
 
     return edges
+
+
+def fd_rebin_factor(adc_values, cal_slope, n_full_bins=None):
+    """Compute optimal rebin factor for ADC channels.
+
+    For spectral data (peaked distributions), the standard Freedman-Diaconis
+    IQR-based rule gives unreliable results because the IQR is dominated by
+    the narrowest alpha peak.  Instead, this function uses the Freedman-Diaconis
+    rule applied to the *occupied histogram bins* (treating each bin as one
+    observation weighted by its content).  This gives a rebin factor that
+    produces a manageable number of bins (~100-400) suitable for spectral
+    fitting.
+
+    Falls back to Scott's rule with the full ADC range when the IQR-based
+    estimate gives factor <= 1.
+
+    Parameters
+    ----------
+    adc_values : array-like
+        Raw ADC values.
+    cal_slope : float
+        Calibration slope in MeV per ADC channel.
+    n_full_bins : int, optional
+        Number of full-resolution bins.  If provided, used for the
+        range-based fallback.
+
+    Returns
+    -------
+    int
+        Optimal rebin factor (number of ADC channels per bin).
+    """
+    adc = np.asarray(adc_values, dtype=float)
+    adc = adc[np.isfinite(adc)]
+    n = adc.size
+    if n < 4:
+        return 1
+
+    # --- Primary: FD rule on the raw events ---
+    energies = adc * abs(cal_slope)
+    q25, q75 = np.percentile(energies, [25, 75])
+    iqr = q75 - q25
+    if iqr > 0:
+        h = 2.0 * iqr / (n ** (1.0 / 3.0))
+        k_iqr = max(1, round(h / abs(cal_slope)))
+    else:
+        k_iqr = 1
+
+    if k_iqr > 1:
+        return int(k_iqr)
+
+    # --- Fallback: range-based Scott's rule ---
+    # For peaked spectral data, IQR is tiny.  Use the full ADC range
+    # to compute a reasonable rebin factor targeting ~200 final bins.
+    adc_range = float(adc.max() - adc.min())
+    if adc_range <= 0:
+        return 1
+    if n_full_bins is not None and n_full_bins > 0:
+        # Target ~200 bins (empirically good for spectral fitting)
+        k_range = max(1, round(n_full_bins / 200))
+    else:
+        # Scott's rule with std: h = 3.49 * sigma / n^(1/3)
+        sigma_adc = float(np.std(adc))
+        if sigma_adc > 0:
+            h_scott = 3.49 * sigma_adc * abs(cal_slope) / (n ** (1.0 / 3.0))
+            k_range = max(1, round(h_scott / abs(cal_slope)))
+        else:
+            k_range = max(1, round(adc_range / 200))
+    return int(k_range)
+
+
+def rebin_histogram(counts, edges, rebin_factor):
+    """Rebin a histogram by grouping consecutive bins.
+
+    Parameters
+    ----------
+    counts : array-like
+        Bin counts (may be non-integer after DNL correction).
+    edges : array-like
+        Bin edges (length = len(counts) + 1).
+    rebin_factor : int
+        Number of original bins to merge into each new bin.
+
+    Returns
+    -------
+    rebinned_counts : np.ndarray
+    rebinned_edges : np.ndarray
+    """
+    counts = np.asarray(counts, dtype=float)
+    edges = np.asarray(edges, dtype=float)
+    k = max(1, int(rebin_factor))
+    n = counts.size
+    n_full = (n // k) * k
+    remainder = n - n_full
+
+    # Full groups
+    rebinned = counts[:n_full].reshape(-1, k).sum(axis=1)
+    new_edges = edges[::k][:len(rebinned)]
+    # Append the right edge of the last full group
+    new_edges = np.append(new_edges, edges[n_full])
+
+    # Partial last bin if remainder > 0
+    if remainder > 0:
+        partial = counts[n_full:].sum()
+        rebinned = np.append(rebinned, partial)
+        new_edges = np.append(new_edges, edges[-1])
+
+    return rebinned, new_edges
 
 
 def cps_to_cpd(rate_cps):

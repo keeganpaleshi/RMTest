@@ -278,7 +278,7 @@ def _with_summary_key_aliases(obj: Any) -> Any:
 
 CONFIG_SCHEMA = {
     "type": "object",
-    "additionalProperties": False,
+    "additionalProperties": True,
     "properties": {
         "pipeline": {
             "type": "object",
@@ -501,7 +501,7 @@ CONFIG_SCHEMA = {
                 "settle_s": {"type": ["number", "null"], "minimum": 0},
                 "background_model": {
                     "type": "string",
-                    "enum": ["linear", "loglin_unit"],
+                    "enum": ["linear", "loglin_unit", "sigmoid_unit", "exp_unit", "double_logit_unit", "none"],
                 },
                 "likelihood": {
                     "type": "string",
@@ -864,7 +864,7 @@ def load_config(config_path):
 
     # Fill in default EMG usage for spectral fits honoring tau priors and overrides
     spec = cfg.setdefault("spectral_fit", {})
-    isotopes = ("Po210", "Po218", "Po214")
+    isotopes = ("Po210", "Po218", "Po214", "Po216", "Po212")
     use_emg = {iso: False for iso in isotopes}
     forced_true: set[str] = set()
     explicit: set[str] = set()

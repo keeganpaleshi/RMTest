@@ -387,9 +387,219 @@ def plot_volume_equiv_vs_time(
         logger.info("No cumulative volume series available, skipping cumulative plot")
 
 
+def plot_radon_in_liquid(
+    radon_results: Mapping[str, object],
+    out_dir: Path,
+    cfg: Mapping[str, object] | None = None,
+) -> None:
+    """Plot radon concentration implied in the liquid phase via Henry's law.
+
+    Uses the inferred Rn-222 activity in the detector gas volume and the
+    Henry's law partition coefficient to estimate what the radon
+    concentration in the liquid must be:
+
+        C_liquid = activity_Bq / (sample_volume_L * K_H)
+
+    where K_H is the dimensionless air/liquid partition coefficient
+    (C_air / C_liquid).
+    """
+    if not isinstance(radon_results, Mapping):
+        return
+
+    rn_series = radon_results.get("rn_inferred")
+    if not rn_series:
+        logger.info("No Rn-222 inference data for liquid concentration plot")
+        return
+
+    gas_cfg = (cfg or {}).get("gas_dissolution", {})
+    K_H = float(gas_cfg.get("radon_henry_constant", 11.0))
+    sample_vol = float((cfg or {}).get("analysis", {}).get("sample_volume_l", 1.0))
+
+    times, activity, errors = _extract_series(rn_series, "rn_bq", "rn_bq_err")
+    if not times or not activity:
+        return
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # C_liquid = activity / (volume * K_H)
+    scale = 1.0 / (sample_vol * K_H) if (sample_vol * K_H) > 0 else 1.0
+    conc = [a * scale for a in activity]
+    conc_err = [e * scale for e in errors] if errors else None
+
+    times_mpl = guard_mpl_times(times=times)
+    _eb = dict(fmt="o", markersize=_DEFAULT_MARKER_SIZE, capsize=_DEFAULT_CAPSIZE,
+               elinewidth=_DEFAULT_ELINEWIDTH, alpha=_DEFAULT_ALPHA)
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    if conc_err is not None:
+        ax.errorbar(times_mpl, conc, yerr=conc_err, color="#d62728", **_eb)
+    else:
+        ax.plot(times_mpl, conc, "o", color="#d62728",
+                markersize=_DEFAULT_MARKER_SIZE, alpha=_DEFAULT_ALPHA)
+    ax.set_ylabel("Rn-222 Concentration [Bq/L]")
+    ax.set_xlabel("Time (UTC)")
+    ax.set_title(
+        f"Implied Radon in Liquid (K_H = {K_H})",
+        fontsize=11,
+    )
+    ax.ticklabel_format(axis="y", style="plain")
+    setup_time_axis(ax, times_mpl)
+    ax.yaxis.get_offset_text().set_visible(False)
+    fig.autofmt_xdate()
+    fig.tight_layout()
+    fig.savefig(out_dir / "radon_in_liquid.png", dpi=300)
+    plt.close(fig)
+    logger.info("Saved radon_in_liquid.png")
+
+
+def plot_argon_from_leak(
+    radon_results: Mapping[str, object],
+    out_dir: Path,
+    cfg: Mapping[str, object] | None = None,
+) -> None:
+    """Plot argon entering the system from the equivalent air leak.
+
+    Atmospheric air is ~0.934% argon by volume. The equivalent leaked
+    air volume (from the radon mass balance) tells us how much argon
+    entered the gas phase. Optionally applies a Henry's law constant
+    to estimate the dissolved argon concentration in the liquid.
+
+    Produces four plots:
+      - argon_leaked.png:            per-interval argon volume (L)
+      - argon_leaked_cumulative.png: cumulative argon volume (L)
+      - argon_dissolved.png:         per-interval dissolved concentration (L Ar / L liquid)
+      - argon_dissolved_cumulative.png: cumulative dissolved (L Ar / L liquid)
+    """
+    if not isinstance(radon_results, Mapping):
+        return
+
+    gas_cfg = (cfg or {}).get("gas_dissolution", {})
+    ar_frac = float(gas_cfg.get("argon_atmospheric_fraction", 0.00934))
+    K_H_ar = float(gas_cfg.get("argon_henry_constant", 1.0))
+    sample_vol = float((cfg or {}).get("analysis", {}).get("sample_volume_l", 1.0))
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    _eb = dict(fmt="o", markersize=_DEFAULT_MARKER_SIZE, capsize=_DEFAULT_CAPSIZE,
+               elinewidth=_DEFAULT_ELINEWIDTH, alpha=_DEFAULT_ALPHA)
+    _mk = dict(marker="o", linestyle="None", markersize=_DEFAULT_MARKER_SIZE,
+               alpha=_DEFAULT_ALPHA)
+
+    # -- Per-interval argon volume --
+    volume_series = radon_results.get("volume_equiv")
+    times, volumes_m3, vol_errs = _extract_series(volume_series, "v_m3", "v_m3_err")
+    if not times or not volumes_m3:
+        logger.info("No leak-volume data for argon plots")
+        return
+
+    # Convert m^3 air -> L argon
+    ar_L = [v * 1000.0 * ar_frac for v in volumes_m3]
+    ar_L_err = [e * 1000.0 * ar_frac for e in vol_errs] if vol_errs else None
+
+    times_mpl = guard_mpl_times(times=times)
+
+    # Per-interval argon leaked (liters)
+    fig, ax = plt.subplots(figsize=(10, 5))
+    if ar_L_err is not None:
+        ax.errorbar(times_mpl, ar_L, yerr=ar_L_err, color="#1f77b4", **_eb)
+    else:
+        ax.plot(times_mpl, ar_L, color="#1f77b4", **_mk)
+    ax.set_ylabel("Argon Leaked [L per interval]")
+    ax.set_xlabel("Time (UTC)")
+    ax.set_title(f"Argon from Air Leak (Ar fraction = {ar_frac*100:.2f}%)", fontsize=11)
+    ax.ticklabel_format(axis="y", style="plain")
+    setup_time_axis(ax, times_mpl)
+    ax.yaxis.get_offset_text().set_visible(False)
+    fig.autofmt_xdate()
+    fig.tight_layout()
+    fig.savefig(out_dir / "argon_leaked.png", dpi=300)
+    plt.close(fig)
+
+    # Cumulative argon leaked (liters)
+    cumulative_series = radon_results.get("volume_cumulative")
+    if cumulative_series:
+        cum_times, cum_m3, cum_errs = _extract_series(
+            cumulative_series, "v_m3_cum", "v_m3_cum_err"
+        )
+        if cum_times and cum_m3:
+            cum_ar_L = [v * 1000.0 * ar_frac for v in cum_m3]
+            cum_ar_err = [e * 1000.0 * ar_frac for e in cum_errs] if cum_errs else None
+            times_mpl_cum = guard_mpl_times(times=cum_times)
+
+            fig_c, ax_c = plt.subplots(figsize=(10, 5))
+            if cum_ar_err is not None:
+                ax_c.errorbar(times_mpl_cum, cum_ar_L, yerr=cum_ar_err,
+                              color="#1f77b4", **_eb)
+            else:
+                ax_c.plot(times_mpl_cum, cum_ar_L, color="#1f77b4", **_mk)
+            ax_c.set_ylabel("Cumulative Argon Leaked [L]")
+            ax_c.set_xlabel("Time (UTC)")
+            ax_c.set_title("Cumulative Argon from Air Leak", fontsize=11)
+            ax_c.ticklabel_format(axis="y", style="plain")
+            setup_time_axis(ax_c, times_mpl_cum)
+            ax_c.yaxis.get_offset_text().set_visible(False)
+            fig_c.autofmt_xdate()
+            fig_c.tight_layout()
+            fig_c.savefig(out_dir / "argon_leaked_cumulative.png", dpi=300)
+            plt.close(fig_c)
+
+    # -- Dissolved argon concentration (Henry's law) --
+    if K_H_ar > 0 and sample_vol > 0:
+        # Dissolved Ar per interval: argon_L / (K_H * sample_vol_L)
+        # Units: L_Ar / L_liquid (dimensionless volume ratio)
+        diss_scale = 1.0 / (K_H_ar * sample_vol)
+        diss = [a * diss_scale for a in ar_L]
+        diss_err = [e * diss_scale for e in ar_L_err] if ar_L_err else None
+
+        fig_d, ax_d = plt.subplots(figsize=(10, 5))
+        if diss_err is not None:
+            ax_d.errorbar(times_mpl, diss, yerr=diss_err, color="#2ca02c", **_eb)
+        else:
+            ax_d.plot(times_mpl, diss, color="#2ca02c", **_mk)
+        ax_d.set_ylabel("Dissolved Ar [L$_{Ar}$ / L$_{liquid}$]")
+        ax_d.set_xlabel("Time (UTC)")
+        ax_d.set_title(
+            f"Dissolved Argon (K_H = {K_H_ar}, V = {sample_vol:.0f} L)",
+            fontsize=11,
+        )
+        ax_d.ticklabel_format(axis="y", style="scientific", scilimits=(-3, 3))
+        setup_time_axis(ax_d, times_mpl)
+        fig_d.autofmt_xdate()
+        fig_d.tight_layout()
+        fig_d.savefig(out_dir / "argon_dissolved.png", dpi=300)
+        plt.close(fig_d)
+
+        # Cumulative dissolved argon
+        if cumulative_series and cum_times and cum_m3:
+            cum_diss = [a * diss_scale for a in cum_ar_L]
+            cum_diss_err = [e * diss_scale for e in cum_ar_err] if cum_ar_err else None
+
+            fig_dc, ax_dc = plt.subplots(figsize=(10, 5))
+            if cum_diss_err is not None:
+                ax_dc.errorbar(times_mpl_cum, cum_diss, yerr=cum_diss_err,
+                               color="#2ca02c", **_eb)
+            else:
+                ax_dc.plot(times_mpl_cum, cum_diss, color="#2ca02c", **_mk)
+            ax_dc.set_ylabel("Cumulative Dissolved Ar [L$_{Ar}$ / L$_{liquid}$]")
+            ax_dc.set_xlabel("Time (UTC)")
+            ax_dc.set_title("Cumulative Dissolved Argon", fontsize=11)
+            ax_dc.ticklabel_format(axis="y", style="scientific", scilimits=(-3, 3))
+            setup_time_axis(ax_dc, times_mpl_cum)
+            fig_dc.autofmt_xdate()
+            fig_dc.tight_layout()
+            fig_dc.savefig(out_dir / "argon_dissolved_cumulative.png", dpi=300)
+            plt.close(fig_dc)
+
+    logger.info("Saved argon leak/dissolution plots")
+
+
 __all__ = [
     "plot_rn_inferred_vs_time",
     "plot_ambient_rn_vs_time",
     "plot_volume_equiv_vs_time",
+    "plot_radon_in_liquid",
+    "plot_argon_from_leak",
 ]
 

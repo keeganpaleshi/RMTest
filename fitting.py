@@ -494,6 +494,9 @@ def fit_spectrum(
     strict=False,
     *,
     max_tau_ratio=None,
+    pre_binned_hist=None,
+    pre_dnl_meta=None,
+    skip_minos=False,
 ):
     """Fit the radon spectrum using either χ² histogram or unbinned likelihood.
 
@@ -587,7 +590,15 @@ def fit_spectrum(
     width_lookup = _WidthLookup(centers, widths)
     widths_base = widths.copy()  # Preserve original widths for DNL iteration
     if not unbinned:
-        hist, _ = np.histogram(e, bins=edges)
+        if pre_binned_hist is not None:
+            hist = np.asarray(pre_binned_hist, dtype=float)
+            if hist.size != centers.size:
+                raise ValueError(
+                    f"pre_binned_hist length ({hist.size}) does not match "
+                    f"bin_edges ({centers.size} bins)"
+                )
+        else:
+            hist, _ = np.histogram(e, bins=edges)
 
     E_lo = float(edges[0])
     E_hi = float(edges[-1])
@@ -595,7 +606,7 @@ def fit_spectrum(
     # Configure background handling
     background_model = flags.get("background_model")
     priors = dict(priors)
-    if background_model == "loglin_unit":
+    if background_model in ("loglin_unit", "sigmoid_unit", "exp_unit", "double_logit_unit", "none"):
         if "S_bkg" not in priors:
             signal_guess = 0.0
             # Dynamically discover isotopes from priors (any key matching mu_*)
@@ -617,16 +628,17 @@ def fit_spectrum(
             mu = max(float(remaining), 1.0)
             sig = max(np.sqrt(mu), 0.5 * float(n_events), 1.0)
             priors["S_bkg"] = (mu, sig)
-        required = {"b0", "b1"}
-        missing = required - priors.keys()
-        if missing:
-            got = sorted(priors.keys())
-            raise ValueError(
-                "background_model=loglin_unit requires params {S_bkg, b0, b1}; got: "
-                f"{got}"
-            )
+        if str(background_model).lower() != "none":
+            required = {"b0", "b1"}
+            missing = required - priors.keys()
+            if missing:
+                got = sorted(priors.keys())
+                raise ValueError(
+                    "background_model=loglin_unit requires params {S_bkg, b0, b1}; got: "
+                    f"{got}"
+                )
 
-    if "S_bkg" in priors or background_model == "loglin_unit":
+    if "S_bkg" in priors or background_model in ("loglin_unit", "sigmoid_unit", "exp_unit", "double_logit_unit", "none"):
         flags.setdefault("likelihood", "extended")
 
     from feature_selectors import select_neg_loglike
@@ -775,6 +787,76 @@ def fit_spectrum(
         if f"f_halo_{iso}" in priors:
             use_halo[iso] = True
 
+    # --- Shared shape parameters ---
+    # When shared_shape_params.<type> is True, a single shared parameter
+    # replaces per-isotope entries for all participating isotopes.
+    # The broadcast from shared → per-isotope happens in _physical_params.
+    shared_participants: dict[str, list[str]] = {}
+    # --- Tau linear energy model ---
+    # When tau_energy_model: "linear", tau for each alpha peak is computed as:
+    #   tau(E) = tau_0 + tau_slope * (E - E_ref)
+    # This replaces both per-isotope tau and shared tau for standard alpha peaks.
+    # Extra peaks (e.g. Unknown1) keep their own independent tau.
+    _tau_linear_model = False
+    _tau_linear_E_ref = 7.0
+    _tau_linear_participants: list[str] = []
+    if cfg is not None:
+        _shared_cfg = cfg.get("spectral_fit", {}).get("shared_shape_params", {})
+        sp_cfg = cfg.get("spectral_fit", {})
+        # Extra peaks (e.g. Unknown1) must NOT participate in shared shape params —
+        # they have different physics from the standard alpha peaks.
+        _extra_peak_names = set(
+            sp_cfg.get("extra_peaks", {}).keys() if isinstance(sp_cfg.get("extra_peaks"), dict) else []
+        )
+        # Check for tau linear energy model
+        _tau_em = sp_cfg.get("tau_energy_model", "").lower()
+        if _tau_em == "linear":
+            _tau_linear_model = True
+            _tau_linear_E_ref = float(sp_cfg.get("tau_energy_model_E_ref", 7.0))
+            _tau_linear_participants = [iso for iso in iso_list if use_emg.get(iso, False) and iso not in _extra_peak_names]
+        _shared_mappings = {
+            "tau": lambda iso: use_emg.get(iso, False),
+            "f_shelf": lambda iso: use_shelf.get(iso, False),
+            "sigma_shelf": lambda iso: use_shelf.get(iso, False),
+            "f_halo": lambda iso: use_halo.get(iso, False),
+            "sigma_halo": lambda iso: use_halo.get(iso, False),
+            "tau_halo": lambda iso: use_halo.get(iso, False),
+        }
+        # Passive recipients: receive shared values but don't influence them.
+        # Useful for weak peaks (Po216) or extra peaks (Unknown1) that should
+        # inherit detector-response params without distorting the shared fit.
+        _shared_passive_isos: set[str] = set(
+            sp_cfg.get("shared_shape_passive", [])
+        )
+        for ptype, eligibility_fn in _shared_mappings.items():
+            # Skip tau sharing if using linear energy model instead
+            if ptype == "tau" and _tau_linear_model:
+                continue
+            if _shared_cfg.get(ptype, False):
+                participants = [
+                    iso for iso in iso_list
+                    if eligibility_fn(iso)
+                    and iso not in _extra_peak_names
+                    and iso not in _shared_passive_isos
+                ]
+                if participants:
+                    shared_participants[ptype] = participants
+                    # Load shared prior into priors dict
+                    prior_key = f"{ptype}_shared_prior"
+                    if prior_key in sp_cfg:
+                        val = sp_cfg[prior_key]
+                        if isinstance(val, (list, tuple)) and len(val) == 2:
+                            priors[f"{ptype}_shared"] = (float(val[0]), float(val[1]))
+
+    def _uses_shared(ptype: str, iso: str) -> bool:
+        """True if iso uses the shared value for ptype (participant OR passive)."""
+        if ptype in shared_participants and iso in shared_participants[ptype]:
+            return True
+        # Passive isotopes also use shared value (if that ptype is shared at all)
+        if iso in _shared_passive_isos and ptype in shared_participants:
+            return True
+        return False
+
     for iso in iso_list:
         param_index[f"mu_{iso}"] = len(param_order)
         param_order.append(f"mu_{iso}")
@@ -784,48 +866,181 @@ def fit_spectrum(
             param_order.append(sigma_key)
         param_index[f"S_{iso}"] = len(param_order)
         param_order.append(f"S_{iso}")
-        if use_emg[iso]:
+        # tau: skip per-isotope if shared OR if using linear energy model
+        _iso_in_tau_linear = _tau_linear_model and iso in _tau_linear_participants
+        if use_emg[iso] and not _iso_in_tau_linear and not _uses_shared("tau", iso):
             param_index[f"tau_{iso}"] = len(param_order)
             param_order.append(f"tau_{iso}")
         # Low-energy shelf fraction
         if use_shelf.get(iso, False):
-            shelf_key = f"f_shelf_{iso}"
-            param_index[shelf_key] = len(param_order)
-            param_order.append(shelf_key)
-            # Separate shelf width (sigma_shelf) if prior is provided
+            # f_shelf: skip per-isotope if shared or passive
+            if not _uses_shared("f_shelf", iso):
+                shelf_key = f"f_shelf_{iso}"
+                param_index[shelf_key] = len(param_order)
+                param_order.append(shelf_key)
+            # sigma_shelf: skip per-isotope if shared or passive
             shelf_sigma_key = f"sigma_shelf_{iso}"
-            if shelf_sigma_key in priors:
+            if shelf_sigma_key in priors and not _uses_shared("sigma_shelf", iso):
                 param_index[shelf_sigma_key] = len(param_order)
                 param_order.append(shelf_sigma_key)
         # Halo (broad) component fraction and width
         if use_halo.get(iso, False):
-            halo_key = f"f_halo_{iso}"
-            param_index[halo_key] = len(param_order)
-            param_order.append(halo_key)
+            # f_halo: skip per-isotope if shared or passive
+            if not _uses_shared("f_halo", iso):
+                halo_key = f"f_halo_{iso}"
+                param_index[halo_key] = len(param_order)
+                param_order.append(halo_key)
+            # sigma_halo: skip per-isotope if shared or passive
             halo_sigma_key = f"sigma_halo_{iso}"
-            if halo_sigma_key in priors:
+            if halo_sigma_key in priors and not _uses_shared("sigma_halo", iso):
                 param_index[halo_sigma_key] = len(param_order)
                 param_order.append(halo_sigma_key)
-            # Halo EMG tail (decoupled from core tau)
+            # tau_halo: skip per-isotope if shared or passive
             halo_tau_key = f"tau_halo_{iso}"
-            if halo_tau_key in priors:
+            if halo_tau_key in priors and not _uses_shared("tau_halo", iso):
                 param_index[halo_tau_key] = len(param_order)
                 param_order.append(halo_tau_key)
-    param_index["b0"] = len(param_order)
-    param_order.append("b0")
-    param_index["b1"] = len(param_order)
-    param_order.append("b1")
-    # Log-quadratic background term (b2)
-    if "b2" in priors:
-        param_index["b2"] = len(param_order)
-        param_order.append("b2")
-    # Log-cubic background term (b3)
-    if "b3" in priors:
-        param_index["b3"] = len(param_order)
-        param_order.append("b3")
-    if background_model == "loglin_unit" or "S_bkg" in priors:
+    # Add shared shape parameters (one entry per shared type)
+    for shared_name in shared_participants:
+        key = f"{shared_name}_shared"
+        if key not in param_index:
+            param_index[key] = len(param_order)
+            param_order.append(key)
+    # Tau linear energy model parameters: tau_0 and tau_slope
+    if _tau_linear_model and _tau_linear_participants:
+        sp_cfg_t = cfg.get("spectral_fit", {}) if cfg else {}
+        _tau0_prior = sp_cfg_t.get("tau_0_prior", [0.12, 0.08])
+        priors["tau_0"] = (float(_tau0_prior[0]), float(_tau0_prior[1]))
+        param_index["tau_0"] = len(param_order)
+        param_order.append("tau_0")
+        _tslope_prior = sp_cfg_t.get("tau_slope_prior", [0.0, 0.05])
+        priors["tau_slope"] = (float(_tslope_prior[0]), float(_tslope_prior[1]))
+        param_index["tau_slope"] = len(param_order)
+        param_order.append("tau_slope")
+    # Right-side broadening: sigma_right = sigma * (1 + sigma_asym).
+    # Modes:
+    #   1. use_sigma_asym: true  → single shared sigma_asym (constant across peaks)
+    #   2. asym_energy_model: linear/quadratic/cubic
+    #      asym(E) = asym_0 + asym_1*(E-Eref) [+ asym_2*(E-Eref)^2 [+ asym_3*(E-Eref)^3]]
+    #      Broadcasts per-isotope sigma_asym_{iso} values in _physical_params.
+    _use_sigma_asym = False
+    _asym_poly_model = False
+    _asym_poly_order = 0  # 1=linear, 2=quadratic, 3=cubic
+    _asym_poly_E_ref = 7.0
+    _asym_poly_participants = []
+    if cfg is not None:
+        _use_sigma_asym = bool(cfg.get("spectral_fit", {}).get("use_sigma_asym", False))
+        _asym_em = sp_cfg.get("asym_energy_model", "").lower()
+        if _asym_em in ("linear", "quadratic", "cubic"):
+            _asym_poly_model = True
+            _asym_poly_order = {"linear": 1, "quadratic": 2, "cubic": 3}[_asym_em]
+            _use_sigma_asym = False  # polynomial model supersedes single-param
+            _asym_poly_E_ref = float(sp_cfg.get("asym_energy_model_E_ref", 7.0))
+            # Isotopes with free (independent) sigma_asym — excluded from polynomial
+            _asym_free_isos = set(sp_cfg.get("asym_free_isotopes", []))
+            _asym_poly_participants = [
+                iso for iso in iso_list
+                if iso not in _extra_peak_names and iso not in _asym_free_isos
+            ]
+    if _asym_poly_model:
+        # asym_0 is always present (constant term)
+        _a0_prior = sp_cfg.get("asym_0_prior", [0.2, 0.15])
+        priors["asym_0"] = (float(_a0_prior[0]), float(_a0_prior[1]))
+        param_index["asym_0"] = len(param_order)
+        param_order.append("asym_0")
+        # Higher-order coefficients: asym_1, asym_2, asym_3
+        for _ord in range(1, _asym_poly_order + 1):
+            _key = f"asym_{_ord}"
+            _default = [0.0, 0.05]
+            _prior = sp_cfg.get(f"{_key}_prior", _default)
+            priors[_key] = (float(_prior[0]), float(_prior[1]))
+            param_index[_key] = len(param_order)
+            param_order.append(_key)
+        # Register free sigma_asym for isotopes excluded from polynomial
+        for _free_iso in sorted(_asym_free_isos):
+            if _free_iso in iso_list:
+                _sa_key = f"sigma_asym_{_free_iso}"
+                _sa_default = [0.5, 0.3]  # broad default prior
+                _sa_prior = sp_cfg.get(f"sigma_asym_{_free_iso}_prior", _sa_default)
+                priors[_sa_key] = (float(_sa_prior[0]), float(_sa_prior[1]))
+                param_index[_sa_key] = len(param_order)
+                param_order.append(_sa_key)
+    # Free sigma_right: independent right-side width (not tied to sigma * (1+asym))
+    _sigma_right_free_isos: set[str] = set()
+    if cfg is not None:
+        _sigma_right_free_isos = set(
+            sp_cfg.get("sigma_right_free_isotopes", [])
+        )
+        for _sr_iso in sorted(_sigma_right_free_isos):
+            if _sr_iso in iso_list:
+                _sr_key = f"sigma_right_{_sr_iso}"
+                _sr_default = [0.20, 0.10]  # ~2x typical sigma
+                _sr_prior = sp_cfg.get(f"sigma_right_{_sr_iso}_prior", _sr_default)
+                priors[_sr_key] = (float(_sr_prior[0]), float(_sr_prior[1]))
+                param_index[_sr_key] = len(param_order)
+                param_order.append(_sr_key)
+    elif _use_sigma_asym:
+        sp_cfg_sa = cfg.get("spectral_fit", {}) if cfg else {}
+        _sa_prior = sp_cfg_sa.get("sigma_asym_prior", [0.1, 0.1])
+        priors["sigma_asym"] = (float(_sa_prior[0]), float(_sa_prior[1]))
+        param_index["sigma_asym"] = len(param_order)
+        param_order.append("sigma_asym")
+    # Additive right-side exponential tail (shared, on top of sigma_asym)
+    _use_tail_right = False
+    if cfg is not None:
+        _use_tail_right = bool(cfg.get("spectral_fit", {}).get("use_tail_right", False))
+    if _use_tail_right:
+        sp_cfg_tr = cfg.get("spectral_fit", {}) if cfg else {}
+        _ftr_prior = sp_cfg_tr.get("f_tail_right_prior", [0.05, 0.05])
+        priors["f_tail_right"] = (float(_ftr_prior[0]), float(_ftr_prior[1]))
+        param_index["f_tail_right"] = len(param_order)
+        param_order.append("f_tail_right")
+        _ttr_prior = sp_cfg_tr.get("tau_tail_right_prior", [0.15, 0.10])
+        priors["tau_tail_right"] = (float(_ttr_prior[0]), float(_ttr_prior[1]))
+        param_index["tau_tail_right"] = len(param_order)
+        param_order.append("tau_tail_right")
+    # For "none" background model, skip b0/b1/b2/b3 entirely —
+    # all spectral structure comes from peaks + halos + shelves.
+    if str(background_model).lower() != "none":
+        param_index["b0"] = len(param_order)
+        param_order.append("b0")
+        param_index["b1"] = len(param_order)
+        param_order.append("b1")
+        # Log-quadratic background term (b2)
+        if "b2" in priors:
+            param_index["b2"] = len(param_order)
+            param_order.append("b2")
+        # Log-cubic background term (b3)
+        if "b3" in priors:
+            param_index["b3"] = len(param_order)
+            param_order.append("b3")
+    if background_model in ("loglin_unit", "sigmoid_unit", "exp_unit", "double_logit_unit", "none") or "S_bkg" in priors:
         param_index["S_bkg"] = len(param_order)
         param_order.append("S_bkg")
+
+    # ADC edge components: sigmoid terms at low/high energy boundaries
+    _adc_edge = False
+    if cfg is not None:
+        _adc_edge = bool(
+            cfg.get("spectral_fit", {}).get("adc_edge_components", False)
+        )
+    if _adc_edge:
+        _adc_lo_prior = sp_cfg.get("S_adc_lo_prior", [50.0, 100.0])
+        priors["S_adc_lo"] = (float(_adc_lo_prior[0]), float(_adc_lo_prior[1]))
+        _w_lo_prior = sp_cfg.get("w_adc_lo_prior", [0.3, 0.3])
+        priors["w_adc_lo"] = (float(_w_lo_prior[0]), float(_w_lo_prior[1]))
+
+        _adc_hi_prior = sp_cfg.get("S_adc_hi_prior", [50.0, 100.0])
+        priors["S_adc_hi"] = (float(_adc_hi_prior[0]), float(_adc_hi_prior[1]))
+        _w_hi_prior = sp_cfg.get("w_adc_hi_prior", [0.3, 0.3])
+        priors["w_adc_hi"] = (float(_w_hi_prior[0]), float(_w_hi_prior[1]))
+
+    # ADC edge component parameters (S and w for each edge — no mu, anchored at boundaries)
+    if _adc_edge:
+        for _adc_key in ("S_adc_lo", "w_adc_lo",
+                         "S_adc_hi", "w_adc_hi"):
+            param_index[_adc_key] = len(param_order)
+            param_order.append(_adc_key)
 
     p0 = []
     bounds_lo, bounds_hi = [], []
@@ -836,7 +1051,7 @@ def fit_spectrum(
         if name.startswith("S_"):
             mean = float(_softplus_inv(mean))
         # Enforce a strictly positive initial tau to avoid singular EMG tails
-        if name.startswith("tau_"):
+        if name.startswith("tau_") and name not in ("tau_0", "tau_slope"):
             mean = _clamp_tau(mean, None, min_tau=_EMG_FLOOR)
         is_fixed = flags.get(f"fix_{name}", False) or abs(sig) < 1e-15
         if is_fixed:
@@ -851,7 +1066,7 @@ def fit_spectrum(
                 delta = 5 * abs(sig_val)
             lo = mean - delta
             hi = mean + delta
-            if name.startswith("tau_"):
+            if name.startswith("tau_") and name not in ("tau_0", "tau_slope"):
                 if np.isfinite(delta):
                     tau_scale = max(abs(mean), abs(sig_val), delta / 5, _EMG_FLOOR)
                     if np.isfinite(tau_scale) and tau_scale > 0:
@@ -866,7 +1081,7 @@ def fit_spectrum(
                 lo = max(lo, user_lo)
             if user_hi is not None:
                 hi = min(hi, user_hi)
-        if name.startswith("tau_"):
+        if name.startswith("tau_") and name not in ("tau_0", "tau_slope"):
             lo = max(lo, _EMG_FLOOR)
             if max_tau_ratio is not None:
                 hi = min(hi, max_tau_ratio * sigma0_mean)
@@ -874,14 +1089,48 @@ def fit_spectrum(
             lo = max(lo, 0.0)
         if name.startswith("f_shelf_"):
             lo = max(lo, 0.0)
-            hi = min(hi, 0.30)  # shelf fraction capped at 30%
+            _f_shelf_cap = float(flags.get("max_f_shelf", 0.30))
+            hi = min(hi, _f_shelf_cap)  # shelf fraction cap (configurable)
         if name.startswith("f_halo_"):
             lo = max(lo, 0.0)
-            hi = min(hi, 0.40)  # halo fraction capped at 40%
-        # sigma_shelf must be physically meaningful (at least 0.03 MeV)
+            _f_halo_cap = float(flags.get("max_f_halo", 0.40))
+            hi = min(hi, _f_halo_cap)  # halo fraction cap (configurable)
+        # Tau linear model: tau_0 must be positive; tau_slope is free
+        if name == "tau_0":
+            lo = max(lo, _EMG_FLOOR)
+            if max_tau_ratio is not None:
+                hi = min(hi, max_tau_ratio * sigma0_mean)
+        if name == "tau_slope":
+            pass  # allow negative slope (tau decreasing with energy)
+        # sigma_asym: fractional right-side broadening, must be >= 0
+        if name == "sigma_asym" or name.startswith("sigma_asym_"):
+            lo = max(lo, 0.0)
+            hi = min(hi, 2.0)  # at most 3× wider on right (1+2.0)
+        # sigma_right: independent right-side width in MeV, must be > 0
+        if name.startswith("sigma_right_"):
+            lo = max(lo, 0.01)  # minimum 10 keV
+            hi = min(hi, 1.0)   # maximum 1 MeV
+        # Asym polynomial energy model: asym_0 >= 0, higher-order terms free
+        if name == "asym_0":
+            lo = max(lo, 0.0)
+            hi = min(hi, 2.0)  # same cap as sigma_asym
+        if name in ("asym_1", "asym_2", "asym_3"):
+            pass  # free — allow any sign for polynomial coefficients
+        # Right-tail fraction and decay constant
+        if name == "f_tail_right":
+            lo = max(lo, 0.0)
+            hi = min(hi, 0.20)  # at most 20% — tail should be small
+        if name == "tau_tail_right":
+            # Floor at 0.02 MeV — must be a genuine tail, not a near-Gaussian
+            lo = max(lo, 0.02)
+            # Configurable ceiling to keep tail short-range
+            _tau_tr_max = float(flags.get("tau_tail_right_max", 1.0))
+            hi = min(hi, _tau_tr_max)
+        # sigma_shelf must be physically meaningful (configurable floor, default 0.03 MeV)
         if name.startswith("sigma_shelf_"):
-            lo = max(lo, 0.03)
-        # tau_halo: cap at 2× core tau to prevent unrealistically long
+            _sigma_shelf_min = float(flags.get("sigma_shelf_min", 0.03))
+            lo = max(lo, _sigma_shelf_min)
+        # tau_halo: cap at N× core tau to prevent unrealistically long
         # right-side EMG tails that bleed into neighbouring peaks.
         # (brentq fallback in _right_emg_mode_offset handles edge cases.)
         if name.startswith("tau_halo_"):
@@ -889,7 +1138,8 @@ def fit_spectrum(
             tau_core_key = f"tau_{iso_name}"
             if tau_core_key in priors:
                 core_tau_mean = float(priors[tau_core_key][0])
-                hi = min(hi, core_tau_mean * 5.0)
+                _tau_halo_max_mult = float(flags.get("tau_halo_max_mult", 5.0))
+                hi = min(hi, core_tau_mean * _tau_halo_max_mult)
         # sigma_halo: enforce a reasonable range relative to core sigma.
         # Min 1.5× core sigma (must be wider than core).  Max 8× allows
         # broad halos for dead-layer scattering that can extend 1-2 MeV.
@@ -900,8 +1150,44 @@ def fit_spectrum(
                 core_sigma_mean = float(priors[sigma_core_key][0])
             else:
                 core_sigma_mean = sigma0_mean
-            lo = max(lo, core_sigma_mean * 1.5)
-            hi = min(hi, core_sigma_mean * 8.0)
+            _sigma_halo_min_mult = float(flags.get("sigma_halo_min_mult", 1.5))
+            _sigma_halo_max_mult = float(flags.get("sigma_halo_max_mult", 8.0))
+            lo = max(lo, core_sigma_mean * _sigma_halo_min_mult)
+            hi = min(hi, core_sigma_mean * _sigma_halo_max_mult)
+        # --- Shared shape parameter bounds ---
+        if name == "f_shelf_shared":
+            lo = max(lo, 0.0)
+            hi = min(hi, float(flags.get("max_f_shelf", 0.30)))
+        if name == "f_halo_shared":
+            lo = max(lo, 0.0)
+            hi = min(hi, float(flags.get("max_f_halo", 0.40)))
+        if name == "sigma_shelf_shared":
+            lo = max(lo, 0.03)
+        if name == "tau_halo_shared":
+            # Cap at 5× the shared tau prior mean (or average core tau)
+            if "tau_shared" in priors:
+                core_tau_mean = float(priors["tau_shared"][0])
+            elif "tau_shared_prior" in priors:
+                core_tau_mean = float(priors["tau_shared_prior"][0])
+            else:
+                # Average of per-isotope tau priors
+                _tau_vals = [float(priors[f"tau_{iso}"][0]) for iso in iso_list if f"tau_{iso}" in priors]
+                core_tau_mean = np.mean(_tau_vals) if _tau_vals else 0.08
+            hi = min(hi, core_tau_mean * 5.0)
+        if name == "sigma_halo_shared":
+            # Use average core sigma across isotopes
+            _sigma_vals = [float(priors.get(f"sigma_{iso}", (sigma0_mean,))[0]) for iso in iso_list]
+            avg_core_sigma = np.mean(_sigma_vals) if _sigma_vals else sigma0_mean
+            lo = max(lo, avg_core_sigma * float(flags.get("sigma_halo_min_mult", 1.5)))
+            hi = min(hi, avg_core_sigma * float(flags.get("sigma_halo_max_mult", 8.0)))
+        if name == "tau_shared":
+            lo = max(lo, _EMG_FLOOR)
+        # ADC edge component bounds
+        if name.startswith("S_adc_"):
+            lo = max(lo, 0.0)  # non-negative counts
+        if name.startswith("w_adc_"):
+            lo = max(lo, 0.05)   # minimum width 50 keV
+            hi = min(hi, 3.0)    # maximum width 3 MeV
         if hi <= lo:
             logging.warning(
                 f"Parameter {name}: upper bound ({hi}) <= lower bound ({lo}). "
@@ -926,18 +1212,33 @@ def fit_spectrum(
         clip_floor = float(cfg.get("spectral_fit", {}).get("clip_floor", 1e-300))
 
     loglin_n_norm = None
+    _bkg_range = None
     if cfg is not None:
         loglin_n_norm = cfg.get("spectral_fit", {}).get("loglin_n_norm")
+        _br = cfg.get("spectral_fit", {}).get("bkg_energy_range")
+        if _br is not None and len(_br) == 2:
+            _bkg_range = (float(_br[0]), float(_br[1]))
 
     use_shelf_map = {iso: bool(use_shelf.get(iso, False)) for iso in iso_list}
     use_halo_map = {iso: bool(use_halo.get(iso, False)) for iso in iso_list}
 
     # shelf_range: how far (MeV) the shelf extends below the peak (Gaussian taper)
+    # Can be a scalar (applied to all isotopes) or a dict with per-isotope values
     _shelf_range = None
     if cfg is not None:
         _sr = cfg.get("spectral_fit", {}).get("shelf_range")
         if _sr is not None:
-            _shelf_range = float(_sr)
+            if isinstance(_sr, dict):
+                # Per-isotope shelf range: {"Po210": 1.5, "Po218": 0.4, "default": 1.0}
+                _shelf_range = {k: float(v) for k, v in _sr.items()}
+            else:
+                _shelf_range = float(_sr)
+
+    _shelf_cutoff_delta = None
+    if cfg is not None:
+        _scd = cfg.get("spectral_fit", {}).get("shelf_cutoff_delta")
+        if _scd is not None:
+            _shelf_cutoff_delta = float(_scd)
 
     spectral_intensity = build_spectral_intensity(
         iso_list,
@@ -949,6 +1250,9 @@ def fit_spectrum(
         use_shelf=use_shelf_map,
         use_halo=use_halo_map,
         shelf_range=_shelf_range,
+        shelf_cutoff_delta=_shelf_cutoff_delta,
+        adc_edge_components=_adc_edge,
+        bkg_range=_bkg_range,
     )
 
     def _build_raw_param_map(params):
@@ -962,8 +1266,11 @@ def fit_spectrum(
     def _physical_params(raw_map: Mapping[str, float]) -> dict[str, float]:
         params_dict: dict[str, float] = {}
         params_dict["sigma0"] = float(raw_map.get("sigma0", sigma0_val))
-        params_dict["b0"] = float(raw_map["b0"])
-        params_dict["b1"] = float(raw_map["b1"])
+        # For "none" background model, b0/b1 are not in the parameter space
+        if "b0" in raw_map:
+            params_dict["b0"] = float(raw_map["b0"])
+        if "b1" in raw_map:
+            params_dict["b1"] = float(raw_map["b1"])
         if "b2" in raw_map:
             params_dict["b2"] = float(raw_map["b2"])
         if "b3" in raw_map:
@@ -996,8 +1303,76 @@ def fit_spectrum(
             halo_tau_key = f"tau_halo_{iso}"
             if halo_tau_key in raw_map:
                 params_dict[halo_tau_key] = float(raw_map[halo_tau_key])
+        # Broadcast shared shape parameters → per-isotope keys
+        for shared_name, participants in shared_participants.items():
+            shared_key = f"{shared_name}_shared"
+            if shared_key in raw_map:
+                _shared_val = float(raw_map[shared_key])
+                for iso in participants:
+                    per_iso_key = f"{shared_name}_{iso}"
+                    if per_iso_key not in params_dict:
+                        params_dict[per_iso_key] = _shared_val
+                # Also broadcast to passive recipients
+                for iso in _shared_passive_isos:
+                    per_iso_key = f"{shared_name}_{iso}"
+                    if per_iso_key not in params_dict:
+                        params_dict[per_iso_key] = _shared_val
+        # Tau linear energy model: tau(E) = tau_0 + tau_slope * (E - E_ref)
+        if _tau_linear_model and "tau_0" in raw_map and "tau_slope" in raw_map:
+            _t0 = float(raw_map["tau_0"])
+            _ts = float(raw_map["tau_slope"])
+            params_dict["tau_0"] = _t0
+            params_dict["tau_slope"] = _ts
+            for iso in _tau_linear_participants:
+                mu_iso = float(raw_map.get(f"mu_{iso}", 0.0))
+                tau_val = _t0 + _ts * (mu_iso - _tau_linear_E_ref)
+                # Enforce EMG floor
+                tau_val = max(tau_val, _EMG_FLOOR)
+                params_dict[f"tau_{iso}"] = tau_val
+        # Asym polynomial energy model: asym(E) = sum_k asym_k * (E - E_ref)^k
+        # Broadcasts per-isotope sigma_asym_{iso} values.
+        if _asym_poly_model and "asym_0" in raw_map:
+            _coeffs = [float(raw_map["asym_0"])]
+            params_dict["asym_0"] = _coeffs[0]
+            for _ord in range(1, _asym_poly_order + 1):
+                _key = f"asym_{_ord}"
+                _c = float(raw_map.get(_key, 0.0))
+                _coeffs.append(_c)
+                params_dict[_key] = _c
+            for iso in _asym_poly_participants:
+                mu_iso = float(raw_map.get(f"mu_{iso}", 0.0))
+                _dE = mu_iso - _asym_poly_E_ref
+                asym_val = sum(c * _dE**k for k, c in enumerate(_coeffs))
+                asym_val = max(asym_val, 0.0)  # can't have negative asymmetry
+                params_dict[f"sigma_asym_{iso}"] = asym_val
+            # Free isotopes: pass through their independent sigma_asym directly
+            for _free_iso in (_asym_free_isos if _asym_poly_model else ()):
+                _sa_key = f"sigma_asym_{_free_iso}"
+                if _sa_key in raw_map:
+                    params_dict[_sa_key] = max(float(raw_map[_sa_key]), 0.0)
+        # Free sigma_right: pass through directly
+        for _sr_iso in _sigma_right_free_isos:
+            _sr_key = f"sigma_right_{_sr_iso}"
+            if _sr_key in raw_map:
+                params_dict[_sr_key] = max(float(raw_map[_sr_key]), 0.0)
+        # Shared right-side broadening (single-parameter mode)
+        if "sigma_asym" in raw_map:
+            params_dict["sigma_asym"] = float(raw_map["sigma_asym"])
+        # Additive right-side tail (legacy — kept for backward compat)
+        if "f_tail_right" in raw_map:
+            params_dict["f_tail_right"] = float(raw_map["f_tail_right"])
+        if "tau_tail_right" in raw_map:
+            params_dict["tau_tail_right"] = float(raw_map["tau_tail_right"])
         if "S_bkg" in raw_map:
             params_dict["S_bkg"] = float(_softplus(raw_map["S_bkg"]))
+        # ADC edge components — pass through (S_ uses softplus)
+        for _adc_key in ("S_adc_lo", "w_adc_lo",
+                         "S_adc_hi", "w_adc_hi"):
+            if _adc_key in raw_map:
+                if _adc_key.startswith("S_"):
+                    params_dict[_adc_key] = float(_softplus(raw_map[_adc_key]))
+                else:
+                    params_dict[_adc_key] = float(raw_map[_adc_key])
         return params_dict
 
     def _finalize_signal_params(out_params: dict[str, float]) -> dict[str, float]:
@@ -1068,7 +1443,13 @@ def fit_spectrum(
                 ),
             )
 
+        import time as _time_mod
+        _fit_timers = {}
+
+        _nll_call_count = [0]
+
         def _nll(*params):
+            _nll_call_count[0] += 1
             model = _model_binned(centers, *params)
             model_safe = np.maximum(model, 1e-300)  # Floor to prevent log(0)
             nll_poisson = float(np.sum(model_safe - hist * np.log(model_safe)))
@@ -1078,6 +1459,7 @@ def fit_spectrum(
                 nll_prior += 0.5 * ((params[_idx] - _mu) / _sig) ** 2
             return nll_poisson + nll_prior
 
+        _t0_initial = _time_mod.perf_counter()
         m = Minuit(_nll, *p0, name=param_order)
         m.errordef = Minuit.LIKELIHOOD
         for name, lo, hi in zip(param_order, bounds_lo, bounds_hi):
@@ -1088,13 +1470,81 @@ def fit_spectrum(
         if not m.valid:
             m.simplex()
             m.migrad()
+        _fit_timers["initial_migrad_s"] = _time_mod.perf_counter() - _t0_initial
+        _fit_timers["initial_migrad_nll_calls"] = _nll_call_count[0]
+
+        # ── Fourier DNL helper ─────────────────────────────────────
+        def _fit_fourier_dnl(residuals, bin_indices, adc_bin_width,
+                             period_codes, valid_mask):
+            """Fit Fourier model to DNL residuals at ADC bit-cycling periods.
+
+            Parameters
+            ----------
+            residuals : array
+                DNL residuals (ratio - 1.0) for each bin.
+            bin_indices : array
+                Integer bin indices (0-based).
+            adc_bin_width : int
+                Number of ADC codes per spectral bin.
+            period_codes : list[int]
+                ADC bit-cycling periods in code units (e.g. [4,8,...,512]).
+            valid_mask : array of bool
+                Which bins have reliable residual estimates.
+
+            Returns
+            -------
+            dnl_factors : array
+                Reconstructed DNL factors (1.0 + Fourier model) for all bins.
+            coeffs : dict
+                {period_codes: (a_k, b_k)} Fourier coefficients.
+            """
+            # Convert code-space periods to bin-space
+            periods_bin = [p / adc_bin_width for p in period_codes]
+            # Keep only resolvable periods (Nyquist: P_bin >= 2.0)
+            resolvable = [(pc, pb) for pc, pb in zip(period_codes, periods_bin)
+                          if pb >= 2.0]
+            if not resolvable:
+                logging.warning("No resolvable Fourier DNL periods for "
+                                "adc_bin_width=%d", adc_bin_width)
+                return np.ones_like(residuals, dtype=float), {}
+
+            valid_idx = np.flatnonzero(valid_mask)
+            if valid_idx.size < 2 * len(resolvable):
+                logging.warning("Too few valid bins (%d) for %d Fourier terms",
+                                valid_idx.size, len(resolvable))
+                return np.ones_like(residuals, dtype=float), {}
+
+            # Build design matrix: cos/sin for each resolvable period
+            n_terms = len(resolvable)
+            A = np.zeros((valid_idx.size, 2 * n_terms))
+            for k, (pc, pb) in enumerate(resolvable):
+                phase = 2.0 * np.pi * bin_indices[valid_idx] / pb
+                A[:, 2*k] = np.cos(phase)
+                A[:, 2*k+1] = np.sin(phase)
+
+            # Least-squares fit
+            b = residuals[valid_idx]
+            result, _res, _rank, _sv = np.linalg.lstsq(A, b, rcond=None)
+
+            # Reconstruct over all bins
+            dnl_model = np.zeros(len(bin_indices), dtype=float)
+            coeffs = {}
+            for k, (pc, pb) in enumerate(resolvable):
+                a_k = float(result[2*k])
+                b_k = float(result[2*k+1])
+                phase = 2.0 * np.pi * bin_indices / pb
+                dnl_model += a_k * np.cos(phase) + b_k * np.sin(phase)
+                coeffs[pc] = (a_k, b_k)
+
+            dnl_factors = 1.0 + dnl_model
+            return dnl_factors, coeffs
 
         # ── ADC DNL (differential non-linearity) correction ─────────
         # Estimate per-bin correction factors from the data/model ratio
         # and refit with corrected bin widths.  The DNL is a hardware
         # property of the ADC: some channels have slightly wider or
         # narrower effective voltage ranges, causing systematic count
-        # excesses/deficits at the ±10–20 % level.
+        # excesses/deficits at the ±10-20 % level.
         #
         # We use a band-pass approach to isolate DNL from model errors:
         # 1. Compute raw ratio = data / model
@@ -1105,12 +1555,94 @@ def fit_spectrum(
         _dnl_cfg = {}
         if cfg is not None:
             _dnl_cfg = cfg.get("spectral_fit", {}).get("dnl_correction", {})
-        _dnl_iters = (
-            int(_dnl_cfg.get("iterations", 1))
-            if _dnl_cfg.get("enabled", False)
-            else 0
-        )
-        if _dnl_iters > 0:
+        # When a pre-corrected histogram was supplied (two-stage pipeline),
+        # skip all DNL iterations -- correction was already applied.
+        if pre_binned_hist is not None:
+            _dnl_iters = 0
+        else:
+            _dnl_iters = (
+                int(_dnl_cfg.get("iterations", 1))
+                if _dnl_cfg.get("enabled", False)
+                else 0
+            )
+        _fourier_coeffs = {}  # populated by self-estimation; must exist for metadata block
+        _dnl_accum = np.ones_like(hist, dtype=float)  # identity until DNL applied
+        _pre_dnl_errs = {p: float(m.errors[p]) for p in param_order}  # baseline errors
+        # B2: Load external DNL map from file if configured.  This takes
+        # precedence over self-estimation and provides independent Poisson
+        # statistics (no self-reference covariance).
+        _external_dnl = flags.get("external_dnl_factors") if flags else None
+        _ext_map_path = _dnl_cfg.get("external_map_path")
+        if _external_dnl is None and _ext_map_path and _dnl_iters > 0:
+            try:
+                _ext_map = np.load(_ext_map_path)
+                if _ext_map.shape == hist.shape:
+                    _external_dnl = _ext_map
+                    logging.info(
+                        "Loaded external DNL map from %s (%d bins)",
+                        _ext_map_path, _ext_map.size,
+                    )
+                else:
+                    logging.warning(
+                        "External DNL map shape %s != hist shape %s; ignoring",
+                        _ext_map.shape, hist.shape,
+                    )
+            except Exception as _load_err:
+                logging.warning(
+                    "Failed to load external DNL map from %s: %s",
+                    _ext_map_path, _load_err,
+                )
+        if _external_dnl is not None:
+            _external_dnl = np.asarray(_external_dnl, dtype=float)
+            if _external_dnl.shape == hist.shape:
+                _dnl_accum = _external_dnl.copy()
+                _dnl_window = int(_dnl_cfg.get("smooth_window", 21))
+                width_lookup = _WidthLookup(
+                    centers, widths_base * _dnl_accum
+                )
+                # Refit with external DNL widths
+                m_ext = Minuit(_nll, *[float(m.values[p]) for p in param_order],
+                               name=param_order)
+                m_ext.errordef = Minuit.LIKELIHOOD
+                for name, lo, hi in zip(param_order, bounds_lo, bounds_hi):
+                    m_ext.limits[name] = (lo, hi)
+                    if flags.get(f"fix_{name}", False):
+                        m_ext.fixed[name] = True
+                    prev_err = float(m.errors[name])
+                    if prev_err > 0:
+                        m_ext.errors[name] = prev_err
+                    else:
+                        m_ext.errors[name] = (hi - lo) * 0.01
+                m_ext.migrad()
+                if not m_ext.valid:
+                    m_ext.simplex()
+                    m_ext.migrad()
+                m = m_ext
+                _dnl_iters = 1  # flag that DNL was applied
+                _dnl_meta = {
+                    "dnl_applied": True,
+                    "dnl_iterations": 0,
+                    "dnl_smooth_window": _dnl_window,
+                    "dnl_factors": _dnl_accum.tolist(),
+                    "operator_class": "external_fixed",
+                    "calibration_source": "external",
+                    "n_corrected_bins": int(np.sum(_dnl_accum != 1.0)),
+                    "statistical_model": "rescaled_independent_poisson",
+                    "covariance_note": (
+                        "External fixed DNL map: bins are rescaled but "
+                        "conditionally independent Poisson. Standard "
+                        "per-bin residuals are valid."
+                    ),
+                }
+            else:
+                logging.warning(
+                    "External DNL factors shape %s != hist shape %s; ignoring",
+                    _external_dnl.shape, hist.shape,
+                )
+                _external_dnl = None
+        _t0_dnl = _time_mod.perf_counter()
+        _nll_calls_before_dnl = _nll_call_count[0]
+        if _external_dnl is None and _dnl_iters > 0:
             from scipy.ndimage import uniform_filter1d as _uf1d
 
             _dnl_min = float(_dnl_cfg.get("min_counts", 50.0))
@@ -1157,7 +1689,7 @@ def fit_spectrum(
                 # DNL is a hardware property of the ADC channel, so bins
                 # that fall below the min_counts threshold *between* valid
                 # regions should be interpolated.  Bins beyond the last
-                # valid index (edge extrapolation) stay at 1.0 — we cannot
+                # valid index (edge extrapolation) stay at 1.0  - we cannot
                 # reliably estimate DNL where the model has negligible
                 # counts, and flat extrapolation of a noisy boundary value
                 # introduces artefacts.
@@ -1177,6 +1709,48 @@ def fit_spectrum(
                             _interior, _valid_idx,
                             _dnl_resid[_valid_idx],
                         )
+
+                # Optional Fourier parameterization: replace per-bin
+                # residual with a low-DOF Fourier model at ADC bit-cycling
+                # periods.  This prevents the DNL from absorbing model
+                # misfit and gives ~14 effective DOF instead of ~182.
+                #
+                # Modes:
+                #   parameterized=True:  ALL iterations use Fourier only
+                #   parameterized="hybrid": iteration 0 uses Fourier,
+                #       subsequent iterations use per-bin bandpass to
+                #       capture individual bin spikes not modeled by
+                #       the smooth Fourier basis.
+                #   parameterized=False: ALL iterations use bandpass
+                _parameterized_dnl = _dnl_cfg.get("parameterized", False)
+                _hybrid_dnl = (
+                    str(_parameterized_dnl).lower() == "hybrid"
+                )
+                _use_fourier_this_iter = (
+                    _parameterized_dnl is True
+                    or (_hybrid_dnl and _di == 0)
+                )
+                _fourier_coeffs_iter = {}
+                if _use_fourier_this_iter:
+                    _fourier_periods = _dnl_cfg.get(
+                        "fourier_periods_codes",
+                        [4, 8, 16, 32, 64, 128, 256, 512],
+                    )
+                    _adc_bw = 3  # default
+                    if cfg is not None:
+                        _adc_bw = int(cfg.get("spectral_fit", {}).get(
+                            "adc_bin_width", 3))
+                    _dnl_resid, _fourier_coeffs_iter = _fit_fourier_dnl(
+                        _dnl_resid - 1.0,
+                        np.arange(len(centers)),
+                        _adc_bw,
+                        _fourier_periods,
+                        _valid,
+                    )
+                    # _fit_fourier_dnl returns factors (1+model); _dnl_resid
+                    # is already in the right form for accumulation.
+                if _fourier_coeffs_iter:
+                    _fourier_coeffs = _fourier_coeffs_iter
 
                 # Accumulate and clip
                 _dnl_accum = _dnl_accum * _dnl_resid
@@ -1243,26 +1817,95 @@ def fit_spectrum(
 
         # Store DNL metadata in the result (if correction was applied)
         _dnl_meta = {}
-        if _dnl_iters > 0:
+        if pre_dnl_meta is not None:
+            _dnl_meta = dict(pre_dnl_meta)
+            logging.info(
+                "Using pre_dnl_meta: %d keys, dnl_applied=%s",
+                len(_dnl_meta),
+                _dnl_meta.get("dnl_applied"),
+            )
+        elif _dnl_iters > 0:
             _dnl_meta["dnl_applied"] = True
             _dnl_meta["dnl_iterations"] = _dnl_iters
             _dnl_meta["dnl_smooth_window"] = _dnl_window
             _dnl_meta["dnl_factors"] = _dnl_accum.tolist()
+            # Statistical classification of the DNL operator
+            _parameterized_dnl_final = _dnl_cfg.get("parameterized", False)
+            if str(_parameterized_dnl_final).lower() == "hybrid" and _fourier_coeffs:
+                _dnl_meta["operator_class"] = "self_estimated_hybrid"
+                _dnl_meta["fourier_coefficients"] = {
+                    str(k): list(v) for k, v in _fourier_coeffs.items()
+                }
+                # Hybrid: Fourier DOF + bandpass DOF from subsequent iters
+                _fourier_dof = 2 * len(_fourier_coeffs)
+                _bandpass_iters = max(0, _dnl_iters - 1)
+                _dnl_meta["effective_dnl_params"] = (
+                    _fourier_dof + _bandpass_iters * _n_corr / _dnl_window
+                    if _dnl_window > 0 else _fourier_dof
+                )
+            elif _parameterized_dnl_final is True and _fourier_coeffs:
+                _dnl_meta["operator_class"] = "self_estimated_fourier"
+                _dnl_meta["fourier_coefficients"] = {
+                    str(k): list(v) for k, v in _fourier_coeffs.items()
+                }
+                _dnl_meta["effective_dnl_params"] = 2 * len(_fourier_coeffs)
+            else:
+                _dnl_meta["operator_class"] = "self_estimated_bandpass"
+            _dnl_meta["calibration_source"] = "self"
+            _corr_mask = _dnl_accum != 1.0
+            _n_corr = int(np.sum(_corr_mask))
+            _dnl_meta["n_corrected_bins"] = _n_corr
+            if not (_parameterized_dnl_final and _fourier_coeffs):
+                _dnl_meta["effective_dnl_params"] = (
+                    float(_dnl_iters * _n_corr / _dnl_window) if _dnl_window > 0 else 0.0
+                )
+            _dnl_dev = _dnl_accum[_corr_mask] - 1.0 if _n_corr > 0 else np.array([])
+            _dnl_meta["dnl_amplitude_rms"] = (
+                float(np.sqrt(np.mean(_dnl_dev ** 2))) if _dnl_dev.size > 0 else 0.0
+            )
+            _dnl_meta["statistical_model"] = (
+                "approximate_independent_poisson_with_smoothing_covariance"
+            )
+            _dnl_meta["covariance_note"] = (
+                "Self-estimated band-pass DNL introduces smoothing covariance "
+                "between bins via uniform_filter1d(W=%d). Naive independent-bin "
+                "residuals are approximate; covariance-aware (whitened) "
+                "residuals are needed for calibrated diagnostics."
+                % _dnl_window
+            )
+            _dnl_meta["poisson_nll_note"] = (
+                "independent Poisson NLL is approximate under self-estimated DNL"
+            )
+            # Warn if DNL amplitude is large enough to invalidate Poisson approx
+            if _dnl_meta["dnl_amplitude_rms"] > 0.05:
+                logging.warning(
+                    "DNL amplitude RMS = %.3f (>5%%): independent Poisson NLL "
+                    "approximation may be poor; consider pseudoexperiment "
+                    "calibration of residual statistics",
+                    _dnl_meta["dnl_amplitude_rms"],
+                )
+
+        _fit_timers["dnl_s"] = _time_mod.perf_counter() - _t0_dnl
+        _fit_timers["dnl_nll_calls"] = _nll_call_count[0] - _nll_calls_before_dnl
 
         _n_free = sum(1 for p in param_order if not m.fixed[p])
         ndf = max(1, hist.size - _n_free)
         out = {}
         if _dnl_meta:
             out["_dnl"] = _dnl_meta
+            logging.info("Storing _dnl in output: %d keys", len(_dnl_meta))
+        else:
+            logging.info("No _dnl metadata to store (pre_dnl_meta=%s, _dnl_iters=%d)",
+                        pre_dnl_meta is not None, _dnl_iters)
         param_index = {name: i for i, name in enumerate(param_order)}
 
         # Freeze the best-fit parameter values from the DNL-converged minimum.
         # Subsequent covariance attempts (Hesse, MINOS) may internally move
-        # parameters — we always return popt from the original minimum.
+        # parameters  - we always return popt from the original minimum.
         popt = np.array([float(m.values[p]) for p in param_order])
         nll_val = float(m.fval)
 
-        # Save MIGRAD approximate errors *before* hesse() — hesse resets
+        # Save MIGRAD approximate errors *before* hesse()  - hesse resets
         # m.errors to zero when the Hessian computation fails.
         # Prefer pre-DNL MIGRAD errors when the post-DNL refit left them
         # at zero (common when starting at a converged point).
@@ -1285,6 +1928,8 @@ def fit_spectrum(
         #   3. If still fails, compute numerical Hessian via finite diffs
         #   4. Run MINOS for asymmetric errors (per-parameter)
         # ----------------------------------------------------------
+        _t0_cov = _time_mod.perf_counter()
+        _nll_calls_before_cov = _nll_call_count[0]
         _covariance_method = "none"
         m.hesse()
         cov_raw = m.covariance
@@ -1292,10 +1937,46 @@ def fit_spectrum(
         if covariance_available:
             _covariance_method = "hesse"
 
+        # --- A2: Simplex→MIGRAD→HESSE recovery (Tier 1.5) ---
+        # Official iminuit guidance notes that Simplex before MIGRAD
+        # can rescue pathological curvature by finding a better
+        # starting region for the gradient-based minimiser.
+        if cov_raw is None:
+            logging.info(
+                "Hesse failed  - trying Simplex→MIGRAD→HESSE recovery"
+            )
+            _saved_vals = popt.copy()
+            m.simplex()
+            m.migrad()
+            if m.valid:
+                m.hesse()
+                cov_raw = m.covariance
+                if cov_raw is not None:
+                    _covariance_method = "hesse_after_simplex"
+                    covariance_available = True
+                    # If Simplex+MIGRAD found the same or better minimum,
+                    # update popt; otherwise restore.
+                    _new_nll = float(m.fval)
+                    if _new_nll <= nll_val + 0.01:
+                        popt = np.array(
+                            [float(m.values[p]) for p in param_order]
+                        )
+                        nll_val = _new_nll
+                    else:
+                        for _pi, _pn in enumerate(param_order):
+                            m.values[_pn] = float(_saved_vals[_pi])
+                else:
+                    # Simplex+MIGRAD converged but HESSE still fails
+                    for _pi, _pn in enumerate(param_order):
+                        m.values[_pn] = float(_saved_vals[_pi])
+            else:
+                for _pi, _pn in enumerate(param_order):
+                    m.values[_pn] = float(_saved_vals[_pi])
+
         # --- Strategy 2: relax bounds for params sitting at limits ---
         if cov_raw is None:
             logging.info(
-                "Hesse failed — attempting with relaxed bounds for "
+                "Hesse failed  - attempting with relaxed bounds for "
                 "parameters at their limits"
             )
             # Reset parameter values to the saved minimum before retrying
@@ -1336,7 +2017,7 @@ def fit_spectrum(
         # parameters (with ±1e-12 bounds) distorting eigenvalues.
         if cov_raw is None:
             logging.info(
-                "Hesse still failed — computing numerical Hessian "
+                "Hesse still failed  - computing numerical Hessian "
                 "via finite differences at the converged minimum"
             )
             try:
@@ -1437,7 +2118,7 @@ def fit_spectrum(
                         )
                     else:
                         logging.info(
-                            "Numerical Hessian inversion succeeded — "
+                            "Numerical Hessian inversion succeeded  - "
                             "full covariance with off-diagonal correlations"
                         )
                 except np.linalg.LinAlgError:
@@ -1454,7 +2135,7 @@ def fit_spectrum(
             _covariance_method = "migrad_diagonal"
             n_nonzero = sum(1 for v in _migrad_errs.values() if v > 0)
             logging.warning(
-                "All covariance strategies failed — using MIGRAD approximate "
+                "All covariance strategies failed  - using MIGRAD approximate "
                 "errors as diagonal fallback (no correlations). "
                 "%d / %d params have non-zero MIGRAD errors.",
                 n_nonzero, len(param_order),
@@ -1468,19 +2149,24 @@ def fit_spectrum(
         # Strategy:
         #   A. Try iminuit's native MINOS (proper re-profiling)
         #   B. Manual profile scan with re-minimisation at each point
-        #   C. Projection scan (freeze other params — last resort)
+        #   C. Projection scan (freeze other params  - last resort)
         _minos_errors = None
         _minos_method = "none"
         _free_params = [p for p in param_order if not m.fixed[p]]
-        logging.info(
-            "Computing profile likelihood errors for %d free parameters...",
-            len(_free_params),
-        )
+        if skip_minos:
+            logging.info("Skipping profile likelihood errors (skip_minos=True)")
+            _minos_errors = {}
+            _minos_method = "skipped"
+        else:
+            logging.info(
+                "Computing profile likelihood errors for %d free parameters...",
+                len(_free_params),
+            )
 
         # --- Strategy A: iminuit native MINOS ---
         # Requires valid minimum + covariance.  Re-profiles over all
         # other parameters at each scan point (true MINOS).
-        if covariance_available and _covariance_method in ("hesse", "hesse_relaxed"):
+        if not skip_minos and covariance_available and _covariance_method in ("hesse", "hesse_relaxed"):
             try:
                 # Restore minimum before MINOS
                 for _pi, _pn in enumerate(param_order):
@@ -1503,14 +2189,14 @@ def fit_spectrum(
                     _minos_errors = None
                     logging.info(
                         "iminuit MINOS returned no valid intervals "
-                        "— falling back to manual profile scan"
+                        " - falling back to manual profile scan"
                     )
                 # Restore minimum (MINOS may have moved params)
                 for _pi, _pn in enumerate(param_order):
                     m.values[_pn] = float(popt[_pi])
             except Exception as _minos_exc:
                 logging.info(
-                    "iminuit MINOS failed (%s) — falling back to "
+                    "iminuit MINOS failed (%s)  - falling back to "
                     "manual profile scan", _minos_exc
                 )
                 _minos_errors = None
@@ -1522,11 +2208,18 @@ def fit_spectrum(
         # Fix one parameter at a time, re-minimise over all others,
         # and find the delta-NLL = 0.5 crossing.  This is equivalent
         # to MINOS but works even when iminuit's MINOS fails.
+        # A1: Track the best NLL seen during profiling. If any
+        # conditional minimum has lower NLL than the stored popt,
+        # a full unconstrained refit is triggered to confirm a
+        # better basin (profile points are conditional optima, not
+        # automatically the global best-fit parameter vector).
         if _minos_errors is None:
             try:
                 _nll_min = float(_nll(*popt))
                 _minos_errors = {}
                 _target = 0.5  # delta-NLL for 1-sigma
+                _profile_best_nll = _nll_min
+                _profile_best_vals = None
 
                 # Save fixed-state so we can restore
                 _orig_fixed = {p: m.fixed[p] for p in param_order}
@@ -1541,6 +2234,7 @@ def fit_spectrum(
 
                     def _profile_nll_at(_trial_val):
                         """Fix _pn at _trial_val, re-minimise others, return NLL."""
+                        nonlocal _profile_best_nll, _profile_best_vals
                         # Restore all params to minimum
                         for _ri, _rn in enumerate(param_order):
                             m.values[_rn] = float(popt[_ri])
@@ -1550,7 +2244,15 @@ def fit_spectrum(
                         m.fixed[_pn] = True
                         # Re-minimise over remaining free params
                         m.migrad()
-                        return float(m.fval)
+                        _fv = float(m.fval)
+                        # A1: Track if this conditional optimum found
+                        # a lower NLL than the stored global minimum
+                        if _fv < _profile_best_nll - 0.01:
+                            _profile_best_nll = _fv
+                            _profile_best_vals = np.array(
+                                [float(m.values[p]) for p in param_order]
+                            )
+                        return _fv
 
                     # Scan downward
                     _lo_cross = None
@@ -1606,6 +2308,54 @@ def fit_spectrum(
                     m.values[_pn_r] = float(popt[_pi])
                     m.fixed[_pn_r] = _orig_fixed[_pn_r]
 
+                # A1: If profile scan found a conditional minimum with
+                # lower NLL, attempt a full unconstrained refit from
+                # that seed. Only accept if the refit confirms a
+                # genuinely lower global minimum.
+                if (
+                    _profile_best_vals is not None
+                    and _profile_best_nll < _nll_min - 0.5
+                ):
+                    logging.info(
+                        "Profile scan found a potentially better basin "
+                        "(NLL %.4f vs %.4f, delta=%.4f). Attempting "
+                        "full unconstrained refit from profile seed.",
+                        _profile_best_nll, _nll_min,
+                        _nll_min - _profile_best_nll,
+                    )
+                    for _pi, _pn_r in enumerate(param_order):
+                        m.values[_pn_r] = float(_profile_best_vals[_pi])
+                        m.fixed[_pn_r] = _orig_fixed[_pn_r]
+                    m.migrad()
+                    _refit_nll = float(m.fval)
+                    if _refit_nll < _nll_min - 0.01 and m.valid:
+                        logging.warning(
+                            "Profile-seeded refit confirmed lower minimum: "
+                            "NLL %.4f -> %.4f. Updating popt.",
+                            _nll_min, _refit_nll,
+                        )
+                        popt = np.array(
+                            [float(m.values[p]) for p in param_order]
+                        )
+                        nll_val = _refit_nll
+                        _nll_min = _refit_nll
+                        # Recompute HESSE at the new minimum
+                        m.hesse()
+                        if m.covariance is not None:
+                            pcov = np.array(m.covariance)
+                            covariance_available = True
+                            _covariance_method = "hesse_after_profile_refit"
+                    else:
+                        logging.info(
+                            "Profile-seeded refit did not confirm a "
+                            "lower minimum (NLL=%.4f). Keeping original.",
+                            _refit_nll,
+                        )
+                        # Restore original state
+                        for _pi, _pn_r in enumerate(param_order):
+                            m.values[_pn_r] = float(popt[_pi])
+                            m.fixed[_pn_r] = _orig_fixed[_pn_r]
+
                 if _minos_errors:
                     _minos_method = "profile_scan_reprofiled"
                     logging.info(
@@ -1625,6 +2375,11 @@ def fit_spectrum(
                 for _pi, _pn_r in enumerate(param_order):
                     m.values[_pn_r] = float(popt[_pi])
                     m.fixed[_pn_r] = _orig_fixed.get(_pn_r, False)
+
+        _fit_timers["covariance_minos_s"] = _time_mod.perf_counter() - _t0_cov
+        _fit_timers["covariance_minos_nll_calls"] = _nll_call_count[0] - _nll_calls_before_cov
+        _fit_timers["total_nll_calls"] = _nll_call_count[0]
+        _fit_timers["minos_method"] = _minos_method
 
         pcov = np.array(cov_raw)
         # popt and nll_val already saved at the top of this block
@@ -1826,27 +2581,22 @@ def fit_spectrum(
             out[name] = val
             out["d" + name] = float(perr[i])
 
-    # Override symmetric errors with MINOS profile-likelihood errors when
-    # available.  The Hessian can be ill-conditioned (eigenvalues clamped)
-    # leading to 10× inflated errors; MINOS gives reliable intervals.
+    # Store MINOS profile-likelihood errors alongside (not replacing) the
+    # Hessian/covariance errors.  HESSE gives the local curvature estimate
+    # at the unconstrained minimum; MINOS gives profile-likelihood intervals
+    # by scanning each parameter while re-minimising the others.  When they
+    # disagree, MINOS is preferred for that parameter's interval, but the
+    # Hessian covariance matrix (and its diagonal) remains the correct basis
+    # for symmetric error propagation and correlations.
     if _minos_errors:
-        _n_overridden = 0
         for _pn, (_mlo, _mhi) in _minos_errors.items():
-            _sym_minos = max(abs(_mlo), abs(_mhi))
-            _dkey = "d" + _pn
-            if _dkey in out and _sym_minos > 0:
-                _hesse_err = out[_dkey]
-                # Only override if MINOS is meaningfully different (smaller)
-                # and the Hessian error looks inflated
-                if _hesse_err > 0 and _sym_minos < 0.8 * _hesse_err:
-                    out[_dkey] = _sym_minos
-                    _n_overridden += 1
-        if _n_overridden > 0:
-            logging.info(
-                "Replaced %d Hessian errors with MINOS profile-likelihood "
-                "errors (Hessian was inflated)",
-                _n_overridden,
-            )
+            out["d" + _pn + "_minos_lo"] = float(_mlo)  # negative by convention
+            out["d" + _pn + "_minos_hi"] = float(_mhi)  # positive by convention
+        logging.info(
+            "MINOS profile-likelihood errors stored for %d parameters "
+            "(HESSE errors retained in d<param> keys)",
+            len(_minos_errors),
+        )
 
     if fix_sigma0:
         out["sigma0"] = sigma0_val
@@ -1934,6 +2684,28 @@ def fit_spectrum(
     out["_plot_centers"] = centers.copy()
     out["_plot_hist"] = hist.copy()
     out["_plot_edges"] = edges.copy()
+
+    # Store spectral fit timing breakdown
+    _fit_timers["total_s"] = (
+        _fit_timers.get("initial_migrad_s", 0)
+        + _fit_timers.get("dnl_s", 0)
+        + _fit_timers.get("covariance_minos_s", 0)
+    )
+    out["_fit_timers"] = _fit_timers
+    logging.info(
+        "Spectral fit timing: initial_migrad=%.1fs (%d calls), "
+        "dnl=%.1fs (%d calls), cov+minos=%.1fs (%d calls, method=%s), "
+        "total=%.1fs (%d NLL evals)",
+        _fit_timers.get("initial_migrad_s", 0),
+        _fit_timers.get("initial_migrad_nll_calls", 0),
+        _fit_timers.get("dnl_s", 0),
+        _fit_timers.get("dnl_nll_calls", 0),
+        _fit_timers.get("covariance_minos_s", 0),
+        _fit_timers.get("covariance_minos_nll_calls", 0),
+        _fit_timers.get("minos_method", "n/a"),
+        _fit_timers.get("total_s", 0),
+        _fit_timers.get("total_nll_calls", 0),
+    )
 
     param_index = {name: i for i, name in enumerate(param_order)}
     out = _finalize_signal_params(out)

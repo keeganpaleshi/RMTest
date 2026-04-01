@@ -95,6 +95,52 @@ spectral_fit:
     min_counts: 5
     max_correction: 0.5
     smooth_window: 61
+    # Cross-validation: split data by time, estimate DNL independently on
+    # each half, cross-apply to test whether DNL is real hardware or model
+    # misfit absorption.  Runs 6 fits (slow) but only when enabled.
+    crossval: true
+    # Path to an external DNL map (.npy file) from a flat-field or pulser
+    # calibration.  When set, the external map is used as a fixed per-bin
+    # width correction (operator_class: external_fixed), bypassing
+    # self-estimation.  Corrected bins remain independent Poisson.
+    external_map_path: null
+    # Fourier parameterized DNL: fit cos/sin at ADC bit-cycling periods
+    # instead of per-bin correction.  ~14 DOF instead of ~182.
+    parameterized: false
+    fourier_periods_codes: [4, 8, 16, 32, 64, 128, 256, 512]
+    # Two-stage pipeline: estimate Fourier DNL at bin_width=1 (full ADC
+    # resolution), apply correction, then rebin before fitting.  This
+    # captures periodic hardware DNL without overfitting peak shapes.
+    full_resolution_estimate: false
+    # Post-DNL rebin specification (only used when full_resolution_estimate
+    # is true).  Values: "fd" for Freedman-Diaconis rule, an integer for a
+    # fixed rebin factor, or "<N>w" for a target bin width in ADC channels
+    # (e.g. "5w" for 5-channel bins).
+    post_dnl_rebin: "fd"
+  # Three-stage binning: (1) full-res DNL estimation, (2) moderate rebin
+  # to fit shape params (tau, shelf, halo, sigma), (3) coarser rebin to
+  # refit physics params (amplitudes, background) with shapes fixed from
+  # stage 2.  Requires full_resolution_estimate: true.
+  three_stage_binning:
+    enabled: false
+    stage2_rebin: 3       # moderate bins for shape fitting
+    stage3_rebin: 15      # coarser bins for physics parameters
+  # Shared shape parameters: when true, a single shared parameter
+  # replaces per-isotope entries for all participating isotopes.
+  shared_shape_params:
+    tau: false
+    f_shelf: false
+    sigma_shelf: false
+    f_halo: false
+    sigma_halo: false
+    tau_halo: false
+  # Shared priors (used when the corresponding shared_shape_params flag is true)
+  tau_shared_prior: [0.08, 0.08]
+  f_shelf_shared_prior: [0.15, 0.15]
+  sigma_shelf_shared_prior: [0.25, 0.15]
+  f_halo_shared_prior: [0.07, 0.10]
+  sigma_halo_shared_prior: [0.24, 0.12]
+  tau_halo_shared_prior: [0.05, 0.05]
   energy_bin_width: 0.0130
   fd_hist_bins: 400
   mu_sigma: 0.005
@@ -143,6 +189,9 @@ spectral_fit:
   # tau_Po212: EMG tail for Po212 (similar to Po214)
   tau_po212_prior_mean: 0.09
   tau_po212_prior_sigma: 0.05
+  # Skip MINOS profile likelihood errors (use Hesse diagonal instead).
+  # Much faster (~3-5x) -- adequate for parameter scans.
+  skip_minos: false
   spectral_peak_tolerance_mev: 0.2
   sigma_e_prior_source: "calibration"
   sigma_e_prior_sigma: 0.015
@@ -259,6 +308,15 @@ spectral_fit:
   use_plot_bins_for_fit: true
   unbinned_likelihood: false
   split_half_validation: true
+  # D2: Held-out test for shelf/halo contribution.  Fits full and
+  # reduced (core+EMG only) models on even-indexed events, evaluates
+  # on odd-indexed events to test whether the extra low-energy
+  # flexibility actually improves held-out NLL.
+  shelf_halo_test: false
+  # C4: Number of pseudoexperiment trials for calibrating diagnostic
+  # thresholds through the full DNL pipeline.  0 = disabled (default).
+  # ~200 trials needed for stable 5th/95th percentile bands.
+  pseudoexperiment_trials: 0
   flags:
     fix_sigma0: true   # redundant when per-isotope sigmas float
     sigma0_prior:
@@ -380,6 +438,12 @@ systematics:
   adc_drift_rate: 0.0
   adc_drift_mode: linear
   adc_drift_params: null
+gas_dissolution:
+  # Henry's law constants (dimensionless air/liquid partition coefficients).
+  # K_H = C_air / C_liquid, so C_liquid = C_air / K_H.
+  radon_henry_constant: 11.0
+  argon_henry_constant: 1.0        # placeholder
+  argon_atmospheric_fraction: 0.00934  # volume fraction of Ar in dry air
 radon_inference:
   enabled: true
   source_isotopes:
@@ -442,19 +506,26 @@ lucas_bridge:
   volume_convention: "monitor"   # "monitor", "sample", "total"
   monitor_volume_l: 605.0         # Radon monitor internal volume (liters)
   ui_volume_l: 4196.0             # UI volume (liters), for provenance only
-  match_window_hours: 2.0          # ±1 h around assay time (noon)
+  match_window_hours: 2.0          # ±2 h half-width around assay match time
+  default_match_time: "18:00"     # efficiency fits use post-spike data (6pm)
   use_unclipped_baseline: true
   skid_background:
     label: "Background Assay - Titan Trap"
     date: "2024-08-08"
-  # match_window_hours set above (1.0 h)
   # Assays to exclude from the aggregate (still plotted as open markers).
   # 09/12: wrong LC selected, huge uncertainty, useless measurement
   # 11/01: spike injection day — monitor sees spike, assay is pre-spike
   # 11/19: background assay — huge uncertainties
+  per_assay_overrides:
+    "2024-09-12":
+      match_time: "05:30"        # pre-spike: center early, ±5.5h → 00:00-11:00
+      match_window_hours: 5.5    # wide window, capped before noon spike
+    "2024-11-01":
+      match_time: "05:30"        # pre-spike: center early, ±5.5h → 00:00-11:00
+      match_window_hours: 5.5    # wide window, capped before noon spike
+    "2024-12-05":
+      lc_background_cpd: 16.5    # corrected lucas cell background
   exclude_from_aggregate:
-    - "2024-09-12"
-    - "2024-11-01"
     - "2024-11-19"
   # Detector emanation baseline: measured between spike periods when
   # monitor runs standalone with no external radon source.  This rate
