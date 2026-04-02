@@ -3699,6 +3699,13 @@ def main(argv=None):
                                 "Injecting missing isotope %s at nominal ADC=%.0f",
                                 _fiso, float(_fadc),
                             )
+                # ── Exclude isotopes from spectral fit ──────────────
+                _exclude_isotopes = spectral_cfg.get("exclude_isotopes", [])
+                for _eiso in _exclude_isotopes:
+                    if _eiso in adc_peaks:
+                        del adc_peaks[_eiso]
+                        logger.info("Excluding isotope %s from spectral fit (exclude_isotopes)", _eiso)
+
                 # Build priors for the unbinned spectrum fit.
                 priors_spec = {}
                 sigma_prior_source = spectral_cfg.get("sigma_e_prior_source", spectral_cfg.get("sigma_E_prior_source"))

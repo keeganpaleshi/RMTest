@@ -410,6 +410,24 @@ def build_spectral_intensity(
                 )
                 peak_density += f_shelf * shelf_win(E)
 
+            # Beta coincidence: high-energy tail from simultaneous detection
+            # of alpha + beta (e.g. Bi-214 beta + Po-214 alpha).  One-sided
+            # exponential above the peak, normalized over [E_lo, E_hi].
+            # f_beta is an *additional* fraction (not subtracted from f_core).
+            f_beta = float(params.get(f"f_beta_{iso}", 0.0))
+            if f_beta > 0.0:
+                lam_beta = max(float(params.get(f"lambda_beta_{iso}", 0.5)), 1e-6)
+                # Analytic normalization: integral of exp(-(E-mu)/lam)/lam
+                # from mu to E_hi = 1 - exp(-(E_hi-mu)/lam)
+                _beta_norm = lam_beta * (1.0 - np.exp(-max(E_hi - mu, 0.0) / lam_beta))
+                if _beta_norm > 1e-30:
+                    beta_pdf = np.where(
+                        E >= mu,
+                        np.exp(-(E - mu) / lam_beta) / _beta_norm,
+                        0.0,
+                    )
+                    lam += N * f_beta * beta_pdf
+
             lam += N * peak_density
 
         if background_shape is not None:
@@ -504,6 +522,10 @@ def integral_of_intensity(
         N = float(params.get(f"N_{iso}", params.get(f"S_{iso}", 0.0)))
         if N > 0:
             mu_signal += N
+            # Beta coincidence adds extra counts (not subtracted from core)
+            f_beta = float(params.get(f"f_beta_{iso}", 0.0))
+            if f_beta > 0.0:
+                mu_signal += N * f_beta
 
     _bkg_model_lower = str(background_model).lower() if background_model else ""
     if _bkg_model_lower in ("loglin_unit", "sigmoid_unit", "exp_unit", "double_logit_unit"):

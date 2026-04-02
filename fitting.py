@@ -900,6 +900,19 @@ def fit_spectrum(
             if halo_tau_key in priors and not _uses_shared("tau_halo", iso):
                 param_index[halo_tau_key] = len(param_order)
                 param_order.append(halo_tau_key)
+        # Beta coincidence: high-energy tail from alpha+beta pile-up
+        # Enabled per-isotope when f_beta_{iso}_prior is in spectral_fit config
+        _fb_prior_key = f"f_beta_{iso}_prior"
+        if sp_cfg.get(_fb_prior_key) is not None:
+            _fb_prior = sp_cfg[_fb_prior_key]
+            priors[f"f_beta_{iso}"] = (float(_fb_prior[0]), float(_fb_prior[1]))
+            param_index[f"f_beta_{iso}"] = len(param_order)
+            param_order.append(f"f_beta_{iso}")
+            _lb_prior_key = f"lambda_beta_{iso}_prior"
+            _lb_prior = sp_cfg.get(_lb_prior_key, [0.5, 0.5])
+            priors[f"lambda_beta_{iso}"] = (float(_lb_prior[0]), float(_lb_prior[1]))
+            param_index[f"lambda_beta_{iso}"] = len(param_order)
+            param_order.append(f"lambda_beta_{iso}")
     # Add shared shape parameters (one entry per shared type)
     for shared_name in shared_participants:
         key = f"{shared_name}_shared"
@@ -1095,6 +1108,12 @@ def fit_spectrum(
             lo = max(lo, 0.0)
             _f_halo_cap = float(flags.get("max_f_halo", 0.40))
             hi = min(hi, _f_halo_cap)  # halo fraction cap (configurable)
+        if name.startswith("f_beta_"):
+            lo = max(lo, 0.0)
+            hi = min(hi, 0.30)   # beta coincidence fraction cap
+        if name.startswith("lambda_beta_"):
+            lo = max(lo, 0.05)   # minimum 50 keV decay length
+            hi = min(hi, 5.0)    # maximum 5 MeV decay length
         # Tau linear model: tau_0 must be positive; tau_slope is free
         if name == "tau_0":
             lo = max(lo, _EMG_FLOOR)
@@ -1303,6 +1322,10 @@ def fit_spectrum(
             halo_tau_key = f"tau_halo_{iso}"
             if halo_tau_key in raw_map:
                 params_dict[halo_tau_key] = float(raw_map[halo_tau_key])
+            # Beta coincidence parameters
+            for _bk in (f"f_beta_{iso}", f"lambda_beta_{iso}"):
+                if _bk in raw_map:
+                    params_dict[_bk] = float(raw_map[_bk])
         # Broadcast shared shape parameters → per-isotope keys
         for shared_name, participants in shared_participants.items():
             shared_key = f"{shared_name}_shared"

@@ -17,7 +17,7 @@ analysis:
   run_periods: []
   radon_interval: null
   ambient_concentration: null
-  background_model: loglin_unit
+  background_model: exp_unit
 columns:
   timestamp: timestamps
   adc: adc_channels
@@ -90,7 +90,7 @@ spectral_fit:
   adc_bin_width: 10
   # ADC Differential Non-Linearity correction
   dnl_correction:
-    enabled: true
+    enabled: false
     iterations: 1
     min_counts: 5
     max_correction: 0.5
@@ -98,7 +98,7 @@ spectral_fit:
     # Cross-validation: split data by time, estimate DNL independently on
     # each half, cross-apply to test whether DNL is real hardware or model
     # misfit absorption.  Runs 6 fits (slow) but only when enabled.
-    crossval: true
+    crossval: false
     # Path to an external DNL map (.npy file) from a flat-field or pulser
     # calibration.  When set, the external map is used as a fixed per-bin
     # width correction (operator_class: external_fixed), bypassing
@@ -129,11 +129,11 @@ spectral_fit:
   # replaces per-isotope entries for all participating isotopes.
   shared_shape_params:
     tau: false
-    f_shelf: false
-    sigma_shelf: false
-    f_halo: false
-    sigma_halo: false
-    tau_halo: false
+    f_shelf: true
+    sigma_shelf: true
+    f_halo: true
+    sigma_halo: true
+    tau_halo: true
   # Shared priors (used when the corresponding shared_shape_params flag is true)
   tau_shared_prior: [0.08, 0.08]
   f_shelf_shared_prior: [0.15, 0.15]
@@ -141,12 +141,14 @@ spectral_fit:
   f_halo_shared_prior: [0.07, 0.10]
   sigma_halo_shared_prior: [0.24, 0.12]
   tau_halo_shared_prior: [0.05, 0.05]
+  exclude_isotopes:
+    - Po216
   energy_bin_width: 0.0130
   fd_hist_bins: 400
   mu_sigma: 0.005
   fit_energy_range:
-  - 1.7
-  - 9.5
+  - 2.0
+  - 13.0
   amp_prior_scale: 5.0
   bkg_mode: "manual"
   clip_floor: 1e-300
@@ -154,8 +156,8 @@ spectral_fit:
     - 0.0
     - 4.0
   b1_prior:
-    - 0.0
-    - 4.0
+    - 1.0
+    - 2.0
   b2_prior:
     - 0.0
     - 0.5
@@ -191,7 +193,7 @@ spectral_fit:
   tau_po212_prior_sigma: 0.05
   # Skip MINOS profile likelihood errors (use Hesse diagonal instead).
   # Much faster (~3-5x) -- adequate for parameter scans.
-  skip_minos: false
+  skip_minos: true
   spectral_peak_tolerance_mev: 0.2
   sigma_e_prior_source: "calibration"
   sigma_e_prior_sigma: 0.015
@@ -298,6 +300,23 @@ spectral_fit:
     Po212:
       - 0.13
       - 0.05
+  # Beta coincidence: high-energy tail from alpha+beta pile-up.
+  # Only Po214 has significant beta coincidence (Bi-214 beta endpoint ~3.27 MeV).
+  # f_beta = additional fraction of events with simultaneous beta detection.
+  # lambda_beta = exponential decay length of the high-energy tail (MeV).
+  # Right-side asymmetry: sigma_right = sigma * (1 + asym(E))
+  # Quadratic energy model: asym(E) = a0 + a1*(E-Eref) + a2*(E-Eref)^2
+  asym_energy_model: quadratic
+  asym_energy_model_E_ref: 7.0
+  asym_0_prior: [0.25, 0.15]
+  asym_1_prior: [0.02, 0.05]
+  asym_2_prior: [0.0, 0.03]
+  # Shared right-side exponential tail (all isotopes)
+  f_tail_right_prior: [0.05, 0.05]
+  tau_tail_right_prior: [0.15, 0.1]
+  # Beta coincidence: high-energy tail from alpha+beta pile-up (Po214 only)
+  f_beta_Po214_prior: [0.02, 0.03]
+  lambda_beta_Po214_prior: [0.8, 0.5]
   max_tau_ratio: 2.0
   float_sigma_e: false  # per-isotope sigmas float instead
   peak_search_prominence: 30
@@ -307,7 +326,7 @@ spectral_fit:
   refit_aic_threshold: 2.0
   use_plot_bins_for_fit: true
   unbinned_likelihood: false
-  split_half_validation: true
+  split_half_validation: false
   # D2: Held-out test for shelf/halo contribution.  Fits full and
   # reduced (core+EMG only) models on even-indexed events, evaluates
   # on odd-indexed events to test whether the extra low-energy
@@ -326,44 +345,25 @@ spectral_fit:
     f_prior:
       - 0.0
       - 0.01
-    # Po210: fix all shape params except sigma_Po210 (split-half shows
-    # f_shelf, sigma_shelf, sigma_halo, tau_halo all unstable between halves)
-    fix_tau_Po210: true
-    fix_f_halo_Po210: true
-    fix_f_shelf_Po210: true
-    fix_sigma_shelf_Po210: true
-    fix_sigma_halo_Po210: true
-    fix_tau_halo_Po210: true
-    # tau_Po218: fixed at physics-interpolated value.
-    fix_tau_Po218: true
-    # Po214: fix all shape params except sigma_Po214 (split-half shows
-    # sigma_halo unstable between halves; shelf/halo fractions already fixed)
+    # Tau: floating for all isotopes (shared shape handles shelf/halo)
+    fix_tau_Po210: false
+    fix_tau_Po218: false
     fix_tau_Po214: true
-    fix_tau_halo_Po214: true
-    fix_f_shelf_Po214: true
-    fix_f_halo_Po214: true
-    fix_sigma_shelf_Po214: true
-    fix_sigma_halo_Po214: true
-    # Po218: unfix shape params — PIN photodiode physics requires
-    # similar dead-layer shapes across isotopes. Priors now set to
-    # match Po210/Po214 data-driven values.
-    fix_f_shelf_Po218: true
-    fix_sigma_shelf_Po218: true
-    fix_f_halo_Po218: true
-    fix_sigma_halo_Po218: true
-    fix_tau_halo_Po218: true
-    # Fix thoron chain (Po216, Po212) shape params: low statistics,
-    # sigma/mu cannot be well constrained. Fix at physical priors.
+    fix_tau_Po212: false
+    # Shelf fractions: floating (shared across isotopes)
+    fix_f_shelf_Po210: false
+    fix_f_shelf_Po218: false
+    fix_f_shelf_Po214: false
+    fix_f_shelf_Po212: false
+    # Shelf widths: floating (shared across isotopes)
+    fix_sigma_shelf_Po210: false
+    fix_sigma_shelf_Po218: false
+    fix_sigma_shelf_Po214: false
+    fix_sigma_shelf_Po212: false
+    # Fix thoron chain sigma (low statistics)
     fix_sigma_Po212: true
     fix_sigma_Po216: true
-    fix_tau_Po212: true
-    fix_f_shelf_Po212: true
-    fix_f_halo_Po212: true
-    fix_sigma_shelf_Po212: true
-    fix_sigma_halo_Po212: true
-    fix_tau_halo_Po212: true
-    # Po216: fix ALL shape params (very low statistics, halo/shelf disabled)
-    fix_tau_Po216: true
+    # Po216: fix ALL shape params (excluded from fit, but kept for safety)
     fix_f_shelf_Po216: true
     fix_f_halo_Po216: true
     fix_sigma_shelf_Po216: true
@@ -441,7 +441,7 @@ systematics:
 gas_dissolution:
   # Henry's law constants (dimensionless air/liquid partition coefficients).
   # K_H = C_air / C_liquid, so C_liquid = C_air / K_H.
-  radon_henry_constant: 11.0
+  radon_henry_constant: 9.12  # uncertainty +/- 0.48 — needs further validation before relying on this value too much
   argon_henry_constant: 1.0        # placeholder
   argon_atmospheric_fraction: 0.00934  # volume fraction of Ar in dry air
 radon_inference:
