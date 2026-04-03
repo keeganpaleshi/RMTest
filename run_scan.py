@@ -549,6 +549,199 @@ _define_shape_scan("I18", "Free tau(per-iso)+shelf(shared)+halo(shared)",
                    [("tail", "per_isotope"), ("shelf", "shared"), ("halo", "shared")])
 
 
+# ══════════════════════════════════════════════════════════════════
+# J-series: Comprehensive binning × DNL sweep with current model
+# ══════════════════════════════════════════════════════════════════
+# Preserves the base config's model (tau linear, asym quadratic, beta
+# coincidence, shared shelf/halo, right tail, Unknown1, Po216 passive).
+# Only varies binning and DNL settings.  Diagnostics enabled for key runs.
+#
+# Estimated runtime: ~24 hours total
+# ══════════════════════════════════════════════════════════════════
+
+def _define_j_scan(scan_id, description, adc_bin_width,
+                   dnl_mode="none", crossval=True,
+                   dnl_overrides=None, config_overrides=None,
+                   enable_diagnostics=False):
+    """Define a J-series scan that preserves the base config model."""
+    SCANS[scan_id] = {
+        "description": description,
+        "fix_flags": {},
+        "shared_flags": {},
+        "preserve_shared": True,      # don't reset shared shape params
+        "adc_bin_width": adc_bin_width,
+        "dnl_mode": dnl_mode,
+        "crossval": crossval,
+        "dnl_overrides": dnl_overrides or {},
+        "config_overrides": config_overrides or {},
+        "enable_diagnostics": True,   # always full diagnostics for J-series
+    }
+
+
+# ── J1-J7: Binning sweep, no DNL ─────────────────────────────────
+# Establishes baseline chi2/ndf vs bin width. Wider bins average out
+# DNL but lose spectral resolution; narrow bins expose DNL artifacts.
+
+_define_j_scan("J1",  "bin1 no-DNL",  adc_bin_width=1)
+_define_j_scan("J2",  "bin2 no-DNL",  adc_bin_width=2)
+_define_j_scan("J3",  "bin3 no-DNL",  adc_bin_width=3)
+_define_j_scan("J4",  "bin5 no-DNL",  adc_bin_width=5)
+_define_j_scan("J5",  "bin10 no-DNL (baseline)", adc_bin_width=10,
+               enable_diagnostics=True)
+_define_j_scan("J6",  "bin15 no-DNL", adc_bin_width=15)
+_define_j_scan("J7",  "bin20 no-DNL", adc_bin_width=20)
+
+# ── J8-J14: Fourier DNL with crossval at each binning ────────────
+# Tests whether periodic ADC structure improves the fit at each bin width.
+
+_define_j_scan("J8",  "bin1 Fourier DNL (xval)",  adc_bin_width=1,
+               dnl_mode="fourier", crossval=True)
+_define_j_scan("J9",  "bin2 Fourier DNL (xval)",  adc_bin_width=2,
+               dnl_mode="fourier", crossval=True)
+_define_j_scan("J10", "bin3 Fourier DNL (xval)",  adc_bin_width=3,
+               dnl_mode="fourier", crossval=True)
+_define_j_scan("J11", "bin5 Fourier DNL (xval)",  adc_bin_width=5,
+               dnl_mode="fourier", crossval=True)
+_define_j_scan("J12", "bin10 Fourier DNL (xval)", adc_bin_width=10,
+               dnl_mode="fourier", crossval=True)
+_define_j_scan("J13", "bin15 Fourier DNL (xval)", adc_bin_width=15,
+               dnl_mode="fourier", crossval=True)
+_define_j_scan("J14", "bin20 Fourier DNL (xval)", adc_bin_width=20,
+               dnl_mode="fourier", crossval=True)
+
+# ── J15-J22: Full-resolution Fourier + rebin ─────────────────────
+# Two-stage: estimate DNL at bin_width=1, apply, rebin to coarser.
+# This is the most physically motivated approach.
+
+_define_j_scan("J15", "FullRes Fourier + rebin 3 (xval)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 3})
+_define_j_scan("J16", "FullRes Fourier + rebin 5 (xval)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 5})
+_define_j_scan("J17", "FullRes Fourier + rebin 10 (xval)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 10},
+               enable_diagnostics=True)
+_define_j_scan("J18", "FullRes Fourier + rebin 15 (xval)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 15})
+_define_j_scan("J19", "FullRes Fourier + rebin 20 (xval)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 20})
+_define_j_scan("J20", "FullRes Fourier + FD rebin (xval)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": "fd"})
+
+# ── J21-J24: Full-res Fourier + rebin, period subsets ────────────
+# Which Fourier harmonics matter? Auto-select via per-period crossval.
+
+_define_j_scan("J21", "FullRes Fourier [256,512] + rb10 (xval)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [256, 512]})
+_define_j_scan("J22", "FullRes Fourier [128,256,512] + rb10 (xval)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [128, 256, 512]})
+_define_j_scan("J23", "FullRes Fourier [64..512] + rb10 (xval)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [64, 128, 256, 512]})
+_define_j_scan("J24", "FullRes AUTO-SELECT all periods + rb10",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [4, 8, 16, 32, 64, 128, 256, 512]},
+               enable_diagnostics=True)
+
+# ── J25-J28: Three-stage binning (full-res → shape → physics) ────
+
+_define_j_scan("J25", "3-stage rb3/rb15 FullRes Fourier (xval)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 3},
+               config_overrides={"spectral_fit": {
+                   "three_stage_binning": {"enabled": True,
+                                           "stage2_rebin": 3,
+                                           "stage3_rebin": 15}}})
+_define_j_scan("J26", "3-stage rb5/rb15 FullRes Fourier (xval)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 5},
+               config_overrides={"spectral_fit": {
+                   "three_stage_binning": {"enabled": True,
+                                           "stage2_rebin": 5,
+                                           "stage3_rebin": 15}}})
+_define_j_scan("J27", "3-stage rb3/rb10 FullRes Fourier (xval)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 3},
+               config_overrides={"spectral_fit": {
+                   "three_stage_binning": {"enabled": True,
+                                           "stage2_rebin": 3,
+                                           "stage3_rebin": 10}}})
+_define_j_scan("J28", "3-stage rb5/rb20 FullRes Fourier (xval)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 5},
+               config_overrides={"spectral_fit": {
+                   "three_stage_binning": {"enabled": True,
+                                           "stage2_rebin": 5,
+                                           "stage3_rebin": 20}}})
+
+# ── J29-J30: Extended Fourier periods (non-power-of-2) ───────────
+
+_define_j_scan("J29", "FullRes extended periods + rb10 (xval)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [
+                                  4, 6, 8, 10, 12, 16, 20, 24, 32,
+                                  40, 48, 64, 96, 128, 192, 256, 384, 512]})
+_define_j_scan("J30", "FullRes extended periods + rb5 (xval)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 5,
+                              "fourier_periods_codes": [
+                                  4, 6, 8, 10, 12, 16, 20, 24, 32,
+                                  40, 48, 64, 96, 128, 192, 256, 384, 512]})
+
+# ── J31-J34: Calibration polynomial sweep ────────────────────────
+# Does nonlinear calibration help at the current model?
+
+_define_j_scan("J31", "bin10 Quadratic cal, no DNL", adc_bin_width=10,
+               config_overrides={"calibration": {"use_quadratic": True}})
+_define_j_scan("J32", "bin10 Cubic cal, no DNL", adc_bin_width=10,
+               config_overrides={"calibration": {"use_quadratic": "cubic"}})
+_define_j_scan("J33", "FullRes Fourier + rb10 Quad cal (xval)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [4, 8, 16, 32, 64, 128, 256, 512]},
+               config_overrides={"calibration": {"use_quadratic": True}},
+               enable_diagnostics=True)
+_define_j_scan("J34", "FullRes Fourier + rb10 Cubic cal (xval)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [4, 8, 16, 32, 64, 128, 256, 512]},
+               config_overrides={"calibration": {"use_quadratic": "cubic"}})
+
+# ── J35-J36: DNL iteration sweep ─────────────────────────────────
+
+_define_j_scan("J35", "FullRes Fourier 2iter + rb10 (xval)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 10, "iterations": 2,
+                              "fourier_periods_codes": [4, 8, 16, 32, 64, 128, 256, 512]})
+_define_j_scan("J36", "FullRes Fourier 3iter + rb10 (xval)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 10, "iterations": 3,
+                              "fourier_periods_codes": [4, 8, 16, 32, 64, 128, 256, 512]})
+
+# ── J37-J38: Diagnostics runs on best candidates ─────────────────
+# Full diagnostics (MINOS + split-half) on the most promising configs.
+
+_define_j_scan("J37", "bin10 no-DNL FULL DIAG", adc_bin_width=10,
+               enable_diagnostics=True)
+_define_j_scan("J38", "FullRes Fourier + rb5 FULL DIAG",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 5,
+                              "fourier_periods_codes": [4, 8, 16, 32, 64, 128, 256, 512]},
+               enable_diagnostics=True)
+
+
 def _load_base_config(config_path):
     """Load and return base config as dict."""
     with open(config_path, "r") as f:
@@ -596,24 +789,26 @@ def _apply_scan_overrides(base_cfg, scan_def):
         dnl[k] = v
 
     # Apply shared shape param flags
-    shared = sp.setdefault("shared_shape_params", {})
-    # Reset all to False first
-    for p in ["tau", "f_shelf", "sigma_shelf", "f_halo", "sigma_halo", "tau_halo"]:
-        shared[p] = False
-    # Then set scan-specific flags
-    for p, val in scan_def["shared_flags"].items():
-        shared[p] = val
+    if not scan_def.get("preserve_shared", False):
+        shared = sp.setdefault("shared_shape_params", {})
+        # Reset all to False first
+        for p in ["tau", "f_shelf", "sigma_shelf", "f_halo", "sigma_halo", "tau_halo"]:
+            shared[p] = False
+        # Then set scan-specific flags
+        for p, val in scan_def["shared_flags"].items():
+            shared[p] = val
 
     # Apply fix flag overrides (unfix specific per-isotope params)
     for flag_name, flag_val in scan_def["fix_flags"].items():
         flags[flag_name] = flag_val
 
-    # Disable expensive extra-fit diagnostics for scans (split-half = ~7
-    # extra fits, model comparison = ~5 extra fits).  These are for final
-    # model validation, not parameter exploration.
-    sp["split_half_validation"] = False
-    # Skip MINOS profile likelihood for scans (3-5x faster, Hesse is adequate)
-    sp["skip_minos"] = True
+    # Disable expensive extra-fit diagnostics unless scan requests them
+    if not scan_def.get("enable_diagnostics", False):
+        sp["split_half_validation"] = False
+        sp["skip_minos"] = True
+    else:
+        sp["split_half_validation"] = True
+        sp["skip_minos"] = False
 
     # Apply arbitrary top-level config overrides (calibration, analysis, etc.)
     for section_key, overrides in scan_def.get("config_overrides", {}).items():

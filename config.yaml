@@ -127,6 +127,10 @@ spectral_fit:
     stage3_rebin: 15      # coarser bins for physics parameters
   # Shared shape parameters: when true, a single shared parameter
   # replaces per-isotope entries for all participating isotopes.
+  tau_energy_model: linear
+  tau_energy_model_E_ref: 7.0
+  tau_0_prior: [0.08, 0.08]
+  tau_slope_prior: [0.01, 0.02]
   shared_shape_params:
     tau: false
     f_shelf: true
@@ -141,14 +145,28 @@ spectral_fit:
   f_halo_shared_prior: [0.07, 0.10]
   sigma_halo_shared_prior: [0.24, 0.12]
   tau_halo_shared_prior: [0.05, 0.05]
-  exclude_isotopes:
-    - Po216
+  shared_shape_passive: [Unknown1, Po216]
+  exclude_isotopes: []
   energy_bin_width: 0.0130
   fd_hist_bins: 400
   mu_sigma: 0.005
+  extra_peaks:
+    Unknown1:
+      energy: 15.8
+      sigma: [0.5, 0.1]
+      amplitude: [500, 300]
+      mu_sigma: 0.3
+      mu_bounds: [13.0, 19.0]
+      use_emg: true
+      tau: [0.01, 0.01]
+      use_shelf: true
+      f_shelf: [0.02, 0.02]
+      sigma_shelf: [0.1, 0.05]
+      fix:
+        sigma: true
   fit_energy_range:
-  - 2.0
-  - 13.0
+  - 1.0
+  - 19.0
   amp_prior_scale: 5.0
   bkg_mode: "manual"
   clip_floor: 1e-300
@@ -316,7 +334,7 @@ spectral_fit:
   tau_tail_right_prior: [0.15, 0.1]
   # Beta coincidence: high-energy tail from alpha+beta pile-up (Po214 only)
   f_beta_Po214_prior: [0.02, 0.03]
-  lambda_beta_Po214_prior: [0.8, 0.5]
+  lambda_beta_Po214_prior: [0.15, 0.05]
   max_tau_ratio: 2.0
   float_sigma_e: false  # per-isotope sigmas float instead
   peak_search_prominence: 30
@@ -363,12 +381,12 @@ spectral_fit:
     # Fix thoron chain sigma (low statistics)
     fix_sigma_Po212: true
     fix_sigma_Po216: true
-    # Po216: fix ALL shape params (excluded from fit, but kept for safety)
-    fix_f_shelf_Po216: true
-    fix_f_halo_Po216: true
-    fix_sigma_shelf_Po216: true
-    fix_sigma_halo_Po216: true
-    fix_tau_halo_Po216: true
+    # Po216: uses shared_shape_passive — inherits shared shape params
+    fix_f_shelf_Po216: false
+    fix_f_halo_Po216: false
+    fix_sigma_shelf_Po216: false
+    fix_sigma_halo_Po216: false
+    fix_tau_halo_Po216: false
     # Fix b0: redundant in loglin_unit model (cancels in normalization)
     fix_b0: true
     # b2/b3: large relative errors (200-300%) but removing them degrades
@@ -382,6 +400,9 @@ spectral_fit:
       S_Po212:
         - 3000
         - 5000
+      S_Po216:
+        - 1000
+        - 2000
   mu_bounds:
     Po210:
       - 5.20

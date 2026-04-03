@@ -4527,6 +4527,7 @@ def main(argv=None):
                             "bounds": fit_kwargs.get("bounds"),
                             "unbinned": fit_kwargs.get("unbinned", False),
                             "strict": False,
+                            "skip_minos": True,  # Hesse errors sufficient for z-scores
                         }
                         _fit_a = fit_spectrum(_E_a, **_sh_kwargs)
                         _fit_b = fit_spectrum(_E_b, **_sh_kwargs)
@@ -4650,6 +4651,7 @@ def main(argv=None):
                                     bounds=fit_kwargs.get("bounds"),
                                     unbinned=fit_kwargs.get("unbinned", False),
                                     strict=False,
+                                    skip_minos=True,  # only need NLL/AIC
                                 )
                                 _rp = (
                                     _red_result.params
@@ -4693,6 +4695,7 @@ def main(argv=None):
                                 bounds=fit_kwargs.get("bounds"),
                                 unbinned=fit_kwargs.get("unbinned", False),
                                 strict=False,
+                                skip_minos=True,  # only need NLL/AIC
                             )
                             _mp = (
                                 _min_result.params
