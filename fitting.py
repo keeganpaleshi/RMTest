@@ -792,28 +792,74 @@ def fit_spectrum(
     # replaces per-isotope entries for all participating isotopes.
     # The broadcast from shared → per-isotope happens in _physical_params.
     shared_participants: dict[str, list[str]] = {}
-    # --- Tau linear energy model ---
-    # When tau_energy_model: "linear", tau for each alpha peak is computed as:
-    #   tau(E) = tau_0 + tau_slope * (E - E_ref)
-    # This replaces both per-isotope tau and shared tau for standard alpha peaks.
-    # Extra peaks (e.g. Unknown1) keep their own independent tau.
+    # --- Linear energy models ---
+    # When <param>_energy_model: "linear", the parameter for each alpha peak
+    # is computed as:  param(E) = param_0 + param_slope * (E - E_ref)
+    # This replaces both per-isotope and shared versions for standard alpha peaks.
+    # Extra peaks (e.g. Unknown1) keep their own independent values.
+    # Supported: tau, f_shelf, sigma_shelf, f_halo, sigma_halo, tau_halo
     _tau_linear_model = False
     _tau_linear_E_ref = 7.0
     _tau_linear_participants: list[str] = []
+    # Generic linear energy models for shelf/halo shape parameters
+    _linear_energy_models: dict[str, dict] = {}  # key: param name → {E_ref, participants}
+    # Physics-motivated scaling models (e.g. Rutherford 1/E² for f_halo)
+    _scaling_energy_models: dict[str, dict] = {}  # key: param name → {E_ref, participants, power}
+    _shared_passive_isos: set[str] = set()
+    _extra_peak_names: set[str] = set()
     if cfg is not None:
         _shared_cfg = cfg.get("spectral_fit", {}).get("shared_shape_params", {})
         sp_cfg = cfg.get("spectral_fit", {})
-        # Extra peaks (e.g. Unknown1) must NOT participate in shared shape params —
-        # they have different physics from the standard alpha peaks.
+        # Passive recipients: receive shared values but don't influence them.
+        # Useful for weak peaks (Po216) or extra peaks (Bi212) that should
+        # inherit detector-response params without distorting the shared fit.
+        _shared_passive_isos: set[str] = set(
+            sp_cfg.get("shared_shape_passive", [])
+        )
+        # Extra peaks that are NOT in shared_shape_passive have independent shapes.
+        # Peaks in shared_shape_passive (e.g. Bi212) participate in shared models.
         _extra_peak_names = set(
             sp_cfg.get("extra_peaks", {}).keys() if isinstance(sp_cfg.get("extra_peaks"), dict) else []
         )
+        # Remove passive-shared peaks from extra exclusion — they should
+        # participate in energy models (tau linear) and shared shapes.
+        _extra_peak_names -= _shared_passive_isos
         # Check for tau linear energy model
         _tau_em = sp_cfg.get("tau_energy_model", "").lower()
         if _tau_em == "linear":
             _tau_linear_model = True
             _tau_linear_E_ref = float(sp_cfg.get("tau_energy_model_E_ref", 7.0))
             _tau_linear_participants = [iso for iso in iso_list if use_emg.get(iso, False) and iso not in _extra_peak_names]
+        # Check for shelf/halo linear energy models
+        _shape_energy_model_defs = {
+            "f_shelf":     {"cfg_key": "f_shelf_energy_model",     "eligibility": lambda iso: use_shelf.get(iso, False)},
+            "sigma_shelf": {"cfg_key": "sigma_shelf_energy_model", "eligibility": lambda iso: use_shelf.get(iso, False)},
+            "f_halo":      {"cfg_key": "f_halo_energy_model",      "eligibility": lambda iso: use_halo.get(iso, False)},
+            "sigma_halo":  {"cfg_key": "sigma_halo_energy_model",  "eligibility": lambda iso: use_halo.get(iso, False)},
+            "tau_halo":    {"cfg_key": "tau_halo_energy_model",     "eligibility": lambda iso: use_halo.get(iso, False)},
+        }
+        for pname, pdef in _shape_energy_model_defs.items():
+            _em_val = sp_cfg.get(pdef["cfg_key"], "").lower()
+            if _em_val == "linear":
+                _eref_key = f"{pname}_energy_model_E_ref"
+                _eref = float(sp_cfg.get(_eref_key, 7.0))
+                _parts = [iso for iso in iso_list
+                          if pdef["eligibility"](iso) and iso not in _extra_peak_names]
+                if _parts:
+                    _linear_energy_models[pname] = {"E_ref": _eref, "participants": _parts}
+            elif _em_val == "rutherford":
+                # Physics: Rutherford scattering σ ∝ 1/E²
+                # param(E) = param_ref × (E_ref / E)^power
+                # Single free parameter: param_ref (the value at E_ref)
+                _eref_key = f"{pname}_energy_model_E_ref"
+                _eref = float(sp_cfg.get(_eref_key, 7.0))
+                _power = float(sp_cfg.get(f"{pname}_rutherford_power", 2.0))
+                _parts = [iso for iso in iso_list
+                          if pdef["eligibility"](iso) and iso not in _extra_peak_names]
+                if _parts:
+                    _scaling_energy_models[pname] = {
+                        "E_ref": _eref, "participants": _parts, "power": _power
+                    }
         _shared_mappings = {
             "tau": lambda iso: use_emg.get(iso, False),
             "f_shelf": lambda iso: use_shelf.get(iso, False),
@@ -822,15 +868,13 @@ def fit_spectrum(
             "sigma_halo": lambda iso: use_halo.get(iso, False),
             "tau_halo": lambda iso: use_halo.get(iso, False),
         }
-        # Passive recipients: receive shared values but don't influence them.
-        # Useful for weak peaks (Po216) or extra peaks (Unknown1) that should
-        # inherit detector-response params without distorting the shared fit.
-        _shared_passive_isos: set[str] = set(
-            sp_cfg.get("shared_shape_passive", [])
-        )
         for ptype, eligibility_fn in _shared_mappings.items():
-            # Skip tau sharing if using linear energy model instead
+            # Skip sharing if using an energy model instead
             if ptype == "tau" and _tau_linear_model:
+                continue
+            if ptype in _linear_energy_models:
+                continue
+            if ptype in _scaling_energy_models:
                 continue
             if _shared_cfg.get(ptype, False):
                 participants = [
@@ -857,6 +901,9 @@ def fit_spectrum(
             return True
         return False
 
+    # Amplitude links: isotopes whose S is computed from a reference × ratio
+    _amplitude_links: dict[str, dict] = flags.get("amplitude_links", {})
+
     for iso in iso_list:
         param_index[f"mu_{iso}"] = len(param_order)
         param_order.append(f"mu_{iso}")
@@ -864,8 +911,12 @@ def fit_spectrum(
         if sigma_key in priors:
             param_index[sigma_key] = len(param_order)
             param_order.append(sigma_key)
-        param_index[f"S_{iso}"] = len(param_order)
-        param_order.append(f"S_{iso}")
+        # Skip S_ as free param for amplitude-linked isotopes
+        if iso in _amplitude_links:
+            pass  # S computed in _physical_params from reference
+        else:
+            param_index[f"S_{iso}"] = len(param_order)
+            param_order.append(f"S_{iso}")
         # tau: skip per-isotope if shared OR if using linear energy model
         _iso_in_tau_linear = _tau_linear_model and iso in _tau_linear_participants
         if use_emg[iso] and not _iso_in_tau_linear and not _uses_shared("tau", iso):
@@ -873,31 +924,41 @@ def fit_spectrum(
             param_order.append(f"tau_{iso}")
         # Low-energy shelf fraction
         if use_shelf.get(iso, False):
-            # f_shelf: skip per-isotope if shared or passive
-            if not _uses_shared("f_shelf", iso):
+            # f_shelf: skip per-isotope if shared, passive, or energy model
+            _in_f_shelf_linear = "f_shelf" in _linear_energy_models and iso in _linear_energy_models["f_shelf"]["participants"]
+            _in_f_shelf_scaling = "f_shelf" in _scaling_energy_models and iso in _scaling_energy_models["f_shelf"]["participants"]
+            if not _uses_shared("f_shelf", iso) and not _in_f_shelf_linear and not _in_f_shelf_scaling:
                 shelf_key = f"f_shelf_{iso}"
                 param_index[shelf_key] = len(param_order)
                 param_order.append(shelf_key)
-            # sigma_shelf: skip per-isotope if shared or passive
+            # sigma_shelf: skip per-isotope if shared, passive, or energy model
             shelf_sigma_key = f"sigma_shelf_{iso}"
-            if shelf_sigma_key in priors and not _uses_shared("sigma_shelf", iso):
+            _in_sigma_shelf_emodel = ("sigma_shelf" in _linear_energy_models and iso in _linear_energy_models["sigma_shelf"]["participants"]) or \
+                                     ("sigma_shelf" in _scaling_energy_models and iso in _scaling_energy_models["sigma_shelf"]["participants"])
+            if shelf_sigma_key in priors and not _uses_shared("sigma_shelf", iso) and not _in_sigma_shelf_emodel:
                 param_index[shelf_sigma_key] = len(param_order)
                 param_order.append(shelf_sigma_key)
         # Halo (broad) component fraction and width
         if use_halo.get(iso, False):
-            # f_halo: skip per-isotope if shared or passive
-            if not _uses_shared("f_halo", iso):
+            # f_halo: skip per-isotope if shared, passive, or energy model
+            _in_f_halo_emodel = ("f_halo" in _linear_energy_models and iso in _linear_energy_models["f_halo"]["participants"]) or \
+                                ("f_halo" in _scaling_energy_models and iso in _scaling_energy_models["f_halo"]["participants"])
+            if not _uses_shared("f_halo", iso) and not _in_f_halo_emodel:
                 halo_key = f"f_halo_{iso}"
                 param_index[halo_key] = len(param_order)
                 param_order.append(halo_key)
-            # sigma_halo: skip per-isotope if shared or passive
+            # sigma_halo: skip per-isotope if shared, passive, or energy model
             halo_sigma_key = f"sigma_halo_{iso}"
-            if halo_sigma_key in priors and not _uses_shared("sigma_halo", iso):
+            _in_sigma_halo_emodel = ("sigma_halo" in _linear_energy_models and iso in _linear_energy_models["sigma_halo"]["participants"]) or \
+                                    ("sigma_halo" in _scaling_energy_models and iso in _scaling_energy_models["sigma_halo"]["participants"])
+            if halo_sigma_key in priors and not _uses_shared("sigma_halo", iso) and not _in_sigma_halo_emodel:
                 param_index[halo_sigma_key] = len(param_order)
                 param_order.append(halo_sigma_key)
-            # tau_halo: skip per-isotope if shared or passive
+            # tau_halo: skip per-isotope if shared, passive, or energy model
             halo_tau_key = f"tau_halo_{iso}"
-            if halo_tau_key in priors and not _uses_shared("tau_halo", iso):
+            _in_tau_halo_emodel = ("tau_halo" in _linear_energy_models and iso in _linear_energy_models["tau_halo"]["participants"]) or \
+                                  ("tau_halo" in _scaling_energy_models and iso in _scaling_energy_models["tau_halo"]["participants"])
+            if halo_tau_key in priors and not _uses_shared("tau_halo", iso) and not _in_tau_halo_emodel:
                 param_index[halo_tau_key] = len(param_order)
                 param_order.append(halo_tau_key)
         # Beta coincidence: high-energy tail from alpha+beta pile-up
@@ -913,12 +974,143 @@ def fit_spectrum(
             priors[f"lambda_beta_{iso}"] = (float(_lb_prior[0]), float(_lb_prior[1]))
             param_index[f"lambda_beta_{iso}"] = len(param_order)
             param_order.append(f"lambda_beta_{iso}")
+
+    # Shared beta coincidence: single f_beta_shared + lambda_beta_shared
+    # replaces per-isotope params when share_beta: true
+    _beta_isotopes: list[str] = []  # isotopes with beta priors
+    _share_beta = bool(sp_cfg.get("share_beta", False)) if sp_cfg else False
+    if _share_beta:
+        # Collect isotopes that have beta priors, remove per-isotope params
+        for iso in iso_list:
+            if f"f_beta_{iso}" in param_index:
+                _beta_isotopes.append(iso)
+                # Remove per-isotope entries from param_order/index
+                del param_index[f"f_beta_{iso}"]
+                del param_index[f"lambda_beta_{iso}"]
+        # Rebuild param_order without the per-isotope beta keys
+        _beta_keys_to_remove = set()
+        for biso in _beta_isotopes:
+            _beta_keys_to_remove.add(f"f_beta_{biso}")
+            _beta_keys_to_remove.add(f"lambda_beta_{biso}")
+        param_order = [p for p in param_order if p not in _beta_keys_to_remove]
+        # Rebuild param_index from cleaned param_order
+        param_index = {name: idx for idx, name in enumerate(param_order)}
+        # Add shared beta params
+        if _beta_isotopes:
+            _fb_shared_prior = sp_cfg.get("f_beta_shared_prior", [0.02, 0.03])
+            priors["f_beta_shared"] = (float(_fb_shared_prior[0]), float(_fb_shared_prior[1]))
+            param_index["f_beta_shared"] = len(param_order)
+            param_order.append("f_beta_shared")
+            _lb_shared_prior = sp_cfg.get("lambda_beta_shared_prior", [0.15, 0.05])
+            priors["lambda_beta_shared"] = (float(_lb_shared_prior[0]), float(_lb_shared_prior[1]))
+            param_index["lambda_beta_shared"] = len(param_order)
+            param_order.append("lambda_beta_shared")
+
+    # Beta backscatter LET continuum: partial energy deposition from
+    # electrons backscattering out of silicon.  Shared parameter (material
+    # property: backscatter coefficient is ~15-20% for electrons in Si,
+    # roughly energy-independent in the 0.5-3 MeV beta range).
+    # Opt-in: only enabled when f_beta_bs_shared_prior is in config.
+    _use_beta_bs = False
+    if _share_beta and _beta_isotopes:
+        _fbs_prior = sp_cfg.get("f_beta_bs_shared_prior", None)
+        if _fbs_prior is not None:
+            _use_beta_bs = True
+            priors["f_beta_bs_shared"] = (float(_fbs_prior[0]), float(_fbs_prior[1]))
+            param_index["f_beta_bs_shared"] = len(param_order)
+            param_order.append("f_beta_bs_shared")
+
     # Add shared shape parameters (one entry per shared type)
     for shared_name in shared_participants:
         key = f"{shared_name}_shared"
         if key not in param_index:
             param_index[key] = len(param_order)
             param_order.append(key)
+    # Second Gaussian component: broader symmetric Gaussian per peak.
+    # Models oblique-incidence alphas traversing more dead layer → broader σ.
+    # sigma_gauss2_ratio is MULTIPLICATIVE: σ_broad = ratio × σ_core for each peak.
+    # This ensures the broadening scales correctly with energy.
+    _use_gauss2 = False
+    if cfg is not None:
+        _use_gauss2 = bool(sp_cfg.get("use_gauss2", False))
+    _use_gauss2_offset = False
+    if _use_gauss2:
+        _fg2_prior = sp_cfg.get("f_gauss2_prior", [0.15, 0.10])
+        priors["f_gauss2_shared"] = (float(_fg2_prior[0]), float(_fg2_prior[1]))
+        param_index["f_gauss2_shared"] = len(param_order)
+        param_order.append("f_gauss2_shared")
+        _sg2_prior = sp_cfg.get("sigma_gauss2_ratio_prior",
+                                sp_cfg.get("sigma_gauss2_prior", [1.4, 0.5]))
+        priors["sigma_gauss2_ratio_shared"] = (float(_sg2_prior[0]), float(_sg2_prior[1]))
+        param_index["sigma_gauss2_ratio_shared"] = len(param_order)
+        param_order.append("sigma_gauss2_ratio_shared")
+        # delta_E_broad: LEFT offset of the broad component centroid relative
+        # to the primary peak (MeV).  Physically: oblique-incidence alphas
+        # traverse more dead layer → lose more energy → broad component
+        # centroid is shifted LEFT.  Positive delta = shift LEFT (lower E).
+        # Opt-in: only when delta_E_broad_prior is in config.
+        _de_broad_prior = sp_cfg.get("delta_E_broad_prior", None)
+        if _de_broad_prior is not None:
+            _use_gauss2_offset = True
+            priors["delta_E_broad"] = (float(_de_broad_prior[0]), float(_de_broad_prior[1]))
+            param_index["delta_E_broad"] = len(param_order)
+            param_order.append("delta_E_broad")
+    # Skew-normal: smooth asymmetric peak shape.
+    # skew_alpha_shared: skewness parameter (α<0 left-skew, α>0 right-skew)
+    # Replaces the broken bifurcated Gaussian (sigma_asym) with a smooth,
+    # continuous skew distribution.  Shared across isotopes (detector property)
+    # or can use linear energy model.
+    _use_skew = False
+    if cfg is not None:
+        _use_skew = bool(sp_cfg.get("use_skew_normal", False))
+    if _use_skew:
+        _skew_em = sp_cfg.get("skew_energy_model", "").lower()
+        if _skew_em == "linear":
+            # skew_alpha(E) = skew_alpha_0 + skew_alpha_slope × (E - E_ref)
+            _sa0_prior = sp_cfg.get("skew_alpha_0_prior", [0.0, 3.0])
+            priors["skew_alpha_0"] = (float(_sa0_prior[0]), float(_sa0_prior[1]))
+            param_index["skew_alpha_0"] = len(param_order)
+            param_order.append("skew_alpha_0")
+            _sas_prior = sp_cfg.get("skew_alpha_slope_prior", [0.0, 2.0])
+            priors["skew_alpha_slope"] = (float(_sas_prior[0]), float(_sas_prior[1]))
+            param_index["skew_alpha_slope"] = len(param_order)
+            param_order.append("skew_alpha_slope")
+        else:
+            _sa_prior = sp_cfg.get("skew_alpha_prior", [0.0, 3.0])
+            priors["skew_alpha_shared"] = (float(_sa_prior[0]), float(_sa_prior[1]))
+            param_index["skew_alpha_shared"] = len(param_order)
+            param_order.append("skew_alpha_shared")
+    # Double EMG: second left-side tail with different τ.
+    # f_tail2 = fraction of core in the secondary EMG component (shared).
+    # tau2 = decay constant of secondary tail.
+    # Both shared across isotopes: trapping mechanisms are detector properties.
+    # tau2 can optionally use linear energy model like tau.
+    _use_double_emg = False
+    _tau2_linear_model = False
+    if cfg is not None:
+        _use_double_emg = bool(sp_cfg.get("use_double_emg", False))
+    if _use_double_emg:
+        _ft2_prior = sp_cfg.get("f_tail2_prior", [0.10, 0.08])
+        priors["f_tail2_shared"] = (float(_ft2_prior[0]), float(_ft2_prior[1]))
+        param_index["f_tail2_shared"] = len(param_order)
+        param_order.append("f_tail2_shared")
+        # tau2 can be shared (single value) or linear energy model
+        _tau2_em = sp_cfg.get("tau2_energy_model", "").lower()
+        if _tau2_em == "linear":
+            _tau2_linear_model = True
+            _t2_0_prior = sp_cfg.get("tau2_0_prior", [0.30, 0.20])
+            priors["tau2_0"] = (float(_t2_0_prior[0]), float(_t2_0_prior[1]))
+            param_index["tau2_0"] = len(param_order)
+            param_order.append("tau2_0")
+            _t2_slope_prior = sp_cfg.get("tau2_slope_prior", [0.0, 0.05])
+            priors["tau2_slope"] = (float(_t2_slope_prior[0]), float(_t2_slope_prior[1]))
+            param_index["tau2_slope"] = len(param_order)
+            param_order.append("tau2_slope")
+        else:
+            _t2_prior = sp_cfg.get("tau2_shared_prior", [0.30, 0.20])
+            priors["tau2_shared"] = (float(_t2_prior[0]), float(_t2_prior[1]))
+            param_index["tau2_shared"] = len(param_order)
+            param_order.append("tau2_shared")
     # Tau linear energy model parameters: tau_0 and tau_slope
     if _tau_linear_model and _tau_linear_participants:
         sp_cfg_t = cfg.get("spectral_fit", {}) if cfg else {}
@@ -930,6 +1122,44 @@ def fit_spectrum(
         priors["tau_slope"] = (float(_tslope_prior[0]), float(_tslope_prior[1]))
         param_index["tau_slope"] = len(param_order)
         param_order.append("tau_slope")
+    # Generic linear energy model parameters: <param>_0 and <param>_slope
+    # Defaults for intercept priors (reasonable starting points for PIN detector)
+    _linear_model_defaults = {
+        "f_shelf":     {"intercept": [0.08, 0.05], "slope": [0.0, 0.03]},
+        "sigma_shelf": {"intercept": [0.20, 0.15], "slope": [0.0, 0.05]},
+        "f_halo":      {"intercept": [0.10, 0.08], "slope": [0.0, 0.05]},
+        "sigma_halo":  {"intercept": [0.30, 0.20], "slope": [0.0, 0.05]},
+        "tau_halo":    {"intercept": [0.10, 0.08], "slope": [0.0, 0.05]},
+    }
+    for _lm_name, _lm_info in _linear_energy_models.items():
+        _lm_sp = cfg.get("spectral_fit", {}) if cfg else {}
+        _lm_defaults = _linear_model_defaults.get(_lm_name, {"intercept": [0.1, 0.1], "slope": [0.0, 0.05]})
+        # Intercept: <param>_0
+        _lm_0_key = f"{_lm_name}_0"
+        _lm_0_prior = _lm_sp.get(f"{_lm_0_key}_prior", _lm_defaults["intercept"])
+        priors[_lm_0_key] = (float(_lm_0_prior[0]), float(_lm_0_prior[1]))
+        param_index[_lm_0_key] = len(param_order)
+        param_order.append(_lm_0_key)
+        # Slope: <param>_slope
+        _lm_s_key = f"{_lm_name}_slope"
+        _lm_s_prior = _lm_sp.get(f"{_lm_s_key}_prior", _lm_defaults["slope"])
+        priors[_lm_s_key] = (float(_lm_s_prior[0]), float(_lm_s_prior[1]))
+        param_index[_lm_s_key] = len(param_order)
+        param_order.append(_lm_s_key)
+    # Scaling energy model parameters: single <param>_ref value at E_ref
+    # param(E) = param_ref × (E_ref / E)^power
+    _scaling_model_defaults = {
+        "f_halo": [0.10, 0.08],
+        "f_shelf": [0.08, 0.05],
+    }
+    for _sm_name, _sm_info in _scaling_energy_models.items():
+        _sm_sp = cfg.get("spectral_fit", {}) if cfg else {}
+        _sm_ref_key = f"{_sm_name}_ref"
+        _sm_default = _scaling_model_defaults.get(_sm_name, [0.1, 0.1])
+        _sm_ref_prior = _sm_sp.get(f"{_sm_ref_key}_prior", _sm_default)
+        priors[_sm_ref_key] = (float(_sm_ref_prior[0]), float(_sm_ref_prior[1]))
+        param_index[_sm_ref_key] = len(param_order)
+        param_order.append(_sm_ref_key)
     # Right-side broadening: sigma_right = sigma * (1 + sigma_asym).
     # Modes:
     #   1. use_sigma_asym: true  → single shared sigma_asym (constant across peaks)
@@ -1059,12 +1289,35 @@ def fit_spectrum(
     bounds_lo, bounds_hi = [], []
     eps = 1e-12
     sigma0_mean = sigma0_val
+    # Names of all energy model parameters (to exclude from per-isotope bounds)
+    _lm_param_names = {"tau_0", "tau_slope"}
+    for _lm_n in _linear_energy_models:
+        _lm_param_names.add(f"{_lm_n}_0")
+        _lm_param_names.add(f"{_lm_n}_slope")
+    for _sm_n in _scaling_energy_models:
+        _lm_param_names.add(f"{_sm_n}_ref")
+    if _use_gauss2:
+        _lm_param_names.add("f_gauss2_shared")
+        _lm_param_names.add("sigma_gauss2_ratio_shared")
+    if _use_gauss2_offset:
+        _lm_param_names.add("delta_E_broad")
+    if _use_double_emg:
+        _lm_param_names.add("f_tail2_shared")
+        _lm_param_names.add("tau2_shared")
+        _lm_param_names.add("tau2_0")
+        _lm_param_names.add("tau2_slope")
+    if _use_skew:
+        _lm_param_names.add("skew_alpha_shared")
+        _lm_param_names.add("skew_alpha_0")
+        _lm_param_names.add("skew_alpha_slope")
+    if _use_beta_bs:
+        _lm_param_names.add("f_beta_bs_shared")
     for name in param_order:
         mean, sig = p(name, 1.0)
         if name.startswith("S_"):
             mean = float(_softplus_inv(mean))
         # Enforce a strictly positive initial tau to avoid singular EMG tails
-        if name.startswith("tau_") and name not in ("tau_0", "tau_slope"):
+        if name.startswith("tau_") and name not in _lm_param_names:
             mean = _clamp_tau(mean, None, min_tau=_EMG_FLOOR)
         is_fixed = flags.get(f"fix_{name}", False) or abs(sig) < 1e-15
         if is_fixed:
@@ -1079,7 +1332,7 @@ def fit_spectrum(
                 delta = 5 * abs(sig_val)
             lo = mean - delta
             hi = mean + delta
-            if name.startswith("tau_") and name not in ("tau_0", "tau_slope"):
+            if name.startswith("tau_") and name not in _lm_param_names:
                 if np.isfinite(delta):
                     tau_scale = max(abs(mean), abs(sig_val), delta / 5, _EMG_FLOOR)
                     if np.isfinite(tau_scale) and tau_scale > 0:
@@ -1094,26 +1347,32 @@ def fit_spectrum(
                 lo = max(lo, user_lo)
             if user_hi is not None:
                 hi = min(hi, user_hi)
-        if name.startswith("tau_") and name not in ("tau_0", "tau_slope"):
+        if name.startswith("tau_") and name not in _lm_param_names:
             lo = max(lo, _EMG_FLOOR)
             if max_tau_ratio is not None:
                 hi = min(hi, max_tau_ratio * sigma0_mean)
         if name in ("sigma0", "F") or name.startswith("sigma_"):
             lo = max(lo, 0.0)
-        if name.startswith("f_shelf_"):
+        if name.startswith("f_shelf_") and name not in _lm_param_names:
             lo = max(lo, 0.0)
             _f_shelf_cap = float(flags.get("max_f_shelf", 0.30))
             hi = min(hi, _f_shelf_cap)  # shelf fraction cap (configurable)
-        if name.startswith("f_halo_"):
+        if name.startswith("f_halo_") and name not in _lm_param_names:
             lo = max(lo, 0.0)
             _f_halo_cap = float(flags.get("max_f_halo", 0.40))
             hi = min(hi, _f_halo_cap)  # halo fraction cap (configurable)
-        if name.startswith("f_beta_"):
+        if name.startswith("f_beta_") and name != "f_beta_bs_shared":
             lo = max(lo, 0.0)
-            hi = min(hi, 0.30)   # beta coincidence fraction cap
+            hi = min(hi, 0.80)   # beta coincidence fraction cap
+        if name == "f_beta_bs_shared":
+            lo = max(lo, 0.0)
+            hi = min(hi, 0.15)   # backscatter fraction cap (small)
         if name.startswith("lambda_beta_"):
             lo = max(lo, 0.05)   # minimum 50 keV decay length
             hi = min(hi, 5.0)    # maximum 5 MeV decay length
+        if name == "delta_E_broad":
+            lo = max(lo, -0.05)  # allow tiny RIGHT offset (channeling)
+            hi = min(hi, 0.30)   # max ~300 keV LEFT shift
         # Tau linear model: tau_0 must be positive; tau_slope is free
         if name == "tau_0":
             lo = max(lo, _EMG_FLOOR)
@@ -1121,6 +1380,46 @@ def fit_spectrum(
                 hi = min(hi, max_tau_ratio * sigma0_mean)
         if name == "tau_slope":
             pass  # allow negative slope (tau decreasing with energy)
+        # Linear energy model intercepts: enforce physical bounds
+        if name == "f_shelf_0":
+            lo = max(lo, 0.0)
+            hi = min(hi, float(flags.get("max_f_shelf", 0.30)))
+        if name == "f_halo_0":
+            lo = max(lo, 0.0)
+            hi = min(hi, float(flags.get("max_f_halo", 0.40)))
+        if name == "sigma_shelf_0":
+            lo = max(lo, 0.03)  # minimum shelf width
+        if name == "sigma_halo_0":
+            lo = max(lo, 0.03)  # minimum halo width
+        if name == "tau_halo_0":
+            lo = max(lo, _EMG_FLOOR)
+        # Linear energy model slopes: free (allow any sign)
+        if name.endswith("_slope") and name.split("_slope")[0] in _linear_energy_models:
+            pass  # slopes are free
+        # Scaling energy model ref values: enforce physical bounds
+        if name == "f_halo_ref":
+            lo = max(lo, 0.0)
+            hi = min(hi, float(flags.get("max_f_halo", 0.40)))
+        if name == "f_shelf_ref":
+            lo = max(lo, 0.0)
+            hi = min(hi, float(flags.get("max_f_shelf", 0.30)))
+        # Double EMG bounds
+        if name == "f_tail2_shared":
+            lo = max(lo, 0.0)
+            hi = min(hi, 0.50)  # at most 50% in secondary tail
+        if name == "tau2_shared":
+            lo = max(lo, _EMG_FLOOR)
+        if name == "tau2_0":
+            lo = max(lo, _EMG_FLOOR)
+        if name == "tau2_slope":
+            pass  # free — allow any sign
+        # Second Gaussian component bounds
+        if name == "f_gauss2_shared":
+            lo = max(lo, 0.0)
+            hi = min(hi, 0.50)  # at most 50% in broad component
+        if name == "sigma_gauss2_ratio_shared":
+            lo = max(lo, 1.01)  # must be broader than core (ratio > 1)
+            hi = min(hi, 5.0)   # at most 5x core sigma
         # sigma_asym: fractional right-side broadening, must be >= 0
         if name == "sigma_asym" or name.startswith("sigma_asym_"):
             lo = max(lo, 0.0)
@@ -1146,13 +1445,13 @@ def fit_spectrum(
             _tau_tr_max = float(flags.get("tau_tail_right_max", 1.0))
             hi = min(hi, _tau_tr_max)
         # sigma_shelf must be physically meaningful (configurable floor, default 0.03 MeV)
-        if name.startswith("sigma_shelf_"):
+        if name.startswith("sigma_shelf_") and name not in _lm_param_names:
             _sigma_shelf_min = float(flags.get("sigma_shelf_min", 0.03))
             lo = max(lo, _sigma_shelf_min)
         # tau_halo: cap at N× core tau to prevent unrealistically long
         # right-side EMG tails that bleed into neighbouring peaks.
         # (brentq fallback in _right_emg_mode_offset handles edge cases.)
-        if name.startswith("tau_halo_"):
+        if name.startswith("tau_halo_") and name not in _lm_param_names:
             iso_name = name.replace("tau_halo_", "")
             tau_core_key = f"tau_{iso_name}"
             if tau_core_key in priors:
@@ -1162,7 +1461,7 @@ def fit_spectrum(
         # sigma_halo: enforce a reasonable range relative to core sigma.
         # Min 1.5× core sigma (must be wider than core).  Max 8× allows
         # broad halos for dead-layer scattering that can extend 1-2 MeV.
-        if name.startswith("sigma_halo_"):
+        if name.startswith("sigma_halo_") and name not in _lm_param_names:
             iso_name = name.replace("sigma_halo_", "")
             sigma_core_key = f"sigma_{iso_name}"
             if sigma_core_key in priors:
@@ -1284,7 +1583,8 @@ def fit_spectrum(
 
     def _physical_params(raw_map: Mapping[str, float]) -> dict[str, float]:
         params_dict: dict[str, float] = {}
-        params_dict["sigma0"] = float(raw_map.get("sigma0", sigma0_val))
+        _raw_sigma0 = float(raw_map.get("sigma0", sigma0_val))
+        params_dict["sigma0"] = _raw_sigma0
         # For "none" background model, b0/b1 are not in the parameter space
         if "b0" in raw_map:
             params_dict["b0"] = float(raw_map["b0"])
@@ -1301,9 +1601,11 @@ def fit_spectrum(
             sigma_key = f"sigma_{iso}"
             if sigma_key in raw_map:
                 params_dict[sigma_key] = float(raw_map[sigma_key])
-            S_val = float(_softplus(raw_map[f"S_{iso}"]))
-            params_dict[f"S_{iso}"] = S_val
-            params_dict[f"N_{iso}"] = S_val
+            # Amplitude-linked isotopes: S computed after loop from reference
+            if iso not in _amplitude_links:
+                S_val = float(_softplus(raw_map[f"S_{iso}"]))
+                params_dict[f"S_{iso}"] = S_val
+                params_dict[f"N_{iso}"] = S_val
             tau_key = f"tau_{iso}"
             if use_emg_map.get(iso, False) and tau_key in raw_map:
                 params_dict[tau_key] = float(raw_map[tau_key])
@@ -1326,6 +1628,85 @@ def fit_spectrum(
             for _bk in (f"f_beta_{iso}", f"lambda_beta_{iso}"):
                 if _bk in raw_map:
                     params_dict[_bk] = float(raw_map[_bk])
+        # Compute amplitude-linked isotopes from reference
+        for _link_iso, _link_info in _amplitude_links.items():
+            _ref_iso = _link_info["reference"]
+            _link_ratio = _link_info["ratio"]
+            _ref_S = params_dict.get(f"S_{_ref_iso}", 0.0)
+            _linked_S = _ref_S * _link_ratio
+            params_dict[f"S_{_link_iso}"] = _linked_S
+            params_dict[f"N_{_link_iso}"] = _linked_S
+        # Broadcast shared beta → per-isotope keys
+        if _share_beta and _beta_isotopes and "f_beta_shared" in raw_map:
+            _fb_shared = float(raw_map["f_beta_shared"])
+            _lb_shared = float(raw_map.get("lambda_beta_shared", 0.5))
+            for biso in _beta_isotopes:
+                params_dict[f"f_beta_{biso}"] = _fb_shared
+                params_dict[f"lambda_beta_{biso}"] = _lb_shared
+        # Beta backscatter continuum (shared, no per-isotope broadcast needed)
+        if _use_beta_bs and "f_beta_bs_shared" in raw_map:
+            params_dict["f_beta_bs_shared"] = max(float(raw_map["f_beta_bs_shared"]), 0.0)
+        # Broadcast skew-normal params → per-isotope keys
+        if _use_skew:
+            _skew_em = sp_cfg.get("skew_energy_model", "").lower() if sp_cfg else ""
+            if _skew_em == "linear" and "skew_alpha_0" in raw_map:
+                _sa0 = float(raw_map["skew_alpha_0"])
+                _sas = float(raw_map.get("skew_alpha_slope", 0.0))
+                params_dict["skew_alpha_0"] = _sa0
+                params_dict["skew_alpha_slope"] = _sas
+                _sk_eref = float(sp_cfg.get("skew_energy_model_E_ref",
+                                  sp_cfg.get("tau_energy_model_E_ref", 7.0))) if sp_cfg else 7.0
+                for iso in iso_list:
+                    mu_iso = float(raw_map.get(f"mu_{iso}", 0.0))
+                    params_dict[f"skew_alpha_{iso}"] = _sa0 + _sas * (mu_iso - _sk_eref)
+            elif "skew_alpha_shared" in raw_map:
+                _sa = float(raw_map["skew_alpha_shared"])
+                params_dict["skew_alpha_shared"] = _sa
+                for iso in iso_list:
+                    params_dict[f"skew_alpha_{iso}"] = _sa
+        # Broadcast double EMG shared params → per-isotope keys
+        if _use_double_emg and "f_tail2_shared" in raw_map:
+            _ft2 = max(float(raw_map["f_tail2_shared"]), 0.0)
+            params_dict["f_tail2_shared"] = _ft2
+            for iso in iso_list:
+                params_dict[f"f_tail2_{iso}"] = _ft2
+            if _tau2_linear_model and "tau2_0" in raw_map and "tau2_slope" in raw_map:
+                _t2_0 = float(raw_map["tau2_0"])
+                _t2_s = float(raw_map["tau2_slope"])
+                params_dict["tau2_0"] = _t2_0
+                params_dict["tau2_slope"] = _t2_s
+                _t2_eref = float(sp_cfg.get("tau2_energy_model_E_ref",
+                                  sp_cfg.get("tau_energy_model_E_ref", 7.0))) if sp_cfg else 7.0
+                for iso in iso_list:
+                    mu_iso = float(raw_map.get(f"mu_{iso}", 0.0))
+                    t2_val = max(_t2_0 + _t2_s * (mu_iso - _t2_eref), _EMG_FLOOR)
+                    params_dict[f"tau2_{iso}"] = t2_val
+            elif "tau2_shared" in raw_map:
+                _t2 = max(float(raw_map["tau2_shared"]), _EMG_FLOOR)
+                params_dict["tau2_shared"] = _t2
+                for iso in iso_list:
+                    params_dict[f"tau2_{iso}"] = _t2
+        # Broadcast second Gaussian shared params → per-isotope keys
+        # sigma_gauss2_ratio_shared is a MULTIPLIER of each peak's sigma.
+        if _use_gauss2 and "f_gauss2_shared" in raw_map:
+            _fg2 = float(raw_map["f_gauss2_shared"])
+            _sg2_ratio = float(raw_map.get("sigma_gauss2_ratio_shared", 1.4))
+            params_dict["f_gauss2_shared"] = _fg2
+            params_dict["sigma_gauss2_ratio_shared"] = _sg2_ratio
+            # delta_E_broad: LEFT offset for oblique-incidence broadening
+            _dE_broad = 0.0
+            if _use_gauss2_offset and "delta_E_broad" in raw_map:
+                _dE_broad = float(raw_map["delta_E_broad"])
+                params_dict["delta_E_broad"] = _dE_broad
+            for iso in iso_list:
+                params_dict[f"f_gauss2_{iso}"] = max(_fg2, 0.0)
+                # Compute absolute sigma_gauss2 = ratio × sigma_core
+                _core_sigma = params_dict.get(f"sigma_{iso}", 0.10)
+                params_dict[f"sigma_gauss2_{iso}"] = max(
+                    _sg2_ratio * _core_sigma, 0.05
+                )
+                # Broad component centroid = mu - delta_E_broad
+                params_dict[f"delta_E_broad_{iso}"] = _dE_broad
         # Broadcast shared shape parameters → per-isotope keys
         for shared_name, participants in shared_participants.items():
             shared_key = f"{shared_name}_shared"
@@ -1352,6 +1733,79 @@ def fit_spectrum(
                 # Enforce EMG floor
                 tau_val = max(tau_val, _EMG_FLOOR)
                 params_dict[f"tau_{iso}"] = tau_val
+        # Generic linear energy models: param(E) = param_0 + param_slope * (E - E_ref)
+        for _lm_name, _lm_info in _linear_energy_models.items():
+            _lm_0_key = f"{_lm_name}_0"
+            _lm_s_key = f"{_lm_name}_slope"
+            if _lm_0_key in raw_map and _lm_s_key in raw_map:
+                _lm_0 = float(raw_map[_lm_0_key])
+                _lm_s = float(raw_map[_lm_s_key])
+                params_dict[_lm_0_key] = _lm_0
+                params_dict[_lm_s_key] = _lm_s
+                _lm_eref = _lm_info["E_ref"]
+                for iso in _lm_info["participants"]:
+                    mu_iso = float(raw_map.get(f"mu_{iso}", 0.0))
+                    _lm_val = _lm_0 + _lm_s * (mu_iso - _lm_eref)
+                    # Enforce physical floors
+                    if _lm_name.startswith("f_"):
+                        _lm_val = max(_lm_val, 0.0)  # fractions >= 0
+                    elif _lm_name.startswith("sigma_"):
+                        _lm_val = max(_lm_val, 0.03)  # minimum width
+                    elif _lm_name.startswith("tau_"):
+                        _lm_val = max(_lm_val, _EMG_FLOOR)
+                    params_dict[f"{_lm_name}_{iso}"] = _lm_val
+                # Also broadcast to passive recipients
+                for iso in _shared_passive_isos:
+                    per_iso_key = f"{_lm_name}_{iso}"
+                    if per_iso_key not in params_dict:
+                        mu_iso = float(raw_map.get(f"mu_{iso}", 0.0))
+                        _lm_val = _lm_0 + _lm_s * (mu_iso - _lm_eref)
+                        if _lm_name.startswith("f_"):
+                            _lm_val = max(_lm_val, 0.0)
+                        elif _lm_name.startswith("sigma_"):
+                            _lm_val = max(_lm_val, 0.03)
+                        elif _lm_name.startswith("tau_"):
+                            _lm_val = max(_lm_val, _EMG_FLOOR)
+                        params_dict[per_iso_key] = _lm_val
+        # Scaling energy models: param(E) = param_ref × (E_ref / E)^power
+        for _sm_name, _sm_info in _scaling_energy_models.items():
+            _sm_ref_key = f"{_sm_name}_ref"
+            if _sm_ref_key in raw_map:
+                _sm_ref = float(raw_map[_sm_ref_key])
+                params_dict[_sm_ref_key] = _sm_ref
+                _sm_eref = _sm_info["E_ref"]
+                _sm_power = _sm_info["power"]
+                for iso in _sm_info["participants"]:
+                    mu_iso = float(raw_map.get(f"mu_{iso}", _sm_eref))
+                    # param(E) = param_ref × (E_ref / E)^power
+                    if mu_iso > 0:
+                        _sm_val = _sm_ref * (_sm_eref / mu_iso) ** _sm_power
+                    else:
+                        _sm_val = _sm_ref
+                    # Enforce physical floors
+                    if _sm_name.startswith("f_"):
+                        _sm_val = max(_sm_val, 0.0)
+                    elif _sm_name.startswith("sigma_"):
+                        _sm_val = max(_sm_val, 0.03)
+                    elif _sm_name.startswith("tau_"):
+                        _sm_val = max(_sm_val, _EMG_FLOOR)
+                    params_dict[f"{_sm_name}_{iso}"] = _sm_val
+                # Also broadcast to passive recipients
+                for iso in _shared_passive_isos:
+                    per_iso_key = f"{_sm_name}_{iso}"
+                    if per_iso_key not in params_dict:
+                        mu_iso = float(raw_map.get(f"mu_{iso}", _sm_eref))
+                        if mu_iso > 0:
+                            _sm_val = _sm_ref * (_sm_eref / mu_iso) ** _sm_power
+                        else:
+                            _sm_val = _sm_ref
+                        if _sm_name.startswith("f_"):
+                            _sm_val = max(_sm_val, 0.0)
+                        elif _sm_name.startswith("sigma_"):
+                            _sm_val = max(_sm_val, 0.03)
+                        elif _sm_name.startswith("tau_"):
+                            _sm_val = max(_sm_val, _EMG_FLOOR)
+                        params_dict[per_iso_key] = _sm_val
         # Asym polynomial energy model: asym(E) = sum_k asym_k * (E - E_ref)^k
         # Broadcasts per-isotope sigma_asym_{iso} values.
         if _asym_poly_model and "asym_0" in raw_map:

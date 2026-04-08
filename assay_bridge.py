@@ -722,6 +722,8 @@ def _extract_activity_at_time(
         entries = isotope_series.get(iso, [])
         iso_counts = 0.0
         iso_dt = 0.0
+        iso_var_fitted = 0.0   # sum of squared fitted uncertainties
+        has_fitted_unc = False
         for entry in entries:
             t = entry.get("t")
             if t is None or not np.isfinite(t):
@@ -732,14 +734,27 @@ def _extract_activity_at_time(
                 if np.isfinite(c) and np.isfinite(dt) and dt > 0:
                     iso_counts += c
                     iso_dt += dt
+                    # Use fitted uncertainty when available (template fitting)
+                    _cu = entry.get("counts_unc")
+                    if _cu is not None:
+                        try:
+                            _cu_f = float(_cu)
+                            if math.isfinite(_cu_f) and _cu_f > 0:
+                                iso_var_fitted += _cu_f ** 2
+                                has_fitted_unc = True
+                        except (TypeError, ValueError):
+                            pass
         if iso_dt > 0:
             r = iso_counts / iso_dt
-            # Poisson
-            poisson_unc = math.sqrt(iso_counts) / iso_dt if iso_counts > 0 else 0.0
+            # Counts uncertainty: use fitted when available, else Poisson
+            if has_fitted_unc and iso_var_fitted > 0:
+                counts_unc = math.sqrt(iso_var_fitted) / iso_dt
+            else:
+                counts_unc = math.sqrt(iso_counts) / iso_dt if iso_counts > 0 else 0.0
             # Calibration window systematic (energy scale uncertainty)
             cal_rel = float(cal_window_rel_unc.get(iso, 0.0))
             cal_unc = r * cal_rel
-            r_unc = math.sqrt(poisson_unc**2 + cal_unc**2)
+            r_unc = math.sqrt(counts_unc**2 + cal_unc**2)
             iso_rates.append((r, r_unc))
 
     if not iso_rates:
@@ -800,6 +815,8 @@ def _compute_emanation_baseline(
     # Sum counts across isotopes in the baseline window
     total_counts = 0.0
     total_dt = 0.0
+    total_var_fitted = 0.0
+    has_fitted_unc = False
     for iso in isotopes:
         for entry in isotope_series.get(iso, []):
             t = entry.get("t")
@@ -811,6 +828,15 @@ def _compute_emanation_baseline(
                 if np.isfinite(c):
                     total_counts += c
                     total_dt += dt
+                    _cu = entry.get("counts_unc")
+                    if _cu is not None:
+                        try:
+                            _cu_f = float(_cu)
+                            if math.isfinite(_cu_f) and _cu_f > 0:
+                                total_var_fitted += _cu_f ** 2
+                                has_fitted_unc = True
+                        except (TypeError, ValueError):
+                            pass
 
     if total_dt <= 0:
         logger.warning("No data in emanation baseline period [%s, %s]",
@@ -818,7 +844,10 @@ def _compute_emanation_baseline(
         return None
 
     rate = total_counts / total_dt
-    rate_unc = math.sqrt(max(total_counts, 1.0)) / total_dt
+    if has_fitted_unc and total_var_fitted > 0:
+        rate_unc = math.sqrt(total_var_fitted) / total_dt
+    else:
+        rate_unc = math.sqrt(max(total_counts, 1.0)) / total_dt
 
     n_days = (t1 - t0) / 86400.0
     logger.info(
@@ -914,6 +943,29 @@ def compute_bridge(
         match_window_days = float(bridge_cfg["match_window_hours"]) / 24.0
     else:
         match_window_days = float(bridge_cfg.get("match_window_days", 1.0))
+
+    # Auto-widen match window for coarse time bins (e.g. daily bins).
+    # If the bin width exceeds the match window, the bin center may land
+    # outside ±match_window of the assay time and nothing ever matches.
+    if use_time_match and isotope_series:
+        _sample_dts: list[float] = []
+        for _iso_entries in isotope_series.values():
+            for _e in _iso_entries[:5]:   # sample first few entries
+                _dt_val = _e.get("dt")
+                if _dt_val is not None and np.isfinite(_dt_val) and _dt_val > 0:
+                    _sample_dts.append(float(_dt_val))
+                    break
+        if _sample_dts:
+            _median_dt_s = float(np.median(_sample_dts))
+            # Need half-window ≥ bin_width / 2 + small margin (1 hour)
+            _min_window_days = (_median_dt_s / 2.0 + 3600.0) / 86400.0
+            if match_window_days < _min_window_days:
+                logger.info(
+                    "Auto-widening match window from ±%.1f h to ±%.1f h "
+                    "(bin_width=%.0f s)",
+                    match_window_days * 24, _min_window_days * 24, _median_dt_s,
+                )
+                match_window_days = _min_window_days
 
     # Resolve volumes
     # The reference activity must be scaled to the volume the radon occupies

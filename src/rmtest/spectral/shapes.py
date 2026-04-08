@@ -168,6 +168,33 @@ def gaussian_cdf_E(E, mu, sigma):
     return norm.cdf(E, loc=mu, scale=sigma)
 
 
+# ── Skew-normal (tilted Gaussian) ────────────────────────────────────────
+
+def skewnorm_pdf_E(E, mu, sigma, alpha):
+    """Skew-normal PDF: f(x) = 2/σ × φ((x-μ)/σ) × Φ(α(x-μ)/σ).
+
+    Parameters
+    ----------
+    alpha : float
+        Skewness parameter.  α>0 → right-skewed, α<0 → left-skewed, α=0 → Gaussian.
+        For PIN diode alpha spectroscopy, expect α<0 (left skew from charge loss).
+    """
+    E = np.asarray(E, dtype=float)
+    if sigma <= 0:
+        return np.zeros_like(E, dtype=float)
+    z = (E - mu) / sigma
+    return (2.0 / sigma) * norm.pdf(z) * norm.cdf(alpha * z)
+
+
+def skewnorm_cdf_E(E, mu, sigma, alpha):
+    """CDF of the skew-normal distribution (numerical integration)."""
+    from scipy.stats import skewnorm as _skewnorm
+    E = np.asarray(E, dtype=float)
+    if sigma <= 0:
+        return np.zeros_like(E, dtype=float)
+    return _skewnorm.cdf(E, alpha, loc=mu, scale=sigma)
+
+
 # ── Split (asymmetric) Gaussian ──────────────────────────────────────────
 
 def split_gaussian_pdf_E(E, mu, sigma_left, sigma_right):

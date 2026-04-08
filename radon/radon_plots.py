@@ -162,7 +162,23 @@ def plot_rn_inferred_vs_time(radon_results: Mapping[str, object], out_dir: Path)
     plt.close(fig)
 
 
-def plot_ambient_rn_vs_time(radon_results: Mapping[str, object], out_dir: Path) -> None:
+def plot_ambient_rn_vs_time(
+    radon_results: Mapping[str, object],
+    out_dir: Path,
+    fallback_bq_per_m3: float | None = None,
+) -> None:
+    """Plot external ambient radon time series.
+
+    Parameters
+    ----------
+    radon_results : dict
+        Radon inference results containing ``ambient_rn`` series.
+    out_dir : Path
+        Output directory for the plot.
+    fallback_bq_per_m3 : float or None
+        If provided, draw a horizontal reference line at this constant
+        value (Bq/m³) for comparison with the file-based ambient data.
+    """
     if not isinstance(radon_results, Mapping):
         logger.info("No radon results available for ambient radon plotting")
         return
@@ -197,7 +213,7 @@ def plot_ambient_rn_vs_time(radon_results: Mapping[str, object], out_dir: Path) 
 
     fig, ax = plt.subplots(figsize=(8, 5))
     times_mpl = guard_mpl_times(times=times)
-    ax.plot(times_mpl, values, marker="o", linestyle="None", markersize=_DEFAULT_MARKER_SIZE, color="#1f77b4", alpha=_DEFAULT_ALPHA)
+    ax.plot(times_mpl, values, marker="o", linestyle="None", markersize=_DEFAULT_MARKER_SIZE, color="#1f77b4", alpha=_DEFAULT_ALPHA, label="Pico40L ambient")
     ax.set_ylabel("Ambient Radon [Bq/m$^3$]")
     ax.set_xlabel("Time (UTC)")
     ax.set_title("External Ambient Radon", fontsize=11)
@@ -205,6 +221,15 @@ def plot_ambient_rn_vs_time(radon_results: Mapping[str, object], out_dir: Path) 
     setup_time_axis(ax, times_mpl)
     fig.autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)
+
+    # Optional constant reference line for comparison
+    if fallback_bq_per_m3 is not None and fallback_bq_per_m3 > 0:
+        ax.axhline(
+            fallback_bq_per_m3,
+            color="red", lw=1.0, ls="--", alpha=0.7,
+            label=f"Constant fallback ({fallback_bq_per_m3:.0f} Bq/m³)",
+        )
+        ax.legend(fontsize=8, loc="upper right")
 
     # Annotate if constant
     if is_constant:
@@ -450,7 +475,41 @@ def plot_radon_in_liquid(
     fig.tight_layout()
     fig.savefig(out_dir / "radon_in_liquid.png", dpi=300)
     plt.close(fig)
-    logger.info("Saved radon_in_liquid.png")
+
+    # --- Total dissolved Rn inventory: activity_Bq / K_H  (cumulative) ---
+    # Each interval's dissolved Rn contribution to the liquid (Bq).
+    total_scale = 1.0 / K_H if K_H > 0 else 1.0
+    total_rn = [a * total_scale for a in activity]
+    total_rn_err = [e * total_scale for e in errors] if errors else None
+
+    # Cumulative sum
+    cum_rn = list(np.cumsum(total_rn))
+    if total_rn_err is not None:
+        cum_rn_err = list(np.sqrt(np.cumsum([e**2 for e in total_rn_err])))
+    else:
+        cum_rn_err = None
+
+    fig_c, ax_c = plt.subplots(figsize=(10, 5))
+    if cum_rn_err is not None:
+        ax_c.errorbar(times_mpl, cum_rn, yerr=cum_rn_err, color="#d62728", **_eb)
+    else:
+        ax_c.plot(times_mpl, cum_rn, "o", color="#d62728",
+                  markersize=_DEFAULT_MARKER_SIZE, alpha=_DEFAULT_ALPHA)
+    ax_c.set_ylabel("Cumulative Dissolved Rn-222 [Bq]")
+    ax_c.set_xlabel("Time (UTC)")
+    ax_c.set_title(
+        f"Cumulative Dissolved Radon Inventory (K_H = {K_H})",
+        fontsize=11,
+    )
+    ax_c.ticklabel_format(axis="y", style="plain")
+    setup_time_axis(ax_c, times_mpl)
+    ax_c.yaxis.get_offset_text().set_visible(False)
+    fig_c.autofmt_xdate()
+    fig_c.tight_layout()
+    fig_c.savefig(out_dir / "radon_in_liquid_cumulative.png", dpi=300)
+    plt.close(fig_c)
+
+    logger.info("Saved radon_in_liquid.png, radon_in_liquid_cumulative.png")
 
 
 def plot_argon_from_leak(
@@ -571,7 +630,7 @@ def plot_argon_from_leak(
         fig_d.savefig(out_dir / "argon_dissolved.png", dpi=300)
         plt.close(fig_d)
 
-        # Cumulative dissolved argon
+        # Cumulative dissolved argon (concentration)
         if cumulative_series and cum_times and cum_m3:
             cum_diss = [a * diss_scale for a in cum_ar_L]
             cum_diss_err = [e * diss_scale for e in cum_ar_err] if cum_ar_err else None
@@ -591,6 +650,53 @@ def plot_argon_from_leak(
             fig_dc.tight_layout()
             fig_dc.savefig(out_dir / "argon_dissolved_cumulative.png", dpi=300)
             plt.close(fig_dc)
+
+        # -- Total dissolved argon volume (L_Ar total in liquid) --
+        # Per-interval: dissolved_conc * sample_vol = argon_L / K_H
+        total_diss = [a / K_H_ar for a in ar_L]
+        total_diss_err = [e / K_H_ar for e in ar_L_err] if ar_L_err else None
+
+        fig_t, ax_t = plt.subplots(figsize=(10, 5))
+        if total_diss_err is not None:
+            ax_t.errorbar(times_mpl, total_diss, yerr=total_diss_err,
+                          color="#9467bd", **_eb)
+        else:
+            ax_t.plot(times_mpl, total_diss, color="#9467bd", **_mk)
+        ax_t.set_ylabel("Dissolved Argon [L$_{Ar}$]")
+        ax_t.set_xlabel("Time (UTC)")
+        ax_t.set_title(
+            f"Total Dissolved Argon per Interval (K_H = {K_H_ar})",
+            fontsize=11,
+        )
+        ax_t.ticklabel_format(axis="y", style="scientific", scilimits=(-3, 3))
+        setup_time_axis(ax_t, times_mpl)
+        fig_t.autofmt_xdate()
+        fig_t.tight_layout()
+        fig_t.savefig(out_dir / "argon_dissolved_total.png", dpi=300)
+        plt.close(fig_t)
+
+        # Cumulative total dissolved argon volume
+        cum_total_diss = list(np.cumsum(total_diss))
+        if total_diss_err is not None:
+            cum_total_err = list(np.sqrt(np.cumsum([e**2 for e in total_diss_err])))
+        else:
+            cum_total_err = None
+
+        fig_tc, ax_tc = plt.subplots(figsize=(10, 5))
+        if cum_total_err is not None:
+            ax_tc.errorbar(times_mpl, cum_total_diss, yerr=cum_total_err,
+                           color="#9467bd", **_eb)
+        else:
+            ax_tc.plot(times_mpl, cum_total_diss, color="#9467bd", **_mk)
+        ax_tc.set_ylabel("Cumulative Dissolved Argon [L$_{Ar}$]")
+        ax_tc.set_xlabel("Time (UTC)")
+        ax_tc.set_title("Cumulative Dissolved Argon Volume", fontsize=11)
+        ax_tc.ticklabel_format(axis="y", style="scientific", scilimits=(-3, 3))
+        setup_time_axis(ax_tc, times_mpl)
+        fig_tc.autofmt_xdate()
+        fig_tc.tight_layout()
+        fig_tc.savefig(out_dir / "argon_dissolved_total_cumulative.png", dpi=300)
+        plt.close(fig_tc)
 
     logger.info("Saved argon leak/dissolution plots")
 

@@ -22,6 +22,7 @@ class _BinContribution:
     t: float
     dt: float
     counts: dict[str, float]
+    counts_unc: dict[str, float] | None = None
 
 
 def _normalise_weights(
@@ -69,7 +70,7 @@ def _prepare_bins(
             key = round(t, 6)
             bin_entry = bins.get(key)
             if bin_entry is None:
-                bin_entry = _BinContribution(t=t, dt=dt, counts={})
+                bin_entry = _BinContribution(t=t, dt=dt, counts={}, counts_unc={})
                 bins[key] = bin_entry
             else:
                 if not np.isclose(bin_entry.dt, dt):
@@ -82,6 +83,17 @@ def _prepare_bins(
                     )
 
             bin_entry.counts[iso] = counts
+            # Propagate fitted uncertainty when available (template fitting)
+            _unc_val = entry.get("counts_unc")
+            if _unc_val is not None:
+                try:
+                    _unc_f = float(_unc_val)
+                    if np.isfinite(_unc_f) and _unc_f > 0:
+                        if bin_entry.counts_unc is None:
+                            bin_entry.counts_unc = {}
+                        bin_entry.counts_unc[iso] = _unc_f
+                except (TypeError, ValueError):
+                    pass
 
     ordered = sorted(bins.values(), key=lambda item: item.t)
     return ordered
@@ -318,14 +330,23 @@ def run_radon_inference(
             if eff <= 0:
                 continue
             activity = counts / (eff * dt)
-            # Poisson uncertainty on activity (uncorrelated between isotopes)
-            sigma_poisson = float(np.sqrt(max(counts, 1.0))) / (eff * dt)
+            # Use fitted uncertainty when available (template fitting),
+            # otherwise fall back to Poisson sqrt(N).
+            _fitted_unc = (
+                bin_entry.counts_unc.get(iso)
+                if bin_entry.counts_unc else None
+            )
+            if _fitted_unc is not None and np.isfinite(_fitted_unc) and _fitted_unc > 0:
+                sigma_counts = float(_fitted_unc)
+            else:
+                sigma_counts = float(np.sqrt(max(counts, 1.0)))
+            sigma_activity = sigma_counts / (eff * dt)
             if chain_correction in ("equilibrium", "assume_equilibrium"):
                 pass  # placeholder for future correction logic
             iso_activity[iso] = activity
             w = weights.get(iso, 0.0)
             weighted_sum += w * activity
-            weighted_poisson_var += (w * sigma_poisson) ** 2
+            weighted_poisson_var += (w * sigma_activity) ** 2
             contributing_isotopes.append(iso)
 
         if not contributing_isotopes:

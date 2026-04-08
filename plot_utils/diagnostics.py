@@ -2115,7 +2115,10 @@ def plot_dnl_crossval(
 def compute_code_domain_diagnostics(
     fit_params: Mapping[str, object],
     min_counts: float = 5.0,
-    dnl_period: int = 64,
+    dnl_periods: list[int] | int | None = None,
+    adc_bin_width: int = 1,
+    # Legacy single-period kwarg — prefer dnl_periods list
+    dnl_period: int | None = None,
 ) -> dict:
     """Compute DNL-specific residual diagnostics in raw ADC-code space.
 
@@ -2123,52 +2126,112 @@ def compute_code_domain_diagnostics(
     number, not on energy.  This function computes DNL-specific metrics
     that complement the energy-domain pull diagnostics:
 
-    - Code-phase residual structure (bin_index mod *dnl_period*)
-    - Spectral power at the expected DNL frequency
+    - Code-phase residual structure (adc_code mod *period*) for each
+      period in *dnl_periods*
+    - Spectral power at each expected DNL frequency
+    - Multi-period FFT power summary table
     - Correlation between pulls and DNL correction factors
-
-    Generic autocorrelation and periodogram statistics are already
-    covered by ``compute_pull_diagnostics``; this function focuses on
-    what is unique to the ADC code domain.
 
     Parameters
     ----------
     fit_params : dict
         Must contain ``_plot_hist``, ``_plot_model_total``, and
-        optionally ``_dnl`` with ``dnl_factors``.
+        optionally ``_dnl`` with ``dnl_factors`` (may be full-res).
     min_counts : float
         Minimum model prediction to include a bin.
-    dnl_period : int
-        Expected DNL periodicity from ADC subranging (default 64).
+    dnl_periods : list[int] or int or None
+        Expected DNL periodicities in ADC codes.  The *first* period
+        is used for the primary phase-folded residual plot (Panel 2).
+        All periods are reported in the multi-period FFT summary.
+        Defaults to ``[16]`` if not supplied.
+    adc_bin_width : int
+        Number of ADC codes per histogram bin (1 = full resolution,
+        >1 = rebinned).
+    dnl_period : int or None
+        **Deprecated** — legacy single-period kwarg.  If *dnl_periods*
+        is not supplied, this value is used instead.
 
     Returns
     -------
     dict
         Scalar metrics and ``_arrays`` for plotting.
     """
+    # ── Resolve period list ───────────────────────────────────────────
+    if dnl_periods is not None:
+        if isinstance(dnl_periods, int):
+            dnl_periods = [dnl_periods]
+    elif dnl_period is not None:
+        dnl_periods = [int(dnl_period)]
+    else:
+        dnl_periods = [16]
+    dnl_periods = [int(p) for p in dnl_periods if int(p) > 0]
+    if not dnl_periods:
+        dnl_periods = [16]
+    # Primary period for the phase-folded residual plot
+    primary_period = dnl_periods[0]
+
     model = np.asarray(fit_params.get("_plot_model_total", []), dtype=float)
     hist = np.asarray(fit_params.get("_plot_hist", []), dtype=float)
     if model.size == 0 or hist.size == 0:
         return {}
 
     n_bins = model.size
+    adc_bin_width = max(1, int(adc_bin_width))
     mask = model > min_counts
     n = int(mask.sum())
     if n < 16:
         return {}
 
-    # Raw bin indices (proxy for ADC code)
+    # Convert bin indices to ADC code offsets from the window start.
     bin_idx = np.arange(n_bins)[mask]
+    adc_code_offset = bin_idx * adc_bin_width
     pulls = (hist[mask] - model[mask]) / np.sqrt(np.maximum(model[mask], 1.0))
 
-    result: dict = {"n_bins": n}
+    result: dict = {
+        "n_bins": n,
+        "adc_bin_width": adc_bin_width,
+        "dnl_periods": dnl_periods,
+        "primary_period": primary_period,
+    }
 
-    # ── Code-phase residual (mod dnl_period) ──────────────────────────
-    # Mean pull per phase bin — reveals periodic hardware structure
-    phases = bin_idx % dnl_period
-    phase_mean = np.full(dnl_period, np.nan)
-    phase_count = np.zeros(dnl_period, dtype=int)
-    for ph in range(dnl_period):
+    # Nyquist check
+    nyquist_period = 2 * adc_bin_width
+
+    # ── Per-period phase-folded metrics ───────────────────────────────
+    per_period_metrics: dict[int, dict] = {}
+    for prd in dnl_periods:
+        prd_resolvable = prd >= nyquist_period
+        phases_p = adc_code_offset % prd
+        phase_mean_p = np.full(prd, np.nan)
+        for ph in range(prd):
+            sel = phases_p == ph
+            if sel.sum() >= 2:
+                phase_mean_p[ph] = float(np.mean(pulls[sel]))
+        valid_p = np.isfinite(phase_mean_p)
+        pm: dict = {"resolvable": prd_resolvable}
+        if valid_p.sum() > 0:
+            pm["phase_pull_rms"] = round(
+                float(np.sqrt(np.nanmean(phase_mean_p[valid_p] ** 2))), 4
+            )
+            pm["phase_pull_max"] = round(
+                float(np.nanmax(np.abs(phase_mean_p[valid_p]))), 4
+            )
+            pm["n_valid_phases"] = int(valid_p.sum())
+        per_period_metrics[prd] = pm
+    result["per_period"] = per_period_metrics
+
+    # Primary-period phase arrays (for backward compat + main plot)
+    primary_resolvable = primary_period >= nyquist_period
+    result["dnl_period_resolvable"] = primary_resolvable
+    if not primary_resolvable:
+        result["dnl_nyquist_warning"] = (
+            f"DNL period {primary_period} codes < Nyquist limit "
+            f"{nyquist_period} codes (bin_width={adc_bin_width})"
+        )
+    phases = adc_code_offset % primary_period
+    phase_mean = np.full(primary_period, np.nan)
+    phase_count = np.zeros(primary_period, dtype=int)
+    for ph in range(primary_period):
         sel = phases == ph
         if sel.sum() >= 2:
             phase_mean[ph] = float(np.mean(pulls[sel]))
@@ -2183,7 +2246,7 @@ def compute_code_domain_diagnostics(
         )
         result["code_phase_n_valid"] = int(valid_phases.sum())
 
-    # ── ACF and periodogram (kept for plotting) ───────────────────────
+    # ── ACF and periodogram ───────────────────────────────────────────
     pull_centered = pulls - np.mean(pulls)
     var = float(np.var(pulls))
     max_lag = min(50, n // 4)
@@ -2200,27 +2263,40 @@ def compute_code_domain_diagnostics(
     N = len(pull_centered)
     fft_vals = sp_fft.rfft(pull_centered)
     power = np.abs(fft_vals) ** 2 / N
-    freqs = sp_fft.rfftfreq(N)  # cycles per bin
+    freqs_bin = sp_fft.rfftfreq(N)  # cycles per bin
+    freqs_code = freqs_bin / adc_bin_width if adc_bin_width > 1 else freqs_bin
 
-    # ── DNL-specific: power at expected DNL frequency ─────────────────
+    # ── Multi-period FFT power summary ────────────────────────────────
     if len(power) > 1:
         power_no_dc = power[1:]
-        freqs_no_dc = freqs[1:]
+        freqs_code_no_dc = freqs_code[1:]
         mean_p = float(np.mean(power_no_dc))
-        if dnl_period > 0 and N > dnl_period and mean_p > 0:
-            target_freq = 1.0 / dnl_period
-            idx_target = int(np.argmin(np.abs(freqs_no_dc - target_freq)))
-            lo_i = max(0, idx_target - 2)
-            hi_i = min(len(power_no_dc), idx_target + 3)
-            peak_power = float(np.max(power_no_dc[lo_i:hi_i]))
-            result["code_fft_power_at_dnl_period"] = round(peak_power, 4)
-            result["code_fft_dnl_period_ratio"] = round(
-                peak_power / mean_p, 2
-            )
+        fft_summary: dict[int, dict] = {}
+        for prd in dnl_periods:
+            prd_resolvable = prd >= nyquist_period
+            entry: dict = {"resolvable": prd_resolvable}
+            if prd_resolvable and prd > 0 and N > prd and mean_p > 0:
+                target_freq = 1.0 / prd
+                idx_target = int(np.argmin(np.abs(freqs_code_no_dc - target_freq)))
+                lo_i = max(0, idx_target - 2)
+                hi_i = min(len(power_no_dc), idx_target + 3)
+                peak_power = float(np.max(power_no_dc[lo_i:hi_i]))
+                entry["power"] = round(peak_power, 4)
+                entry["ratio"] = round(peak_power / mean_p, 2)
+            fft_summary[prd] = entry
+        result["fft_period_summary"] = fft_summary
+        # Backward compat: primary period ratio
+        if primary_period in fft_summary:
+            prim = fft_summary[primary_period]
+            if "power" in prim:
+                result["code_fft_power_at_dnl_period"] = prim["power"]
+                result["code_fft_dnl_period_ratio"] = prim["ratio"]
 
     # ── DNL factor diagnostics (if available) ─────────────────────────
     dnl_meta = fit_params.get("_dnl", {})
     dnl_factors = dnl_meta.get("dnl_factors")
+    if dnl_factors is None:
+        dnl_factors = dnl_meta.get("dnl_factors_full_res")
     if dnl_factors is not None:
         dnl_arr = np.asarray(dnl_factors, dtype=float)
         if dnl_arr.size == n_bins:
@@ -2230,16 +2306,27 @@ def compute_code_domain_diagnostics(
                 if len(pulls) > 2 else 0.0,
                 4,
             )
+        elif adc_bin_width > 1 and dnl_arr.size >= n_bins * adc_bin_width:
+            n_trim = n_bins * adc_bin_width
+            dnl_rebinned = dnl_arr[:n_trim].reshape(n_bins, adc_bin_width).mean(axis=1)
+            dnl_masked = dnl_rebinned[mask]
+            result["dnl_pull_correlation"] = round(
+                float(np.corrcoef(pulls, dnl_masked - 1.0)[0, 1])
+                if len(pulls) > 2 else 0.0,
+                4,
+            )
 
     # ── Stash arrays for plotting ─────────────────────────────────────
     result["_arrays"] = {
         "bin_idx": bin_idx,
+        "adc_code_offset": adc_code_offset,
         "pulls": pulls,
         "phases": phases,
         "phase_mean": phase_mean,
         "acf": acf,
         "power": power,
-        "freqs": freqs,
+        "freqs_code": freqs_code,
+        "freqs_bin": freqs_bin,
     }
 
     return result
@@ -2248,40 +2335,57 @@ def compute_code_domain_diagnostics(
 def plot_code_domain_diagnostics(
     diag_result: dict,
     out_dir: str | Path,
-    dnl_period: int = 64,
+    dnl_periods: list[int] | int | None = None,
+    # Legacy kwarg
+    dnl_period: int | None = None,
 ) -> None:
     """Plot code-domain residual diagnostics (4 panels).
 
-    Panel 1: Pull vs raw ADC bin index
-    Panel 2: Mean pull vs code phase (mod *dnl_period*)
+    Panel 1: Pull vs ADC code offset
+    Panel 2: Mean pull vs code phase (mod *primary period*)
     Panel 3: Code-domain ACF
-    Panel 4: Code-domain periodogram
+    Panel 4: Code-domain periodogram with all period markers
     """
     out_dir = Path(out_dir)
     arrays = diag_result.get("_arrays")
     if arrays is None:
         return
 
+    # ── Resolve period list ───────────────────────────────────────────
+    if dnl_periods is not None:
+        if isinstance(dnl_periods, int):
+            dnl_periods = [dnl_periods]
+    elif dnl_period is not None:
+        dnl_periods = [int(dnl_period)]
+    else:
+        # Try to get from diag_result (set by compute_code_domain_diagnostics)
+        dnl_periods = diag_result.get("dnl_periods", [16])
+    primary_period = diag_result.get("primary_period", dnl_periods[0])
+
     bin_idx = arrays["bin_idx"]
+    adc_code_offset = arrays.get("adc_code_offset", bin_idx)
     pulls = arrays["pulls"]
     phase_mean = arrays["phase_mean"]
     acf = arrays["acf"]
     power = arrays["power"]
-    freqs = arrays["freqs"]
+    freqs_code = arrays.get("freqs_code", arrays.get("freqs", np.array([])))
+    adc_bw = diag_result.get("adc_bin_width", 1)
 
     fig, axes = plt.subplots(2, 2, figsize=(14, 9))
 
-    # Panel 1: Pull vs ADC bin index
+    # Panel 1: Pull vs ADC code offset
     ax = axes[0, 0]
-    ax.scatter(bin_idx, pulls, s=1.5, alpha=0.6, color="steelblue", rasterized=True)
+    ax.scatter(adc_code_offset, pulls, s=1.5, alpha=0.6,
+               color="steelblue", rasterized=True)
     ax.axhline(0, color="k", lw=0.5)
     ax.axhline(2, color="orange", lw=0.5, ls="--")
     ax.axhline(-2, color="orange", lw=0.5, ls="--")
-    ax.set_xlabel("ADC bin index (code number)")
-    ax.set_ylabel("Pull (data−model)/√model")
-    ax.set_title("Residual vs Raw ADC Code")
+    bw_label = f" (bin={adc_bw} codes)" if adc_bw > 1 else ""
+    ax.set_xlabel(f"ADC code offset{bw_label}")
+    ax.set_ylabel("Pull (data\u2212model)/\u221amodel")
+    ax.set_title("Residual vs ADC Code Offset")
 
-    # Panel 2: Mean pull vs code phase
+    # Panel 2: Mean pull vs code phase (primary period)
     ax = axes[0, 1]
     valid = np.isfinite(phase_mean)
     ph_idx = np.arange(len(phase_mean))
@@ -2289,29 +2393,31 @@ def plot_code_domain_diagnostics(
     ax.bar(ph_idx[valid], phase_mean[valid], color=colors, width=0.8, alpha=0.7)
     ax.axhline(0, color="k", lw=0.5)
     rms = diag_result.get("code_phase_pull_rms", 0)
-    ax.set_xlabel(f"Code phase (mod {dnl_period})")
+    resolvable = diag_result.get("dnl_period_resolvable", True)
+    title_suffix = "" if resolvable else " [BELOW NYQUIST]"
+    ax.set_xlabel(f"ADC code phase (mod {primary_period})")
     ax.set_ylabel("Mean pull")
-    ax.set_title(f"Residual vs Code Phase (RMS={rms:.3f})")
+    ax.set_title(f"Residual vs Code Phase (RMS={rms:.3f}){title_suffix}")
 
     # Panel 3: Code-domain ACF
     ax = axes[1, 0]
     lags = np.arange(len(acf))
     ax.bar(lags, acf, color="steelblue", width=0.8, alpha=0.7)
     ax.axhline(0, color="k", lw=0.5)
-    # 95% confidence band for white noise: ±1.96/√N
     n = len(pulls)
     ci = 1.96 / np.sqrt(n) if n > 0 else 0
     ax.axhline(ci, color="orange", lw=0.5, ls="--")
     ax.axhline(-ci, color="orange", lw=0.5, ls="--")
-    ax.set_xlabel("Lag (bins)")
+    lag_unit = f"bins ({adc_bw} codes each)" if adc_bw > 1 else "bins (=codes)"
+    ax.set_xlabel(f"Lag ({lag_unit})")
     ax.set_ylabel("Autocorrelation")
     ax.set_title("Code-Domain ACF")
     ax.set_xlim(-0.5, min(30, len(acf)) - 0.5)
 
-    # Panel 4: Code-domain periodogram (log-log)
+    # Panel 4: Code-domain periodogram with multi-period markers
     ax = axes[1, 1]
-    if len(power) > 1:
-        f_plot = freqs[1:]
+    if len(power) > 1 and freqs_code.size > 1:
+        f_plot = freqs_code[1:]
         p_plot = power[1:]
         ax.loglog(f_plot, p_plot, color="steelblue", lw=0.5, alpha=0.6)
         mean_p = float(np.mean(p_plot))
@@ -2328,20 +2434,39 @@ def plot_code_domain_diagnostics(
                     sp.append(np.mean(p_plot[m]))
             if sf:
                 ax.loglog(sf, sp, color="steelblue", lw=1.8, alpha=0.9)
-        # Mark expected DNL period
-        if dnl_period > 0:
-            target_freq = 1.0 / dnl_period
+        # Mark all DNL periods — primary in red, others in orange
+        _period_colors = ["red", "darkorange", "green", "purple", "brown"]
+        fft_summary = diag_result.get("fft_period_summary", {})
+        for i, prd in enumerate(dnl_periods):
+            if prd <= 0:
+                continue
+            target_freq = 1.0 / prd
+            col = _period_colors[i % len(_period_colors)]
+            ratio_str = ""
+            if prd in fft_summary and "ratio" in fft_summary[prd]:
+                ratio_str = f" ({fft_summary[prd]['ratio']:.1f}x)"
             ax.axvline(
-                target_freq, color="red", lw=0.8, ls="--",
-                label=f"1/{dnl_period} cycles/bin",
+                target_freq, color=col, lw=0.8, ls="--",
+                label=f"P={prd}{ratio_str}",
+            )
+        # Mark Nyquist limit
+        nyquist_code = 1.0 / (2 * adc_bw) if adc_bw > 0 else 0.5
+        if adc_bw > 1:
+            ax.axvline(
+                nyquist_code, color="gray", lw=0.8, ls=":",
+                label=f"Nyquist (bw={adc_bw})",
             )
         ax.legend(fontsize=7)
-        ax.set_xlim(f_plot[0] * 0.8, 0.5)
-    ax.set_xlabel("Frequency (cycles/bin)")
+        ax.set_xlim(f_plot[0] * 0.8, min(0.5, nyquist_code * 1.1))
+    ax.set_xlabel("Frequency (cycles / ADC code)")
     ax.set_ylabel("Power")
     ax.set_title("Code-Domain Periodogram")
 
-    fig.suptitle("Code-Domain Residual Diagnostics (C1)", fontsize=11, y=1.01)
+    periods_str = ",".join(str(p) for p in dnl_periods)
+    fig.suptitle(
+        f"Code-Domain Residual Diagnostics (C1, bin_width={adc_bw} codes, periods=[{periods_str}])",
+        fontsize=11, y=1.01,
+    )
     fig.tight_layout()
     out_path = out_dir / "fit_code_domain_diagnostics.png"
     fig.savefig(out_path, dpi=200, bbox_inches="tight")
@@ -2546,3 +2671,692 @@ def compute_whitened_residuals(
         )
 
     return result
+
+
+def plot_per_period_crossval(
+    per_period_crossval: dict,
+    out_dir: str | Path,
+    *,
+    filename: str = "per_period_crossval.png",
+) -> None:
+    """Multi-panel diagnostic for per-period Fourier DNL crossvalidation.
+
+    Panels:
+    1. SNR (both halves) per period
+    2. Amplitude ratio per period
+    3. Held-out ΔNLL per period (if available)
+    4. Energy correlation per period (spectral absorption flag)
+    """
+    if not per_period_crossval:
+        return
+
+    out_dir = Path(out_dir)
+    periods = sorted(int(k) for k in per_period_crossval.keys())
+    data = {int(k): v for k, v in per_period_crossval.items()}
+
+    has_nll = "delta_nll_heldout_mean" in data.get(periods[0], {})
+    has_ecorr = "energy_correlation" in data.get(periods[0], {})
+    n_panels = 2 + int(has_nll) + int(has_ecorr)
+
+    fig, axes = plt.subplots(n_panels, 1, figsize=(10, 3 * n_panels), sharex=True)
+    if n_panels == 1:
+        axes = [axes]
+    x = np.arange(len(periods))
+    labels = [str(p) for p in periods]
+
+    # Panel 1: SNR
+    ax = axes[0]
+    snr_A = [data[p].get("snr_A", 0) for p in periods]
+    snr_B = [data[p].get("snr_B", 0) for p in periods]
+    ax.bar(x - 0.15, snr_A, 0.3, label="Half A", alpha=0.8)
+    ax.bar(x + 0.15, snr_B, 0.3, label="Half B", alpha=0.8)
+    ax.axhline(2.0, color="red", linestyle="--", linewidth=0.8, label="SNR threshold")
+    ax.set_ylabel("SNR")
+    ax.set_title("Per-Period Fourier DNL Crossvalidation")
+    ax.legend(fontsize=8)
+
+    # Panel 2: Amplitude ratio
+    ax = axes[1]
+    amp_r = [data[p].get("amp_ratio", 0) for p in periods]
+    colors = ["green" if r > 0.3 else "red" for r in amp_r]
+    ax.bar(x, amp_r, 0.5, color=colors, alpha=0.8)
+    ax.axhline(0.3, color="red", linestyle="--", linewidth=0.8, label="Threshold")
+    ax.set_ylabel("Amplitude ratio")
+    ax.legend(fontsize=8)
+
+    panel_idx = 2
+
+    # Panel 3: Held-out ΔNLL
+    if has_nll:
+        ax = axes[panel_idx]
+        dnll = [data[p].get("delta_nll_heldout_mean", 0) for p in periods]
+        colors_nll = ["green" if d > 1.0 else ("gold" if d > 0 else "red") for d in dnll]
+        ax.bar(x, dnll, 0.5, color=colors_nll, alpha=0.8)
+        ax.axhline(0.0, color="black", linewidth=0.5)
+        ax.axhline(1.0, color="green", linestyle="--", linewidth=0.8, label="ΔNLL=1")
+        ax.set_ylabel("Held-out ΔNLL")
+        ax.legend(fontsize=8)
+        panel_idx += 1
+
+    # Panel 4: Energy correlation
+    if has_ecorr:
+        ax = axes[panel_idx]
+        ecorr = [data[p].get("energy_correlation", 0) for p in periods]
+        colors_ec = ["red" if abs(r) > 0.3 else "green" for r in ecorr]
+        ax.bar(x, ecorr, 0.5, color=colors_ec, alpha=0.8)
+        ax.axhline(0.3, color="red", linestyle="--", linewidth=0.8)
+        ax.axhline(-0.3, color="red", linestyle="--", linewidth=0.8)
+        ax.set_ylabel("|r| energy corr")
+        panel_idx += 1
+
+    axes[-1].set_xticks(x)
+    axes[-1].set_xticklabels(labels)
+    axes[-1].set_xlabel("Fourier period (ADC bins)")
+
+    fig.tight_layout()
+    fig.savefig(out_dir / filename, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    logger.info("Saved per-period crossval plot: %s", out_dir / filename)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Per-peak / per-region residual diagnostic
+# ═══════════════════════════════════════════════════════════════════════
+
+# Preferred isotope ordering for display
+_ISOTOPE_ORDER = ["Po210", "Po218", "Bi212", "Po214", "Po212"]
+
+
+def _rebin_array(arr: np.ndarray, factor: int) -> np.ndarray:
+    """Rebin *arr* by summing groups of *factor* adjacent bins.
+
+    Trailing bins that don't fill a complete group are discarded.
+    """
+    n = len(arr) // factor * factor
+    return arr[:n].reshape(-1, factor).sum(axis=1)
+
+
+def _rebin_centers(centers: np.ndarray, factor: int) -> np.ndarray:
+    """Rebin centres by averaging groups of *factor* adjacent bins."""
+    n = len(centers) // factor * factor
+    return centers[:n].reshape(-1, factor).mean(axis=1)
+
+
+def plot_per_peak_residuals(
+    centers: np.ndarray,
+    hist: np.ndarray,
+    model: np.ndarray,
+    params: Mapping[str, object],
+    output_dir: str | Path,
+    isotopes: list[str] | None = None,
+    components: Mapping[str, np.ndarray] | None = None,
+) -> None:
+    """Create a multi-panel per-peak residual diagnostic figure.
+
+    For each isotope peak a pair of panels is drawn:
+
+    * **Upper**: data (histogram) vs total model and individual fit
+      components on a **log scale**.
+    * **Lower**: normalised residual ``(data - model) / sqrt(model)``
+      in the same window, with the peak centroid marked.
+
+    Inter-peak gap regions and full-spectrum rebinned residuals (x10,
+    x30) are appended as additional panels.
+
+    Parameters
+    ----------
+    components : dict[str, np.ndarray] or None
+        Per-isotope (and background) model curves, keyed by name.
+        When provided these are overlaid on each peak panel.
+
+    The figure is saved as ``fit_per_peak_residuals.png`` in
+    *output_dir*.
+    """
+    output_dir = Path(output_dir)
+    centers = np.asarray(centers, dtype=float)
+    hist = np.asarray(hist, dtype=float)
+    model = np.asarray(model, dtype=float)
+
+    if centers.size == 0 or hist.size == 0 or model.size == 0:
+        logger.info("No data for per-peak residuals; skipping")
+        return
+    if centers.size != hist.size or centers.size != model.size:
+        logger.warning(
+            "Array size mismatch (centers=%d, hist=%d, model=%d); skipping "
+            "per-peak residuals",
+            centers.size, hist.size, model.size,
+        )
+        return
+
+    # --- Discover isotopes from params ---
+    if isotopes is None:
+        # Collect isotopes that have both mu_<iso> and sigma_<iso>
+        found = []
+        for key in params:
+            if isinstance(key, str) and key.startswith("mu_"):
+                iso = key[3:]
+                if f"sigma_{iso}" in params:
+                    found.append(iso)
+        # Sort into physics order, then alphabetical for unknowns
+        order_map = {name: i for i, name in enumerate(_ISOTOPE_ORDER)}
+        isotopes = sorted(found, key=lambda x: (order_map.get(x, 999), x))
+
+    if not isotopes:
+        logger.info("No isotope peaks found in params; skipping per-peak residuals")
+        return
+
+    # --- Build peak regions (mu +/- 5*sigma) ---
+    peak_regions: list[tuple[str, float, float, float]] = []  # (label, lo, hi, mu)
+    for iso in isotopes:
+        mu = params.get(f"mu_{iso}")
+        sigma = params.get(f"sigma_{iso}")
+        if not isinstance(mu, (int, float)) or not isinstance(sigma, (int, float)):
+            continue
+        mu = float(mu)
+        sigma = max(float(sigma), 0.005)  # floor to avoid zero-width
+        lo = mu - 5.0 * sigma
+        hi = mu + 5.0 * sigma
+        peak_regions.append((iso, lo, hi, mu))
+
+    # --- Build inter-peak gap regions ---
+    gap_regions: list[tuple[str, float, float]] = []
+    sorted_peaks = sorted(peak_regions, key=lambda t: t[1])
+    for i in range(len(sorted_peaks) - 1):
+        _, _, hi_prev, _ = sorted_peaks[i]
+        name_next, lo_next, _, _ = sorted_peaks[i + 1]
+        name_prev = sorted_peaks[i][0]
+        if lo_next > hi_prev + 0.01:  # meaningful gap
+            gap_regions.append(
+                (f"gap {name_prev}-{name_next}", hi_prev, lo_next)
+            )
+
+    # --- Layout ---
+    # Each peak gets 2 rows (data+resid); each gap gets 1 row; rebin panels get 2 rows each
+    n_peak_panels = len(peak_regions)
+    n_gap_panels = len(gap_regions)
+    n_rebin_panels = 2  # rebin x10 and rebin x30
+
+    total_rows = n_peak_panels * 2 + n_gap_panels + n_rebin_panels * 2
+    if total_rows == 0:
+        logger.info("Nothing to plot for per-peak residuals")
+        return
+
+    fig = plt.figure(figsize=(12, 2.2 * total_rows))
+
+    # Use gridspec for flexible row heights:
+    # peak panels: data row height=3, resid row height=1
+    # gap panels: height=1
+    # rebin panels: data row height=2, resid row height=1
+    height_ratios = []
+    for _ in peak_regions:
+        height_ratios.extend([3, 1])
+    for _ in gap_regions:
+        height_ratios.append(1.5)
+    for _ in range(n_rebin_panels):
+        height_ratios.extend([2, 1])
+
+    gs = fig.add_gridspec(
+        nrows=len(height_ratios), ncols=1,
+        height_ratios=height_ratios, hspace=0.05,
+    )
+
+    row = 0
+
+    # === Per-peak panels ===
+    # Component colour cycle for individual isotope / background curves
+    _comp_colors = [
+        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+        "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+    ]
+
+    for iso, lo, hi, mu in peak_regions:
+        mask = (centers >= lo) & (centers <= hi)
+        if mask.sum() < 3:
+            # Skip degenerate windows but still consume grid rows
+            row += 2
+            continue
+
+        c = centers[mask]
+        d = hist[mask]
+        m = model[mask]
+
+        # chi2/ndf for this region
+        m_safe = np.maximum(m, 0.5)
+        chi2_r = float(np.sum((d - m) ** 2 / m_safe))
+        ndf_r = max(1, int(mask.sum()) - 1)
+        chi2_ndf_r = chi2_r / ndf_r
+
+        # -- Upper panel: data vs model (LOG scale) --
+        ax_data = fig.add_subplot(gs[row])
+        ax_data.step(c, d, where="mid", color="black", linewidth=0.8,
+                     label="Data", zorder=5)
+        ax_data.plot(c, m, color="red", linewidth=1.5, label="Total model",
+                     zorder=4)
+
+        # Overlay individual fit components
+        if components:
+            ci = 0
+            for comp_name, comp_arr in components.items():
+                comp_masked = comp_arr[mask]
+                if np.max(comp_masked) < 0.5:
+                    continue  # skip negligible components in this window
+                col = _comp_colors[ci % len(_comp_colors)]
+                ax_data.plot(c, comp_masked, color=col, linewidth=0.8,
+                             linestyle="--", alpha=0.8, label=comp_name,
+                             zorder=3)
+                ci += 1
+
+        ax_data.axvline(mu, color="blue", linestyle="--", linewidth=0.7, alpha=0.6)
+        ax_data.set_yscale("log")
+        ax_data.set_ylim(bottom=max(0.5, np.min(d[d > 0]) * 0.3) if np.any(d > 0) else 0.5)
+        ax_data.set_ylabel("Counts")
+        ax_data.set_title(
+            f"{iso}:  $\\chi^2$/ndf = {chi2_r:.1f}/{ndf_r} = {chi2_ndf_r:.3f}",
+            fontsize=10,
+        )
+        ax_data.legend(fontsize=6, loc="upper right", ncol=2)
+        ax_data.set_xlim(lo, hi)
+        ax_data.tick_params(labelbottom=False)
+
+        # -- Lower panel: normalised residuals --
+        ax_res = fig.add_subplot(gs[row + 1], sharex=ax_data)
+        resid = (d - m) / np.sqrt(m_safe)
+        ax_res.bar(c, resid, width=np.median(np.diff(c)) * 0.9,
+                   color="#4daf4a", alpha=0.7, edgecolor="none")
+        ax_res.axhline(0, color="black", linewidth=0.5)
+        ax_res.axhline(2, color="gray", linestyle="--", linewidth=0.4)
+        ax_res.axhline(-2, color="gray", linestyle="--", linewidth=0.4)
+        ax_res.axvline(mu, color="blue", linestyle="--", linewidth=0.7, alpha=0.6)
+        ax_res.set_ylabel("Pull ($\\sigma$)")
+        ax_res.set_xlabel("Energy (MeV)")
+        ax_res.set_xlim(lo, hi)
+
+        row += 2
+
+    # === Inter-peak gap panels ===
+    for label, lo, hi in gap_regions:
+        mask = (centers >= lo) & (centers <= hi)
+        if mask.sum() < 2:
+            row += 1
+            continue
+
+        c = centers[mask]
+        d = hist[mask]
+        m = model[mask]
+        m_safe = np.maximum(m, 0.5)
+        resid = (d - m) / np.sqrt(m_safe)
+
+        chi2_g = float(np.sum((d - m) ** 2 / m_safe))
+        ndf_g = max(1, int(mask.sum()) - 1)
+
+        ax_gap = fig.add_subplot(gs[row])
+        ax_gap.bar(c, resid, width=np.median(np.diff(c)) * 0.9,
+                   color="#ff7f00", alpha=0.7, edgecolor="none")
+        ax_gap.axhline(0, color="black", linewidth=0.5)
+        ax_gap.axhline(2, color="gray", linestyle="--", linewidth=0.4)
+        ax_gap.axhline(-2, color="gray", linestyle="--", linewidth=0.4)
+        ax_gap.set_ylabel("Pull ($\\sigma$)")
+        ax_gap.set_xlabel("Energy (MeV)")
+        ax_gap.set_title(
+            f"{label}:  $\\chi^2$/ndf = {chi2_g:.1f}/{ndf_g} = {chi2_g / ndf_g:.3f}",
+            fontsize=9,
+        )
+        ax_gap.set_xlim(lo, hi)
+        row += 1
+
+    # === Full-spectrum rebinned residual panels ===
+    for factor, color in [(10, "#377eb8"), (30, "#984ea3")]:
+        c_rb = _rebin_centers(centers, factor)
+        d_rb = _rebin_array(hist, factor)
+        m_rb = _rebin_array(model, factor)
+
+        if c_rb.size < 3:
+            row += 2
+            continue
+
+        m_rb_safe = np.maximum(m_rb, 0.5)
+        resid_rb = (d_rb - m_rb) / np.sqrt(m_rb_safe)
+
+        chi2_rb = float(np.sum((d_rb - m_rb) ** 2 / m_rb_safe))
+        ndf_rb = max(1, int(np.sum(m_rb > 0.5)) - 1)
+
+        # Upper: data vs model (LOG scale)
+        ax_rb_data = fig.add_subplot(gs[row])
+        ax_rb_data.step(c_rb, d_rb, where="mid", color="black", linewidth=0.8,
+                        label="Data", zorder=5)
+        ax_rb_data.plot(c_rb, m_rb, color="red", linewidth=1.2, label="Total model",
+                        zorder=4)
+        ax_rb_data.set_yscale("log")
+        ax_rb_data.set_ylim(
+            bottom=max(0.5, np.min(d_rb[d_rb > 0]) * 0.3) if np.any(d_rb > 0) else 0.5
+        )
+        ax_rb_data.set_ylabel("Counts")
+        ax_rb_data.set_title(
+            f"Rebin x{factor}:  $\\chi^2$/ndf = {chi2_rb:.1f}/{ndf_rb}"
+            f" = {chi2_rb / ndf_rb:.3f}",
+            fontsize=10,
+        )
+        ax_rb_data.legend(fontsize=7, loc="upper right")
+        ax_rb_data.tick_params(labelbottom=False)
+
+        # Lower: residuals
+        ax_rb_res = fig.add_subplot(gs[row + 1], sharex=ax_rb_data)
+        bin_width_rb = np.median(np.diff(c_rb)) * 0.9 if len(c_rb) > 1 else 0.01
+        ax_rb_res.bar(c_rb, resid_rb, width=bin_width_rb,
+                      color=color, alpha=0.7, edgecolor="none")
+        ax_rb_res.axhline(0, color="black", linewidth=0.5)
+        ax_rb_res.axhline(2, color="gray", linestyle="--", linewidth=0.4)
+        ax_rb_res.axhline(-2, color="gray", linestyle="--", linewidth=0.4)
+        ax_rb_res.set_ylabel("Pull ($\\sigma$)")
+        ax_rb_res.set_xlabel("Energy (MeV)")
+
+        row += 2
+
+    fig.tight_layout()
+    out_path = output_dir / "fit_per_peak_residuals.png"
+    fig.savefig(out_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    logger.info("Saved per-peak residual diagnostic to %s", out_path)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Template fitting diagnostics
+# ═══════════════════════════════════════════════════════════════════════
+
+def plot_template_diagnostics(
+    template_results: dict,
+    output_dir: Path | str,
+    roi_series: dict | None = None,
+) -> None:
+    """Create diagnostic plots for per-bin template fitting.
+
+    Generates three panels:
+    1. Per-bin chi2/ndf time series (fit quality monitoring)
+    2. Per-isotope centroid drift (energy stability)
+    3. ROI vs template count comparison (when *roi_series* provided)
+
+    Parameters
+    ----------
+    template_results : dict
+        Output from ``_fit_time_bins()``.  Must contain
+        ``per_bin_diagnostics`` and ``isotope_series_fitted``.
+    output_dir : Path or str
+        Directory for output PNGs.
+    roi_series : dict, optional
+        ROI-based ``isotope_series_data`` for comparison plot.
+    """
+    import matplotlib.dates as mdates
+    from datetime import datetime, timezone
+
+    output_dir = Path(output_dir)
+    diag = template_results.get("per_bin_diagnostics", [])
+    fitted_series = template_results.get("isotope_series_fitted", {})
+
+    if not diag:
+        logger.warning("No per-bin diagnostics available for template plots")
+        return
+
+    # ── Panel 1: chi2/ndf time series ────────────────────────────────
+    try:
+        _plot_template_chi2(diag, output_dir)
+    except Exception as exc:
+        logger.warning("Failed to plot template chi2 diagnostic: %s", exc)
+
+    # ── Panel 2: Centroid drift ──────────────────────────────────────
+    try:
+        _plot_centroid_drift(diag, template_results, output_dir)
+    except Exception as exc:
+        logger.warning("Failed to plot centroid drift: %s", exc)
+
+    # ── Panel 3: ROI vs template comparison ──────────────────────────
+    if roi_series:
+        try:
+            _plot_roi_vs_template(roi_series, fitted_series, output_dir)
+        except Exception as exc:
+            logger.warning("Failed to plot ROI vs template comparison: %s", exc)
+
+
+def _unix_to_datetime(t_arr):
+    """Convert array of Unix timestamps to matplotlib-friendly datetimes."""
+    from datetime import datetime, timezone
+    return [datetime.fromtimestamp(t, tz=timezone.utc) for t in t_arr]
+
+
+def _plot_template_chi2(diag: list[dict], output_dir: Path) -> None:
+    """Per-bin chi2/ndf time series with validity flagging."""
+    import matplotlib.dates as mdates
+
+    t_vals = np.array([d["t"] for d in diag])
+    chi2_vals = np.array([d.get("chi2_ndf", np.nan) for d in diag])
+    valid = np.array([d.get("fit_valid", False) for d in diag])
+    n_events = np.array([d.get("n_events", 0) for d in diag])
+
+    dt_times = _unix_to_datetime(t_vals)
+
+    fig, axes = plt.subplots(2, 1, figsize=(14, 7), sharex=True,
+                              gridspec_kw={"height_ratios": [3, 1]})
+
+    # Top: chi2/ndf
+    ax = axes[0]
+    mask_ok = valid & np.isfinite(chi2_vals)
+    mask_bad = ~valid & np.isfinite(chi2_vals)
+
+    if mask_ok.any():
+        ax.scatter(
+            np.array(dt_times)[mask_ok], chi2_vals[mask_ok],
+            s=12, alpha=0.6, c="steelblue", label="valid", zorder=3,
+        )
+    if mask_bad.any():
+        ax.scatter(
+            np.array(dt_times)[mask_bad], chi2_vals[mask_bad],
+            s=18, alpha=0.8, c="red", marker="x", label="invalid", zorder=4,
+        )
+
+    # Reference lines
+    ax.axhline(1.0, ls="--", c="gray", lw=0.8, label="$\\chi^2/\\mathrm{ndf}=1$")
+    if mask_ok.any():
+        med_chi2 = float(np.nanmedian(chi2_vals[mask_ok]))
+        ax.axhline(med_chi2, ls=":", c="steelblue", lw=0.8,
+                    label=f"median = {med_chi2:.2f}")
+
+    ax.set_ylabel("$\\chi^2 / \\mathrm{ndf}$")
+    ax.set_title("Per-bin template fit quality")
+    ax.legend(fontsize=8, loc="upper right")
+    ax.set_ylim(bottom=0)
+
+    # Bottom: events per bin
+    ax2 = axes[1]
+    ax2.bar(dt_times, n_events, width=0.8 * (t_vals[1] - t_vals[0]) / 86400
+            if len(t_vals) > 1 else 0.5,
+            color="gray", alpha=0.5, edgecolor="none")
+    ax2.set_ylabel("Events / bin")
+    ax2.set_xlabel("Date (UTC)")
+    ax2.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+    fig.autofmt_xdate()
+
+    fig.tight_layout()
+    out = output_dir / "template_chi2_timeseries.png"
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    logger.info("Saved template chi2 time series to %s", out)
+
+
+def _plot_centroid_drift(
+    diag: list[dict], template_results: dict, output_dir: Path
+) -> None:
+    """Per-isotope centroid drift relative to aggregate best-fit."""
+    import matplotlib.dates as mdates
+
+    agg_params = template_results.get("template_params", {})
+
+    # Collect all isotopes that have centroids
+    all_centroids: dict[str, tuple[list, list]] = {}
+    for d in diag:
+        centroids = d.get("centroids", {})
+        for iso, mu in centroids.items():
+            if iso not in all_centroids:
+                all_centroids[iso] = ([], [])
+            all_centroids[iso][0].append(d["t"])
+            all_centroids[iso][1].append(mu)
+
+    if not all_centroids:
+        return
+
+    # Only plot isotopes whose centroids actually float (not fixed weak ones)
+    plot_isos = []
+    for iso in sorted(all_centroids.keys()):
+        mu_arr = np.array(all_centroids[iso][1])
+        if np.ptp(mu_arr[np.isfinite(mu_arr)]) > 1e-6:
+            plot_isos.append(iso)
+
+    if not plot_isos:
+        return
+
+    n_iso = len(plot_isos)
+    fig, axes = plt.subplots(n_iso, 1, figsize=(14, 3 * n_iso), sharex=True)
+    if n_iso == 1:
+        axes = [axes]
+
+    colors = {"Po214": "C0", "Po218": "C1", "Po210": "C2", "Po212": "C3"}
+
+    for ax, iso in zip(axes, plot_isos):
+        t_arr = np.array(all_centroids[iso][0])
+        mu_arr = np.array(all_centroids[iso][1])
+        dt_times = _unix_to_datetime(t_arr)
+
+        agg_mu = agg_params.get(f"mu_{iso}")
+        if agg_mu is not None:
+            # Plot residual in keV
+            resid_kev = (mu_arr - agg_mu) * 1000.0
+            ax.scatter(dt_times, resid_kev, s=10, alpha=0.5,
+                       c=colors.get(iso, "C5"))
+            ax.axhline(0, ls="--", c="gray", lw=0.8)
+            ax.set_ylabel(f"$\\Delta\\mu$ ({iso}) [keV]")
+            _finite = resid_kev[np.isfinite(resid_kev)]
+            if _finite.size > 2:
+                rms = float(np.sqrt(np.mean(_finite**2)))
+                ax.text(
+                    0.02, 0.92, f"RMS = {rms:.1f} keV",
+                    transform=ax.transAxes, fontsize=9,
+                    va="top", bbox=dict(boxstyle="round,pad=0.3",
+                                        fc="white", alpha=0.8),
+                )
+        else:
+            ax.scatter(dt_times, mu_arr, s=10, alpha=0.5,
+                       c=colors.get(iso, "C5"))
+            ax.set_ylabel(f"$\\mu$ ({iso}) [MeV]")
+
+    axes[-1].set_xlabel("Date (UTC)")
+    axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+    fig.autofmt_xdate()
+    fig.suptitle("Per-bin centroid drift", fontsize=12)
+    fig.tight_layout()
+    out = output_dir / "template_centroid_drift.png"
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    logger.info("Saved centroid drift plot to %s", out)
+
+
+def _plot_roi_vs_template(
+    roi_series: dict[str, list[dict]],
+    fitted_series: dict[str, list[dict]],
+    output_dir: Path,
+) -> None:
+    """Compare ROI window counts vs template-fitted counts per isotope."""
+    import matplotlib.dates as mdates
+
+    # Find common isotopes
+    common = sorted(set(roi_series.keys()) & set(fitted_series.keys()))
+    if not common:
+        logger.info("No common isotopes for ROI vs template comparison")
+        return
+
+    n_iso = len(common)
+    fig, axes = plt.subplots(n_iso, 2, figsize=(14, 3.5 * n_iso),
+                              gridspec_kw={"width_ratios": [3, 1]})
+    if n_iso == 1:
+        axes = np.array([axes])
+
+    for row, iso in enumerate(common):
+        roi_entries = roi_series.get(iso, [])
+        tpl_entries = fitted_series.get(iso, [])
+
+        # Build dicts keyed by rounded t
+        roi_map = {}
+        for e in roi_entries:
+            t = e.get("t")
+            if t is not None:
+                roi_map[round(float(t), 0)] = e
+
+        tpl_map = {}
+        for e in tpl_entries:
+            t = e.get("t")
+            if t is not None:
+                tpl_map[round(float(t), 0)] = e
+
+        # Match bins by time
+        common_t = sorted(set(roi_map.keys()) & set(tpl_map.keys()))
+        if not common_t:
+            continue
+
+        roi_counts = np.array([roi_map[t].get("counts", np.nan) for t in common_t])
+        tpl_counts = np.array([tpl_map[t].get("counts", np.nan) for t in common_t])
+        tpl_unc = np.array([tpl_map[t].get("counts_unc", np.nan) for t in common_t])
+        dt_times = _unix_to_datetime(common_t)
+
+        # Left: time series comparison
+        ax_ts = axes[row, 0]
+        ax_ts.scatter(dt_times, roi_counts, s=8, alpha=0.5, c="gray",
+                      label="ROI", zorder=2)
+        if np.any(np.isfinite(tpl_unc)):
+            ax_ts.errorbar(
+                dt_times, tpl_counts, yerr=tpl_unc,
+                fmt=".", ms=5, alpha=0.6, c="steelblue",
+                elinewidth=0.5, capsize=0, label="Template", zorder=3,
+            )
+        else:
+            ax_ts.scatter(dt_times, tpl_counts, s=8, alpha=0.6, c="steelblue",
+                          label="Template", zorder=3)
+        ax_ts.set_ylabel(f"Counts ({iso})")
+        ax_ts.legend(fontsize=8, loc="upper right")
+        if row == 0:
+            ax_ts.set_title("Time series: ROI vs Template")
+        ax_ts.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+
+        # Right: scatter plot (ROI vs Template)
+        ax_sc = axes[row, 1]
+        finite = np.isfinite(roi_counts) & np.isfinite(tpl_counts)
+        if finite.any():
+            ax_sc.scatter(roi_counts[finite], tpl_counts[finite],
+                          s=10, alpha=0.4, c="steelblue")
+            _lo = min(roi_counts[finite].min(), tpl_counts[finite].min())
+            _hi = max(roi_counts[finite].max(), tpl_counts[finite].max())
+            _pad = 0.05 * (_hi - _lo) if _hi > _lo else 1.0
+            _diag = [_lo - _pad, _hi + _pad]
+            ax_sc.plot(_diag, _diag, "k--", lw=0.8, alpha=0.5)
+            ax_sc.set_xlim(_diag)
+            ax_sc.set_ylim(_diag)
+
+            # Ratio stats
+            ratio = tpl_counts[finite] / np.clip(roi_counts[finite], 1.0, None)
+            _fr = ratio[np.isfinite(ratio)]
+            if _fr.size > 2:
+                ax_sc.text(
+                    0.05, 0.92,
+                    f"median ratio: {np.median(_fr):.3f}\n"
+                    f"std: {np.std(_fr):.3f}",
+                    transform=ax_sc.transAxes, fontsize=8, va="top",
+                    bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8),
+                )
+        ax_sc.set_xlabel(f"ROI ({iso})")
+        ax_sc.set_ylabel(f"Template ({iso})")
+        ax_sc.set_aspect("equal", adjustable="datalim")
+        if row == 0:
+            ax_sc.set_title("Correlation")
+
+    fig.autofmt_xdate()
+    fig.tight_layout()
+    out = output_dir / "roi_vs_template.png"
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    logger.info("Saved ROI vs template comparison to %s", out)

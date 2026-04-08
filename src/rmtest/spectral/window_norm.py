@@ -4,6 +4,7 @@ from .shapes import (
     right_emg_pdf_E, right_emg_cdf_E,
     gaussian_pdf_E, gaussian_cdf_E,
     split_gaussian_pdf_E, split_gaussian_cdf_E,
+    skewnorm_pdf_E, skewnorm_cdf_E,
     shelf_pdf_E,
 )
 
@@ -21,6 +22,9 @@ def _component_p_in_window(kind, E_lo, E_hi, mu, sigma, tau=None, **kwargs):
     elif kind == "split_gauss":
         sigma_right = kwargs.get("sigma_right", sigma)
         p = float(split_gaussian_cdf_E(E_hi, mu, sigma, sigma_right) - split_gaussian_cdf_E(E_lo, mu, sigma, sigma_right))
+    elif kind == "skewnorm":
+        alpha = kwargs.get("alpha", 0.0)
+        p = float(skewnorm_cdf_E(E_hi, mu, sigma, alpha) - skewnorm_cdf_E(E_lo, mu, sigma, alpha))
     elif kind == "shelf":
         # shelf_pdf_E is already normalized to [E_lo, E_hi], so p_in_window = 1.
         p = 1.0
@@ -40,6 +44,9 @@ def component_pdf(kind, E, mu, sigma, tau=None, E_lo=None, E_hi=None, **kwargs):
     elif kind == "split_gauss":
         sigma_right = kwargs.get("sigma_right", sigma)
         return split_gaussian_pdf_E(E, mu, sigma, sigma_right)
+    elif kind == "skewnorm":
+        alpha = kwargs.get("alpha", 0.0)
+        return skewnorm_pdf_E(E, mu, sigma, alpha)
     elif kind == "shelf":
         if E_lo is None or E_hi is None:
             raise ValueError("shelf kind requires E_lo and E_hi")

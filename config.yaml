@@ -87,36 +87,26 @@ calibration:
 spectral_fit:
   do_spectral_fit: true
   spectral_binning_mode: adc
-  adc_bin_width: 10
+  adc_bin_width: 1
   # ADC Differential Non-Linearity correction
   dnl_correction:
-    enabled: false
+    enabled: true
+    parameterized: true
+    full_resolution_estimate: true
+    fourier_periods_codes: [4, 8, 16, 32, 64, 128, 256, 512]
+    post_dnl_rebin: 1
     iterations: 1
     min_counts: 5
     max_correction: 0.5
     smooth_window: 61
-    # Cross-validation: split data by time, estimate DNL independently on
-    # each half, cross-apply to test whether DNL is real hardware or model
-    # misfit absorption.  Runs 6 fits (slow) but only when enabled.
     crossval: false
-    # Path to an external DNL map (.npy file) from a flat-field or pulser
-    # calibration.  When set, the external map is used as a fixed per-bin
-    # width correction (operator_class: external_fixed), bypassing
-    # self-estimation.  Corrected bins remain independent Poisson.
     external_map_path: null
-    # Fourier parameterized DNL: fit cos/sin at ADC bit-cycling periods
-    # instead of per-bin correction.  ~14 DOF instead of ~182.
-    parameterized: false
-    fourier_periods_codes: [4, 8, 16, 32, 64, 128, 256, 512]
-    # Two-stage pipeline: estimate Fourier DNL at bin_width=1 (full ADC
-    # resolution), apply correction, then rebin before fitting.  This
-    # captures periodic hardware DNL without overfitting peak shapes.
-    full_resolution_estimate: false
-    # Post-DNL rebin specification (only used when full_resolution_estimate
-    # is true).  Values: "fd" for Freedman-Diaconis rule, an integer for a
-    # fixed rebin factor, or "<N>w" for a target bin width in ADC channels
-    # (e.g. "5w" for 5-channel bins).
-    post_dnl_rebin: "fd"
+  # Prelim→rebin parameter handoff (requires full_resolution_estimate: true)
+  # fix_bkg_from_prelim: "fix" locks b0/b1/S_bkg at prelim values,
+  #   "seed" shifts prior mean but keeps sigma, "off" disables.
+  fix_bkg_from_prelim: "fix"
+  seed_peaks_from_prelim: "seed"   # "fix", "seed", or "off" for mu/sigma/S params
+  seed_shape_from_prelim: "seed"   # "fix", "seed", or "off" for tau/shelf/halo
   # Three-stage binning: (1) full-res DNL estimation, (2) moderate rebin
   # to fit shape params (tau, shelf, halo, sigma), (3) coarser rebin to
   # refit physics params (amplitudes, background) with shapes fixed from
@@ -127,25 +117,25 @@ spectral_fit:
     stage3_rebin: 15      # coarser bins for physics parameters
   # Shared shape parameters: when true, a single shared parameter
   # replaces per-isotope entries for all participating isotopes.
-  tau_energy_model: linear
+  tau_energy_model: constant  # was linear; tau_slope = -0.0003 ± 0.0003 (1.1σ, 1.1% variation)
   tau_energy_model_E_ref: 7.0
   tau_0_prior: [0.08, 0.08]
   tau_slope_prior: [0.01, 0.02]
   shared_shape_params:
-    tau: false
+    tau: true   # was false (linear model). tau_slope ≈ 0 → single shared constant tau
     f_shelf: true
     sigma_shelf: true
     f_halo: true
     sigma_halo: true
     tau_halo: true
   # Shared priors (used when the corresponding shared_shape_params flag is true)
-  tau_shared_prior: [0.08, 0.08]
-  f_shelf_shared_prior: [0.15, 0.15]
-  sigma_shelf_shared_prior: [0.25, 0.15]
-  f_halo_shared_prior: [0.07, 0.10]
-  sigma_halo_shared_prior: [0.24, 0.12]
-  tau_halo_shared_prior: [0.05, 0.05]
-  shared_shape_passive: [Unknown1, Po216]
+  tau_shared_prior: [0.097, 0.05]  # from J127 fitted tau_0 = 0.097
+  f_shelf_shared_prior: [0.05, 0.10]
+  sigma_shelf_shared_prior: [0.12, 0.10]
+  f_halo_shared_prior: [0.06, 0.08]
+  sigma_halo_shared_prior: [0.42, 0.15]
+  tau_halo_shared_prior: [0.0, 0.001]  # effectively zero — halo has no EMG tail
+  shared_shape_passive: [Po216, Bi212]
   exclude_isotopes: []
   energy_bin_width: 0.0130
   fd_hist_bins: 400
@@ -164,9 +154,30 @@ spectral_fit:
       sigma_shelf: [0.1, 0.05]
       fix:
         sigma: true
+    Bi212:
+      energy: 6.051                  # Bi-212 alpha (35.93% branch to Tl-208)
+      sigma: [0.12, 0.03]           # Similar detector response to Po-218
+      mu_sigma: 0.005                # Very tight — well-known energy
+      mu_bounds: [6.03, 6.07]        # ±20 keV around known value
+      use_emg: true
+      tau: [0.08, 0.05]             # Priors for Bi212 (overridden by shared passive)
+      use_shelf: true
+      f_shelf: [0.05, 0.05]
+      sigma_shelf: [0.25, 0.15]
+      use_halo: true                 # Receives shared halo from chain isotopes
+      f_halo: [0.04, 0.10]
+      sigma_halo: [0.24, 0.12]
+      tau_halo: [0.05, 0.05]
+      amplitude: [500, 500]          # Dummy — overridden by amplitude_linked
+      amplitude_linked:
+        reference: Po212
+        ratio: 0.5609                # 0.3593 / 0.6407 (alpha / beta branch)
+      fix:
+        sigma: true
   fit_energy_range:
   - 1.0
   - 19.0
+  adc_trim_bins: [3, 3]    # trim N bins from [low, high] edges of ADC histogram
   amp_prior_scale: 5.0
   bkg_mode: "manual"
   clip_floor: 1e-300
@@ -220,6 +231,8 @@ spectral_fit:
     Po210: true
     Po218: true
     Po214: true
+    Po216: true
+    Po212: true
   # Low-energy shelf (erfc step function) for degraded alphas.
   # shelf_range controls how far below the peak the shelf extends (MeV).
   # A Gaussian taper with this sigma prevents the shelf from reaching
@@ -229,7 +242,7 @@ spectral_fit:
     Po210: true
     Po218: true
     Po214: true
-    Po216: false
+    Po216: true
     Po212: true
   f_shelf_Po210_prior:
     - 0.062
@@ -261,7 +274,7 @@ spectral_fit:
     Po210: true
     Po218: true
     Po214: true
-    Po216: false
+    Po216: true
     Po212: true
   f_halo_Po210_prior:
     - 0.07
@@ -322,19 +335,31 @@ spectral_fit:
   # Only Po214 has significant beta coincidence (Bi-214 beta endpoint ~3.27 MeV).
   # f_beta = additional fraction of events with simultaneous beta detection.
   # lambda_beta = exponential decay length of the high-energy tail (MeV).
-  # Right-side asymmetry: sigma_right = sigma * (1 + asym(E))
-  # Quadratic energy model: asym(E) = a0 + a1*(E-Eref) + a2*(E-Eref)^2
-  asym_energy_model: quadratic
-  asym_energy_model_E_ref: 7.0
-  asym_0_prior: [0.25, 0.15]
-  asym_1_prior: [0.02, 0.05]
-  asym_2_prior: [0.0, 0.03]
-  # Shared right-side exponential tail (all isotopes)
-  f_tail_right_prior: [0.05, 0.05]
-  tau_tail_right_prior: [0.15, 0.1]
+  # Second Gaussian: oblique-incidence population (~29% of events).
+  # Alphas arriving at high angles traverse more dead layer → extra
+  # energy straggling (broader sigma) and extra energy loss (left offset).
+  # The broad component shares EMG charge trapping (same tau) with core.
+  # Ref: Li et al. 2020 (Appl Radiat Isot 165, 109342).
+  use_gauss2: true
+  f_gauss2_prior: [0.29, 0.10]
+  sigma_gauss2_ratio_prior: [1.4, 0.5]   # multiplicative: sigma_broad = ratio * sigma_core
+  delta_E_broad_prior: [0.02, 0.02]
   # Beta coincidence: high-energy tail from alpha+beta pile-up (Po214 only)
-  f_beta_Po214_prior: [0.02, 0.03]
-  lambda_beta_Po214_prior: [0.15, 0.05]
+  # Beta coincidence: shared between Po-214 (Bi-214 beta) and Po-212 (Bi-212 beta)
+  # Beta coincidence: per-isotope (unshared) to capture different beta spectra.
+  # Po-214: Bi-214 beta endpoint 3.27 MeV (higher E, longer lambda)
+  # Po-212: Bi-212 beta endpoint 2.25 MeV (lower E, shorter lambda)
+  # Unshared because Po-212 needs much stronger right-side tail (sigma_asym
+  # was compensating: sigma_right/sigma = 2.0 at Po-212 energy).
+  f_beta_Po214_prior: [0.04, 0.04]
+  lambda_beta_Po214_prior: [0.13, 0.08]
+  # Po-212: Bi-212 beta endpoint 2.25 MeV (shorter lambda than Po-214)
+  f_beta_Po212_prior: [0.04, 0.04]
+  lambda_beta_Po212_prior: [0.10, 0.08]
+  share_beta: false
+  # Beta backscatter LET continuum: partial energy from backscattered electrons.
+  # Shared (Si backscatter coeff ~15-20%, energy-independent).
+  # Uncomment to enable: f_beta_bs_shared_prior: [0.01, 0.02]
   max_tau_ratio: 2.0
   float_sigma_e: false  # per-isotope sigmas float instead
   peak_search_prominence: 30
@@ -366,7 +391,7 @@ spectral_fit:
     # Tau: floating for all isotopes (shared shape handles shelf/halo)
     fix_tau_Po210: false
     fix_tau_Po218: false
-    fix_tau_Po214: true
+    fix_tau_Po214: false
     fix_tau_Po212: false
     # Shelf fractions: floating (shared across isotopes)
     fix_f_shelf_Po210: false
@@ -387,6 +412,7 @@ spectral_fit:
     fix_sigma_shelf_Po216: false
     fix_sigma_halo_Po216: false
     fix_tau_halo_Po216: false
+    fix_tau_halo_shared: true   # tau_halo ≈ 0 ± 0.078 — unconstrained, drop it
     # Fix b0: redundant in loglin_unit model (cancels in normalization)
     fix_b0: true
     # b2/b3: large relative errors (200-300%) but removing them degrades
@@ -433,7 +459,7 @@ time_fit:
   window_po212:
     - 8.65
     - 9.05
-  eff_po214: 0.99
+  eff_po214: null
   eff_po218: null
   eff_po210: null
   hl_po214: null
@@ -451,6 +477,15 @@ time_fit:
   flags:
     fix_background_b: false
     fix_n0_po218: false
+  # Per-bin isotope extraction method:
+  #   "roi"      – simple ROI window counting (default, fast)
+  #   "template" – full spectral template fit with frozen shapes from aggregate
+  extraction_method: template
+  # Template fitting options (only used when extraction_method: template)
+  template_rebin: 20          # energy rebin factor vs aggregate (coarser for statistics)
+  template_min_counts: 30     # minimum events per time bin to attempt fit
+  float_centroids: true       # allow peak centroids to float (tight prior)
+  fix_weak_isotopes: true     # fix Po216/Po210/Bi212/extra peaks in per-bin fits
 systematics:
   enable: false
   sigma_e_frac: 0.1
@@ -500,7 +535,7 @@ radon_inference:
 plotting:
   plot_spectrum_binsize_adc: 1
   plot_time_binning_mode: fixed
-  plot_time_bin_width_s: 86400
+  plot_time_bin_width_s: 14400
   plot_time_normalise_rate: true
   time_bins_fallback: 1
   plot_save_formats:

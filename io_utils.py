@@ -93,6 +93,7 @@ class Summary(Mapping[str, Any]):
     analysis: dict = field(default_factory=dict)
     diagnostics: dict | None = None
     lucas_bridge: dict = field(default_factory=dict)
+    template_fitting: dict = field(default_factory=dict)
 
     def __getitem__(self, key: str) -> Any:  # type: ignore[override]
         return getattr(self, key)

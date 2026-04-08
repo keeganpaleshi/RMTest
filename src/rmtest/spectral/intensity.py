@@ -265,8 +265,16 @@ def build_spectral_intensity(
             f_shelf = float(params.get(f"f_shelf_{iso}", 0.0))
             # Halo fraction for this isotope
             f_halo = float(params.get(f"f_halo_{iso}", 0.0))
+            # Second Gaussian fraction (broad symmetric core component)
+            f_gauss2 = float(params.get(f"f_gauss2_{iso}", 0.0))
 
             # Core peak PDF (narrow component)
+            # Skew-normal mode: when skew_alpha != 0, replace the Gaussian
+            # kernel with a skew-normal.  For EMG isotopes, we build the core
+            # as a mixture: EMG provides the left tail, skew-normal provides
+            # asymmetric core shape above the peak (like sigma_asym but smooth).
+            skew_alpha = float(params.get(f"skew_alpha_{iso}",
+                                params.get("skew_alpha_shared", 0.0)))
             pdf_win, _ = normalize_pdf_to_window(
                 iso_kind,
                 mu,
@@ -324,8 +332,47 @@ def build_spectral_intensity(
                         core_pdf = core_pdf / total
                 else:
                     core_pdf = split_win(E)
+            elif abs(skew_alpha) > 1e-6:
+                # Skew-normal mode: smooth asymmetric core.
+                # For EMG: splice EMG below mu + skew-normal above mu.
+                # For Gaussian: use pure skew-normal.
+                skew_win, _ = normalize_pdf_to_window(
+                    "skewnorm", mu, sigma, E_lo, E_hi, alpha=skew_alpha,
+                )
+                if iso_kind == "emg":
+                    emg_at_mu = pdf_win(np.array([mu]))[0]
+                    skew_at_mu = skew_win(np.array([mu]))[0]
+                    if skew_at_mu > 0:
+                        scale = emg_at_mu / skew_at_mu
+                    else:
+                        scale = 1.0
+                    core_pdf = np.where(
+                        E <= mu,
+                        pdf_win(E),              # left-EMG below peak
+                        scale * skew_win(E),     # skew-normal above peak
+                    )
+                    dx = (E_hi - E_lo) / len(E)
+                    total = np.sum(core_pdf) * dx
+                    if total > 0:
+                        core_pdf = core_pdf / total
+                else:
+                    core_pdf = skew_win(E)
             else:
                 core_pdf = pdf_win(E)
+
+            # Double EMG: second left-side exponential tail with different τ.
+            # Models two charge-trapping time constants in the PIN diode:
+            #   fast trapping (bulk silicon) = primary τ
+            #   slow trapping (surface/interface states) = secondary τ₂
+            # core = (1 - f_tail2) × EMG(σ,τ₁) + f_tail2 × EMG(σ,τ₂)
+            f_tail2 = float(params.get(f"f_tail2_{iso}", params.get("f_tail2_shared", 0.0)))
+            if f_tail2 > 0.0 and iso_kind == "emg":
+                tau2 = float(params.get(f"tau2_{iso}", params.get("tau2_shared", 0.0)))
+                if tau2 > 0.0:
+                    emg2_win, _ = normalize_pdf_to_window(
+                        "emg", mu, sigma, E_lo, E_hi, tau=tau2,
+                    )
+                    core_pdf = (1.0 - f_tail2) * core_pdf + f_tail2 * emg2_win(E)
 
             # Additive right-side exponential tail: captures slow falloff
             # beyond what the wider Gaussian (sigma_asym) can model.
@@ -347,10 +394,42 @@ def build_spectral_intensity(
                 core_pdf = np.maximum(core_pdf, 0.0)
 
             # Build the composite peak shape
-            # Fractions: f_core + f_halo + f_shelf = 1
-            # where f_core = 1 - f_halo - f_shelf
-            f_core = max(1.0 - f_halo - f_shelf, 0.0)
+            # Fractions: f_core + f_gauss2 + f_halo + f_shelf = 1
+            f_core = max(1.0 - f_gauss2 - f_halo - f_shelf, 0.0)
             peak_density = f_core * core_pdf
+
+            # Second Gaussian component — broader Gaussian representing the
+            # population of oblique-incidence alphas that traverse more dead
+            # layer material.  These events have: (a) more energy straggling
+            # → broader sigma, and (b) more energy loss → centroid shifted
+            # LEFT by delta_E_broad.
+            #
+            # Shared across isotopes: f_gauss2 (geometric fraction ~20%),
+            # sigma_gauss2 (straggling width), delta_E_broad (extra dead
+            # layer loss).  All are detector geometry properties.
+            #
+            # The broad component also shares the same EMG charge trapping
+            # tail (same tau) as the core — same detector, same trapping.
+            if f_gauss2 > 0.0:
+                # sigma_gauss2_{iso} is pre-computed as ratio × sigma_core by fitting.py.
+                # Fallback: use ratio param directly, or default 1.4× core sigma.
+                _sg2_default = sigma * float(params.get(
+                    "sigma_gauss2_ratio_shared", 1.4))
+                sigma_gauss2 = float(params.get(f"sigma_gauss2_{iso}", _sg2_default))
+                delta_E_broad = float(params.get(f"delta_E_broad_{iso}",
+                                      params.get("delta_E_broad", 0.0)))
+                # Broad component centroid: shifted LEFT by delta_E_broad
+                mu_broad = mu - delta_E_broad
+                # Use same EMG kind as core (same charge trapping applies)
+                if iso_kind == "emg" and tau is not None and tau > 0.0:
+                    gauss2_win, _ = normalize_pdf_to_window(
+                        "emg", mu_broad, sigma_gauss2, E_lo, E_hi, tau=tau,
+                    )
+                else:
+                    gauss2_win, _ = normalize_pdf_to_window(
+                        "gauss", mu_broad, sigma_gauss2, E_lo, E_hi,
+                    )
+                peak_density += f_gauss2 * gauss2_win(E)
 
             # Halo (broad) component — a wider Gaussian/EMG that captures
             # detector-response broadening from dead-layer scattering.
@@ -411,22 +490,66 @@ def build_spectral_intensity(
                 peak_density += f_shelf * shelf_win(E)
 
             # Beta coincidence: high-energy tail from simultaneous detection
-            # of alpha + beta (e.g. Bi-214 beta + Po-214 alpha).  One-sided
-            # exponential above the peak, normalized over [E_lo, E_hi].
-            # f_beta is an *additional* fraction (not subtracted from f_core).
+            # of alpha + beta (e.g. Bi-214 beta + Po-214 alpha).
+            # Physics: when alpha and beta are detected together, total
+            # deposited energy = E_alpha + E_beta.  The beta spectrum
+            # creates a right-side exponential tail above the alpha peak.
+            #
+            # Model components (all additive, not subtracted from f_core):
+            #   1. Right-EMG: beta exponential convolved with Gaussian
+            #      resolution → smooths the hard onset at E=mu.
+            #   2. Left-EMG charge trapping: the combined alpha+beta signal
+            #      undergoes the same charge trapping as pure alpha events.
+            #      Reuses the per-isotope tau (same detector, no new param).
+            #   3. Backscatter LET continuum: betas that backscatter out of
+            #      the silicon deposit partial energy, creating a flat shelf
+            #      below the alpha peak.  Shared f_beta_bs (material prop).
             f_beta = float(params.get(f"f_beta_{iso}", 0.0))
             if f_beta > 0.0:
                 lam_beta = max(float(params.get(f"lambda_beta_{iso}", 0.5)), 1e-6)
-                # Analytic normalization: integral of exp(-(E-mu)/lam)/lam
-                # from mu to E_hi = 1 - exp(-(E_hi-mu)/lam)
-                _beta_norm = lam_beta * (1.0 - np.exp(-max(E_hi - mu, 0.0) / lam_beta))
-                if _beta_norm > 1e-30:
-                    beta_pdf = np.where(
-                        E >= mu,
-                        np.exp(-(E - mu) / lam_beta) / _beta_norm,
-                        0.0,
-                    )
-                    lam += N * f_beta * beta_pdf
+
+                # (1) Right-EMG: Gaussian-smeared beta exponential tail.
+                # Uses the isotope's sigma for resolution smearing and
+                # lambda_beta as the exponential decay length (= right-EMG tau).
+                beta_win, _ = normalize_pdf_to_window(
+                    "right_emg", mu, sigma, E_lo, E_hi, tau=lam_beta,
+                )
+                beta_pdf = beta_win(E)
+
+                # (2) Left-EMG convolution: charge trapping shifts the
+                # combined alpha+beta signal to lower energies.  Uses the
+                # SAME tau as the alpha peak (same detector trapping).
+                # This adds zero new parameters.
+                if iso_kind == "emg" and tau is not None and tau > 0.0:
+                    dE_grid = (E_hi - E_lo) / max(len(E) - 1, 1)
+                    n_kernel = min(int(5.0 * tau / dE_grid) + 1, len(E))
+                    if n_kernel > 1:
+                        k_grid = np.arange(n_kernel) * dE_grid
+                        kernel = np.exp(-k_grid / tau)
+                        kernel = kernel / kernel.sum()
+                        # Convolve: shifts density leftward (lower energy)
+                        beta_conv = np.convolve(beta_pdf, kernel, mode='full')[:len(E)]
+                        # Renormalize to unit area in window
+                        _bc_total = np.sum(beta_conv) * dE_grid
+                        if _bc_total > 1e-30:
+                            beta_pdf = beta_conv / _bc_total
+
+                lam += N * f_beta * beta_pdf
+
+                # (3) Backscatter LET continuum: partial beta energy
+                # deposition from electrons backscattering out of silicon.
+                # Erfc transition at mu (smooth onset) — flat below peak.
+                # Shared: backscatter coefficient is a material property.
+                f_beta_bs = float(params.get("f_beta_bs_shared", 0.0))
+                if f_beta_bs > 0.0:
+                    from scipy.special import erfc as _erfc
+                    _sqrt2 = 1.4142135623730951
+                    bs_shape = _erfc((E - mu) / (sigma * _sqrt2))
+                    _dE = (E_hi - E_lo) / max(len(E) - 1, 1)
+                    _bs_norm = np.sum(bs_shape) * _dE
+                    if _bs_norm > 1e-30:
+                        bs_pdf = bs_shape / _bs_norm
+                        lam += N * f_beta_bs * bs_pdf
 
             lam += N * peak_density
 
@@ -526,6 +649,10 @@ def integral_of_intensity(
             f_beta = float(params.get(f"f_beta_{iso}", 0.0))
             if f_beta > 0.0:
                 mu_signal += N * f_beta
+                # Backscatter continuum adds additional counts
+                f_beta_bs = float(params.get("f_beta_bs_shared", 0.0))
+                if f_beta_bs > 0.0:
+                    mu_signal += N * f_beta_bs
 
     _bkg_model_lower = str(background_model).lower() if background_model else ""
     if _bkg_model_lower in ("loglin_unit", "sigmoid_unit", "exp_unit", "double_logit_unit"):

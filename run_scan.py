@@ -741,11 +741,1603 @@ _define_j_scan("J38", "FullRes Fourier + rb5 FULL DIAG",
                               "fourier_periods_codes": [4, 8, 16, 32, 64, 128, 256, 512]},
                enable_diagnostics=True)
 
+# J39: FullRes Fourier + rebin 1 (no rebinning — stay at full ADC resolution)
+_define_j_scan("J39", "FullRes Fourier + rebin 1 (xval)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 1})
+
+# ── J40-J42: Forced single/pair periods, NO crossval ─────────────
+# Bypass auto-selection entirely — just apply these periods and see
+# what each one does to the fit.
+
+_define_j_scan("J40", "FullRes [256] forced rb10",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [256]})
+_define_j_scan("J41", "FullRes [512] forced rb10",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [512]})
+_define_j_scan("J42", "FullRes [256,512] forced rb10",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [256, 512]})
+
+
+_define_j_scan("J43", "FullRes [16] forced rb10",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [16]})
+_define_j_scan("J44", "FullRes [1024] forced rb10",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [1024]})
+_define_j_scan("J45", "FullRes [2048] forced rb10",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [2048]})
+
+# ── J46-J48: Combination period scans ────────────────────────────
+# Test whether 256/512 add value on top of period 16.
+_define_j_scan("J46", "FullRes [16,256] forced rb10",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [16, 256]})
+_define_j_scan("J47", "FullRes [16,512] forced rb10",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [16, 512]})
+_define_j_scan("J48", "FullRes [16,256,512] forced rb10",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [16, 256, 512]})
+
+# ── J51-J52: FullRes rebin with fixed bkg handoff ───────────────
+# Test the fix_bkg_from_prelim fix.
+_define_j_scan("J51", "FullRes crossval rb10 + fix_bkg",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"post_dnl_rebin": 10},
+               config_overrides={"spectral_fit": {"fix_bkg_from_prelim": "fix"}})
+_define_j_scan("J52", "FullRes [16] rb10 + fix_bkg",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [16]},
+               config_overrides={"spectral_fit": {"fix_bkg_from_prelim": "fix"}})
+
+# ── J53-J54: Fix ALL params from prelim bin1 ────────────────────
+# Lock bkg + peaks + shapes from bin1 fit. Only DNL correction changes.
+_define_j_scan("J53", "FullRes [16] rb10 + fix ALL from prelim",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [16]},
+               config_overrides={"spectral_fit": {
+                   "fix_bkg_from_prelim": "fix",
+                   "seed_peaks_from_prelim": "fix",
+                   "seed_shape_from_prelim": "fix",
+               }})
+_define_j_scan("J54", "FullRes no-DNL rb10 + fix ALL from prelim",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": []},
+               config_overrides={"spectral_fit": {
+                   "fix_bkg_from_prelim": "fix",
+                   "seed_peaks_from_prelim": "fix",
+                   "seed_shape_from_prelim": "fix",
+               }})
+
+# ── J55-J56: Partial handoff tests ────────────────────────────────
+# J55: fix bkg + peaks from prelim, let shapes seed (not fixed)
+_define_j_scan("J55", "FullRes [16] rb10 + fix bkg+peaks",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [16]},
+               config_overrides={"spectral_fit": {
+                   "fix_bkg_from_prelim": "fix",
+                   "seed_peaks_from_prelim": "fix",
+                   "seed_shape_from_prelim": "seed",
+               }})
+# J56: fix peaks only from prelim, let bkg and shapes float/seed
+_define_j_scan("J56", "FullRes [16] rb10 + fix peaks only",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [16]},
+               config_overrides={"spectral_fit": {
+                   "fix_bkg_from_prelim": "seed",
+                   "seed_peaks_from_prelim": "fix",
+                   "seed_shape_from_prelim": "seed",
+               }})
+
+# ── J57-J60: Physics model improvements ───────────────────────────
+# J57: Baseline with Unknown1 independent shapes, NO Bi212, NO Po212 beta
+# Rerun of J52 concept with updated code (Unknown1 no longer sharing shapes).
+_J57_extra_peaks = {
+    "Unknown1": {
+        "energy": 15.8, "sigma": [0.5, 0.1], "amplitude": [500, 300],
+        "mu_sigma": 0.3, "mu_bounds": [13.0, 19.0],
+        "use_emg": True, "tau": [0.01, 0.01],
+        "use_shelf": True, "f_shelf": [0.02, 0.02], "sigma_shelf": [0.1, 0.05],
+        "fix": {"sigma": True},
+    },
+}
+_define_j_scan("J57", "FullRes [16] rb10 + fix_bkg (no Bi212)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [16]},
+               config_overrides={"spectral_fit": {
+                   "fix_bkg_from_prelim": "fix",
+                   "extra_peaks": _J57_extra_peaks,
+                   "f_beta_Po212_prior": None,
+                   "lambda_beta_Po212_prior": None,
+                   "share_beta": False,
+               }})
+# J58: Add Bi-212 (shared shapes), no Po-212 beta yet
+_define_j_scan("J58", "FullRes [16] rb10 + fix_bkg + Bi212 (shared shapes)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [16]},
+               config_overrides={"spectral_fit": {
+                   "fix_bkg_from_prelim": "fix",
+                   "f_beta_Po212_prior": None,
+                   "lambda_beta_Po212_prior": None,
+                   "share_beta": False,
+               }})
+# J59: Bi-212 + Po-212 beta tail (full default config)
+_define_j_scan("J59", "FullRes [16] rb10 + fix_bkg + Bi212 + Po212 beta",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [16]},
+               config_overrides={"spectral_fit": {
+                   "fix_bkg_from_prelim": "fix",
+               }})
+# J60: Full model + fix ALL from prelim
+_define_j_scan("J60", "FullRes [16] rb10 + fix ALL + Bi212 + shared beta",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [16]},
+               config_overrides={"spectral_fit": {
+                   "fix_bkg_from_prelim": "fix",
+                   "seed_peaks_from_prelim": "fix",
+                   "seed_shape_from_prelim": "fix",
+               }})
+# J61: Full model + fix bkg+peaks (partial handoff)
+_define_j_scan("J61", "FullRes [16] rb10 + fix bkg+peaks + Bi212 + shared beta",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [16]},
+               config_overrides={"spectral_fit": {
+                   "fix_bkg_from_prelim": "fix",
+                   "seed_peaks_from_prelim": "fix",
+               }})
+# J62: Full model at bin_width=1 (no rebin) — ground truth reference
+_define_j_scan("J62", "bin1 [16] + Bi212 + shared beta",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"fourier_periods_codes": [16]},
+               config_overrides={"spectral_fit": {}})
+# J64: Shared beta but NO Bi-212 — isolate beta tail effect
+_define_j_scan("J64", "FullRes [16] rb10 + fix_bkg + shared beta (no Bi212)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [16]},
+               config_overrides={"spectral_fit": {
+                   "fix_bkg_from_prelim": "fix",
+                   "extra_peaks": _J57_extra_peaks,
+               }})
+
+
+# ── J65-J69: Regression & robustness ──────────────────────────────
+# J65: Bi-212 (tight mu) + shared beta + fix_bkg — retest with constrained Bi-212
+_define_j_scan("J65", "FullRes [16] rb10 + fix_bkg + Bi212(tight) + shared beta",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [16]},
+               config_overrides={"spectral_fit": {
+                   "fix_bkg_from_prelim": "fix",
+               }})
+# J66: Same as J65 + fix ALL from prelim
+_define_j_scan("J66", "FullRes [16] rb10 + fix ALL + Bi212(tight) + shared beta",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [16]},
+               config_overrides={"spectral_fit": {
+                   "fix_bkg_from_prelim": "fix",
+                   "seed_peaks_from_prelim": "fix",
+                   "seed_shape_from_prelim": "fix",
+               }})
+# J67: Shared beta + fix_bkg, NO DNL — measure DNL impact
+_define_j_scan("J67", "FullRes no-DNL rb10 + fix_bkg + shared beta (no Bi212)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": []},
+               config_overrides={"spectral_fit": {
+                   "fix_bkg_from_prelim": "fix",
+                   "extra_peaks": _J57_extra_peaks,
+               }})
+# J68: Shared beta + fix_bkg + [16,256] — does 256 still hurt?
+_define_j_scan("J68", "FullRes [16,256] rb10 + fix_bkg + shared beta (no Bi212)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 10,
+                              "fourier_periods_codes": [16, 256]},
+               config_overrides={"spectral_fit": {
+                   "fix_bkg_from_prelim": "fix",
+                   "extra_peaks": _J57_extra_peaks,
+               }})
+# J69: Shared beta + fix_bkg + rb16 (multiple of DNL period 16)
+_define_j_scan("J69", "FullRes [16] rb16 + fix_bkg + shared beta (no Bi212)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"post_dnl_rebin": 16,
+                              "fourier_periods_codes": [16]},
+               config_overrides={"spectral_fit": {
+                   "fix_bkg_from_prelim": "fix",
+                   "extra_peaks": _J57_extra_peaks,
+               }})
+
+
+# ── J70-J74: Bin1 only (no rebin), Fourier DNL [16] ──────────────
+# Po-216 now has use_emg/shelf/halo=true, receives shared shapes.
+# No post_dnl_rebin — fit directly at bin_width=1 after DNL correction.
+
+# J70: bin1 + [16] DNL + Bi-212 + shared beta + Po-216 full shapes
+_define_j_scan("J70", "bin1 [16] DNL + Bi212 + shared beta + Po216 shapes",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"fourier_periods_codes": [16],
+                              "post_dnl_rebin": 1},
+               config_overrides={"spectral_fit": {}})
+# J71: bin1 + [16] DNL + shared beta only (no Bi-212)
+_define_j_scan("J71", "bin1 [16] DNL + shared beta (no Bi212)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"fourier_periods_codes": [16],
+                              "post_dnl_rebin": 1},
+               config_overrides={"spectral_fit": {
+                   "extra_peaks": _J57_extra_peaks,
+               }})
+# J72: bin1 + [16] DNL + Bi-212 + shared beta + NO Unknown1
+_J72_extra_peaks = {
+    "Bi212": {
+        "energy": 6.051, "sigma": [0.12, 0.03], "mu_sigma": 0.005,
+        "mu_bounds": [6.03, 6.07],
+        "use_emg": True, "tau": [0.08, 0.05],
+        "use_shelf": True, "f_shelf": [0.05, 0.05], "sigma_shelf": [0.25, 0.15],
+        "use_halo": True, "f_halo": [0.04, 0.10], "sigma_halo": [0.24, 0.12],
+        "tau_halo": [0.05, 0.05],
+        "amplitude": [500, 500],
+        "amplitude_linked": {"reference": "Po212", "ratio": 0.5609},
+        "fix": {"sigma": True},
+    },
+}
+_define_j_scan("J72", "bin1 [16] DNL + Bi212 + shared beta (no Unknown1)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"fourier_periods_codes": [16],
+                              "post_dnl_rebin": 1},
+               config_overrides={"spectral_fit": {
+                   "extra_peaks": _J72_extra_peaks,
+               }})
+# J73: bin1 + NO DNL + Bi-212 + shared beta (baseline without DNL)
+_define_j_scan("J73", "bin1 no-DNL + Bi212 + shared beta",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"fourier_periods_codes": [],
+                              "post_dnl_rebin": 1},
+               config_overrides={"spectral_fit": {}})
+# J74: bin1 + [16] DNL, no Bi-212, no shared beta (minimal model)
+_define_j_scan("J74", "bin1 [16] DNL only (no Bi212, no beta sharing)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"fourier_periods_codes": [16],
+                              "post_dnl_rebin": 1},
+               config_overrides={"spectral_fit": {
+                   "extra_peaks": _J57_extra_peaks,
+                   "share_beta": False,
+                   "f_beta_Po212_prior": None,
+                   "lambda_beta_Po212_prior": None,
+               }})
+
+
+# ── J75: Full auto-select crossval at bin1 ────────────────────────
+# Same model as J70 (Bi-212 + shared beta + Po-216 shapes) but with
+# the full SAR ADC period set [4..512] and per-period crossval to
+# auto-select which frequencies are real hardware DNL vs noise.
+_define_j_scan("J75", "bin1 AUTO-SELECT DNL [4..512] + Bi212 + shared beta",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"fourier_periods_codes": [4, 8, 16, 32, 64, 128, 256, 512],
+                              "post_dnl_rebin": 1},
+               config_overrides={"spectral_fit": {}})
+
+# ── J76-J77: Quadratic calibration tests ─────────────────────────
+# The linear calibration has 16 keV RMS residual (4 peaks excl Po216).
+# Quadratic drops to 4 keV RMS (F=14.2, significant).  a2 < 0 means
+# dE/dADC DECREASES at higher ADC — energy bins are ~5% narrower at
+# Po-212 vs Po-210.  This mismatch could create smooth systematic
+# residuals that long-period DNL (256, 512) absorbs.
+
+# J76: Quadratic cal + full auto-select DNL
+_define_j_scan("J76", "bin1 QUAD-CAL + AUTO-SELECT DNL [4..512]",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=True,
+               dnl_overrides={"fourier_periods_codes": [4, 8, 16, 32, 64, 128, 256, 512],
+                              "post_dnl_rebin": 1},
+               config_overrides={
+                   "calibration": {"use_quadratic": True},
+                   "spectral_fit": {},
+               })
+
+# J77: Quadratic cal + period [16] only (compare vs J70)
+_define_j_scan("J77", "bin1 QUAD-CAL + [16] DNL",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"fourier_periods_codes": [16],
+                              "post_dnl_rebin": 1},
+               config_overrides={
+                   "calibration": {"use_quadratic": True},
+                   "spectral_fit": {},
+               })
+
+# J78: Quadratic cal + NO DNL (isolate calibration effect)
+_define_j_scan("J78", "bin1 QUAD-CAL + no DNL",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={"fourier_periods_codes": [],
+                              "post_dnl_rebin": 1},
+               config_overrides={
+                   "calibration": {"use_quadratic": True},
+                   "spectral_fit": {},
+               })
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# J79-J85: Peak shape improvement scans
+# ═══════════════════════════════════════════════════════════════════════
+# Long-wavelength residual oscillation (period ~160 codes) matches the
+# Po210-Po218 peak spacing (161 codes).  This is peak shape model error,
+# not DNL.  Test whether better shapes absorb the structure.
+#
+# All use bin1 + [16] DNL (same as J70 baseline) to isolate shape effects.
+
+_J_SHAPE_DNL = {"fourier_periods_codes": [16], "post_dnl_rebin": 1}
+
+# --- Strategy 1: Per-isotope shape parameters (un-share) ---
+
+# J79: Per-isotope shelf (f_shelf, sigma_shelf free per isotope)
+# Un-share shelf params: each isotope gets its own f_shelf, sigma_shelf.
+# This adds 2*(n_iso-1) free params but lets each peak's low-energy shelf
+# match independently.
+_define_j_scan("J79", "bin1 [16] DNL + per-isotope SHELF",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "shared_shape_params": {
+                       "tau": False, "f_shelf": False, "sigma_shelf": False,
+                       "f_halo": True, "sigma_halo": True, "tau_halo": True,
+                   },
+               }})
+
+# J80: Per-isotope halo (f_halo, sigma_halo, tau_halo free per isotope)
+_define_j_scan("J80", "bin1 [16] DNL + per-isotope HALO",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "shared_shape_params": {
+                       "tau": False, "f_shelf": True, "sigma_shelf": True,
+                       "f_halo": False, "sigma_halo": False, "tau_halo": False,
+                   },
+               }})
+
+# J81: Per-isotope shelf AND halo (everything un-shared)
+_define_j_scan("J81", "bin1 [16] DNL + per-isotope SHELF+HALO",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "shared_shape_params": {
+                       "tau": False, "f_shelf": False, "sigma_shelf": False,
+                       "f_halo": False, "sigma_halo": False, "tau_halo": False,
+                   },
+               }})
+
+# --- Strategy 2: Additional shape component (second Gaussian) ---
+# Not yet implemented in fitting.py — placeholder for when we add it.
+# J82: reserved for second Gaussian component
+
+# --- Strategy 3: Energy-dependent sigma model ---
+
+# J83: Higher-order sigma asymmetry polynomial (add asym_3 cubic term)
+# Currently have asym_0 + asym_1*(E-Eref) + asym_2*(E-Eref)^2.
+# Adding cubic allows more flexibility in how sigma_right varies.
+_define_j_scan("J83", "bin1 [16] DNL + cubic sigma asymmetry (asym_3)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "asym_energy_model": "cubic",
+                   "asym_3_prior": [0.0, 0.02],
+               }})
+
+# J84: Per-isotope shelf + cubic sigma asymmetry (combine 1 + 3)
+_define_j_scan("J84", "bin1 [16] DNL + per-iso SHELF + cubic asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "shared_shape_params": {
+                       "tau": False, "f_shelf": False, "sigma_shelf": False,
+                       "f_halo": True, "sigma_halo": True, "tau_halo": True,
+                   },
+                   "asym_energy_model": "cubic",
+                   "asym_3_prior": [0.0, 0.02],
+               }})
+
+# J85: Per-isotope shelf + halo + cubic asym (kitchen sink)
+_define_j_scan("J85", "bin1 [16] DNL + per-iso SHELF+HALO + cubic asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "shared_shape_params": {
+                       "tau": False, "f_shelf": False, "sigma_shelf": False,
+                       "f_halo": False, "sigma_halo": False, "tau_halo": False,
+                   },
+                   "asym_energy_model": "cubic",
+                   "asym_3_prior": [0.0, 0.02],
+               }})
+
+
+# --- Strategy 4: Physics-informed per-isotope model ---
+# PIN photodiode physics:
+# - tau (EMG tail): charge trapping depends on where alpha stops in
+#   depletion region. Higher E → deeper penetration → different field.
+#   Linear energy model (tau_0 + tau_slope*E) is physically motivated. KEEP.
+# - f_shelf: fraction hitting dead-layer edges → geometry → SHARED.
+# - sigma_shelf: range of partial collection → energy-dependent → PER-ISOTOPE.
+# - f_halo: nuclear scattering cross section → Rutherford ∝ 1/E² → PER-ISOTOPE.
+#   (should decrease at higher energies)
+# - sigma_halo: scattering angle distribution → weakly energy-dep → SHARED.
+# - tau_halo: halo tail → SHARED (same trapping physics).
+
+# J86: Physics-informed: shared f_shelf + tau_halo + sigma_halo,
+#       per-isotope sigma_shelf + f_halo
+_define_j_scan("J86", "bin1 [16] DNL + physics: per-iso sigma_shelf + f_halo",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "shared_shape_params": {
+                       "tau": False,          # linear energy model
+                       "f_shelf": True,        # geometry → shared
+                       "sigma_shelf": False,   # energy-dependent → per-isotope
+                       "f_halo": False,         # Rutherford 1/E² → per-isotope
+                       "sigma_halo": True,     # angle distribution → shared
+                       "tau_halo": True,       # trapping physics → shared
+                   },
+               }})
+
+# J87: Like J86 but also un-share sigma_halo (scattering kinematics
+#       could make the angular distribution energy-dependent too)
+_define_j_scan("J87", "bin1 [16] DNL + physics: per-iso sigma_shelf+f_halo+sigma_halo",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": True,
+                       "sigma_shelf": False,
+                       "f_halo": False,
+                       "sigma_halo": False,
+                       "tau_halo": True,
+                   },
+               }})
+
+# J88: J86 + cubic sigma asymmetry (physics-informed + energy-dep sigma)
+_define_j_scan("J88", "bin1 [16] DNL + physics per-iso + cubic asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": True,
+                       "sigma_shelf": False,
+                       "f_halo": False,
+                       "sigma_halo": True,
+                       "tau_halo": True,
+                   },
+                   "asym_energy_model": "cubic",
+                   "asym_3_prior": [0.0, 0.02],
+               }})
+
+
+# ── J89-J95: Linear energy model scans ──
+# These use param(E) = param_0 + param_slope * (E - E_ref) instead of
+# per-isotope or shared parameters.  More parameter-efficient than per-isotope
+# (2 params vs N_iso) while capturing energy-dependent physics.
+
+# J89: f_halo linear energy model (Rutherford scattering ∝ 1/E², expect negative slope)
+# Everything else shared.  tau already has linear model from base config.
+_define_j_scan("J89", "bin1 [16] DNL + f_halo linear energy model",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "f_halo_energy_model": "linear",
+                   "f_halo_0_prior": [0.10, 0.08],
+                   "f_halo_slope_prior": [0.0, 0.05],
+                   "shared_shape_params": {
+                       "tau": False,  # uses tau linear model
+                       "f_shelf": True,
+                       "sigma_shelf": True,
+                       "f_halo": False,  # superseded by linear model
+                       "sigma_halo": True,
+                       "tau_halo": True,
+                   },
+               }})
+
+# J90: sigma_shelf linear energy model (alpha range depends on energy)
+# f_shelf shared (geometry), f_halo shared.
+_define_j_scan("J90", "bin1 [16] DNL + sigma_shelf linear energy model",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "sigma_shelf_energy_model": "linear",
+                   "sigma_shelf_0_prior": [0.20, 0.15],
+                   "sigma_shelf_slope_prior": [0.0, 0.05],
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": True,
+                       "sigma_shelf": False,  # superseded by linear model
+                       "f_halo": True,
+                       "sigma_halo": True,
+                       "tau_halo": True,
+                   },
+               }})
+
+# J91: f_halo + sigma_shelf both linear (physics-informed pair)
+_define_j_scan("J91", "bin1 [16] DNL + f_halo + sigma_shelf linear",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "f_halo_energy_model": "linear",
+                   "f_halo_0_prior": [0.10, 0.08],
+                   "f_halo_slope_prior": [0.0, 0.05],
+                   "sigma_shelf_energy_model": "linear",
+                   "sigma_shelf_0_prior": [0.20, 0.15],
+                   "sigma_shelf_slope_prior": [0.0, 0.05],
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": True,
+                       "sigma_shelf": False,
+                       "f_halo": False,
+                       "sigma_halo": True,
+                       "tau_halo": True,
+                   },
+               }})
+
+# J92: ALL shape params linear energy models (maximum energy-dep, minimum params)
+# tau(E), f_shelf(E), sigma_shelf(E), f_halo(E), sigma_halo(E), tau_halo(E)
+# Only 12 params (6 intercepts + 6 slopes) vs ~30 for full per-isotope
+_define_j_scan("J92", "bin1 [16] DNL + ALL shapes linear energy model",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "f_shelf_energy_model": "linear",
+                   "f_shelf_0_prior": [0.08, 0.05],
+                   "f_shelf_slope_prior": [0.0, 0.03],
+                   "sigma_shelf_energy_model": "linear",
+                   "sigma_shelf_0_prior": [0.20, 0.15],
+                   "sigma_shelf_slope_prior": [0.0, 0.05],
+                   "f_halo_energy_model": "linear",
+                   "f_halo_0_prior": [0.10, 0.08],
+                   "f_halo_slope_prior": [0.0, 0.05],
+                   "sigma_halo_energy_model": "linear",
+                   "sigma_halo_0_prior": [0.30, 0.20],
+                   "sigma_halo_slope_prior": [0.0, 0.05],
+                   "tau_halo_energy_model": "linear",
+                   "tau_halo_0_prior": [0.10, 0.08],
+                   "tau_halo_slope_prior": [0.0, 0.05],
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": False,
+                       "sigma_shelf": False,
+                       "f_halo": False,
+                       "sigma_halo": False,
+                       "tau_halo": False,
+                   },
+               }})
+
+# J93: Physics-informed linear: f_halo(E) + sigma_shelf(E) + cubic asym
+_define_j_scan("J93", "bin1 [16] DNL + f_halo+sigma_shelf linear + cubic asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "f_halo_energy_model": "linear",
+                   "f_halo_0_prior": [0.10, 0.08],
+                   "f_halo_slope_prior": [0.0, 0.05],
+                   "sigma_shelf_energy_model": "linear",
+                   "sigma_shelf_0_prior": [0.20, 0.15],
+                   "sigma_shelf_slope_prior": [0.0, 0.05],
+                   "asym_energy_model": "cubic",
+                   "asym_3_prior": [0.0, 0.02],
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": True,
+                       "sigma_shelf": False,
+                       "f_halo": False,
+                       "sigma_halo": True,
+                       "tau_halo": True,
+                   },
+               }})
+
+# J94: ALL linear + cubic asym (kitchen sink energy model)
+_define_j_scan("J94", "bin1 [16] DNL + ALL linear + cubic asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "f_shelf_energy_model": "linear",
+                   "f_shelf_0_prior": [0.08, 0.05],
+                   "f_shelf_slope_prior": [0.0, 0.03],
+                   "sigma_shelf_energy_model": "linear",
+                   "sigma_shelf_0_prior": [0.20, 0.15],
+                   "sigma_shelf_slope_prior": [0.0, 0.05],
+                   "f_halo_energy_model": "linear",
+                   "f_halo_0_prior": [0.10, 0.08],
+                   "f_halo_slope_prior": [0.0, 0.05],
+                   "sigma_halo_energy_model": "linear",
+                   "sigma_halo_0_prior": [0.30, 0.20],
+                   "sigma_halo_slope_prior": [0.0, 0.05],
+                   "tau_halo_energy_model": "linear",
+                   "tau_halo_0_prior": [0.10, 0.08],
+                   "tau_halo_slope_prior": [0.0, 0.05],
+                   "asym_energy_model": "cubic",
+                   "asym_3_prior": [0.0, 0.02],
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": False,
+                       "sigma_shelf": False,
+                       "f_halo": False,
+                       "sigma_halo": False,
+                       "tau_halo": False,
+                   },
+               }})
+
+# J95: f_shelf linear (test if shelf fraction varies with energy)
+_define_j_scan("J95", "bin1 [16] DNL + f_shelf linear energy model",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "f_shelf_energy_model": "linear",
+                   "f_shelf_0_prior": [0.08, 0.05],
+                   "f_shelf_slope_prior": [0.0, 0.03],
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": False,  # superseded by linear model
+                       "sigma_shelf": True,
+                       "f_halo": True,
+                       "sigma_halo": True,
+                       "tau_halo": True,
+                   },
+               }})
+
+
+# ── J96-J99: Peak shape model experiments ──
+# Addressing the unphysical sigma_asym (bifurcated Gaussian).
+# Po212 has asym=0.80 → right side 80% wider — no physics basis in PIN diode.
+# All scans use physics-informed sharing:
+#   tau: linear energy model (penetration depth depends on energy)
+#   f_shelf: SHARED (dead-layer geometry, same for all alphas)
+#   sigma_shelf: SHARED (dead-layer thickness is a detector property)
+#   sigma_halo: SHARED (scattering geometry)
+#   tau_halo: SHARED (charge trapping material property)
+#   f_halo: per-isotope (Rutherford scattering cross-section varies with E)
+
+# J96: Drop sigma_asym entirely.  All shapes shared (match J70 but no asym).
+# Tests whether asym was doing anything useful or just absorbing error.
+_define_j_scan("J96", "bin1 [16] DNL + NO sigma_asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+               }})
+
+# J97: No asym + Rutherford f_halo scaling: f_halo(E) = f_halo_ref × (E_ref/E)²
+# One parameter captures the physics exactly. Everything else shared.
+_define_j_scan("J97", "bin1 [16] DNL + NO asym + Rutherford f_halo (1/E²)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+                   "f_halo_energy_model": "rutherford",
+                   "f_halo_ref_prior": [0.10, 0.08],
+                   "f_halo_energy_model_E_ref": 7.0,
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": True,
+                       "sigma_shelf": True,
+                       "f_halo": False,  # superseded by rutherford model
+                       "sigma_halo": True,
+                       "tau_halo": True,
+                   },
+               }})
+
+# J98: WITH asym (baseline) + Rutherford f_halo.
+# Tests whether 1/E² scaling helps even keeping the broken asym.
+_define_j_scan("J98", "bin1 [16] DNL + asym + Rutherford f_halo (1/E²)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "f_halo_energy_model": "rutherford",
+                   "f_halo_ref_prior": [0.10, 0.08],
+                   "f_halo_energy_model_E_ref": 7.0,
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": True,
+                       "sigma_shelf": True,
+                       "f_halo": False,  # superseded by rutherford model
+                       "sigma_halo": True,
+                       "tau_halo": True,
+                   },
+               }})
+
+# J99: No asym + Rutherford f_halo + per-iso f_shelf.
+# Tests if f_shelf needs per-iso freedom on top of the Rutherford halo.
+_define_j_scan("J99", "bin1 [16] DNL + NO asym + Ruth f_halo + per-iso f_shelf",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+                   "f_halo_energy_model": "rutherford",
+                   "f_halo_ref_prior": [0.10, 0.08],
+                   "f_halo_energy_model_E_ref": 7.0,
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": False,
+                       "sigma_shelf": True,
+                       "f_halo": False,
+                       "sigma_halo": True,
+                       "tau_halo": True,
+                   },
+               }})
+
+
+# ── J100-J103: Second Gaussian component experiments ──
+# Replace unphysical sigma_asym with a symmetric broad Gaussian shoulder.
+# f_gauss2 and sigma_gauss2 are shared (detector charge collection property).
+
+# J100: Second Gaussian, NO asym.  Drop the broken asym and replace with
+# the physically-correct symmetric broad component.
+_define_j_scan("J100", "bin1 [16] DNL + 2nd Gaussian, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_gauss2": True,
+                   "f_gauss2_prior": [0.15, 0.10],
+                   "sigma_gauss2_prior": [0.25, 0.15],
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+               }})
+
+# J101: Second Gaussian + asym (keep both to see if gauss2 absorbs what
+# asym was doing, making asym redundant)
+_define_j_scan("J101", "bin1 [16] DNL + 2nd Gaussian + asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_gauss2": True,
+                   "f_gauss2_prior": [0.15, 0.10],
+                   "sigma_gauss2_prior": [0.25, 0.15],
+               }})
+
+# J102: Second Gaussian, NO asym + Rutherford f_halo scaling.
+# Full physics model: gauss2 for charge collection, 1/E² for scattering.
+_define_j_scan("J102", "bin1 [16] DNL + 2nd Gauss + Ruth f_halo, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_gauss2": True,
+                   "f_gauss2_prior": [0.15, 0.10],
+                   "sigma_gauss2_prior": [0.25, 0.15],
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+                   "f_halo_energy_model": "rutherford",
+                   "f_halo_ref_prior": [0.10, 0.08],
+                   "f_halo_energy_model_E_ref": 7.0,
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": True,
+                       "sigma_shelf": True,
+                       "f_halo": False,
+                       "sigma_halo": True,
+                       "tau_halo": True,
+                   },
+               }})
+
+# J103: Second Gaussian, NO asym, Rutherford f_halo + per-iso f_shelf
+_define_j_scan("J103", "bin1 [16] DNL + 2nd Gauss + Ruth + per-iso f_shelf",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_gauss2": True,
+                   "f_gauss2_prior": [0.15, 0.10],
+                   "sigma_gauss2_prior": [0.25, 0.15],
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+                   "f_halo_energy_model": "rutherford",
+                   "f_halo_ref_prior": [0.10, 0.08],
+                   "f_halo_energy_model_E_ref": 7.0,
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": False,
+                       "sigma_shelf": True,
+                       "f_halo": False,
+                       "sigma_halo": True,
+                       "tau_halo": True,
+                   },
+               }})
+
+
+# ── J104-J115: Double EMG, Skew-Normal, Combinations ──────────────
+# All are ALTERNATIVES to sigma_asym (not used in combination).
+# Physics: PIN photodiode produces only LEFT-side asymmetry from charge
+# trapping, dead-layer energy loss, and incomplete charge collection.
+# sigma_asym was unphysically broadening the RIGHT side; these replace it
+# with physically-motivated left-side (or smooth asymmetric) models.
+
+# --- Double EMG: Two left-side trapping time constants ---
+# PIN physics: bulk Si charge trapping (fast τ₁~0.05 MeV) plus
+# surface/interface state trapping (slow τ₂~0.2-0.4 MeV).
+# Both are detector material properties → f_tail2 and tau2 shared.
+
+# J104: Double EMG only, shared tau2 (constant across peaks).
+# Simplest double-tail model: one extra fraction + one extra time constant.
+_define_j_scan("J104", "bin1 [16] DNL + double EMG, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_double_emg": True,
+                   "f_tail2_prior": [0.10, 0.08],
+                   "tau2_shared_prior": [0.30, 0.20],
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+               }})
+
+# J105: Double EMG with linear tau2 energy model, NO asym.
+# Deeper-penetrating alphas (higher E) traverse more silicon, so the
+# slow trapping time constant may increase with energy.
+# tau2(E) = tau2_0 + tau2_slope × (E - E_ref)
+_define_j_scan("J105", "bin1 [16] DNL + double EMG + linear tau2, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_double_emg": True,
+                   "f_tail2_prior": [0.10, 0.08],
+                   "tau2_energy_model": "linear",
+                   "tau2_0_prior": [0.30, 0.20],
+                   "tau2_slope_prior": [0.0, 0.05],
+                   "tau2_energy_model_E_ref": 7.0,
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+               }})
+
+# J106: Double EMG + Rutherford f_halo, NO asym.
+# Full physics model: double trapping + 1/E² scattering.
+_define_j_scan("J106", "bin1 [16] DNL + double EMG + Ruth f_halo, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_double_emg": True,
+                   "f_tail2_prior": [0.10, 0.08],
+                   "tau2_shared_prior": [0.30, 0.20],
+                   "f_halo_energy_model": "rutherford",
+                   "f_halo_ref_prior": [0.10, 0.08],
+                   "f_halo_energy_model_E_ref": 7.0,
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": True,
+                       "sigma_shelf": True,
+                       "f_halo": False,
+                       "sigma_halo": True,
+                       "tau_halo": True,
+                   },
+               }})
+
+# --- Skew-Normal: Smooth continuous asymmetry ---
+# Replaces the discontinuous bifurcated Gaussian with a smooth skew-normal.
+# For EMG isotopes: EMG below peak (exponential charge-trapping tail) +
+# skew-normal above peak (smooth right-side shaping).
+# α < 0 = left-skew (physical for PIN diode), α > 0 = right-skew.
+# PIN physics predicts α ~ constant (detector geometry) or mild E-dependence.
+
+# J107: Skew-normal only, shared α, NO asym.
+# Single shared skewness parameter — simplest continuous asymmetry.
+_define_j_scan("J107", "bin1 [16] DNL + skew-normal (shared), NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_skew_normal": True,
+                   "skew_alpha_prior": [0.0, 3.0],
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+               }})
+
+# J108: Skew-normal with linear energy model, NO asym.
+# α(E) = α₀ + α_slope × (E - E_ref)
+# Higher-energy alphas penetrate deeper → different charge collection
+# geometry → potentially different skewness.
+_define_j_scan("J108", "bin1 [16] DNL + skew-normal (linear E), NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_skew_normal": True,
+                   "skew_energy_model": "linear",
+                   "skew_alpha_0_prior": [0.0, 3.0],
+                   "skew_alpha_slope_prior": [0.0, 2.0],
+                   "skew_energy_model_E_ref": 7.0,
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+               }})
+
+# J109: Skew-normal + Rutherford f_halo, NO asym.
+_define_j_scan("J109", "bin1 [16] DNL + skew-normal + Ruth f_halo, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_skew_normal": True,
+                   "skew_alpha_prior": [0.0, 3.0],
+                   "f_halo_energy_model": "rutherford",
+                   "f_halo_ref_prior": [0.10, 0.08],
+                   "f_halo_energy_model_E_ref": 7.0,
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": True,
+                       "sigma_shelf": True,
+                       "f_halo": False,
+                       "sigma_halo": True,
+                       "tau_halo": True,
+                   },
+               }})
+
+# --- Combinations: Multiple physics components ---
+
+# J110: Double EMG + skew-normal, NO asym.
+# Two trapping tails on left + smooth asymmetric right-side shape.
+# Models the most complete picture: two left tails + continuous right shape.
+_define_j_scan("J110", "bin1 [16] DNL + double EMG + skew-normal, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_double_emg": True,
+                   "f_tail2_prior": [0.10, 0.08],
+                   "tau2_shared_prior": [0.30, 0.20],
+                   "use_skew_normal": True,
+                   "skew_alpha_prior": [0.0, 3.0],
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+               }})
+
+# J111: Double EMG + skew-normal + Ruth f_halo, NO asym.
+# Most complete physics model without 2nd Gaussian: two trapping tails
+# on the left + smooth asymmetric shape + Rutherford scattering.
+_define_j_scan("J111", "bin1 [16] DNL + dblEMG + skewN + Ruth, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_double_emg": True,
+                   "f_tail2_prior": [0.10, 0.08],
+                   "tau2_shared_prior": [0.30, 0.20],
+                   "use_skew_normal": True,
+                   "skew_alpha_prior": [0.0, 3.0],
+                   "f_halo_energy_model": "rutherford",
+                   "f_halo_ref_prior": [0.10, 0.08],
+                   "f_halo_energy_model_E_ref": 7.0,
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": True,
+                       "sigma_shelf": True,
+                       "f_halo": False,
+                       "sigma_halo": True,
+                       "tau_halo": True,
+                   },
+               }})
+
+# J114: Skew-normal (linear E model) + Ruth f_halo, NO asym.
+# Energy-dependent asymmetry + Rutherford scattering — 4 params total.
+_define_j_scan("J114", "bin1 [16] DNL + skewN(linE) + Ruth, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_skew_normal": True,
+                   "skew_energy_model": "linear",
+                   "skew_alpha_0_prior": [0.0, 3.0],
+                   "skew_alpha_slope_prior": [0.0, 2.0],
+                   "skew_energy_model_E_ref": 7.0,
+                   "f_halo_energy_model": "rutherford",
+                   "f_halo_ref_prior": [0.10, 0.08],
+                   "f_halo_energy_model_E_ref": 7.0,
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": True,
+                       "sigma_shelf": True,
+                       "f_halo": False,
+                       "sigma_halo": True,
+                       "tau_halo": True,
+                   },
+               }})
+
+# J115: Double EMG (linear tau2) + Ruth f_halo, NO asym.
+# Energy-dependent second trapping time + Rutherford scattering.
+_define_j_scan("J115", "bin1 [16] DNL + dblEMG(linTau2) + Ruth, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_double_emg": True,
+                   "f_tail2_prior": [0.10, 0.08],
+                   "tau2_energy_model": "linear",
+                   "tau2_0_prior": [0.30, 0.20],
+                   "tau2_slope_prior": [0.0, 0.05],
+                   "tau2_energy_model_E_ref": 7.0,
+                   "f_halo_energy_model": "rutherford",
+                   "f_halo_ref_prior": [0.10, 0.08],
+                   "f_halo_energy_model_E_ref": 7.0,
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": True,
+                       "sigma_shelf": True,
+                       "f_halo": False,
+                       "sigma_halo": True,
+                       "tau_halo": True,
+                   },
+               }})
+
+
+# ── J116-J119: Beta model improvements ──────────────────────────────
+# The beta coincidence model now includes:
+#   - Right-EMG shape (Gaussian-smeared onset instead of hard step)
+#   - Left-EMG charge trapping (reuses existing tau — zero new params)
+#   - Optional backscatter LET continuum (f_beta_bs_shared)
+# These improvements are active automatically in all scans (right-EMG +
+# left-EMG convolution use existing params).  J116-J119 ADD the
+# backscatter continuum and test in combination with best shape models.
+
+# J116: Double EMG + beta backscatter continuum, NO asym.
+_define_j_scan("J116", "bin1 [16] DNL + dblEMG + beta backscatter, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_double_emg": True,
+                   "f_tail2_prior": [0.10, 0.08],
+                   "tau2_shared_prior": [0.30, 0.20],
+                   "f_beta_bs_shared_prior": [0.01, 0.02],
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+               }})
+
+# J117: Skew-normal + beta backscatter, NO asym.
+_define_j_scan("J117", "bin1 [16] DNL + skewN + beta backscatter, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_skew_normal": True,
+                   "skew_alpha_prior": [0.0, 3.0],
+                   "f_beta_bs_shared_prior": [0.01, 0.02],
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+               }})
+
+# J118: Double EMG + skew-normal + Ruth + beta BS, NO asym.
+# Most complete physics model: all left-side corrections.
+_define_j_scan("J118", "bin1 [16] DNL + dblEMG+skN+Ruth+betaBS, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_double_emg": True,
+                   "f_tail2_prior": [0.10, 0.08],
+                   "tau2_shared_prior": [0.30, 0.20],
+                   "use_skew_normal": True,
+                   "skew_alpha_prior": [0.0, 3.0],
+                   "f_halo_energy_model": "rutherford",
+                   "f_halo_ref_prior": [0.10, 0.08],
+                   "f_halo_energy_model_E_ref": 7.0,
+                   "f_beta_bs_shared_prior": [0.01, 0.02],
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": True,
+                       "sigma_shelf": True,
+                       "f_halo": False,
+                       "sigma_halo": True,
+                       "tau_halo": True,
+                   },
+               }})
+
+# J119: Baseline (no asym) + beta backscatter only.
+# Tests the beta model improvements in isolation (no new peak shapes).
+_define_j_scan("J119", "bin1 [16] DNL + beta backscatter only, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "f_beta_bs_shared_prior": [0.01, 0.02],
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+               }})
+
+
+# ── J120-J127: Improved 2nd Gaussian (oblique incidence model) ──────
+# Literature-informed model: the broad component represents oblique-
+# incidence alphas traversing more dead layer (more straggling, more
+# energy loss).  Key improvements over J100:
+#   - Broad component now has EMG tail (same tau as core — same trapping)
+#   - Optional LEFT offset delta_E_broad (extra dead layer energy loss)
+#   - Optional right-side tail (channeling/Landau high-energy tailing)
+# Sharing: f_gauss2, sigma_gauss2, delta_E_broad all SHARED (geometry).
+
+# J120: 2nd Gaussian with EMG tail, NO asym (no offset yet).
+# Same as J100 but the broad component now has left-EMG applied.
+# Tests whether the EMG on the broad component matters.
+_define_j_scan("J120", "bin1 [16] DNL + 2ndG(EMG), NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_gauss2": True,
+                   "f_gauss2_prior": [0.20, 0.10],
+                   "sigma_gauss2_prior": [0.15, 0.10],
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+               }})
+
+# J121: 2nd Gaussian with EMG + LEFT offset, NO asym.
+# delta_E_broad lets the broad component centroid shift left.
+# Physics: oblique alphas lose more dead layer energy.
+_define_j_scan("J121", "bin1 [16] DNL + 2ndG(EMG+offset), NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_gauss2": True,
+                   "f_gauss2_prior": [0.20, 0.10],
+                   "sigma_gauss2_prior": [0.15, 0.10],
+                   "delta_E_broad_prior": [0.03, 0.03],
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+               }})
+
+# J122: 2nd Gaussian(EMG+offset) + right-side tail, NO asym.
+# Right-tail replaces sigma_asym: physically models channeling
+# and Landau fluctuations (Pomme 2015, Shi 2019).
+_define_j_scan("J122", "bin1 [16] DNL + 2ndG(EMG+off) + R-tail, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_gauss2": True,
+                   "f_gauss2_prior": [0.20, 0.10],
+                   "sigma_gauss2_prior": [0.15, 0.10],
+                   "delta_E_broad_prior": [0.03, 0.03],
+                   "use_tail_right": True,
+                   "f_tail_right_prior": [0.03, 0.03],
+                   "tau_tail_right_prior": [0.10, 0.08],
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+               }})
+
+# J123: 2nd Gaussian(EMG+offset) + Ruth f_halo, NO asym.
+_define_j_scan("J123", "bin1 [16] DNL + 2ndG(EMG+off) + Ruth, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_gauss2": True,
+                   "f_gauss2_prior": [0.20, 0.10],
+                   "sigma_gauss2_prior": [0.15, 0.10],
+                   "delta_E_broad_prior": [0.03, 0.03],
+                   "f_halo_energy_model": "rutherford",
+                   "f_halo_ref_prior": [0.10, 0.08],
+                   "f_halo_energy_model_E_ref": 7.0,
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": True,
+                       "sigma_shelf": True,
+                       "f_halo": False,
+                       "sigma_halo": True,
+                       "tau_halo": True,
+                   },
+               }})
+
+# J124: Full physics model: 2ndG(EMG+off) + R-tail + Ruth + beta BS.
+# Everything physically motivated, no sigma_asym.
+_define_j_scan("J124", "bin1 [16] DNL + 2ndG+Rtail+Ruth+betaBS, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_gauss2": True,
+                   "f_gauss2_prior": [0.20, 0.10],
+                   "sigma_gauss2_prior": [0.15, 0.10],
+                   "delta_E_broad_prior": [0.03, 0.03],
+                   "use_tail_right": True,
+                   "f_tail_right_prior": [0.03, 0.03],
+                   "tau_tail_right_prior": [0.10, 0.08],
+                   "f_halo_energy_model": "rutherford",
+                   "f_halo_ref_prior": [0.10, 0.08],
+                   "f_halo_energy_model_E_ref": 7.0,
+                   "f_beta_bs_shared_prior": [0.01, 0.02],
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+                   "shared_shape_params": {
+                       "tau": False,
+                       "f_shelf": True,
+                       "sigma_shelf": True,
+                       "f_halo": False,
+                       "sigma_halo": True,
+                       "tau_halo": True,
+                   },
+               }})
+
+# J125: 2nd Gaussian(EMG+offset) + asym (keep asym to see if
+# the right-tail replaces it or if asym still adds value).
+_define_j_scan("J125", "bin1 [16] DNL + 2ndG(EMG+off) + asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_gauss2": True,
+                   "f_gauss2_prior": [0.20, 0.10],
+                   "sigma_gauss2_prior": [0.15, 0.10],
+                   "delta_E_broad_prior": [0.03, 0.03],
+               }})
+
+# J126: 2nd Gaussian(EMG, no offset) + right-tail only, NO asym.
+# Tests right-tail without offset to isolate right-tail contribution.
+_define_j_scan("J126", "bin1 [16] DNL + 2ndG(EMG) + R-tail, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_gauss2": True,
+                   "f_gauss2_prior": [0.20, 0.10],
+                   "sigma_gauss2_prior": [0.15, 0.10],
+                   "use_tail_right": True,
+                   "f_tail_right_prior": [0.03, 0.03],
+                   "tau_tail_right_prior": [0.10, 0.08],
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+               }})
+
+
+# J127: Final J121 model + per-isotope beta (unshared).
+# Tests whether unsharing beta for Po-212 (Bi-212 beta endpoint 2.25 MeV)
+# vs Po-214 (Bi-214 beta endpoint 3.27 MeV) closes the gap to J125.
+# sigma_asym was compensating: sigma_right/sigma = 2.0 at Po-212 energy.
+_define_j_scan("J127", "bin1 [16] DNL + 2ndG(EMG+off) + per-iso beta, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   "use_gauss2": True,
+                   "f_gauss2_prior": [0.29, 0.10],
+                   "sigma_gauss2_prior": [0.14, 0.08],
+                   "delta_E_broad_prior": [0.02, 0.02],
+                   "share_beta": False,
+                   "f_beta_Po214_prior": [0.04, 0.04],
+                   "lambda_beta_Po214_prior": [0.13, 0.08],
+                   "f_beta_Po212_prior": [0.05, 0.05],
+                   "lambda_beta_Po212_prior": [0.25, 0.15],
+                   "asym_energy_model": "",
+                   "use_sigma_asym": False,
+               }})
+
+
+# ── J128-J132: Full-Fourier DNL + unfrozen/frozen shape ablation ───
+# J128 expands Fourier DNL from single period [16] to all SAR bit-cycling
+# periods [4..512], unfreezes shapes from prelim (seed not fix), and
+# raises the f_beta_Po212 prior to [0.30, 0.20].  J129-J132 are controls.
+
+_J128_DNL = {"fourier_periods_codes": [4, 8, 16, 32, 64, 128, 256, 512],
+             "post_dnl_rebin": 1}
+
+# Shared config for J128-J132: 2ndG + per-iso beta + dropped tau_halo + shared constant tau
+# NOTE: shared_shape_params.tau=true and tau_shared_prior are in the base config.
+# tau_energy_model=constant disables the linear tau_0+tau_slope model.
+_J128_SPEC = {
+    "tau_energy_model": "constant",          # disables linear tau_0+tau_slope
+    "tau_shared_prior": [0.097, 0.05],       # from J127 fitted tau_0
+    "tau_halo_shared_prior": [0.0, 0.001],
+    "use_gauss2": True,
+    "f_gauss2_prior": [0.29, 0.10],
+    "sigma_gauss2_ratio_prior": [1.4, 0.5],
+    "delta_E_broad_prior": [0.02, 0.02],
+    "share_beta": False,
+    "f_beta_Po214_prior": [0.04, 0.04],
+    "lambda_beta_Po214_prior": [0.13, 0.08],
+    # Po-212: Bi-212 beta endpoint 2.25 MeV (shorter lambda than Po-214)
+    "f_beta_Po212_prior": [0.04, 0.04],
+    "lambda_beta_Po212_prior": [0.10, 0.08],
+    "asym_energy_model": "",
+    "use_sigma_asym": False,
+    "flags": {"fix_tau_halo_shared": True},
+}
+
+# J128: Full Fourier + seeded (unfrozen) shapes
+_define_j_scan("J128",
+               "bin1 full-Fourier DNL + 2ndG(EMG+off) + per-iso beta + unfrozen shapes, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J128_DNL,
+               config_overrides={"spectral_fit": {
+                   **_J128_SPEC,
+                   "seed_shape_from_prelim": "seed",
+               }})
+
+# J129: NO DNL control — same shapes/beta as J128 but DNL disabled.
+_define_j_scan("J129",
+               "bin1 NO DNL + 2ndG(EMG+off) + per-iso beta + unfrozen shapes, NO asym",
+               adc_bin_width=1, dnl_mode="none", crossval=False,
+               config_overrides={"spectral_fit": {
+                   **_J128_SPEC,
+                   "seed_shape_from_prelim": "seed",
+               }})
+
+# J130: Period-16-only DNL control — same as J128 but single Fourier period.
+_define_j_scan("J130",
+               "bin1 period-16-only DNL + 2ndG(EMG+off) + per-iso beta + unfrozen shapes, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J_SHAPE_DNL,
+               config_overrides={"spectral_fit": {
+                   **_J128_SPEC,
+                   "seed_shape_from_prelim": "seed",
+               }})
+
+# J131: Fixed shapes control — same as J127 but with raised f_beta cap
+# and full Fourier DNL.  Shapes fixed from prelim (not seeded).
+_define_j_scan("J131",
+               "bin1 full-Fourier DNL + 2ndG(EMG+off) + per-iso beta + FIXED shapes, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J128_DNL,
+               config_overrides={"spectral_fit": {
+                   **_J128_SPEC,
+                   "seed_shape_from_prelim": "fix",
+               }})
+
+# J132: Shapes OFF prelim — main fit finds shapes independently (no seeding).
+_define_j_scan("J132",
+               "bin1 full-Fourier DNL + 2ndG(EMG+off) + per-iso beta + shapes OFF prelim, NO asym",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J128_DNL,
+               config_overrides={"spectral_fit": {
+                   **_J128_SPEC,
+                   "seed_shape_from_prelim": "off",
+               }})
+
+# ── J133-J136: Post-DNL rebin sweep ──────────────────────────────────
+# Same model as J128 (full Fourier + seeded shapes) but with increasing
+# post_dnl_rebin factors.  DNL correction is always estimated at full ADC
+# resolution (bin_width=1), then the corrected histogram is rebinned before
+# the main fit.  This shows how much DNL structure gets averaged out and
+# how the smooth model misfit looks when rebinned.
+
+for _rb_id, _rb_factor in [("J133", 5), ("J134", 10), ("J135", 16), ("J136", 32)]:
+    _define_j_scan(
+        _rb_id,
+        f"full-Fourier DNL + rebin x{_rb_factor} + 2ndG(EMG+off) + per-iso beta + seed shapes",
+        adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+        dnl_overrides={
+            "fourier_periods_codes": [4, 8, 16, 32, 64, 128, 256, 512],
+            "post_dnl_rebin": _rb_factor,
+        },
+        config_overrides={"spectral_fit": {
+            **_J128_SPEC,
+            "seed_shape_from_prelim": "seed",
+        }},
+    )
+
+# ── J137: Spectral fit only — validates Unknown1 auto-fix + diagnostics period fix
+# Same model as J128 but with the code changes: auto-fix extra-peak shapes
+# when rebinning, and code-domain diagnostics now use validated periods.
+# Disables bridge and radon inference for speed.
+_define_j_scan("J137",
+               "bin1 full-Fourier DNL + 2ndG(EMG+off) + per-iso beta + seed shapes (fixes test)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J128_DNL,
+               config_overrides={
+                   "spectral_fit": {
+                       **_J128_SPEC,
+                       "seed_shape_from_prelim": "seed",
+                   },
+                   "radon_inference": {"enabled": False},
+                   "lucas_bridge": {"enabled": False},
+               })
+
+# ── J138: Full pipeline + lucas bridge (no ambient file)
+# Same spectral fit as J137, plus lucas cell assay bridge and efficiency.
+# Radon inference enabled but external_rn set to constant fallback (no pico file).
+_define_j_scan("J138",
+               "bin1 full-Fourier DNL + 2ndG(EMG+off) + per-iso beta + seed shapes + lucas bridge",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J128_DNL,
+               config_overrides={
+                   "spectral_fit": {
+                       **_J128_SPEC,
+                       "seed_shape_from_prelim": "seed",
+                   },
+                   "radon_inference": {
+                       "enabled": True,
+                       "external_rn": {
+                           "mode": "constant",
+                           "constant_bq_per_m3": 120.0,
+                       },
+                   },
+                   "lucas_bridge": {"enabled": True},
+               })
+
+# ── J139: Full pipeline + lucas bridge + ambient rates from Pico XLS
+# Same as J138 but ensures external_rn reads from the Pico40L spreadsheet.
+_define_j_scan("J139",
+               "bin1 full-Fourier DNL + 2ndG(EMG+off) + seed shapes + bridge + ambient Pico",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J128_DNL,
+               config_overrides={
+                   "spectral_fit": {
+                       **_J128_SPEC,
+                       "seed_shape_from_prelim": "seed",
+                   },
+                   "radon_inference": {
+                       "enabled": True,
+                       "external_rn": {
+                           "mode": "file",
+                           "file_path": "rad_4996_pico40l.xls",
+                           "fallback_bq_per_m3": 120.0,
+                           "time_columns": {
+                               "year": "Year",
+                               "month": "Month",
+                               "day": "Day",
+                               "hour": "Hour",
+                               "minute": "Minute",
+                               "year_format": "two_digit",
+                           },
+                           "value_column": "Radon Bq/m^3",
+                           "tz": "America/Toronto",
+                           "interpolation": "ffill",
+                           "max_gap_seconds": 21600,
+                       },
+                   },
+                   "lucas_bridge": {"enabled": True},
+               })
+
+
+# ── J140: Rebin x10 with Unknown1 auto-fix ────────────────────────
+# Same model as J128, but post_dnl_rebin=10 to test the auto-fix of
+# extra-peak (Unknown1) shape params at coarse binning.  Compare to
+# J134 (rebin x10 WITHOUT auto-fix) to verify improvement.
+_define_j_scan("J140",
+               "full-Fourier DNL + rebin x10 + auto-fix Unknown1 + seed shapes",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={
+                   "fourier_periods_codes": [4, 8, 16, 32, 64, 128, 256, 512],
+                   "post_dnl_rebin": 10,
+               },
+               config_overrides={"spectral_fit": {
+                   **_J128_SPEC,
+                   "seed_shape_from_prelim": "seed",
+               }})
+
+# ── J141: Rebin x32 with Unknown1 auto-fix ────────────────────────
+# Extreme rebin to compare against J136 (rebin x32, chi2/ndf=15.6).
+_define_j_scan("J141",
+               "full-Fourier DNL + rebin x32 + auto-fix Unknown1 + seed shapes",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={
+                   "fourier_periods_codes": [4, 8, 16, 32, 64, 128, 256, 512],
+                   "post_dnl_rebin": 32,
+               },
+               config_overrides={"spectral_fit": {
+                   **_J128_SPEC,
+                   "seed_shape_from_prelim": "seed",
+               }})
+
+
+# ── J142: sigma_gauss2 ratio + dropped f_beta_Po212 ───────────────
+# Tests the multiplicative sigma_gauss2_ratio reparameterization
+# AND f_beta_Po212 dropped. Full pipeline with bridge + ambient.
+_define_j_scan("J142",
+               "bin1 sigma_gauss2_ratio + no f_beta_Po212 + bridge + ambient",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J128_DNL,
+               config_overrides={
+                   "spectral_fit": {
+                       **_J128_SPEC,
+                       "seed_shape_from_prelim": "seed",
+                   },
+                   "radon_inference": {"enabled": True},
+                   "lucas_bridge": {"enabled": True},
+               })
+
+# ── J143: sigma_gauss2 ratio + KEEP f_beta_Po212 ─────────────────
+# Same sigma_gauss2 fix but KEEPS f_beta_Po212 to see if the improved
+# peak shapes change the beta coincidence significance.
+_define_j_scan("J143",
+               "bin1 sigma_gauss2_ratio + WITH f_beta_Po212 + bridge + ambient",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J128_DNL,
+               config_overrides={
+                   "spectral_fit": {
+                       **_J128_SPEC,
+                       "seed_shape_from_prelim": "seed",
+                       # Re-enable f_beta_Po212 to test if sigma fix changes it
+                       "f_beta_Po212_prior": [0.30, 0.20],
+                       "lambda_beta_Po212_prior": [0.25, 0.15],
+                   },
+                   "radon_inference": {"enabled": True},
+                   "lucas_bridge": {"enabled": True},
+               })
+
+# ── J144: sigma_gauss2 ratio + rebin x10 ─────────────────────────
+# Tests the Unknown1 auto-fix + sigma_gauss2 ratio at rebin x10.
+_define_j_scan("J144",
+               "sigma_gauss2_ratio + rebin x10 + auto-fix Unknown1",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides={
+                   "fourier_periods_codes": [4, 8, 16, 32, 64, 128, 256, 512],
+                   "post_dnl_rebin": 10,
+               },
+               config_overrides={"spectral_fit": {
+                   **_J128_SPEC,
+                   "seed_shape_from_prelim": "seed",
+               }})
+
+# ── J145: Template fitting (per-bin spectral extraction) ──────────
+# Full pipeline with template fitting instead of ROI counting.
+# Uses sigma_gauss2 ratio + bridge + ambient + radon inference.
+_define_j_scan("J145",
+               "template fitting + bridge + ambient",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J128_DNL,
+               config_overrides={
+                   "spectral_fit": {
+                       **_J128_SPEC,
+                       "seed_shape_from_prelim": "seed",
+                   },
+                   "time_fit": {
+                       "extraction_method": "template",
+                       "template_rebin": 20,
+                       "template_min_counts": 30,
+                       "float_centroids": True,
+                       "fix_weak_isotopes": True,
+                   },
+                   "radon_inference": {"enabled": True},
+                   "lucas_bridge": {"enabled": True},
+               })
+
+# ── J146: Template fitting (ROI baseline for comparison) ──────────
+# Same config as J145 but with ROI counting, for direct comparison.
+_define_j_scan("J146",
+               "ROI baseline for template comparison",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J128_DNL,
+               config_overrides={
+                   "spectral_fit": {
+                       **_J128_SPEC,
+                       "seed_shape_from_prelim": "seed",
+                   },
+                   "time_fit": {
+                       "extraction_method": "roi",
+                   },
+                   "radon_inference": {"enabled": True},
+                   "lucas_bridge": {"enabled": True},
+               })
+
 
 def _load_base_config(config_path):
     """Load and return base config as dict."""
     with open(config_path, "r") as f:
         return yaml.safe_load(f)
+
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Recursively merge *override* into *base* (in-place).
+
+    For every key in *override*:
+      - If both base[key] and override[key] are dicts, recurse.
+      - Otherwise, override[key] replaces base[key].
+
+    Returns *base* for convenience.
+    """
+    for k, v in override.items():
+        if k in base and isinstance(base[k], dict) and isinstance(v, dict):
+            _deep_merge(base[k], v)
+        else:
+            base[k] = v
+    return base
 
 
 def _apply_scan_overrides(base_cfg, scan_def):
@@ -808,13 +2400,17 @@ def _apply_scan_overrides(base_cfg, scan_def):
         sp["skip_minos"] = True
     else:
         sp["split_half_validation"] = True
-        sp["skip_minos"] = False
+        # MINOS is too slow for 30-param scans (hours per run).
+        # Always skip unless explicitly requested via enable_minos flag.
+        sp["skip_minos"] = not scan_def.get("enable_minos", False)
 
     # Apply arbitrary top-level config overrides (calibration, analysis, etc.)
+    # Uses deep merge so nested dicts (e.g. flags, penalty_priors) are merged
+    # rather than replaced.
     for section_key, overrides in scan_def.get("config_overrides", {}).items():
         section = cfg.setdefault(section_key, {})
         if isinstance(overrides, dict):
-            section.update(overrides)
+            _deep_merge(section, overrides)
         else:
             cfg[section_key] = overrides
 
@@ -833,10 +2429,22 @@ def _write_scan_config(cfg, scan_id):
 def _run_scan(scan_id, config_path):
     """Run analyze.py with scan config and return output dir."""
     output_dir = RESULTS_DIR / f"scan_{scan_id}"
+    # Clean previous results to avoid accumulating stale timestamped folders
+    if output_dir.exists():
+        import shutil
+        for child in list(output_dir.iterdir()):
+            if child.is_dir():
+                try:
+                    shutil.rmtree(child)
+                    logger.info("Cleaned old result folder: %s", child.name)
+                except OSError as _e:
+                    logger.warning("Could not remove %s: %s", child.name, _e)
     cmd = [
         sys.executable, str(BASE_DIR / "analyze.py"),
         "--config", str(config_path),
         "--output-dir", str(output_dir),
+        "--job-id", scan_id,
+        "--overwrite",
     ]
     logger.info("Running scan %s: %s", scan_id, " ".join(cmd))
     t0 = time.time()
@@ -950,12 +2558,65 @@ def _extract_metrics(summary_path):
     }
 
 
+def _prepare_scan(scan_id, base_cfg):
+    """Prepare config for a scan, return (scan_id, config_path, scan_def)."""
+    scan_def = SCANS[scan_id]
+    cfg = _apply_scan_overrides(base_cfg, scan_def)
+    config_path = _write_scan_config(cfg, scan_id)
+    return scan_id, config_path, scan_def
+
+
+def _run_and_collect(scan_id, config_path, scan_def):
+    """Run a single scan and collect results dict."""
+    output_dir, returncode, elapsed = _run_scan(scan_id, config_path)
+
+    result = {
+        "scan_id": scan_id,
+        "description": scan_def["description"],
+        "returncode": returncode,
+        "elapsed_min": round(elapsed / 60, 1),
+    }
+
+    if returncode == 0:
+        summary_path = _find_summary(output_dir)
+        if summary_path:
+            metrics = _extract_metrics(summary_path)
+            result.update(metrics)
+            _ft_total = metrics.get("fit_time_total_s", float("nan"))
+            _ft_minos = metrics.get("minos_method", "?")
+            _cr = "REFIT" if metrics.get("centroid_refit_triggered") else "no"
+            logger.info(
+                "Scan %s: chi2/ndf=%.2f, NLL=%.1f, AIC=%.1f, "
+                "n_free=%d, pull_sigma=%.3f, rebin10=%.3f, "
+                "cov=%s, max_z_shape=%.2f, "
+                "fit_time=%.0fs (init=%.0fs dnl=%.0fs cov+minos=%.0fs [%s]), "
+                "centroid_refit=%s",
+                scan_id, metrics["chi2_ndf"], metrics["nll"],
+                metrics["aic"], metrics["n_free"],
+                metrics["pull_sigma"], metrics["rebin10_pull_sigma"],
+                metrics["cov_method"], metrics["max_z_shape"],
+                _ft_total,
+                metrics.get("fit_time_initial_s", float("nan")),
+                metrics.get("fit_time_dnl_s", float("nan")),
+                metrics.get("fit_time_cov_minos_s", float("nan")),
+                _ft_minos, _cr,
+            )
+        else:
+            logger.warning("No summary.json found for scan %s", scan_id)
+    else:
+        logger.error("Scan %s failed with exit code %d", scan_id, returncode)
+
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run shape parameter scans")
     parser.add_argument("--config", default=str(BASE_DIR / "config.yaml"),
                         help="Base config file")
     parser.add_argument("--scans", default=None,
                         help="Comma-separated scan IDs (default: all)")
+    parser.add_argument("--parallel", "-j", type=int, default=1,
+                        help="Number of parallel scan processes (default: 1)")
     args = parser.parse_args()
 
     base_cfg = _load_base_config(args.config)
@@ -966,59 +2627,63 @@ def main():
     else:
         scan_ids = list(SCANS.keys())
 
-    # Run scans
-    all_results = []
+    # Filter valid scan IDs and prepare configs
+    valid_scans = []
     for scan_id in scan_ids:
         if scan_id not in SCANS:
             logger.warning("Unknown scan ID: %s, skipping", scan_id)
             continue
+        sid, cpath, sdef = _prepare_scan(scan_id, base_cfg)
+        valid_scans.append((sid, cpath, sdef))
 
-        scan_def = SCANS[scan_id]
+    n_parallel = max(1, args.parallel)
+    logger.info("Running %d scans with %d parallel workers", len(valid_scans), n_parallel)
+
+    # Run scans (parallel or serial)
+    all_results = []
+    if n_parallel == 1:
+        # Serial mode (original behavior)
+        for scan_id, config_path, scan_def in valid_scans:
+            logger.info("=" * 60)
+            logger.info("SCAN %s: %s", scan_id, scan_def["description"])
+            logger.info("=" * 60)
+            result = _run_and_collect(scan_id, config_path, scan_def)
+            all_results.append(result)
+    else:
+        # Parallel mode using concurrent.futures
+        from concurrent.futures import ProcessPoolExecutor, as_completed
         logger.info("=" * 60)
-        logger.info("SCAN %s: %s", scan_id, scan_def["description"])
+        logger.info("PARALLEL MODE: %d workers", n_parallel)
         logger.info("=" * 60)
-
-        cfg = _apply_scan_overrides(base_cfg, scan_def)
-        config_path = _write_scan_config(cfg, scan_id)
-        output_dir, returncode, elapsed = _run_scan(scan_id, config_path)
-
-        result = {
-            "scan_id": scan_id,
-            "description": scan_def["description"],
-            "returncode": returncode,
-            "elapsed_min": round(elapsed / 60, 1),
-        }
-
-        if returncode == 0:
-            summary_path = _find_summary(output_dir)
-            if summary_path:
-                metrics = _extract_metrics(summary_path)
-                result.update(metrics)
-                _ft_total = metrics.get("fit_time_total_s", float("nan"))
-                _ft_minos = metrics.get("minos_method", "?")
-                _cr = "REFIT" if metrics.get("centroid_refit_triggered") else "no"
-                logger.info(
-                    "Scan %s: chi2/ndf=%.2f, NLL=%.1f, AIC=%.1f, "
-                    "n_free=%d, pull_sigma=%.3f, rebin10=%.3f, "
-                    "cov=%s, max_z_shape=%.2f, "
-                    "fit_time=%.0fs (init=%.0fs dnl=%.0fs cov+minos=%.0fs [%s]), "
-                    "centroid_refit=%s",
-                    scan_id, metrics["chi2_ndf"], metrics["nll"],
-                    metrics["aic"], metrics["n_free"],
-                    metrics["pull_sigma"], metrics["rebin10_pull_sigma"],
-                    metrics["cov_method"], metrics["max_z_shape"],
-                    _ft_total,
-                    metrics.get("fit_time_initial_s", float("nan")),
-                    metrics.get("fit_time_dnl_s", float("nan")),
-                    metrics.get("fit_time_cov_minos_s", float("nan")),
-                    _ft_minos, _cr,
+        futures = {}
+        with ProcessPoolExecutor(max_workers=n_parallel) as executor:
+            for scan_id, config_path, scan_def in valid_scans:
+                logger.info("Submitting scan %s: %s", scan_id, scan_def["description"])
+                future = executor.submit(
+                    _run_and_collect, scan_id, config_path, scan_def,
                 )
-            else:
-                logger.warning("No summary.json found for scan %s", scan_id)
-        else:
-            logger.error("Scan %s failed with exit code %d", scan_id, returncode)
-
-        all_results.append(result)
+                futures[future] = scan_id
+            for future in as_completed(futures):
+                scan_id = futures[future]
+                try:
+                    result = future.result()
+                    all_results.append(result)
+                    logger.info(
+                        "Scan %s finished: chi2/ndf=%.2f, elapsed=%.1f min",
+                        scan_id,
+                        result.get("chi2_ndf", float("nan")),
+                        result.get("elapsed_min", 0),
+                    )
+                except Exception as e:
+                    logger.error("Scan %s raised exception: %s", scan_id, e)
+                    all_results.append({
+                        "scan_id": scan_id,
+                        "description": SCANS[scan_id]["description"],
+                        "returncode": -1,
+                        "elapsed_min": 0,
+                    })
+        # Sort results by scan ID for consistent output
+        all_results.sort(key=lambda r: r["scan_id"])
 
     # Write CSV summary
     csv_path = BASE_DIR / "scan_results.csv"
