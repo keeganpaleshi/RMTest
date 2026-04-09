@@ -1145,18 +1145,31 @@ def compute_bridge(
                 time_matched = True
             else:
                 logger.warning(
-                    "No time-matched data for %s (%s) within ±%.1f h — SKIPPING "
-                    "(no fallback to dataset average)",
+                    "No time-matched data for %s (%s) within ±%.1f h — "
+                    "falling back to dataset average",
                     assay.label[:40], dt_assay.isoformat(),
                     _per_assay_mwd * 24,
                 )
-                continue
+                meas_bq, meas_unc = meas_bq_avg, meas_unc_avg
+                if math.isnan(meas_bq):
+                    logger.warning(
+                        "Dataset average also unavailable for %s — SKIPPING",
+                        assay.label[:40],
+                    )
+                    continue
         else:
-            logger.warning(
-                "No time-series data available for %s — SKIPPING",
-                assay.label[:40],
+            # No time-series: use dataset-averaged activity
+            meas_bq, meas_unc = meas_bq_avg, meas_unc_avg
+            if math.isnan(meas_bq):
+                logger.warning(
+                    "No time-series and no dataset average for %s — SKIPPING",
+                    assay.label[:40],
+                )
+                continue
+            logger.info(
+                "Using dataset-averaged activity for %s: %.4f ± %.4f Bq",
+                assay.label[:40], meas_bq, meas_unc,
             )
-            continue
 
         # ── Detector emanation baseline (for diagnostics only) ──
         # The monitor detects radon from its own surfaces.  For efficiency

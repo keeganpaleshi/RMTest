@@ -6981,6 +6981,13 @@ def main(argv=None):
             radon_results["radon_delta_Bq"] = {"value": d_radon, "uncertainty": d_err}
     
         # ────────────────────────────────────────────────────────────
+    # Initialise template-fitting state at function scope so that the
+    # persistence block (after summary_json) can read these even if the
+    # summary_json section fails partway through.
+    _extraction_method = cfg.get("time_fit", {}).get("extraction_method", "roi").lower()
+    template_fit_results = None
+    _have_spectral = False
+
     with timer.section("summary_json"):
         # 8. Assemble and write out the summary JSON
         # ────────────────────────────────────────────────────────────
@@ -7488,10 +7495,19 @@ def main(argv=None):
         results_dir = Path(args.output_dir) / (args.job_id or now_str)
         if results_dir.exists():
             if args.overwrite:
-                shutil.rmtree(results_dir)
+                try:
+                    shutil.rmtree(results_dir)
+                except PermissionError as _pe:
+                    # Directory may be locked by another process (e.g.
+                    # Windows file-handle leak).  Log the error and
+                    # continue — we will write into the existing tree.
+                    logger.warning(
+                        "Could not remove existing results dir (will "
+                        "overwrite in-place): %s", _pe,
+                    )
             else:
                 raise FileExistsError(f"Results folder already exists: {results_dir}")
-    
+
         copy_config(results_dir, cfg, exist_ok=args.overwrite)
         out_dir = Path(write_summary(results_dir, summary))
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -7917,6 +7933,36 @@ def main(argv=None):
             )
         except NameError:
             _have_spectral = False
+        logger.info(
+            "Template fitting check: extraction=%s, have_spectral=%s",
+            _extraction_method, _have_spectral,
+        )
+        # Write diagnostic to file (survives even if logging isn't captured)
+        _tpl_diag_path = Path(out_dir) / "template_fitting_debug.txt"
+        try:
+            with open(_tpl_diag_path, "w") as _tdf:
+                _tdf.write(f"extraction_method={_extraction_method}\n")
+                _tdf.write(f"have_spectral={_have_spectral}\n")
+                _tdf.write(f"spec_plot_data_type={type(spec_plot_data).__name__}\n")
+                try:
+                    _tdf.write(f"fit_vals_type={type(fit_vals).__name__}\n")
+                except NameError:
+                    _tdf.write("fit_vals=UNDEFINED\n")
+                try:
+                    _tdf.write(f"priors_spec_len={len(priors_spec)}\n")
+                except NameError:
+                    _tdf.write("priors_spec=UNDEFINED\n")
+                try:
+                    _tdf.write(f"spec_flags_len={len(spec_flags)}\n")
+                except NameError:
+                    _tdf.write("spec_flags=UNDEFINED\n")
+                try:
+                    _tdf.write(f"df_spectrum_shape={df_spectrum.shape}\n")
+                    _tdf.write(f"df_spectrum_cols={list(df_spectrum.columns)}\n")
+                except NameError:
+                    _tdf.write("df_spectrum=UNDEFINED\n")
+        except Exception:
+            pass
         if _extraction_method == "template" and _have_spectral:
             try:
                 from fitting import FitResult as _FR_check
@@ -7949,6 +7995,20 @@ def main(argv=None):
                     fit_energy_range=fit_energy_range,
                     n_workers=1,
                 )
+                # Write result to diagnostic file
+                try:
+                    with open(_tpl_diag_path, "a") as _tdf:
+                        _tdf.write(f"\ntemplate_fit_results type={type(template_fit_results).__name__}\n")
+                        if template_fit_results:
+                            _tdf.write(f"n_fitted={template_fit_results.get('n_fitted')}\n")
+                            _tdf.write(f"n_valid={template_fit_results.get('n_valid')}\n")
+                            _tdf.write(f"n_time_bins={template_fit_results.get('n_time_bins')}\n")
+                            _fs = template_fit_results.get('isotope_series_fitted', {})
+                            _tdf.write(f"iso_series_keys={list(_fs.keys())}\n")
+                            for _ik, _iv in _fs.items():
+                                _tdf.write(f"  {_ik}: {len(_iv)} entries\n")
+                except Exception:
+                    pass
                 if template_fit_results:
                     _fitted_series = template_fit_results.get(
                         "isotope_series_fitted", {}
@@ -7970,13 +8030,25 @@ def main(argv=None):
                             "falling back to ROI"
                         )
                         template_fit_results = None
+                else:
+                    logger.warning(
+                        "Template fitting returned falsy result: %r",
+                        template_fit_results,
+                    )
             except Exception as exc:
                 logger.warning(
                     "Per-bin template fitting failed; falling back to ROI: %s",
                     exc,
                 )
                 import traceback
-                logger.debug(traceback.format_exc())
+                logger.warning(traceback.format_exc())
+                # Write exception to diagnostic file
+                try:
+                    with open(_tpl_diag_path, "a") as _tdf:
+                        _tdf.write(f"\nEXCEPTION: {exc}\n")
+                        _tdf.write(traceback.format_exc())
+                except Exception:
+                    pass
                 template_fit_results = None
 
         # ── Template fitting diagnostic plots ────────────────────────
@@ -8068,6 +8140,22 @@ def main(argv=None):
     with timer.section("lucas_bridge"):
         bridge_cfg = cfg.get("lucas_bridge")
         if isinstance(bridge_cfg, Mapping) and bridge_cfg.get("enabled", False):
+            logger.info(
+                "Bridge: isotope_series_data has %d isotopes, %d total entries",
+                len(isotope_series_data) if isotope_series_data else 0,
+                sum(len(v) for v in isotope_series_data.values()) if isotope_series_data else 0,
+            )
+            # Diagnostic file for bridge debugging
+            try:
+                with open(Path(out_dir) / "bridge_debug.txt", "w") as _bdf:
+                    _bdf.write(f"iso_series_data={bool(isotope_series_data)}\n")
+                    _bdf.write(f"iso_series_len={len(isotope_series_data) if isotope_series_data else 0}\n")
+                    if isotope_series_data:
+                        for _ik, _iv in isotope_series_data.items():
+                            _bdf.write(f"  {_ik}: {len(_iv)} entries\n")
+                    _bdf.write(f"bridge_files={bridge_cfg.get('assay_files', [])}\n")
+            except Exception:
+                pass
             try:
                 from assay_bridge import compute_bridge, get_bridge_detection_efficiency
 
@@ -8077,6 +8165,14 @@ def main(argv=None):
                     isotope_series=isotope_series_data or None,
                     cal_window_rel_unc=cal_window_rel_unc or None,
                 )
+                # Write bridge result to diagnostic file
+                try:
+                    with open(Path(out_dir) / "bridge_debug.txt", "a") as _bdf:
+                        _bdf.write(f"\nbridge_results type={type(bridge_results).__name__}\n")
+                        _bdf.write(f"bridge_results truthy={bool(bridge_results)}\n")
+                        _bdf.write(f"n_assays={bridge_results.get('n_assays', 'N/A')}\n")
+                except Exception:
+                    pass
                 if bridge_results:
                     summary.lucas_bridge = bridge_results
                     logger.info(
@@ -8181,7 +8277,9 @@ def main(argv=None):
                         logger.warning("Failed to create bridge summary plot: %s", exc)
 
             except Exception as exc:
+                import traceback as _tb_bridge
                 logger.warning("Lucas-cell assay bridge failed: %s", exc)
+                logger.warning(_tb_bridge.format_exc())
 
     # Additional visualizations
     with timer.section("additional_visualizations"):
@@ -8606,23 +8704,31 @@ def main(argv=None):
         logger.warning("Could not create radon activity plots -> %s", e)
 
     # ── Persist template fitting metadata into summary ──────────────
-    if template_fit_results is not None:
-        _tpl_meta = {
-            "extraction_method": "template",
-            "n_time_bins": template_fit_results.get("n_time_bins", 0),
-            "n_fitted": template_fit_results.get("n_fitted", 0),
-            "n_valid": template_fit_results.get("n_valid", 0),
-        }
-        _tpl_diag = template_fit_results.get("per_bin_diagnostics", [])
-        if _tpl_diag:
-            _chi2s = [
-                d["chi2_ndf"] for d in _tpl_diag
-                if d.get("fit_valid") and np.isfinite(d.get("chi2_ndf", float("nan")))
-            ]
-            if _chi2s:
-                _tpl_meta["chi2_ndf_median"] = float(np.median(_chi2s))
-                _tpl_meta["chi2_ndf_mean"] = float(np.mean(_chi2s))
-                _tpl_meta["chi2_ndf_std"] = float(np.std(_chi2s))
+    if _extraction_method == "template":
+        if template_fit_results is not None:
+            _tpl_meta = {
+                "extraction_method": "template",
+                "status": "success",
+                "n_time_bins": template_fit_results.get("n_time_bins", 0),
+                "n_fitted": template_fit_results.get("n_fitted", 0),
+                "n_valid": template_fit_results.get("n_valid", 0),
+            }
+            _tpl_diag = template_fit_results.get("per_bin_diagnostics", [])
+            if _tpl_diag:
+                _chi2s = [
+                    d["chi2_ndf"] for d in _tpl_diag
+                    if d.get("fit_valid") and np.isfinite(d.get("chi2_ndf", float("nan")))
+                ]
+                if _chi2s:
+                    _tpl_meta["chi2_ndf_median"] = float(np.median(_chi2s))
+                    _tpl_meta["chi2_ndf_mean"] = float(np.mean(_chi2s))
+                    _tpl_meta["chi2_ndf_std"] = float(np.std(_chi2s))
+        else:
+            _tpl_meta = {
+                "extraction_method": "template",
+                "status": "failed_or_empty",
+                "have_spectral": _have_spectral,
+            }
         summary["template_fitting"] = _tpl_meta
         summary_updated = True
         # Write immediately so template metadata persists even if later

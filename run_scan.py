@@ -2316,6 +2316,28 @@ _define_j_scan("J146",
                    "lucas_bridge": {"enabled": True},
                })
 
+# ── J147: Template fitting + bridge (re-run after bugfixes) ───────
+# Same as J145 with fixes for rmtree crash + bridge fallback.
+_define_j_scan("J147",
+               "template fitting + bridge (fixed)",
+               adc_bin_width=1, dnl_mode="full_res_fourier", crossval=False,
+               dnl_overrides=_J128_DNL,
+               config_overrides={
+                   "spectral_fit": {
+                       **_J128_SPEC,
+                       "seed_shape_from_prelim": "seed",
+                   },
+                   "time_fit": {
+                       "extraction_method": "template",
+                       "template_rebin": 20,
+                       "template_min_counts": 30,
+                       "float_centroids": True,
+                       "fix_weak_isotopes": True,
+                   },
+                   "radon_inference": {"enabled": True},
+                   "lucas_bridge": {"enabled": True},
+               })
+
 
 def _load_base_config(config_path):
     """Load and return base config as dict."""
