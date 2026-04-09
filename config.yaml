@@ -581,6 +581,19 @@ lucas_bridge:
       match_window_hours: 5.5    # wide window, capped before noon spike
     "2024-12-05":
       lc_background_cpd: 16.5    # corrected lucas cell background
+  spike_periods:
+    # Fit anchors inferred from the current Po214+Po218 decay series.
+    # Each fit begins 30 minutes after the listed start time.
+    - start: "2024-09-12T14:30:00-04:00"
+      end: "2024-09-28T00:00:00-04:00"
+      fit_delay_minutes: 30
+      label: "Spike 1 (Sep 2024)"
+      assay_date: "2024-09-16"
+    - start: "2024-11-01T19:00:00-04:00"
+      end: "2024-11-24T00:00:00-05:00"
+      fit_delay_minutes: 30
+      label: "Spike 2 (Nov 2024)"
+      assay_date: "2024-11-05"
   exclude_from_aggregate:
     - "2024-11-19"
   # Detector emanation baseline: measured between spike periods when

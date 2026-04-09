@@ -13,12 +13,14 @@ import logging
 import math
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
 import numpy as np
 
 from assay_reader import LucasCellAssay, filter_assays, parse_assay_csv
+from utils.time_utils import to_epoch_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,12 @@ _TRANSFER_EFF_DEFAULT = 0.3873
 _TRANSFER_EFF_REL_UNC = 0.10
 # Fractional uncertainty on LC single-alpha efficiency (~5%)
 _LC_EFF_REL_UNC = 0.05
+
+
+def _epoch_to_iso_utc(ts: float) -> str:
+    """Return ``ts`` as an ISO-8601 UTC string with ``Z`` suffix."""
+
+    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 # ---------------------------------------------------------------------------
@@ -1438,6 +1446,8 @@ def fit_spike_decay(
     half_life_days: float = 3.8235,
     isotopes: Sequence[str] = ("Po214", "Po218"),
     skip_initial_days: float = 0.5,
+    fit_start_iso: str | None = None,
+    time_zone: str = "UTC",
 ) -> dict[str, Any]:
     """Fit exponential decay to a radon spike period with fixed half-life.
 
@@ -1452,16 +1462,17 @@ def fit_spike_decay(
     isotope_series : dict
         ``{"Po214": [{"t": unix_s, "counts": N, "dt": width_s}, ...], ...}``
     t_start_iso, t_end_iso : str
-        ISO-format date strings (YYYY-MM-DD) defining the spike period.
+        ISO-format date/time strings defining the spike-fit interval.
     half_life_days : float
         Rn-222 half-life in days (fixed, textbook value).
     isotopes : sequence of str
         Isotopes to sum.
     skip_initial_days : float
         Skip this many days from the start of the spike period before
-        fitting.  Spike injections typically happen around noon, so
-        the first ~0.5 day contains non-equilibrium data from the
-        injection process itself.
+        fitting when ``fit_start_iso`` is not provided.
+    fit_start_iso : str, optional
+        Explicit fit-start timestamp. When provided, bins are included
+        only when their full width lies inside the fit window.
 
     Returns
     -------
@@ -1470,20 +1481,20 @@ def fit_spike_decay(
         R0, R0_unc, B, B_unc, chi2, ndf, chi2_ndf,
         n_bins, initial_activity_bq (= R0, the inferred count rate at t0)
     """
-    from datetime import datetime
-
     try:
         from scipy.optimize import curve_fit
     except ImportError:
         logger.warning("scipy not available for spike fitting")
         return {"error": "scipy not available"}
 
-    dt_start = datetime.fromisoformat(t_start_iso)
-    dt_end = datetime.fromisoformat(t_end_iso)
-    t0 = dt_start.timestamp()
-    t1 = dt_end.timestamp()
-    # Skip the initial injection period (non-equilibrium data)
-    t_fit_start = t0 + skip_initial_days * 86400.0
+    t0 = to_epoch_seconds(t_start_iso, tz=time_zone)
+    t1 = to_epoch_seconds(t_end_iso, tz=time_zone)
+    if fit_start_iso is not None:
+        t_fit_start = to_epoch_seconds(fit_start_iso, tz=time_zone)
+        skip_initial_days = max(0.0, (t_fit_start - t0) / 86400.0)
+    else:
+        t_fit_start = t0 + skip_initial_days * 86400.0
+        fit_start_iso = _epoch_to_iso_utc(t_fit_start)
     lam = math.log(2) / (half_life_days * 86400.0)
 
     # Collect binned data: combine isotopes
@@ -1497,7 +1508,9 @@ def fit_spike_decay(
             dt = entry.get("dt", 0.0)
             if t is None or not np.isfinite(t) or dt <= 0:
                 continue
-            if t_fit_start <= t <= t1:
+            bin_start = t - dt / 2.0
+            bin_end = t + dt / 2.0
+            if bin_start >= t_fit_start and bin_end <= t1:
                 if t not in time_bins:
                     time_bins[t] = []
                 time_bins[t].append((c, dt))
@@ -1513,8 +1526,8 @@ def fit_spike_decay(
         bin_data.append((t_mid, rate, rate_unc))
 
     logger.info(
-        "Spike fit %s → %s: %d bins (skipped first %.1f days)",
-        t_start_iso, t_end_iso, len(bin_data), skip_initial_days,
+        "Spike fit %s → %s: %d bins (fit starts %s; skipped %.4f days)",
+        t_start_iso, t_end_iso, len(bin_data), fit_start_iso, skip_initial_days,
     )
     if len(bin_data) < 3:
         logger.warning("Too few bins (%d) for spike fit in [%s, %s]",
@@ -1557,7 +1570,9 @@ def fit_spike_decay(
     result = {
         "t_start": t_start_iso,
         "t_end": t_end_iso,
+        "fit_start": fit_start_iso,
         "skip_initial_days": skip_initial_days,
+        "fit_delay_minutes": _safe_float(skip_initial_days * 1440.0),
         "half_life_days": half_life_days,
         "lambda_per_s": lam,
         "R0": _safe_float(R0_fit),
@@ -1612,18 +1627,30 @@ def fit_spike_periods(
     -------
     dict with per-spike results including spike-derived efficiency.
     """
-    from datetime import datetime
-
     bridge_cfg = cfg.get("lucas_bridge", {})
     spike_periods = bridge_cfg.get("spike_periods", [])
+    default_skip_days = float(bridge_cfg.get("spike_skip_initial_days", 0.5))
+    spike_tz = str(
+        ((cfg.get("radon_inference") or {}).get("external_rn") or {}).get("tz", "UTC")
+    )
 
     if not spike_periods:
         # Default periods from user specification
         spike_periods = [
-            {"start": "2024-09-12", "end": "2024-09-28", "label": "Spike 1 (Sep 2024)",
-             "assay_date": "2024-09-16"},
-            {"start": "2024-11-01", "end": "2024-11-24", "label": "Spike 2 (Nov 2024)",
-             "assay_date": "2024-11-05"},
+            {
+                "start": "2024-09-12T14:30:00-04:00",
+                "end": "2024-09-28T00:00:00-04:00",
+                "fit_delay_minutes": 30,
+                "label": "Spike 1 (Sep 2024)",
+                "assay_date": "2024-09-16",
+            },
+            {
+                "start": "2024-11-01T19:00:00-04:00",
+                "end": "2024-11-24T00:00:00-05:00",
+                "fit_delay_minutes": 30,
+                "label": "Spike 2 (Nov 2024)",
+                "assay_date": "2024-11-05",
+            },
         ]
 
     half_life = bridge_cfg.get("rn222_half_life_days", 3.8235)
@@ -1639,9 +1666,36 @@ def fit_spike_periods(
             continue
 
         logger.info("Fitting spike period: %s [%s → %s]", label, t_start, t_end)
+        fit_start_iso = period.get("fit_start")
+        if fit_start_iso is not None:
+            skip_initial_days = max(
+                0.0,
+                (
+                    to_epoch_seconds(fit_start_iso, tz=spike_tz)
+                    - to_epoch_seconds(t_start, tz=spike_tz)
+                ) / 86400.0,
+            )
+        elif period.get("fit_delay_minutes") is not None:
+            skip_initial_days = float(period["fit_delay_minutes"]) / 1440.0
+            fit_start_iso = _epoch_to_iso_utc(
+                to_epoch_seconds(t_start, tz=spike_tz) + skip_initial_days * 86400.0
+            )
+        elif period.get("skip_initial_days") is not None:
+            skip_initial_days = float(period["skip_initial_days"])
+            fit_start_iso = _epoch_to_iso_utc(
+                to_epoch_seconds(t_start, tz=spike_tz) + skip_initial_days * 86400.0
+            )
+        else:
+            skip_initial_days = default_skip_days
+            fit_start_iso = _epoch_to_iso_utc(
+                to_epoch_seconds(t_start, tz=spike_tz) + skip_initial_days * 86400.0
+            )
         fit_result = fit_spike_decay(
             isotope_series, t_start, t_end,
             half_life_days=half_life,
+            skip_initial_days=skip_initial_days,
+            fit_start_iso=fit_start_iso,
+            time_zone=spike_tz,
         )
         fit_result["label"] = label
 
@@ -1670,9 +1724,10 @@ def fit_spike_periods(
                     if ref_bq and ref_bq > 0:
                         # Time offset: spike start → assay date
                         try:
-                            dt_assay = datetime.fromisoformat(a_date)
-                            dt_spike = datetime.fromisoformat(t_start)
-                            delta_s = (dt_assay - dt_spike).total_seconds()
+                            delta_s = (
+                                to_epoch_seconds(a_date, tz=spike_tz)
+                                - to_epoch_seconds(t_start, tz=spike_tz)
+                            )
                         except (ValueError, TypeError):
                             delta_s = 0.0
 

@@ -11,6 +11,8 @@ import numpy as np
 from scipy import stats as sp_stats
 from scipy import fft as sp_fft
 
+from utils.time_utils import to_epoch_seconds
+
 logger = logging.getLogger(__name__)
 
 # Standard alpha-decay peak energies (MeV) for region definitions
@@ -1867,7 +1869,6 @@ def plot_spike_decay_fits(
         Output directory for the plot.
     """
     import math
-    from datetime import datetime
 
     out_dir = Path(out_dir)
     periods = spike_results.get("periods", [])
@@ -1884,13 +1885,25 @@ def plot_spike_decay_fits(
     half_life_days = spike_results.get("half_life_days_fixed", 3.8235)
     lam = math.log(2) / (half_life_days * 86400.0)
 
+    def _format_skip_label(period: Mapping[str, object]) -> str:
+        delay_minutes = period.get("fit_delay_minutes")
+        if isinstance(delay_minutes, (int, float)) and np.isfinite(delay_minutes):
+            if delay_minutes >= 60 and abs(delay_minutes % 60) < 1e-9:
+                return f"Skipped ({delay_minutes / 60.0:.1f}h delay)"
+            return f"Skipped ({delay_minutes:.0f} min delay)"
+        skip_days = period.get("skip_initial_days", 0.5)
+        if isinstance(skip_days, (int, float)) and np.isfinite(skip_days):
+            return f"Skipped ({skip_days:.2f}d delay)"
+        return "Skipped"
+
     for idx, period in enumerate(valid_periods):
         ax = axes[idx, 0]
 
         t_start_iso = period["t_start"]
         t_end_iso = period["t_end"]
-        t0 = datetime.fromisoformat(t_start_iso).timestamp()
-        t1 = datetime.fromisoformat(t_end_iso).timestamp()
+        t0 = to_epoch_seconds(t_start_iso)
+        t1 = to_epoch_seconds(t_end_iso)
+        t_fit_start = to_epoch_seconds(period.get("fit_start", t_start_iso))
 
         R0 = period["R0"]
         B = period["B"]
@@ -1919,6 +1932,8 @@ def plot_spike_decay_fits(
         t_arr = []
         r_arr = []
         u_arr = []
+        bin_start_arr = []
+        bin_end_arr = []
         for t_mid in sorted(time_bins.keys()):
             entries = time_bins[t_mid]
             total_c = sum(c for c, _ in entries)
@@ -1926,28 +1941,32 @@ def plot_spike_decay_fits(
             t_arr.append(t_mid)
             r_arr.append(total_c / dt)
             u_arr.append(math.sqrt(max(total_c, 1.0)) / dt)
+            bin_start_arr.append(t_mid - dt / 2.0)
+            bin_end_arr.append(t_mid + dt / 2.0)
 
         t_arr = np.array(t_arr)
         r_arr = np.array(r_arr)
         u_arr = np.array(u_arr)
+        bin_start_arr = np.array(bin_start_arr)
+        bin_end_arr = np.array(bin_end_arr)
 
         # Time in days since start
         t_days = (t_arr - t0) / 86400.0
-        skip_days = period.get("skip_initial_days", 0.5)
+        fit_start_days = (t_fit_start - t0) / 86400.0
 
         # Split data into skipped (injection) and fitted regions
-        fit_mask = t_days >= skip_days
+        fit_mask = (bin_start_arr >= t_fit_start) & (bin_end_arr <= t1)
         skip_mask = ~fit_mask
 
-        # Model curve (smooth) - starts from skip_days
-        t_model = np.linspace(skip_days, (t1 - t0) / 86400.0, 200)
+        # Model curve (smooth) - starts from the explicit fit boundary.
+        t_model = np.linspace(fit_start_days, (t1 - t0) / 86400.0, 200)
         r_model = R0 * np.exp(-lam * t_model * 86400.0) + B
 
         # Plot skipped bins (grayed out)
         if np.any(skip_mask):
             ax.errorbar(t_days[skip_mask], r_arr[skip_mask], yerr=u_arr[skip_mask],
                          fmt=".", color="gray", markersize=3, alpha=0.3,
-                         label=f"Skipped ({skip_days:.1f}d injection)")
+                         label=_format_skip_label(period))
         # Plot fitted bins
         ax.errorbar(t_days[fit_mask], r_arr[fit_mask], yerr=u_arr[fit_mask],
                      fmt=".", color="C0", markersize=3, alpha=0.6,
@@ -1958,7 +1977,7 @@ def plot_spike_decay_fits(
                        f"χ²/ndf={chi2_ndf:.2f}"))
         ax.axhline(B, color="gray", ls="--", alpha=0.5, label=f"Baseline B={B:.5f}")
         # Mark the skip boundary
-        ax.axvline(skip_days, color="orange", ls=":", alpha=0.6, lw=1)
+        ax.axvline(fit_start_days, color="orange", ls=":", alpha=0.6, lw=1)
 
         ax.set_xlabel(f"Days since {t_start_iso}")
         ax.set_ylabel("Count rate (Hz)")
