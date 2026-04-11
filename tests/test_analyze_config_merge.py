@@ -2422,7 +2422,231 @@ def test_time_fields_written_back(tmp_path, monkeypatch):
     ]
 
 
+def test_resolve_template_fixed_isotopes_defaults_to_auxiliary_only():
+    fixed = analyze._resolve_template_fixed_isotopes(
+        ["Po210", "Po216", "Bi212", "Unknown1"],
+        {"fix_weak_isotopes": True},
+    )
 
+    assert fixed == {"Po216", "Bi212"}
+
+
+def test_fit_time_bins_applies_centroid_controls(monkeypatch):
+    import fitting
+
+    timestamps = pd.date_range(
+        "2024-01-01T00:00:00Z",
+        periods=40,
+        freq="1min",
+        tz="UTC",
+    )
+    df = pd.DataFrame(
+        {
+            "timestamp": timestamps,
+            "energy_MeV": np.full(40, 7.69),
+            "adc": np.arange(40, dtype=float),
+        }
+    )
+    aggregate_result = FitResult(
+        {
+            "mu_Po214": 7.687,
+            "sigma_Po214": 0.05,
+            "S_Po214": 500.0,
+            "S_bkg": 10.0,
+            "sigma0": 0.10,
+            "F": 0.0,
+        },
+        None,
+        0,
+    )
+
+    captured = {}
+
+    def fake_fit_spectrum(
+        energies,
+        priors,
+        flags=None,
+        bin_edges=None,
+        bounds=None,
+        pre_binned_hist=None,
+        skip_minos=False,
+        **kwargs,
+    ):
+        captured["bounds"] = bounds
+        captured["penalty_priors"] = dict(flags.get("penalty_priors", {}))
+        return {
+            "fit_valid": True,
+            "chi2_ndf": 4.2,
+            "mu_Po214": 7.707,
+            "S_Po214": 42.0,
+            "dS_Po214": 3.0,
+            "_n_bound_hits": 2,
+            "_bound_hit_params": ["mu_Po214", "S_Po214"],
+            "_bound_hits": {
+                "mu_Po214": {"side": "upper"},
+                "S_Po214": {"side": "upper"},
+            },
+            "_plot_edges": [7.5, 7.6, 7.7, 7.8],
+            "_plot_hist": [1.0, 2.0, 1.0],
+            "_plot_centers": [7.55, 7.65, 7.75],
+            "_plot_model_total": [1.0, 2.0, 1.0],
+            "_plot_components": {"Po214": [1.0, 2.0, 1.0]},
+        }
+
+    monkeypatch.setattr(fitting, "fit_spectrum", fake_fit_spectrum)
+
+    cfg = {
+        "spectral_fit": {"background_model": "none"},
+        "time_fit": {
+            "template_min_counts": 10,
+            "float_centroids": True,
+            "centroid_shift_bound_kev": 20.0,
+            "centroid_shift_prior_sigma_kev": None,
+        },
+        "plotting": {
+            "plot_time_bin_width_s": 3600,
+            "plot_template_bin_fits": True,
+            "plot_template_bin_fits_bad_only": True,
+        },
+    }
+    spec_plot_data = {
+        "flags": {"background_model": "none"},
+        "bin_edges": np.array([7.5, 7.6, 7.7, 7.8], dtype=float),
+    }
+
+    result = analyze._fit_time_bins(
+        df,
+        aggregate_result,
+        cfg,
+        spec_plot_data=spec_plot_data,
+    )
+
+    lo, hi = captured["bounds"]["mu_Po214"]
+    assert lo == pytest.approx(7.667)
+    assert hi == pytest.approx(7.707)
+    assert captured["penalty_priors"]["mu_Po214"][0] == pytest.approx(7.687)
+    assert captured["penalty_priors"]["mu_Po214"][1] == pytest.approx(0.01)
+    assert result["per_bin_diagnostics"][0]["shift_hit_limit"] is True
+    assert result["per_bin_diagnostics"][0]["centroid_shift_kev"] == pytest.approx(20.0)
+    assert result["per_bin_diagnostics"][0]["n_bound_hits"] == 2
+    assert result["per_bin_diagnostics"][0]["bound_hit_params"] == ["mu_Po214", "S_Po214"]
+    assert len(result["plot_entries"]) == 1
+    assert result["plot_entries"][0]["n_bound_hits"] == 2
+
+
+def test_should_store_template_bin_plot_when_non_centroid_bound_hit_present():
+    assert analyze._should_store_template_bin_plot(
+        {"fit_valid": True, "chi2_ndf": 1.2, "_n_bound_hits": 1},
+        False,
+        {
+            "plot_template_bin_fits": True,
+            "plot_template_bin_fits_bad_only": True,
+            "plot_template_bin_fits_bad_chi2_ndf_min": 3.0,
+        },
+    )
+
+
+def test_summarize_template_fit_results_counts_bound_hits():
+    summary = analyze._summarize_template_fit_results(
+        {
+            "n_time_bins": 3,
+            "n_fitted": 3,
+            "n_valid": 2,
+            "plot_entries": [{"bin_index": 0}],
+            "centroid_control": {"limit_kev": 20.0},
+            "per_bin_diagnostics": [
+                {
+                    "fit_valid": True,
+                    "chi2_ndf": 2.0,
+                    "centroid_shift_kev": 5.0,
+                    "shift_hit_limit": False,
+                    "n_bound_hits": 2,
+                    "bound_hit_params": ["S_Po214", "mu_Po214"],
+                },
+                {
+                    "fit_valid": True,
+                    "chi2_ndf": 12.0,
+                    "centroid_shift_kev": 10.0,
+                    "shift_hit_limit": True,
+                    "n_bound_hits": 1,
+                    "bound_hit_params": ["S_Po214"],
+                },
+                {
+                    "fit_valid": False,
+                    "chi2_ndf": float("nan"),
+                    "centroid_shift_kev": float("nan"),
+                    "shift_hit_limit": False,
+                    "n_bound_hits": 0,
+                    "bound_hit_params": [],
+                },
+            ],
+        }
+    )
+
+    assert summary["bins_with_any_bound_hits"] == 2
+    assert summary["total_bound_hits"] == 3
+    assert summary["bound_hit_param_counts"] == {"S_Po214": 2, "mu_Po214": 1}
+    assert summary["non_centroid_bound_hit_param_counts"] == {"S_Po214": 2}
+    assert summary["bins_with_non_centroid_bound_hits"] == 2
+    assert summary["shift_hit_limit"] == 1
+    assert summary["chi2_gt_10"] == 1
+
+
+def test_write_template_bin_fit_plots_respects_log_toggle(tmp_path, monkeypatch):
+    calls = {}
+
+    def fake_plot_spectrum(*args, **kwargs):
+        calls["config"] = dict(kwargs["config"])
+        Path(kwargs["out_png"]).touch()
+
+    monkeypatch.setattr(analyze, "plot_spectrum", fake_plot_spectrum)
+
+    template_results = {
+        "plot_entries": [
+            {
+                "bin_index": 0,
+                "t": 0.0,
+                "chi2_ndf": 5.0,
+                "fit_valid": False,
+                "shift_hit_limit": True,
+                "fit_params": {
+                    "_plot_edges": [7.5, 7.6, 7.7],
+                    "_plot_hist": [1.0, 2.0],
+                    "_plot_centers": [7.55, 7.65],
+                    "_plot_model_total": [1.0, 2.0],
+                    "_plot_components": {"Po214": [1.0, 2.0]},
+                },
+            }
+        ]
+    }
+
+    manifest = analyze._write_template_bin_fit_plots(
+        template_results,
+        tmp_path,
+        {
+            "plotting": {
+                "plot_template_bin_fits": True,
+                "plot_template_bin_fits_log_scale": False,
+            }
+        },
+    )
+
+    assert len(manifest) == 1
+    assert manifest[0]["png"].startswith("template_fit_bin_00000_")
+    assert calls["config"]["plot_spectrum_write_log_copy"] is False
+    assert (tmp_path / "template_bin_fits" / "template_fit_plot_index.json").exists()
+
+
+def test_prefer_template_fit_prefers_non_clipped_retry():
+    best = {"fit_valid": True, "chi2_ndf": 5.0}
+    candidate = {"fit_valid": True, "chi2_ndf": 6.0}
+
+    assert analyze._prefer_template_fit(
+        best,
+        candidate,
+        best_hits_bound=True,
+        candidate_hits_bound=False,
+    )
 
 
 

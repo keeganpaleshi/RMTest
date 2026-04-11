@@ -356,6 +356,9 @@ spectral_fit:
   # Po-212: Bi-212 beta endpoint 2.25 MeV (shorter lambda than Po-214)
   f_beta_Po212_prior: [0.04, 0.04]
   lambda_beta_Po212_prior: [0.10, 0.08]
+  beta_high_side_only:
+    Po214: true
+    Po212: true
   share_beta: false
   # Beta backscatter LET continuum: partial energy from backscattered electrons.
   # Shared (Si backscatter coeff ~15-20%, energy-independent).
@@ -484,8 +487,13 @@ time_fit:
   # Template fitting options (only used when extraction_method: template)
   template_rebin: 20          # energy rebin factor vs aggregate (coarser for statistics)
   template_min_counts: 30     # minimum events per time bin to attempt fit
-  float_centroids: true       # allow peak centroids to float (tight prior)
-  fix_weak_isotopes: true     # fix Po216/Po210/Bi212/extra peaks in per-bin fits
+  float_centroids: true       # allow per-bin centroids to move around the aggregate fit
+  centroid_shift_bound_kev: 20.0   # initial symmetric centroid limit around the aggregate fit
+  centroid_shift_prior_sigma_kev: null   # null => use half the initial bound as the Gaussian penalty width
+  centroid_shift_scan_auto_expand: true  # widen centroid bounds for bins that would otherwise clip the limit
+  centroid_shift_max_expand_kev: 60.0    # maximum centroid half-width used by the auto-expansion retry
+  fix_weak_isotopes: false    # legacy compatibility; true fixes only Po216/Bi212 unless overridden below
+  template_fixed_isotopes: [] # explicit isotopes to amplitude-fix in per-bin template fits
 systematics:
   enable: false
   sigma_e_frac: 0.1
@@ -546,6 +554,11 @@ plotting:
   plot_marker_size: 0.5
   overlay_isotopes: true
   save_individual_time_series: false
+  fractional_residual_min_counts: 5
+  plot_template_bin_fits: false
+  plot_template_bin_fits_bad_only: true
+  plot_template_bin_fits_bad_chi2_ndf_min: 3.0
+  plot_template_bin_fits_log_scale: true
 
 
 lucas_bridge:

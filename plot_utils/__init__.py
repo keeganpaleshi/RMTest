@@ -850,11 +850,117 @@ def plot_spectrum(
         model reconstruction (e.g. ``{"background_model": "loglin_unit"}``).
     show_total_model : bool, optional
         When ``True`` (default) the summed model prediction is drawn atop the
-        per-isotope components.  Set to ``False`` to hide the total overlay
-        while still returning the residuals panel.
+        per-isotope components.  Set to ``False`` to hide the total overlay.
     """
 
     energies = np.asarray(energies, dtype=float)
+
+    def _mask_to_fit_window(values, centers_arr, window):
+        arr = np.asarray(values, dtype=float).copy()
+        if window is None:
+            return arr
+        mask = (centers_arr >= window[0]) & (centers_arr <= window[1])
+        arr[~mask] = np.nan
+        return arr
+
+    def _compute_residual_arrays(hist_arr, model_arr, centers_arr, window):
+        raw = np.asarray(hist_arr, dtype=float) - np.asarray(model_arr, dtype=float)
+        frac_min_counts = 5.0
+        if isinstance(config, Mapping):
+            try:
+                frac_min_counts = float(
+                    config.get("fractional_residual_min_counts", frac_min_counts)
+                )
+            except (TypeError, ValueError):
+                frac_min_counts = 5.0
+        frac_visibility = np.maximum(hist_arr, model_arr) >= max(frac_min_counts, 0.0)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            normalized = np.where(
+                model_arr > 5.0,
+                raw / np.sqrt(np.maximum(model_arr, 1.0)),
+                np.nan,
+            )
+            fractional = np.where(
+                (model_arr > 0.0) & frac_visibility,
+                raw / model_arr,
+                np.nan,
+            )
+        return {
+            "raw": _mask_to_fit_window(raw, centers_arr, window),
+            "normalized": _mask_to_fit_window(normalized, centers_arr, window),
+            "fractional": _mask_to_fit_window(fractional, centers_arr, window),
+        }
+
+    def _symmetric_ylim(values, minimum=1.0):
+        finite = np.asarray(values, dtype=float)
+        finite = finite[np.isfinite(finite)]
+        if finite.size == 0:
+            return (-minimum, minimum)
+        limit = max(np.percentile(np.abs(finite), 99.0), minimum)
+        return (-1.1 * limit, 1.1 * limit)
+
+    def _plot_raw_residual_panel(ax, centers_arr, values, widths_arr, *, symlog=False):
+        plot_vals = np.asarray(values, dtype=float)
+        valid = np.isfinite(plot_vals)
+        colors = np.where(plot_vals >= 0.0, "#377eb8", "#e41a1c")
+        colors = np.where(valid, colors, "#ffffff")
+        ax.bar(
+            centers_arr,
+            np.where(valid, plot_vals, 0.0),
+            width=widths_arr,
+            color=colors,
+            alpha=0.7,
+            linewidth=0,
+        )
+        ax.axhline(0.0, color="#000000", lw=1.0)
+        if symlog:
+            ax.set_yscale("symlog", linthresh=1.0)
+            ax.set_ylabel("Raw Residuals\n[counts] (log)")
+        else:
+            ax.set_ylabel("Raw Residuals\n[counts]")
+            ax.set_ylim(*_symmetric_ylim(plot_vals))
+
+    def _plot_normalized_residual_panel(ax, centers_arr, values, widths_arr):
+        plot_vals = np.asarray(values, dtype=float)
+        abs_vals = np.abs(plot_vals)
+        colors = np.where(
+            np.isnan(plot_vals),
+            "#ffffff",
+            np.where(abs_vals <= 1.0, "#4daf4a", np.where(abs_vals <= 2.0, "#ff7f00", "#e41a1c")),
+        )
+        ax.bar(
+            centers_arr,
+            np.where(np.isfinite(plot_vals), plot_vals, 0.0),
+            width=widths_arr,
+            color=colors,
+            alpha=0.7,
+            linewidth=0,
+        )
+        ax.axhspan(-1.0, 1.0, color="#4daf4a", alpha=0.06)
+        ax.axhspan(-2.0, -1.0, color="#ff7f00", alpha=0.04)
+        ax.axhspan(1.0, 2.0, color="#ff7f00", alpha=0.04)
+        ax.axhline(0.0, color="#000000", lw=1.0)
+        ax.axhline(2.0, color="#e41a1c", lw=0.7, ls="--", alpha=0.6)
+        ax.axhline(-2.0, color="#e41a1c", lw=0.7, ls="--", alpha=0.6)
+        ax.set_ylabel("Normalized\nResiduals (σ)")
+        ax.set_ylim(-5.0, 5.0)
+
+    def _plot_fractional_residual_panel(ax, centers_arr, values, widths_arr):
+        plot_vals = np.asarray(values, dtype=float)
+        valid = np.isfinite(plot_vals)
+        colors = np.where(plot_vals >= 0.0, "#377eb8", "#e41a1c")
+        colors = np.where(valid, colors, "#ffffff")
+        ax.bar(
+            centers_arr,
+            np.where(valid, plot_vals, 0.0),
+            width=widths_arr,
+            color=colors,
+            alpha=0.7,
+            linewidth=0,
+        )
+        ax.axhline(0.0, color="#000000", lw=1.0)
+        ax.set_ylabel("Fractional\nResiduals")
+        ax.set_ylim(*_symmetric_ylim(plot_vals, minimum=0.1))
 
     def _coerce_params(result) -> dict:
         if result is None:
@@ -970,7 +1076,7 @@ def plot_spectrum(
         F = float(F if F is not None else 0.0)
         # Dynamically discover fitted isotopes from parameters
         _fitted_isos = sorted(
-            k[2:] for k in fit_params if k.startswith("mu_") and f"S_{k[2:]}" in fit_params
+            k[3:] for k in fit_params if k.startswith("mu_") and f"S_{k[3:]}" in fit_params
         )
         for iso in _fitted_isos:
             mu = fit_params.get(f"mu_{iso}")
@@ -1053,12 +1159,17 @@ def plot_spectrum(
     show_res = model_total is not None
 
     if show_res:
-        fig, (ax_main, ax_res) = plt.subplots(
-            2, 1, sharex=True, figsize=(8, 6), gridspec_kw={"height_ratios": [3, 1]}
+        fig, axes = plt.subplots(
+            6,
+            1,
+            sharex=True,
+            figsize=(10, 12),
+            gridspec_kw={"height_ratios": [3, 3, 1, 1, 1, 1]},
         )
+        ax_main, ax_log, ax_raw, ax_raw_log, ax_norm, ax_frac = axes
     else:
         fig, ax_main = plt.subplots(figsize=(8, 6))
-        ax_res = None
+        ax_log = ax_raw = ax_raw_log = ax_norm = ax_frac = None
 
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
@@ -1080,6 +1191,8 @@ def plot_spectrum(
             lo, hi = win_p210
             ax_main.set_xlim(lo, hi)
 
+    component_colors = {}
+    residual_arrays = None
     if model_total is not None:
         # Build component colors dynamically from whatever isotopes are present
         _default_iso_colors = {
@@ -1111,50 +1224,61 @@ def plot_spectrum(
                 label="Total model",
             )
 
-        if ax_res is not None:
-            residuals = hist.astype(float) - model_total
-            # Use normalized residuals (pulls) to show model quality
-            # independent of bin counts (ADC DNL dominates raw residuals)
-            with np.errstate(divide="ignore", invalid="ignore"):
-                pulls = np.where(
-                    model_total > 5,
-                    residuals / np.sqrt(np.maximum(model_total, 1.0)),
-                    0.0,
-                )
-            if fit_window is not None:
-                fit_mask = (centers >= fit_window[0]) & (centers <= fit_window[1])
-                pulls = pulls.astype(float, copy=False)
-                pulls[~fit_mask] = np.nan
+        residual_arrays = _compute_residual_arrays(hist, model_total, centers, fit_window)
 
-            # Colour pulls by magnitude: green (< 1σ), orange (1-2σ), red (> 2σ)
-            _abs_p = np.abs(pulls)
-            _p_colors = np.where(
-                np.isnan(pulls), "#ffffff",
-                np.where(_abs_p <= 1.0, "#4daf4a",
-                    np.where(_abs_p <= 2.0, "#ff7f00", "#e41a1c"))
+        if ax_log is not None:
+            _pos = hist > 0
+            ax_log.scatter(
+                centers[_pos],
+                hist[_pos],
+                s=1.5,
+                c=hist_color,
+                alpha=0.5,
+                label="Data",
+                zorder=1,
             )
-            ax_res.bar(
-                centers,
-                pulls,
-                width=width,
-                color=_p_colors,
-                alpha=0.7,
-                linewidth=0,
+            for key in model_components:
+                component = np.asarray(model_components[key], dtype=float)
+                comp_pos = np.isfinite(component) & (component > 0.5)
+                if np.any(comp_pos):
+                    ax_log.plot(
+                        centers[comp_pos],
+                        component[comp_pos],
+                        color=component_colors.get(key, "#000000"),
+                        lw=1.2,
+                        alpha=0.8,
+                        label=key,
+                    )
+            if show_total_model:
+                model_pos = np.isfinite(model_total) & (model_total > 0.5)
+                ax_log.plot(
+                    centers[model_pos],
+                    model_total[model_pos],
+                    color=component_colors["Total"],
+                    lw=1.5,
+                    label="Total model",
+                )
+            ax_log.set_yscale("log")
+            ax_log.set_ylim(1, max(float(np.nanmax(hist)), 1.0) * 2.0)
+            ax_log.set_ylabel("Counts per bin")
+            ax_log.set_title("Energy Spectrum (log scale)")
+            ax_log.legend(fontsize="small", ncol=2)
+
+        if ax_raw is not None:
+            _plot_raw_residual_panel(ax_raw, centers, residual_arrays["raw"], width)
+        if ax_raw_log is not None:
+            _plot_raw_residual_panel(
+                ax_raw_log, centers, residual_arrays["raw"], width, symlog=True
             )
-            # ±1σ and ±2σ reference bands
-            ax_res.axhspan(-1, 1, color="#4daf4a", alpha=0.06)
-            ax_res.axhspan(-2, -1, color="#ff7f00", alpha=0.04)
-            ax_res.axhspan(1, 2, color="#ff7f00", alpha=0.04)
-            ax_res.axhline(0.0, color="#000000", lw=1)
-            ax_res.axhline(2.0, color="#e41a1c", lw=0.7, ls="--", alpha=0.6)
-            ax_res.axhline(-2.0, color="#e41a1c", lw=0.7, ls="--", alpha=0.6)
-            ax_res.set_ylabel("Pull (σ)")
-            ax_res.set_ylim(-5, 5)
+        if ax_norm is not None:
+            _plot_normalized_residual_panel(
+                ax_norm, centers, residual_arrays["normalized"], width
+            )
 
             # Annotate fit statistics
-            _valid_pulls = pulls[np.isfinite(pulls)]
+            _valid_pulls = np.asarray(residual_arrays["normalized"], dtype=float)
+            _valid_pulls = _valid_pulls[np.isfinite(_valid_pulls)]
             if _valid_pulls.size > 0:
-                _chi2 = fit_params.get("chi2")
                 _chi2_ndf = fit_params.get("chi2_ndf")
                 _stat_parts = []
                 if _chi2_ndf is not None:
@@ -1171,22 +1295,26 @@ def plot_spectrum(
                 _n_gt2 = int(np.sum(np.abs(_valid_pulls) > 2))
                 _frac_gt2 = 100.0 * _n_gt2 / _valid_pulls.size
                 _stat_parts.append(f"|pull|>2σ: {_frac_gt2:.1f}%")
-                ax_res.text(
+                ax_norm.text(
                     0.01, 0.97,
                     "  ".join(_stat_parts),
-                    transform=ax_res.transAxes,
+                    transform=ax_norm.transAxes,
                     fontsize=7,
                     va="top",
                     ha="left",
                     bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8),
                 )
+        if ax_frac is not None:
+            _plot_fractional_residual_panel(
+                ax_frac, centers, residual_arrays["fractional"], width
+            )
 
     ax_main.set_ylabel("Counts per bin")
     ax_main.set_title("Energy Spectrum")
     if model_total is not None:
         ax_main.legend(fontsize="small")
-    if ax_res is not None:
-        ax_res.set_xlabel("Energy [MeV]")
+    if ax_frac is not None:
+        ax_frac.set_xlabel("Energy [MeV]")
     else:
         ax_main.set_xlabel("Energy [MeV]")
     fig.tight_layout()
@@ -1195,15 +1323,22 @@ def plot_spectrum(
         fig.savefig(p, dpi=300)
     plt.close(fig)
 
+    write_log_copy = True
+    if config is not None:
+        write_log_copy = bool(config.get("plot_spectrum_write_log_copy", True))
+
     # Generate a log-scale version for tail/background visibility
-    if model_total is not None and _have_stored:
+    if write_log_copy and model_total is not None and _have_stored:
         _out_path = Path(out_png) if isinstance(out_png, (str, Path)) else Path(str(out_png))
         _log_name = _out_path.stem + "_log" + _out_path.suffix
         _log_path = _out_path.parent / _log_name
         try:
-            _fig_log, (_ax_log, _ax_log_res) = plt.subplots(
-                2, 1, sharex=True, figsize=(10, 6),
-                gridspec_kw={"height_ratios": [3, 1]},
+            _fig_log, (_ax_log, _ax_raw, _ax_norm, _ax_frac) = plt.subplots(
+                4,
+                1,
+                sharex=True,
+                figsize=(10, 9),
+                gridspec_kw={"height_ratios": [3, 1, 1, 1]},
             )
             # Data as scatter points (better for log scale)
             _pos = hist > 0
@@ -1236,25 +1371,18 @@ def plot_spectrum(
             if fit_window is not None:
                 _ax_log.set_xlim(fit_window[0] - 0.03, fit_window[1] + 0.03)
 
-            # Pulls in lower panel
-            _valid_mask = np.isfinite(pulls)
-            _abs_p_log = np.abs(pulls)
-            _colors_log = np.where(
-                ~_valid_mask, "#ffffff",
-                np.where(_abs_p_log <= 1.0, "#4daf4a",
-                    np.where(_abs_p_log <= 2.0, "#ff7f00", "#e41a1c"))
+            if residual_arrays is None:
+                residual_arrays = _compute_residual_arrays(hist, model_total, centers, fit_window)
+            _plot_raw_residual_panel(
+                _ax_raw, centers, residual_arrays["raw"], width, symlog=True
             )
-            _ax_log_res.bar(
-                centers, np.where(_valid_mask, pulls, 0),
-                width=width, color=_colors_log, alpha=0.7, linewidth=0,
+            _plot_normalized_residual_panel(
+                _ax_norm, centers, residual_arrays["normalized"], width
             )
-            _ax_log_res.axhspan(-1, 1, color="#4daf4a", alpha=0.06)
-            _ax_log_res.axhline(0, color="k", lw=1)
-            _ax_log_res.axhline(2, color="#e41a1c", lw=0.7, ls="--", alpha=0.6)
-            _ax_log_res.axhline(-2, color="#e41a1c", lw=0.7, ls="--", alpha=0.6)
-            _ax_log_res.set_ylabel("Pull (σ)")
-            _ax_log_res.set_ylim(-5, 5)
-            _ax_log_res.set_xlabel("Energy [MeV]")
+            _plot_fractional_residual_panel(
+                _ax_frac, centers, residual_arrays["fractional"], width
+            )
+            _ax_frac.set_xlabel("Energy [MeV]")
 
             _fig_log.tight_layout()
             _log_targets = get_targets(config, str(_log_path))
@@ -1323,6 +1451,114 @@ def plot_spectrum_dnl_corrected(
     if len(dnl) != len(hist):
         return  # size mismatch
 
+    frac_min_counts = 5.0
+    if isinstance(config, Mapping):
+        try:
+            frac_min_counts = float(
+                config.get("fractional_residual_min_counts", frac_min_counts)
+            )
+        except (TypeError, ValueError):
+            frac_min_counts = 5.0
+
+    def _mask_to_fit_window(values):
+        arr = np.asarray(values, dtype=float).copy()
+        if fit_window is None:
+            return arr
+        mask = (centers >= fit_window[0]) & (centers <= fit_window[1])
+        arr[~mask] = np.nan
+        return arr
+
+    def _compute_residual_arrays(hist_arr, model_arr):
+        raw = np.asarray(hist_arr, dtype=float) - np.asarray(model_arr, dtype=float)
+        frac_visibility = np.maximum(hist, model_total) >= max(frac_min_counts, 0.0)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            normalized = np.where(
+                model_arr > 5.0,
+                raw / np.sqrt(np.maximum(model_arr, 1.0)),
+                np.nan,
+            )
+            fractional = np.where(
+                (model_arr > 0.0) & frac_visibility,
+                raw / model_arr,
+                np.nan,
+            )
+        return {
+            "raw": _mask_to_fit_window(raw),
+            "normalized": _mask_to_fit_window(normalized),
+            "fractional": _mask_to_fit_window(fractional),
+        }
+
+    def _symmetric_ylim(values, minimum=1.0):
+        finite = np.asarray(values, dtype=float)
+        finite = finite[np.isfinite(finite)]
+        if finite.size == 0:
+            return (-minimum, minimum)
+        limit = max(np.percentile(np.abs(finite), 99.0), minimum)
+        return (-1.1 * limit, 1.1 * limit)
+
+    def _plot_raw_residual_panel(ax, values, *, symlog=False):
+        plot_vals = np.asarray(values, dtype=float)
+        valid = np.isfinite(plot_vals)
+        colors = np.where(plot_vals >= 0.0, "#377eb8", "#e41a1c")
+        colors = np.where(valid, colors, "#ffffff")
+        ax.bar(
+            centers,
+            np.where(valid, plot_vals, 0.0),
+            width=width,
+            color=colors,
+            alpha=0.7,
+            linewidth=0,
+        )
+        ax.axhline(0.0, color="#000000", lw=1.0)
+        if symlog:
+            ax.set_yscale("symlog", linthresh=1.0)
+            ax.set_ylabel("Raw Residuals\n[counts] (log)")
+        else:
+            ax.set_ylabel("Raw Residuals\n[counts]")
+            ax.set_ylim(*_symmetric_ylim(plot_vals))
+
+    def _plot_normalized_residual_panel(ax, values):
+        plot_vals = np.asarray(values, dtype=float)
+        abs_vals = np.abs(plot_vals)
+        colors = np.where(
+            np.isnan(plot_vals),
+            "#ffffff",
+            np.where(abs_vals <= 1.0, "#4daf4a", np.where(abs_vals <= 2.0, "#ff7f00", "#e41a1c")),
+        )
+        ax.bar(
+            centers,
+            np.where(np.isfinite(plot_vals), plot_vals, 0.0),
+            width=width,
+            color=colors,
+            alpha=0.7,
+            linewidth=0,
+        )
+        ax.axhspan(-1.0, 1.0, color="#4daf4a", alpha=0.06)
+        ax.axhspan(-2.0, -1.0, color="#ff7f00", alpha=0.04)
+        ax.axhspan(1.0, 2.0, color="#ff7f00", alpha=0.04)
+        ax.axhline(0.0, color="#000000", lw=1.0)
+        ax.axhline(2.0, color="#e41a1c", lw=0.7, ls="--", alpha=0.6)
+        ax.axhline(-2.0, color="#e41a1c", lw=0.7, ls="--", alpha=0.6)
+        ax.set_ylabel("Normalized\nResiduals (σ)")
+        ax.set_ylim(-5.0, 5.0)
+
+    def _plot_fractional_residual_panel(ax, values):
+        plot_vals = np.asarray(values, dtype=float)
+        valid = np.isfinite(plot_vals)
+        colors = np.where(plot_vals >= 0.0, "#377eb8", "#e41a1c")
+        colors = np.where(valid, colors, "#ffffff")
+        ax.bar(
+            centers,
+            np.where(valid, plot_vals, 0.0),
+            width=width,
+            color=colors,
+            alpha=0.7,
+            linewidth=0,
+        )
+        ax.axhline(0.0, color="#000000", lw=1.0)
+        ax.set_ylabel("Fractional\nResiduals")
+        ax.set_ylim(*_symmetric_ylim(plot_vals, minimum=0.1))
+
     # Correct for DNL: divide out the per-bin efficiency factor
     # Where DNL is very small, skip to avoid division artefacts
     safe = dnl > 0.3
@@ -1358,10 +1594,15 @@ def plot_spectrum_dnl_corrected(
     }
     component_colors["Total"] = palette.get("fit", "#ff0000")
 
-    # --- Figure: 3-panel (linear, log, pulls) ---
-    fig, (ax_lin, ax_log, ax_res) = plt.subplots(
-        3, 1, sharex=True, figsize=(10, 8),
-        gridspec_kw={"height_ratios": [2, 2, 1]},
+    residual_arrays = _compute_residual_arrays(hist_corr, model_corr)
+
+    # --- Figure: linear, log, raw residuals, symlog raw residuals, normalized residuals, fractional residuals ---
+    fig, (ax_lin, ax_log, ax_raw, ax_raw_log, ax_norm, ax_frac) = plt.subplots(
+        6,
+        1,
+        sharex=True,
+        figsize=(10, 12),
+        gridspec_kw={"height_ratios": [3, 3, 1, 1, 1, 1]},
     )
 
     # Panel 1: Linear scale
@@ -1412,35 +1653,11 @@ def plot_spectrum_dnl_corrected(
     ax_log.set_ylabel("Counts / bin (DNL-corrected, log)")
     ax_log.legend(fontsize=7, ncol=3, loc="upper right")
 
-    # Panel 3: Pulls (same as original - DNL cancels in the ratio)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        pulls = np.where(
-            model_total > 5,
-            (hist - model_total) / np.sqrt(np.maximum(model_total, 1.0)),
-            0.0,
-        )
-    if fit_window:
-        fm = (centers >= fit_window[0]) & (centers <= fit_window[1])
-        pulls = np.where(fm, pulls, np.nan)
-
-    valid_mask = np.isfinite(pulls)
-    abs_p = np.abs(pulls)
-    p_colors = np.where(
-        ~valid_mask, "#ffffff",
-        np.where(abs_p <= 1.0, "#4daf4a",
-            np.where(abs_p <= 2.0, "#ff7f00", "#e41a1c"))
-    )
-    ax_res.bar(
-        centers, np.where(valid_mask, pulls, 0),
-        width=width, color=p_colors, alpha=0.7, linewidth=0,
-    )
-    ax_res.axhspan(-1, 1, color="#4daf4a", alpha=0.06)
-    ax_res.axhline(0, color="k", lw=1)
-    ax_res.axhline(2, color="#e41a1c", lw=0.7, ls="--", alpha=0.6)
-    ax_res.axhline(-2, color="#e41a1c", lw=0.7, ls="--", alpha=0.6)
-    ax_res.set_ylabel("Pull (σ)")
-    ax_res.set_ylim(-5, 5)
-    ax_res.set_xlabel("Energy [MeV]")
+    _plot_raw_residual_panel(ax_raw, residual_arrays["raw"])
+    _plot_raw_residual_panel(ax_raw_log, residual_arrays["raw"], symlog=True)
+    _plot_normalized_residual_panel(ax_norm, residual_arrays["normalized"])
+    _plot_fractional_residual_panel(ax_frac, residual_arrays["fractional"])
+    ax_frac.set_xlabel("Energy [MeV]")
 
     # Annotate with DNL info
     ax_lin.text(

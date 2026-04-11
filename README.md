@@ -9,7 +9,7 @@ Spectral fitting and time-series analysis for electrostatic radon monitor data. 
 3. **DNL correction** - Compensates for ADC differential non-linearity. The primary method is a Fourier model at SAR bit-cycling periods (4, 8, ..., 512 codes), with per-period crossvalidation to reject harmonics that overfit. A two-stage variant estimates DNL at single-channel resolution, then rebins before the final fit.
 4. **Time-series analysis** - Per-isotope count rates in configurable time bins, with Poisson + calibration-uncertainty error bars and optional decay-model overlays.
 5. **Radon inference** - Converts daughter count rates to radon activity using detection/transport efficiencies. Optional comparison against Lucas cell assay data.
-6. **Outputs** - JSON summary, spectrum plots, time-series plots, pull diagnostics, split-half validation results.
+6. **Outputs** - JSON summary, stacked spectrum plots with raw/normalized/fractional residual diagnostics, time-series plots, and split-half validation results.
 
 ## Key files
 
