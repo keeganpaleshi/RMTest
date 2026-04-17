@@ -2422,52 +2422,13 @@ def test_time_fields_written_back(tmp_path, monkeypatch):
     ]
 
 
-def test_build_template_from_aggregate_soft_constrains_core_sigma_and_tau():
-    aggregate_params = {
-        "mu_Po214": 7.687,
-        "sigma_Po214": 0.13,
-        "tau_shared": 0.08,
-        "S_Po214": 500.0,
-        "sigma0": 0.10,
-        "F": 0.0,
-        "b1": 1.2,
-    }
-    priors = {
-        "mu_Po214": (7.687, 0.01),
-        "sigma_Po214": (0.12, 0.03),
-        "tau_shared": (0.09, 0.05),
-        "S_Po214": (500.0, 100.0),
-        "sigma0": (0.10, 0.01),
-        "F": (0.0, 0.01),
-        "b1": (1.0, 1.0),
-    }
-
-    tpl_priors, tpl_flags = analyze._build_template_from_aggregate(
-        aggregate_params,
-        priors,
-        {},
-        {
-            "time_fit": {
-                "float_centroids": True,
-                "template_float_core_widths": True,
-                "template_core_width_prior_frac": 0.15,
-                "template_core_width_prior_min_mev": 0.005,
-                "template_float_tail_scales": True,
-                "template_tail_prior_frac": 0.25,
-                "template_tail_prior_min_mev": 0.01,
-            }
-        },
+def test_resolve_template_fixed_isotopes_defaults_to_auxiliary_only():
+    fixed = analyze._resolve_template_fixed_isotopes(
+        ["Po210", "Po216", "Bi212", "Unknown1"],
+        {"fix_weak_isotopes": True},
     )
 
-    assert tpl_priors["sigma_Po214"][0] == pytest.approx(0.13)
-    assert tpl_priors["sigma_Po214"][1] == pytest.approx(0.03)
-    assert "fix_sigma_Po214" not in tpl_flags
-    assert tpl_priors["tau_shared"][0] == pytest.approx(0.08)
-    assert tpl_priors["tau_shared"][1] == pytest.approx(0.05)
-    assert "fix_tau_shared" not in tpl_flags
-    assert tpl_flags["penalty_priors"]["sigma_Po214"] == pytest.approx([0.13, 0.03])
-    assert tpl_flags["penalty_priors"]["tau_shared"] == pytest.approx([0.08, 0.05])
-    assert tpl_flags["fix_sigma0"] is True
+    assert fixed == {"Po216", "Bi212"}
 
 
 def test_fit_time_bins_applies_centroid_controls(monkeypatch):
@@ -2535,17 +2496,6 @@ def test_fit_time_bins_applies_centroid_controls(monkeypatch):
 
     monkeypatch.setattr(fitting, "fit_spectrum", fake_fit_spectrum)
 
-    aggregate_result.params["_template_priors"] = {
-        "mu_Po214": (7.687, 0.01),
-        "sigma_Po214": (0.05, 0.01),
-        "S_Po214": (500.0, 100.0),
-        "S_bkg": (10.0, 5.0),
-        "sigma0": (0.10, 0.01),
-        "F": (0.0, 0.01),
-        "b1": (0.0, 1.0),
-    }
-    aggregate_result.params["_template_flags"] = {"background_model": "none"}
-
     cfg = {
         "spectral_fit": {"background_model": "none"},
         "time_fit": {
@@ -2574,16 +2524,24 @@ def test_fit_time_bins_applies_centroid_controls(monkeypatch):
         spec_plot_data=spec_plot_data,
     )
 
-    assert captured["bounds"] is None
+    lo, hi = captured["bounds"]["mu_Po214"]
+    assert lo == pytest.approx(7.667)
+    assert hi == pytest.approx(7.707)
+    assert captured["penalty_priors"]["mu_Po214"][0] == pytest.approx(7.687)
+    assert captured["penalty_priors"]["mu_Po214"][1] == pytest.approx(0.01)
     assert captured["skip_covariance"] is True
+    assert result["per_bin_diagnostics"][0]["shift_hit_limit"] is True
+    assert result["per_bin_diagnostics"][0]["centroid_shift_kev"] == pytest.approx(20.0)
     assert result["per_bin_diagnostics"][0]["n_bound_hits"] == 2
     assert result["per_bin_diagnostics"][0]["bound_hit_params"] == ["mu_Po214", "S_Po214"]
-    assert captured["penalty_priors"]["sigma_Po214"] == pytest.approx([0.05, 0.01])
+    assert len(result["plot_entries"]) == 1
+    assert result["plot_entries"][0]["n_bound_hits"] == 2
 
 
 def test_should_store_template_bin_plot_when_non_centroid_bound_hit_present():
     assert analyze._should_store_template_bin_plot(
         {"fit_valid": True, "chi2_ndf": 1.2, "_n_bound_hits": 1},
+        False,
         {
             "plot_template_bin_fits": True,
             "plot_template_bin_fits_bad_only": True,
@@ -2644,3 +2602,63 @@ def test_summarize_template_fit_results_counts_bound_hits():
     assert summary["bins_with_non_centroid_bound_hits"] == 2
     assert summary["shift_hit_limit"] == 1
     assert summary["chi2_gt_10"] == 1
+
+
+def test_write_template_bin_fit_plots_respects_log_toggle(tmp_path, monkeypatch):
+    calls = {}
+
+    def fake_plot_spectrum(*args, **kwargs):
+        calls["config"] = dict(kwargs["config"])
+        Path(kwargs["out_png"]).touch()
+
+    monkeypatch.setattr(analyze, "plot_spectrum", fake_plot_spectrum)
+
+    template_results = {
+        "plot_entries": [
+            {
+                "bin_index": 0,
+                "t": 0.0,
+                "chi2_ndf": 5.0,
+                "fit_valid": False,
+                "shift_hit_limit": True,
+                "fit_params": {
+                    "_plot_edges": [7.5, 7.6, 7.7],
+                    "_plot_hist": [1.0, 2.0],
+                    "_plot_centers": [7.55, 7.65],
+                    "_plot_model_total": [1.0, 2.0],
+                    "_plot_components": {"Po214": [1.0, 2.0]},
+                },
+            }
+        ]
+    }
+
+    manifest = analyze._write_template_bin_fit_plots(
+        template_results,
+        tmp_path,
+        {
+            "plotting": {
+                "plot_template_bin_fits": True,
+                "plot_template_bin_fits_log_scale": False,
+            }
+        },
+    )
+
+    assert len(manifest) == 1
+    assert manifest[0]["png"].startswith("template_fit_bin_00000_")
+    assert calls["config"]["plot_spectrum_write_log_copy"] is False
+    assert (tmp_path / "template_bin_fits" / "template_fit_plot_index.json").exists()
+
+
+def test_prefer_template_fit_prefers_non_clipped_retry():
+    best = {"fit_valid": True, "chi2_ndf": 5.0}
+    candidate = {"fit_valid": True, "chi2_ndf": 6.0}
+
+    assert analyze._prefer_template_fit(
+        best,
+        candidate,
+        best_hits_bound=True,
+        candidate_hits_bound=False,
+    )
+
+
+

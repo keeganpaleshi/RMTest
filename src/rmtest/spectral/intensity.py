@@ -148,6 +148,7 @@ def build_spectral_intensity(
     loglin_n_norm=None,
     use_shelf=None,
     use_halo=None,
+    beta_high_side_only=None,
     shelf_range=None,
     shelf_cutoff_delta=None,
     adc_edge_components=False,
@@ -176,6 +177,10 @@ def build_spectral_intensity(
         "halo" component (second wider peak) for each isotope.  Standard in
         alpha spectroscopy to model detector-response broadening from
         dead-layer scattering and angular effects.
+    beta_high_side_only : dict, optional
+        Mapping of isotope name to bool indicating whether the beta
+        coincidence component should be clipped to ``E >= mu`` after any
+        charge-trapping convolution, then renormalized in-window.
 
     Returns
     -------
@@ -203,6 +208,11 @@ def build_spectral_intensity(
         use_halo = {}
     if isinstance(use_halo, bool):
         use_halo = {iso: use_halo for iso in iso_list}
+
+    if beta_high_side_only is None:
+        beta_high_side_only = {}
+    if isinstance(beta_high_side_only, bool):
+        beta_high_side_only = {iso: beta_high_side_only for iso in iso_list}
 
     _bkg_lower = str(background_model).lower() if background_model else ""
     is_logquad = _bkg_lower in ("loglin_unit", "logquad_unit")
@@ -533,6 +543,15 @@ def build_spectral_intensity(
                         _bc_total = np.sum(beta_conv) * dE_grid
                         if _bc_total > 1e-30:
                             beta_pdf = beta_conv / _bc_total
+
+                if beta_high_side_only.get(iso, False):
+                    beta_pdf = np.where(E >= mu, beta_pdf, 0.0)
+                    dE_grid = (E_hi - E_lo) / max(len(E) - 1, 1)
+                    _bc_total = np.sum(beta_pdf) * dE_grid
+                    if _bc_total > 1e-30:
+                        beta_pdf = beta_pdf / _bc_total
+                    else:
+                        beta_pdf = np.zeros_like(beta_pdf)
 
                 lam += N * f_beta * beta_pdf
 

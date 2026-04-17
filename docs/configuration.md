@@ -215,6 +215,10 @@ This section configures the spectral model and its priors.
 - `mu_bounds_units`: `mev` or `adc`
 - `unbinned_likelihood`: when `true`, use the unbinned path instead of the default binned Poisson path
 - `use_emg`, `tau_<iso>_prior_mean`, `tau_<iso>_prior_sigma`: per-isotope EMG tail configuration
+- `f_beta_<iso>_prior`, `lambda_beta_<iso>_prior`: per-isotope beta-coincidence tail priors
+- `beta_high_side_only`: per-isotope toggle that clips the beta-coincidence contribution to `E >= mu`
+- `share_beta`: replace per-isotope beta-coincidence parameters with `f_beta_shared` and `lambda_beta_shared`
+- `f_beta_shared_prior`, `lambda_beta_shared_prior`: priors used only when `share_beta: true`
 
 Important details:
 
@@ -223,6 +227,8 @@ Important details:
 - A `tau_<iso>` prior automatically enables the corresponding EMG tail even if `use_emg` omits it.
 - `mu_bounds_units: adc` is converted to MeV before fitting so the fit itself remains on a MeV scale.
 - `emg_left` evaluations are wrapped for numerical stability so NaN or infinite values do not reach `curve_fit`.
+- `beta_high_side_only` is useful for coincidence isotopes such as Po-214 and Po-212 when the fitted beta tail should stay entirely on the high-energy side of the alpha peak.
+- `share_beta: true` is available for simpler scans, but the default config keeps per-isotope beta tails because Po-212 often needs a visibly stronger high-energy tail than Po-214.
 
 Example:
 
@@ -272,17 +278,17 @@ This section controls the time-series decay fits.
 - `background_guess`, `n0_guess_fraction`
 - `fix_background_b_first_pass`: enable the first fixed-background pass before the free-background refit
 - `background_b_fixed_value`: explicit value for the first pass; if omitted, the baseline Po-214 rate is used
-- `extraction_method`: `roi` for simple window counting or `template` for per-bin spectral template fits
-- `template_rebin`, `template_min_counts`: control template-bin histogramming and the minimum statistics needed to attempt a fit
+- `extraction_method`: `roi` or `template`
+- `template_rebin`, `template_min_counts`: per-bin template-fit histogram controls
 - `template_n_workers`: number of parallel workers for template time bins; `auto` uses a conservative half-core default capped at 8
 - `template_skip_covariance`: skip per-bin HESSE / numerical-Hessian recovery and use fast diagonal MIGRAD errors instead
-- `float_centroids`: allow per-bin centroid motion around the aggregate fit
-- `template_float_core_widths`: allow per-bin `sigma_*` values to move under Gaussian penalties around the aggregate fit
-- `template_core_width_prior_frac`, `template_core_width_prior_min_mev`: width of those per-bin `sigma_*` priors
-- `template_float_tail_scales`: allow per-bin `tau_*` or `tau_shared` values to move under Gaussian penalties around the aggregate fit
-- `template_tail_prior_frac`, `template_tail_prior_min_mev`: width of those per-bin `tau` priors
-- `fix_weak_isotopes`: legacy shorthand for fixing only very weak auxiliary isotopes in template mode
-- `template_fixed_isotopes`: explicit isotope names to fix in template mode; takes precedence over `fix_weak_isotopes`
+- `float_centroids`: allow per-bin spectral centroids to move around the aggregate fit
+- `centroid_shift_bound_kev`: initial half-width for per-bin centroid movement
+- `centroid_shift_prior_sigma_kev`: Gaussian penalty width for centroid motion; `null` defaults to half of `centroid_shift_bound_kev`
+- `centroid_shift_scan_auto_expand`: rerun a bin with wider centroid bounds when it lands on the limit
+- `centroid_shift_max_expand_kev`: maximum half-width used by the auto-expansion retry; keep this modest to avoid reintroducing large centroid tails
+- `fix_weak_isotopes`: legacy compatibility switch; when enabled it only fixes very weak auxiliary isotopes unless `template_fixed_isotopes` is set
+- `template_fixed_isotopes`: explicit isotope list to amplitude-fix in per-bin template fits
 
 The pipeline also accepts the simplified standalone-fitter schema:
 
@@ -300,7 +306,6 @@ Important details:
 - Custom half-lives affect both the fit and the overlaid model curves.
 - For multi-day or multi-month monitoring, you can set `hl_po214` and `hl_po218` to the radon half-life so the fit tracks the slowly varying parent activity.
 - `settling_time_s` was removed from the configuration; use `--settle-s` instead.
-- In template mode, shelf/halo/background shape terms remain frozen to the aggregate spectral fit by default, while `sigma_*` and `tau_*` can be softly constrained instead of hard-fixed.
 
 Long-timescale example:
 
@@ -399,6 +404,12 @@ This section controls saved formats, time-series binning, and presentation.
 - `plot_time_normalise_rate`: show counts per second instead of raw counts per bin
 - `overlay_isotopes`: keep both isotope windows for a combined time-series overlay
 - `save_individual_time_series`: when overlaying, also write `time_series_<iso>_individual.png`
+- `fractional_residual_min_counts`: hide fractional-residual bins when both data and model are below this count scale
+- `plot_spectrum_write_log_copy`: write the `_log.png` companion for spectrum plots
+- `plot_template_bin_fits`: write the per-bin template spectrum fits into `template_bin_fits/`
+- `plot_template_bin_fits_bad_only`: restrict per-bin template plots to invalid fits, bins that hit any active parameter bound, bins that hit the centroid limit, or bins above the chi2 threshold
+- `plot_template_bin_fits_bad_chi2_ndf_min`: chi2/ndf threshold used by `plot_template_bin_fits_bad_only`
+- `plot_template_bin_fits_log_scale`: keep the `_log.png` companion for template bin-fit plots
 - `palette`: `default`, `colorblind`, or `grayscale`
 
 Important details:
@@ -406,3 +417,5 @@ Important details:
 - `--plot-time-binning-mode` and `--plot-time-bin-width` override the matching keys here.
 - `dump_time_series_json: true` writes per-bin counts, live times, efficiencies, and UTC bin edges next to the matching time-series plot.
 - `overlay_isotopes: true` preserves both daughter windows in a shared plot; the pipeline can additionally save per-isotope plots if `save_individual_time_series` is enabled.
+- `spectrum.png` now stacks the linear spectrum, log spectrum, raw residuals, log raw residuals, normalized residuals, and fractional residuals.
+- `fractional_residual_min_counts` prevents the fractional residual panel from being dominated by bins in the extreme low-count tail.

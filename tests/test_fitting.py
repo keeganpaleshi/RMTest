@@ -11,7 +11,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 src_path = Path(__file__).resolve().parents[1] / "src"
 if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
-from fitting import FitResult, _WidthLookup, fit_spectrum, fit_time_series
+from fitting import (
+    FitResult,
+    _WidthLookup,
+    _detect_bound_hits,
+    fit_spectrum,
+    fit_time_series,
+    softplus,
+)
+from rmtest.spectral.intensity import build_spectral_intensity
 try:
     from rmtest.emg_constants import EMG_MIN_TAU as _TAU_MIN
 except ImportError:
@@ -118,6 +126,63 @@ def test_width_lookup_errors_for_non_center():
 
     with pytest.raises(KeyError, match="configured histogram centers"):
         lookup.scale(np.array([0.5, 0.75, 1.5]), np.ones(3))
+
+
+def test_beta_coincidence_stays_on_high_energy_side():
+    E = np.linspace(2.0, 4.0, 4001)
+    domain = (float(E[0]), float(E[-1]))
+    spectral_intensity = build_spectral_intensity(
+        ["Po214"],
+        {"Po214": False},
+        domain,
+        clip_floor=0.0,
+        beta_high_side_only={"Po214": True},
+    )
+    params = {
+        "mu_Po214": 3.0,
+        "sigma0": 0.02,
+        "sigma_Po214": 0.02,
+        "S_Po214": 1.0,
+        "f_beta_Po214": 0.25,
+        "lambda_beta_Po214": 0.2,
+    }
+    no_beta = dict(params)
+    no_beta["f_beta_Po214"] = 0.0
+
+    beta_only = spectral_intensity(E, params, domain) - spectral_intensity(E, no_beta, domain)
+    low_mask = E < params["mu_Po214"]
+    high_mask = E >= params["mu_Po214"]
+
+    assert np.all(beta_only[low_mask] <= 1e-12)
+    assert np.sum(beta_only[high_mask]) > 0.0
+
+
+def test_beta_coincidence_toggle_allows_low_energy_leakage_when_disabled():
+    E = np.linspace(2.0, 4.0, 4001)
+    domain = (float(E[0]), float(E[-1]))
+    spectral_intensity = build_spectral_intensity(
+        ["Po214"],
+        {"Po214": True},
+        domain,
+        clip_floor=0.0,
+        beta_high_side_only={"Po214": False},
+    )
+    params = {
+        "mu_Po214": 3.0,
+        "sigma0": 0.02,
+        "sigma_Po214": 0.02,
+        "tau_Po214": 0.08,
+        "S_Po214": 1.0,
+        "f_beta_Po214": 0.25,
+        "lambda_beta_Po214": 0.2,
+    }
+    no_beta = dict(params)
+    no_beta["f_beta_Po214"] = 0.0
+
+    beta_only = spectral_intensity(E, params, domain) - spectral_intensity(E, no_beta, domain)
+    low_mask = E < params["mu_Po214"]
+
+    assert np.sum(beta_only[low_mask]) > 0.0
 
 
 def test_analyze_time_fit_respects_efficiency(tmp_path, monkeypatch):
@@ -510,6 +575,23 @@ def test_fit_spectrum_bounds_clip():
 
     out = fit_spectrum(energies, priors, bounds=bounds)
     assert lo <= out.params["mu_Po218"] <= hi
+
+
+def test_detect_bound_hits_reports_free_parameters_only():
+    hits = _detect_bound_hits(
+        ["mu_Po214", "S_Po214", "sigma0"],
+        [7.71, 0.0, 0.1],
+        [7.60, -1.0, 0.05],
+        [7.71, 0.0, 0.20],
+        flags={"fix_sigma0": True},
+    )
+
+    assert hits["mu_Po214"]["side"] == "upper"
+    assert hits["mu_Po214"]["upper"] == pytest.approx(7.71)
+    assert hits["S_Po214"]["side"] == "upper"
+    assert hits["S_Po214"]["upper"] == pytest.approx(float(softplus(0.0)))
+    assert hits["S_Po214"]["value"] == pytest.approx(float(softplus(0.0)))
+    assert "sigma0" not in hits
 
 
 def test_fit_spectrum_tau_lower_bound():

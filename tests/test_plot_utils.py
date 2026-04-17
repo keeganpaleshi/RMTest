@@ -61,6 +61,29 @@ def test_plot_time_series_none_fit_results(tmp_path):
     assert out_png.exists()
 
 
+def test_plot_spectrum_respects_log_write_toggle(tmp_path):
+    out_png = tmp_path / "spectrum.png"
+    energies = np.array([7.55, 7.65, 7.75, 7.65], dtype=float)
+    fit_vals = {
+        "_plot_edges": [7.5, 7.6, 7.7, 7.8],
+        "_plot_hist": [1.0, 2.0, 1.0],
+        "_plot_centers": [7.55, 7.65, 7.75],
+        "_plot_model_total": [1.0, 2.0, 1.0],
+        "_plot_components": {"Po214": [1.0, 2.0, 1.0]},
+    }
+
+    plot_spectrum(
+        energies,
+        fit_vals=fit_vals,
+        out_png=out_png,
+        bin_edges=np.array([7.5, 7.6, 7.7, 7.8], dtype=float),
+        config={"plot_spectrum_write_log_copy": False},
+    )
+
+    assert out_png.exists()
+    assert not (tmp_path / "spectrum_log.png").exists()
+
+
 def test_plot_time_series_invalid_fit_skips_model(tmp_path, monkeypatch):
     times = np.array([1001.0, 1002.0, 1003.0])
     energies = np.array([7.7, 7.8, 7.6])
@@ -433,9 +456,40 @@ def test_plot_spectrum_accepts_fitresult(tmp_path, monkeypatch):
     assert "Po210" in captured_labels
     assert "Total model" in captured_labels
 
-    ax_res = ax.figure.axes[1]
-    assert ax_res.get_ylabel() == "Residuals [counts]"
-    assert ax_res.get_xlabel() == "Energy [MeV]"
+    assert len(ax.figure.axes) == 6
+    ax_norm = ax.figure.axes[-2]
+    ax_frac = ax.figure.axes[-1]
+    assert ax_norm.get_ylabel() == "Normalized\nResiduals (σ)"
+    assert ax_frac.get_ylabel() == "Fractional\nResiduals"
+    assert ax_frac.get_xlabel() == "Energy [MeV]"
+
+
+def test_plot_spectrum_masks_fractional_residuals_in_low_count_bins(tmp_path):
+    out_png = tmp_path / "spectrum_fractional_mask.png"
+    fit_vals = {
+        "_plot_edges": [7.5, 7.6, 7.7],
+        "_plot_hist": [3.0, 20.0],
+        "_plot_centers": [7.55, 7.65],
+        "_plot_model_total": [4.0, 10.0],
+        "_plot_components": {"Po214": [4.0, 10.0]},
+    }
+
+    ax = plot_spectrum(
+        np.array([], dtype=float),
+        fit_vals=fit_vals,
+        out_png=out_png,
+        bin_edges=np.array([7.5, 7.6, 7.7], dtype=float),
+        config={
+            "fractional_residual_min_counts": 5,
+            "plot_spectrum_write_log_copy": False,
+        },
+    )
+
+    ax_frac = ax.figure.axes[-1]
+    heights = [patch.get_height() for patch in ax_frac.patches]
+    assert heights[0] == pytest.approx(0.0)
+    assert heights[1] == pytest.approx(1.0)
+
 
 def test_plot_spectrum_comparison_fixed_bins(tmp_path, monkeypatch):
     pre = np.linspace(0.2, 0.8, 10)

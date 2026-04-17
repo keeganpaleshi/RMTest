@@ -170,6 +170,92 @@ def softplus(x: np.ndarray | float) -> np.ndarray | float:
     return np.log1p(np.exp(-np.abs(x))) + np.maximum(x, 0.0)
 
 
+def _physical_fit_param_value(name: str, raw_value: float) -> float:
+    """Convert an internal optimizer value into the reported physical value."""
+
+    value = float(raw_value)
+    if name.startswith("S_"):
+        return float(softplus(value))
+    return value
+
+
+def _detect_bound_hits(
+    param_order,
+    raw_values,
+    bounds_lo,
+    bounds_hi,
+    *,
+    flags=None,
+    tol_fraction: float = 1e-4,
+    tol_abs: float = 1e-9,
+):
+    """Return metadata for free parameters that finished at an active bound."""
+
+    if flags is None:
+        flags = {}
+
+    if isinstance(raw_values, Mapping):
+        raw_lookup = {
+            name: float(raw_values[name]) for name in param_order if name in raw_values
+        }
+    else:
+        raw_arr = np.asarray(raw_values, dtype=float)
+        raw_lookup = {
+            name: float(raw_arr[idx])
+            for idx, name in enumerate(param_order)
+            if idx < raw_arr.size
+        }
+
+    hits = {}
+    for idx, name in enumerate(param_order):
+        if bool(flags.get(f"fix_{name}", False)):
+            continue
+        if name not in raw_lookup:
+            continue
+        val_raw = float(raw_lookup[name])
+        if not np.isfinite(val_raw):
+            continue
+        lo_raw = float(bounds_lo[idx])
+        hi_raw = float(bounds_hi[idx])
+        span = (
+            hi_raw - lo_raw
+            if np.isfinite(lo_raw) and np.isfinite(hi_raw)
+            else 0.0
+        )
+        tol_raw = max(float(tol_abs), abs(float(span)) * float(tol_fraction))
+        at_lower = bool(np.isfinite(lo_raw) and val_raw <= lo_raw + tol_raw)
+        at_upper = bool(np.isfinite(hi_raw) and val_raw >= hi_raw - tol_raw)
+        if not (at_lower or at_upper):
+            continue
+        if at_lower and at_upper:
+            side = "both"
+        elif at_lower:
+            side = "lower"
+        else:
+            side = "upper"
+        hits[name] = {
+            "side": side,
+            "at_lower": at_lower,
+            "at_upper": at_upper,
+            "value": _physical_fit_param_value(name, val_raw),
+            "value_raw": val_raw,
+            "lower": (
+                _physical_fit_param_value(name, lo_raw)
+                if np.isfinite(lo_raw)
+                else None
+            ),
+            "upper": (
+                _physical_fit_param_value(name, hi_raw)
+                if np.isfinite(hi_raw)
+                else None
+            ),
+            "lower_raw": lo_raw if np.isfinite(lo_raw) else None,
+            "upper_raw": hi_raw if np.isfinite(hi_raw) else None,
+            "tolerance_raw": float(tol_raw),
+        }
+    return hits
+
+
 def _softplus_inv(y: np.ndarray | float) -> np.ndarray | float:
     was_scalar = np.isscalar(y)
     y = np.asarray(y, dtype=float)
@@ -1600,6 +1686,15 @@ def fit_spectrum(
 
     use_shelf_map = {iso: bool(use_shelf.get(iso, False)) for iso in iso_list}
     use_halo_map = {iso: bool(use_halo.get(iso, False)) for iso in iso_list}
+    beta_high_side_only_map = {}
+    if cfg is not None:
+        _bhso = cfg.get("spectral_fit", {}).get("beta_high_side_only")
+        if isinstance(_bhso, Mapping):
+            beta_high_side_only_map = {
+                str(k): bool(v) for k, v in _bhso.items()
+            }
+        elif _bhso is not None:
+            beta_high_side_only_map = {iso: bool(_bhso) for iso in iso_list}
 
     # shelf_range: how far (MeV) the shelf extends below the peak (Gaussian taper)
     # Can be a scalar (applied to all isotopes) or a dict with per-isotope values
@@ -1628,6 +1723,7 @@ def fit_spectrum(
         loglin_n_norm=loglin_n_norm,
         use_shelf=use_shelf_map,
         use_halo=use_halo_map,
+        beta_high_side_only=beta_high_side_only_map,
         shelf_range=_shelf_range,
         shelf_cutoff_delta=_shelf_cutoff_delta,
         adc_edge_components=_adc_edge,
@@ -3090,6 +3186,16 @@ def fit_spectrum(
         out["aic"] = float(2 * m.fval + 2 * k)
         out["likelihood_path"] = likelihood_path
         out = _finalize_signal_params(out)
+        _bound_hits = _detect_bound_hits(
+            param_order,
+            {pname: float(m.values[pname]) for pname in param_order},
+            bounds_lo,
+            bounds_hi,
+            flags=flags,
+        )
+        out["_n_bound_hits"] = int(len(_bound_hits))
+        out["_bound_hit_params"] = sorted(_bound_hits)
+        out["_bound_hits"] = _bound_hits
         return FitResult(
             out,
             cov,
@@ -3184,6 +3290,16 @@ def fit_spectrum(
     out["likelihood_path"] = likelihood_path
     out["covariance_method"] = _covariance_method
     out["minos_method"] = _minos_method
+    _bound_hits = _detect_bound_hits(
+        param_order,
+        popt,
+        bounds_lo,
+        bounds_hi,
+        flags=flags,
+    )
+    out["_n_bound_hits"] = int(len(_bound_hits))
+    out["_bound_hit_params"] = sorted(_bound_hits)
+    out["_bound_hits"] = _bound_hits
 
     # Attach DNL metadata from the binned path (if correction was applied)
     if not unbinned and _dnl_iters > 0:

@@ -12,8 +12,8 @@ These outputs are part of the normal analysis flow:
 
 - `summary.json`: structured machine-readable summary
 - `config_used.json`: archived copy of the configuration used for the run
-- `spectrum.png`: spectrum, best-fit model, and residuals
-- `spectrum_components.png`: same spectrum view without the summed total-model curve
+- `spectrum.png`: stacked spectrum view with linear and log spectrum panels plus raw, log-raw, normalized, and fractional residual panels
+- `spectrum_components.png`: same stacked spectrum view without the summed total-model curve
 - `spectrum_pre_post.png`: pre-cut versus post-cut spectrum comparison
 - `radon_activity.png`: radon activity and concentration versus time
 - `total_radon.png`: total radon in the combined monitor-plus-sample volume
@@ -28,6 +28,9 @@ These outputs are part of the normal analysis flow:
 Additional artifacts appear when the corresponding feature is enabled:
 
 - `time_series_<iso>_ts.json`: exported time-series payloads when `dump_time_series_json` is enabled
+- `template_per_bin_diagnostics.json`: per-bin template-fit diagnostics when `time_fit.extraction_method: template`
+- `template_bin_fits/`: per-bin template spectrum plots when `plot_template_bin_fits` is enabled
+- `template_bin_fits/template_fit_plot_index.json`: manifest for the saved per-bin template plots
 - `efficiency.png`, `eff_cov.png`: efficiency summary plots
 - `burst_scan.png`: burst-sensitivity scan output
 - `radon_activity_combined.png`: combined radon-activity diagnostic plot
@@ -205,3 +208,15 @@ If you want a volumetric concentration, apply the appropriate volume conversion 
 ## Invalid Fits
 
 If a fit completed numerically but failed the covariance validity check, the result still appears in `summary.json` with `fit_valid: false`. Plotting code omits fit overlays in that case, so consumers should treat `fit_valid` as the technical gate for whether the overlayed model was trusted.
+
+## Template Fit Diagnostics
+
+When `time_fit.extraction_method: template` is enabled, `summary.json["template_fitting"]` includes aggregate per-bin fit-quality metrics for the template time-series stage. In addition to chi2 and centroid-shift statistics, it now reports:
+
+- `bins_with_any_bound_hits`: number of fitted time bins with at least one free parameter ending at an active optimizer bound
+- `total_bound_hits`: total number of per-bin bound hits across all fitted bins
+- `bound_hit_param_counts`: per-parameter count of how often a bound was hit
+- `bins_with_non_centroid_bound_hits`: number of bins where a non-`mu_*` parameter hit a bound
+- `non_centroid_bound_hit_param_counts`: per-parameter counts restricted to non-centroid parameters
+
+The companion `template_per_bin_diagnostics.json` file carries the per-bin details through `n_bound_hits`, `bound_hit_params`, and `bound_hits`.
