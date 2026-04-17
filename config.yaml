@@ -484,8 +484,17 @@ time_fit:
   # Template fitting options (only used when extraction_method: template)
   template_rebin: 20          # energy rebin factor vs aggregate (coarser for statistics)
   template_min_counts: 30     # minimum events per time bin to attempt fit
+  template_n_workers: auto    # auto -> min(8, half of logical CPUs)
+  template_skip_covariance: true  # use fast MIGRAD diagonal errors for per-bin template fits
   float_centroids: true       # allow peak centroids to float (tight prior)
-  fix_weak_isotopes: true     # fix Po216/Po210/Bi212/extra peaks in per-bin fits
+  template_float_core_widths: true   # let per-bin core sigma values move under aggregate-centered priors
+  template_core_width_prior_frac: 0.15
+  template_core_width_prior_min_mev: 0.005
+  template_float_tail_scales: true   # let per-bin core EMG tau values move under aggregate-centered priors
+  template_tail_prior_frac: 0.25
+  template_tail_prior_min_mev: 0.01
+  fix_weak_isotopes: true     # legacy shorthand: fix weak auxiliary isotopes (Po216/Bi212/extra peaks)
+  template_fixed_isotopes: [] # explicit per-bin fixed isotope list; overrides the legacy shorthand
 systematics:
   enable: false
   sigma_e_frac: 0.1

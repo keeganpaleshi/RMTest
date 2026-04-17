@@ -198,6 +198,60 @@ def _sigmoid(x: np.ndarray | float) -> np.ndarray | float:
     return out
 
 
+def _physical_fit_param_value(name: str, raw_value: float) -> float:
+    """Convert an optimizer-space value into the reported physical value."""
+
+    raw = float(raw_value)
+    if name.startswith("S_"):
+        return float(_softplus(raw))
+    return raw
+
+
+def _detect_bound_hits(
+    param_order,
+    values,
+    bounds_lo,
+    bounds_hi,
+    fixed_mask,
+    *,
+    tol_frac: float = 1e-4,
+    tol_abs: float = 1e-10,
+):
+    """Report free parameters that finished at an active optimizer bound."""
+
+    hits = {}
+    for idx, name in enumerate(param_order):
+        if fixed_mask[idx]:
+            continue
+        val = float(values[idx])
+        lo = float(bounds_lo[idx])
+        hi = float(bounds_hi[idx])
+        if not np.isfinite(val):
+            continue
+        span = hi - lo
+        tol = tol_abs
+        if np.isfinite(span) and span > 0:
+            tol = max(tol, abs(span) * tol_frac)
+
+        at_lo = np.isfinite(lo) and val <= lo + tol
+        at_hi = np.isfinite(hi) and val >= hi - tol
+        if not at_lo and not at_hi:
+            continue
+
+        side = "both" if at_lo and at_hi else ("lower" if at_lo else "upper")
+        meta = {
+            "side": side,
+            "value": _physical_fit_param_value(name, val),
+        }
+        if np.isfinite(lo):
+            meta["lower"] = _physical_fit_param_value(name, lo)
+        if np.isfinite(hi):
+            meta["upper"] = _physical_fit_param_value(name, hi)
+        hits[str(name)] = meta
+
+    return hits
+
+
 def make_linear_bkg(
     Emin: float, Emax: float, Eref: float | None = None, n_norm: int | None = None
 ):
@@ -497,6 +551,7 @@ def fit_spectrum(
     pre_binned_hist=None,
     pre_dnl_meta=None,
     skip_minos=False,
+    skip_covariance=False,
 ):
     """Fit the radon spectrum using either χ² histogram or unbinned likelihood.
 
@@ -534,6 +589,12 @@ def fit_spectrum(
     max_tau_ratio : float, optional
         If given, enforce an upper bound ``tau <= max_tau_ratio * sigma0`` for
         EMG tail parameters.
+    skip_covariance : bool, optional
+        When ``True``, skip the expensive post-MIGRAD covariance recovery
+        stages (HESSE, relaxed-bound retries, numerical Hessian, MINOS) and
+        use MIGRAD's approximate diagonal errors instead. This is primarily
+        intended for high-volume template time-bin fits where fast per-bin
+        uncertainties are sufficient.
 
     Returns
     -------
@@ -2397,6 +2458,7 @@ def fit_spectrum(
                 _me = (bounds_hi[_pi] - bounds_lo[_pi]) * 0.01
                 _migrad_is_fallback[_pn] = True
             _migrad_errs[_pn] = _me
+        _fixed_mask = [bool(m.fixed[p]) for p in param_order]
 
         # ----------------------------------------------------------
         # Covariance recovery strategy:
@@ -2408,229 +2470,242 @@ def fit_spectrum(
         _t0_cov = _time_mod.perf_counter()
         _nll_calls_before_cov = _nll_call_count[0]
         _covariance_method = "none"
-        m.hesse()
-        cov_raw = m.covariance
-        covariance_available = cov_raw is not None
-        if covariance_available:
-            _covariance_method = "hesse"
-
-        # --- A2: Simplex→MIGRAD→HESSE recovery (Tier 1.5) ---
-        # Official iminuit guidance notes that Simplex before MIGRAD
-        # can rescue pathological curvature by finding a better
-        # starting region for the gradient-based minimiser.
-        if cov_raw is None:
+        _minos_errors = None
+        _minos_method = "none"
+        if skip_covariance:
             logging.info(
-                "Hesse failed  - trying Simplex→MIGRAD→HESSE recovery"
+                "Skipping covariance recovery after MIGRAD "
+                "(skip_covariance=True); using diagonal MIGRAD errors only"
             )
-            _saved_vals = popt.copy()
-            m.simplex()
-            m.migrad()
-            if m.valid:
-                m.hesse()
-                cov_raw = m.covariance
-                if cov_raw is not None:
-                    _covariance_method = "hesse_after_simplex"
-                    covariance_available = True
-                    # If Simplex+MIGRAD found the same or better minimum,
-                    # update popt; otherwise restore.
-                    _new_nll = float(m.fval)
-                    if _new_nll <= nll_val + 0.01:
-                        popt = np.array(
-                            [float(m.values[p]) for p in param_order]
-                        )
-                        nll_val = _new_nll
+            cov_raw = np.diag(np.array([_migrad_errs[p] ** 2 for p in param_order]))
+            covariance_available = True
+            _covariance_method = "migrad_diagonal_skipped"
+            _minos_errors = {}
+            _minos_method = "skipped_via_skip_covariance"
+        else:
+            m.hesse()
+            cov_raw = m.covariance
+            covariance_available = cov_raw is not None
+            if covariance_available:
+                _covariance_method = "hesse"
+
+            # --- A2: Simplex→MIGRAD→HESSE recovery (Tier 1.5) ---
+            # Official iminuit guidance notes that Simplex before MIGRAD
+            # can rescue pathological curvature by finding a better
+            # starting region for the gradient-based minimiser.
+            if cov_raw is None:
+                logging.info(
+                    "Hesse failed  - trying Simplex→MIGRAD→HESSE recovery"
+                )
+                _saved_vals = popt.copy()
+                m.simplex()
+                m.migrad()
+                if m.valid:
+                    m.hesse()
+                    cov_raw = m.covariance
+                    if cov_raw is not None:
+                        _covariance_method = "hesse_after_simplex"
+                        covariance_available = True
+                        # If Simplex+MIGRAD found the same or better minimum,
+                        # update popt; otherwise restore.
+                        _new_nll = float(m.fval)
+                        if _new_nll <= nll_val + 0.01:
+                            popt = np.array(
+                                [float(m.values[p]) for p in param_order]
+                            )
+                            nll_val = _new_nll
+                        else:
+                            for _pi, _pn in enumerate(param_order):
+                                m.values[_pn] = float(_saved_vals[_pi])
                     else:
+                        # Simplex+MIGRAD converged but HESSE still fails
                         for _pi, _pn in enumerate(param_order):
                             m.values[_pn] = float(_saved_vals[_pi])
                 else:
-                    # Simplex+MIGRAD converged but HESSE still fails
                     for _pi, _pn in enumerate(param_order):
                         m.values[_pn] = float(_saved_vals[_pi])
-            else:
-                for _pi, _pn in enumerate(param_order):
-                    m.values[_pn] = float(_saved_vals[_pi])
 
-        # --- Strategy 2: relax bounds for params sitting at limits ---
-        if cov_raw is None:
-            logging.info(
-                "Hesse failed  - attempting with relaxed bounds for "
-                "parameters at their limits"
-            )
-            # Reset parameter values to the saved minimum before retrying
-            for _pi, _pn in enumerate(param_order):
-                m.values[_pn] = float(popt[_pi])
-            _at_bound = []
-            _relax_frac = 0.05  # expand bound by 5% of range
-            for _pi, _pn in enumerate(param_order):
-                if m.fixed[_pn]:
-                    continue
-                _val = float(popt[_pi])
-                _lo, _hi = bounds_lo[_pi], bounds_hi[_pi]
-                _rng = _hi - _lo
-                _tol = _rng * 1e-4
-                if _val <= _lo + _tol or _val >= _hi - _tol:
-                    _at_bound.append((_pn, _pi, _val, _lo, _hi))
-                    _new_lo = _lo - _relax_frac * _rng if _val <= _lo + _tol else _lo
-                    _new_hi = _hi + _relax_frac * _rng if _val >= _hi - _tol else _hi
-                    m.limits[_pn] = (_new_lo, _new_hi)
-            if _at_bound:
+            # --- Strategy 2: relax bounds for params sitting at limits ---
+            if cov_raw is None:
                 logging.info(
-                    "Relaxed bounds for %d params at limits: %s",
-                    len(_at_bound),
-                    [t[0] for t in _at_bound],
+                    "Hesse failed  - attempting with relaxed bounds for "
+                    "parameters at their limits"
                 )
-                m.hesse()
-                cov_raw = m.covariance
-                covariance_available = cov_raw is not None
-                # Restore original bounds
-                for _pn, _pi, _val, _lo, _hi in _at_bound:
-                    m.limits[_pn] = (_lo, _hi)
-                if cov_raw is not None:
-                    _covariance_method = "hesse_relaxed"
-                    logging.info("Hesse succeeded after relaxing bounds")
-
-        # --- Strategy 3: numerical Hessian via finite differences ---
-        # Work on the FREE-parameter submatrix only to avoid fixed
-        # parameters (with ±1e-12 bounds) distorting eigenvalues.
-        if cov_raw is None:
-            logging.info(
-                "Hesse still failed  - computing numerical Hessian "
-                "via finite differences at the converged minimum"
-            )
-            try:
-                _n_par = len(param_order)
-                _pvals = popt.copy()  # use saved minimum, not m.values
-
-                # Identify free parameters
-                _free_idx = [i for i, p in enumerate(param_order) if not m.fixed[p]]
-                _n_free_h = len(_free_idx)
-
-                _steps = np.array([_migrad_errs[param_order[i]] * 0.1 for i in _free_idx])
-                # Clamp steps to stay within bounds
-                for _si, _pi in enumerate(_free_idx):
-                    _max_step = min(
-                        _pvals[_pi] - bounds_lo[_pi],
-                        bounds_hi[_pi] - _pvals[_pi],
-                    ) * 0.5
-                    if _max_step > 0:
-                        _steps[_si] = min(_steps[_si], _max_step)
-                    if _steps[_si] <= 0:
-                        _steps[_si] = (bounds_hi[_pi] - bounds_lo[_pi]) * 1e-4
-
-                _hess_free = np.zeros((_n_free_h, _n_free_h))
-                _f0 = float(_nll(*_pvals))
-                # Diagonal elements (free params only)
-                for _si, _pi in enumerate(_free_idx):
-                    _pp = _pvals.copy(); _pp[_pi] += _steps[_si]
-                    _pm = _pvals.copy(); _pm[_pi] -= _steps[_si]
-                    _fp = float(_nll(*_pp))
-                    _fm = float(_nll(*_pm))
-                    _hess_free[_si, _si] = (_fp - 2 * _f0 + _fm) / (_steps[_si] ** 2)
-                # Off-diagonal elements (free params only)
-                for _si in range(_n_free_h):
-                    _pi = _free_idx[_si]
-                    for _sj in range(_si + 1, _n_free_h):
-                        _pj = _free_idx[_sj]
-                        _ppp = _pvals.copy(); _ppp[_pi] += _steps[_si]; _ppp[_pj] += _steps[_sj]
-                        _ppm = _pvals.copy(); _ppm[_pi] += _steps[_si]; _ppm[_pj] -= _steps[_sj]
-                        _pmp = _pvals.copy(); _pmp[_pi] -= _steps[_si]; _pmp[_pj] += _steps[_sj]
-                        _pmm = _pvals.copy(); _pmm[_pi] -= _steps[_si]; _pmm[_pj] -= _steps[_sj]
-                        _fpp = float(_nll(*_ppp))
-                        _fpm = float(_nll(*_ppm))
-                        _fmp = float(_nll(*_pmp))
-                        _fmm = float(_nll(*_pmm))
-                        _hess_free[_si, _sj] = (_fpp - _fpm - _fmp + _fmm) / (
-                            4.0 * _steps[_si] * _steps[_sj]
-                        )
-                        _hess_free[_sj, _si] = _hess_free[_si, _sj]
-
-                # Invert the free-parameter submatrix via eigenvalue
-                # regularisation and embed back into the full matrix.
-                try:
-                    _eigvals, _eigvecs = np.linalg.eigh(_hess_free)
-                    _eig_thresh = max(1e-10, 1e-6 * np.max(np.abs(_eigvals)))
-                    _n_clamped = int(np.sum(_eigvals < _eig_thresh))
-                    _eigvals_reg = np.where(
-                        _eigvals < _eig_thresh, _eig_thresh, _eigvals
+                # Reset parameter values to the saved minimum before retrying
+                for _pi, _pn in enumerate(param_order):
+                    m.values[_pn] = float(popt[_pi])
+                _at_bound = []
+                _relax_frac = 0.05  # expand bound by 5% of range
+                for _pi, _pn in enumerate(param_order):
+                    if m.fixed[_pn]:
+                        continue
+                    _val = float(popt[_pi])
+                    _lo, _hi = bounds_lo[_pi], bounds_hi[_pi]
+                    _rng = _hi - _lo
+                    _tol = _rng * 1e-4
+                    if _val <= _lo + _tol or _val >= _hi - _tol:
+                        _at_bound.append((_pn, _pi, _val, _lo, _hi))
+                        _new_lo = _lo - _relax_frac * _rng if _val <= _lo + _tol else _lo
+                        _new_hi = _hi + _relax_frac * _rng if _val >= _hi - _tol else _hi
+                        m.limits[_pn] = (_new_lo, _new_hi)
+                if _at_bound:
+                    logging.info(
+                        "Relaxed bounds for %d params at limits: %s",
+                        len(_at_bound),
+                        [t[0] for t in _at_bound],
                     )
-                    # Regularised inverse of the free submatrix
-                    _cov_free = (_eigvecs / _eigvals_reg) @ _eigvecs.T
-                    _cov_free = 0.5 * (_cov_free + _cov_free.T)
+                    m.hesse()
+                    cov_raw = m.covariance
+                    covariance_available = cov_raw is not None
+                    # Restore original bounds
+                    for _pn, _pi, _val, _lo, _hi in _at_bound:
+                        m.limits[_pn] = (_lo, _hi)
+                    if cov_raw is not None:
+                        _covariance_method = "hesse_relaxed"
+                        logging.info("Hesse succeeded after relaxing bounds")
 
-                    # For free params where numerical Hessian gives a
-                    # smaller variance than MIGRAD, use MIGRAD as a floor.
-                    for _si, _pi in enumerate(_free_idx):
-                        _pn = param_order[_pi]
-                        _migrad_var = _migrad_errs[_pn] ** 2
-                        if _cov_free[_si, _si] < _migrad_var:
-                            if _migrad_is_fallback.get(_pn, False):
-                                _cov_free[_si, _si] = _migrad_var
-                            else:
-                                _scale = np.sqrt(
-                                    _migrad_var / max(_cov_free[_si, _si], 1e-30)
-                                )
-                                _cov_free[_si, :] *= _scale
-                                _cov_free[:, _si] *= _scale
-
-                    # Embed into full covariance matrix (fixed params
-                    # get near-zero variance on the diagonal)
-                    cov_raw = np.zeros((_n_par, _n_par))
-                    for _si, _pi in enumerate(_free_idx):
-                        for _sj, _pj in enumerate(_free_idx):
-                            cov_raw[_pi, _pj] = _cov_free[_si, _sj]
-                    # Set fixed params to tiny variance
-                    for _pi in range(_n_par):
-                        if _pi not in _free_idx:
-                            cov_raw[_pi, _pi] = _migrad_errs[param_order[_pi]] ** 2
-
-                    covariance_available = True
-                    _covariance_method = "numerical_hessian"
-                    if _n_clamped > 0:
-                        logging.info(
-                            "Numerical Hessian: %d/%d free-param eigenvalues "
-                            "clamped (params at bounds). Off-diagonal "
-                            "correlations available for well-determined "
-                            "parameters.",
-                            _n_clamped, _n_free_h,
-                        )
-                    else:
-                        logging.info(
-                            "Numerical Hessian inversion succeeded  - "
-                            "full covariance with off-diagonal correlations"
-                        )
-                except np.linalg.LinAlgError:
-                    logging.warning("Numerical Hessian eigendecomposition failed")
-                    cov_raw = None
-            except Exception as _num_exc:
-                logging.warning(
-                    "Numerical Hessian computation failed: %s", _num_exc
+            # --- Strategy 3: numerical Hessian via finite differences ---
+            # Work on the FREE-parameter submatrix only to avoid fixed
+            # parameters (with ±1e-12 bounds) distorting eigenvalues.
+            if cov_raw is None:
+                logging.info(
+                    "Hesse still failed  - computing numerical Hessian "
+                    "via finite differences at the converged minimum"
                 )
-                cov_raw = None
+                try:
+                    _n_par = len(param_order)
+                    _pvals = popt.copy()  # use saved minimum, not m.values
 
-        # --- Final fallback: MIGRAD diagonal-only ---
-        if cov_raw is None:
-            _covariance_method = "migrad_diagonal"
-            n_nonzero = sum(1 for v in _migrad_errs.values() if v > 0)
-            logging.warning(
-                "All covariance strategies failed  - using MIGRAD approximate "
-                "errors as diagonal fallback (no correlations). "
-                "%d / %d params have non-zero MIGRAD errors.",
-                n_nonzero, len(param_order),
-            )
-            diag = np.array(
-                [_migrad_errs[p] ** 2 for p in param_order]
-            )
-            cov_raw = np.diag(diag)
+                    # Identify free parameters
+                    _free_idx = [i for i, p in enumerate(param_order) if not m.fixed[p]]
+                    _n_free_h = len(_free_idx)
+
+                    _steps = np.array([_migrad_errs[param_order[i]] * 0.1 for i in _free_idx])
+                    # Clamp steps to stay within bounds
+                    for _si, _pi in enumerate(_free_idx):
+                        _max_step = min(
+                            _pvals[_pi] - bounds_lo[_pi],
+                            bounds_hi[_pi] - _pvals[_pi],
+                        ) * 0.5
+                        if _max_step > 0:
+                            _steps[_si] = min(_steps[_si], _max_step)
+                        if _steps[_si] <= 0:
+                            _steps[_si] = (bounds_hi[_pi] - bounds_lo[_pi]) * 1e-4
+
+                    _hess_free = np.zeros((_n_free_h, _n_free_h))
+                    _f0 = float(_nll(*_pvals))
+                    # Diagonal elements (free params only)
+                    for _si, _pi in enumerate(_free_idx):
+                        _pp = _pvals.copy(); _pp[_pi] += _steps[_si]
+                        _pm = _pvals.copy(); _pm[_pi] -= _steps[_si]
+                        _fp = float(_nll(*_pp))
+                        _fm = float(_nll(*_pm))
+                        _hess_free[_si, _si] = (_fp - 2 * _f0 + _fm) / (_steps[_si] ** 2)
+                    # Off-diagonal elements (free params only)
+                    for _si in range(_n_free_h):
+                        _pi = _free_idx[_si]
+                        for _sj in range(_si + 1, _n_free_h):
+                            _pj = _free_idx[_sj]
+                            _ppp = _pvals.copy(); _ppp[_pi] += _steps[_si]; _ppp[_pj] += _steps[_sj]
+                            _ppm = _pvals.copy(); _ppm[_pi] += _steps[_si]; _ppm[_pj] -= _steps[_sj]
+                            _pmp = _pvals.copy(); _pmp[_pi] -= _steps[_si]; _pmp[_pj] += _steps[_sj]
+                            _pmm = _pvals.copy(); _pmm[_pi] -= _steps[_si]; _pmm[_pj] -= _steps[_sj]
+                            _fpp = float(_nll(*_ppp))
+                            _fpm = float(_nll(*_ppm))
+                            _fmp = float(_nll(*_pmp))
+                            _fmm = float(_nll(*_pmm))
+                            _hess_free[_si, _sj] = (_fpp - _fpm - _fmp + _fmm) / (
+                                4.0 * _steps[_si] * _steps[_sj]
+                            )
+                            _hess_free[_sj, _si] = _hess_free[_si, _sj]
+
+                    # Invert the free-parameter submatrix via eigenvalue
+                    # regularisation and embed back into the full matrix.
+                    try:
+                        _eigvals, _eigvecs = np.linalg.eigh(_hess_free)
+                        _eig_thresh = max(1e-10, 1e-6 * np.max(np.abs(_eigvals)))
+                        _n_clamped = int(np.sum(_eigvals < _eig_thresh))
+                        _eigvals_reg = np.where(
+                            _eigvals < _eig_thresh, _eig_thresh, _eigvals
+                        )
+                        # Regularised inverse of the free submatrix
+                        _cov_free = (_eigvecs / _eigvals_reg) @ _eigvecs.T
+                        _cov_free = 0.5 * (_cov_free + _cov_free.T)
+
+                        # For free params where numerical Hessian gives a
+                        # smaller variance than MIGRAD, use MIGRAD as a floor.
+                        for _si, _pi in enumerate(_free_idx):
+                            _pn = param_order[_pi]
+                            _migrad_var = _migrad_errs[_pn] ** 2
+                            if _cov_free[_si, _si] < _migrad_var:
+                                if _migrad_is_fallback.get(_pn, False):
+                                    _cov_free[_si, _si] = _migrad_var
+                                else:
+                                    _scale = np.sqrt(
+                                        _migrad_var / max(_cov_free[_si, _si], 1e-30)
+                                    )
+                                    _cov_free[_si, :] *= _scale
+                                    _cov_free[:, _si] *= _scale
+
+                        # Embed into full covariance matrix (fixed params
+                        # get near-zero variance on the diagonal)
+                        cov_raw = np.zeros((_n_par, _n_par))
+                        for _si, _pi in enumerate(_free_idx):
+                            for _sj, _pj in enumerate(_free_idx):
+                                cov_raw[_pi, _pj] = _cov_free[_si, _sj]
+                        # Set fixed params to tiny variance
+                        for _pi in range(_n_par):
+                            if _pi not in _free_idx:
+                                cov_raw[_pi, _pi] = _migrad_errs[param_order[_pi]] ** 2
+
+                        covariance_available = True
+                        _covariance_method = "numerical_hessian"
+                        if _n_clamped > 0:
+                            logging.info(
+                                "Numerical Hessian: %d/%d free-param eigenvalues "
+                                "clamped (params at bounds). Off-diagonal "
+                                "correlations available for well-determined "
+                                "parameters.",
+                                _n_clamped, _n_free_h,
+                            )
+                        else:
+                            logging.info(
+                                "Numerical Hessian inversion succeeded  - "
+                                "full covariance with off-diagonal correlations"
+                            )
+                    except np.linalg.LinAlgError:
+                        logging.warning("Numerical Hessian eigendecomposition failed")
+                        cov_raw = None
+                except Exception as _num_exc:
+                    logging.warning(
+                        "Numerical Hessian computation failed: %s", _num_exc
+                    )
+                    cov_raw = None
+
+            # --- Final fallback: MIGRAD diagonal-only ---
+            if cov_raw is None:
+                _covariance_method = "migrad_diagonal"
+                n_nonzero = sum(1 for v in _migrad_errs.values() if v > 0)
+                logging.warning(
+                    "All covariance strategies failed  - using MIGRAD approximate "
+                    "errors as diagonal fallback (no correlations). "
+                    "%d / %d params have non-zero MIGRAD errors.",
+                    n_nonzero, len(param_order),
+                )
+                diag = np.array(
+                    [_migrad_errs[p] ** 2 for p in param_order]
+                )
+                cov_raw = np.diag(diag)
 
         # --- Asymmetric errors via profile likelihood ---
         # Strategy:
         #   A. Try iminuit's native MINOS (proper re-profiling)
         #   B. Manual profile scan with re-minimisation at each point
         #   C. Projection scan (freeze other params  - last resort)
-        _minos_errors = None
-        _minos_method = "none"
         _free_params = [p for p in param_order if not m.fixed[p]]
-        if skip_minos:
+        if skip_covariance:
+            pass
+        elif skip_minos:
             logging.info("Skipping profile likelihood errors (skip_minos=True)")
             _minos_errors = {}
             _minos_method = "skipped"
@@ -2984,6 +3059,8 @@ def fit_spectrum(
                 f"Internal error: perr length ({len(perr)}) does not match "
                 f"param_order length ({len(param_order)})"
             )
+        _ub_popt = np.array([float(m.values[p]) for p in param_order], dtype=float)
+        _ub_fixed_mask = [bool(m.fixed[p]) for p in param_order]
         out["fit_valid"] = fit_valid
         for i, pname in enumerate(param_order):
             val = float(m.values[pname])
@@ -2999,6 +3076,16 @@ def fit_spectrum(
         if fix_F:
             out["F"] = F_val
             out["dF"] = 0.0
+        _bound_hits = _detect_bound_hits(
+            param_order,
+            _ub_popt,
+            bounds_lo,
+            bounds_hi,
+            _ub_fixed_mask,
+        )
+        out["_bound_hits"] = _bound_hits
+        out["_bound_hit_params"] = sorted(_bound_hits)
+        out["_n_bound_hits"] = int(len(_bound_hits))
         k = len(param_order)
         out["aic"] = float(2 * m.fval + 2 * k)
         out["likelihood_path"] = likelihood_path
@@ -3074,6 +3161,17 @@ def fit_spectrum(
             "(HESSE errors retained in d<param> keys)",
             len(_minos_errors),
         )
+
+    _bound_hits = _detect_bound_hits(
+        param_order,
+        popt,
+        bounds_lo,
+        bounds_hi,
+        _fixed_mask,
+    )
+    out["_bound_hits"] = _bound_hits
+    out["_bound_hit_params"] = sorted(_bound_hits)
+    out["_n_bound_hits"] = int(len(_bound_hits))
 
     if fix_sigma0:
         out["sigma0"] = sigma0_val

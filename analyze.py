@@ -44,6 +44,7 @@ Example:
 import argparse
 import sys
 import logging
+import os
 import random
 import time
 import warnings
@@ -2097,11 +2098,12 @@ def _build_template_from_aggregate(
     flags: dict,
     cfg: dict,
 ) -> tuple[dict, dict]:
-    """Build frozen-shape priors and fix flags from aggregate fit results.
+    """Build per-bin template priors and controls from aggregate fit results.
 
-    Returns (template_priors, template_flags) where all shape/resolution
-    parameters are fixed at their aggregate best-fit values and only
-    amplitudes, background, and (optionally) centroids float.
+    Returns ``(template_priors, template_flags)`` where most detector-shape
+    parameters remain frozen at their aggregate best-fit values, while the
+    core peak widths and core EMG tail scales can optionally move under
+    Gaussian penalties around the aggregate solution.
     """
     spectral_cfg = cfg.get("spectral_fit", {})
     time_fit_cfg = cfg.get("time_fit", {})
@@ -2115,6 +2117,38 @@ def _build_template_from_aggregate(
     iso_list = sorted(
         k[3:] for k in aggregate_params if k.startswith("mu_") and f"S_{k[3:]}" in aggregate_params
     )
+
+    _existing_penalties = tpl_flags.get("penalty_priors", {})
+    penalty_priors = (
+        dict(_existing_penalties) if isinstance(_existing_penalties, Mapping) else {}
+    )
+
+    def _positive_cfg(name: str, default: float) -> float:
+        try:
+            value = float(time_fit_cfg.get(name, default))
+        except (TypeError, ValueError):
+            value = default
+        if not np.isfinite(value) or value <= 0.0:
+            return float(default)
+        return float(value)
+
+    float_core_widths = bool(time_fit_cfg.get("template_float_core_widths", True))
+    core_width_prior_frac = _positive_cfg("template_core_width_prior_frac", 0.15)
+    core_width_prior_min = _positive_cfg("template_core_width_prior_min_mev", 0.005)
+    float_tail_scales = bool(time_fit_cfg.get("template_float_tail_scales", True))
+    tail_prior_frac = _positive_cfg("template_tail_prior_frac", 0.25)
+    tail_prior_min = _positive_cfg("template_tail_prior_min_mev", 0.01)
+
+    def _core_shape_penalty_sigma(key: str, value: float, old_sig: float) -> float | None:
+        if key.startswith("sigma_") and key[6:] in iso_list:
+            if not float_core_widths:
+                return None
+            return max(abs(value) * core_width_prior_frac, abs(old_sig), core_width_prior_min)
+        if key == "tau_shared" or (key.startswith("tau_") and key[4:] in iso_list):
+            if not float_tail_scales:
+                return None
+            return max(abs(value) * tail_prior_frac, abs(old_sig), tail_prior_min)
+        return None
 
     # ── Shape params to freeze ────────────────────────────────────
     _shape_prefixes = (
@@ -2145,8 +2179,18 @@ def _build_template_from_aggregate(
                 val_f = float(val)
                 if np.isfinite(val_f) and key in tpl_priors:
                     old_mu, old_sig = tpl_priors[key]
-                    tpl_priors[key] = (val_f, old_sig * 0.01)
-                    tpl_flags[f"fix_{key}"] = True
+                    penalty_sigma = _core_shape_penalty_sigma(
+                        key,
+                        val_f,
+                        float(old_sig),
+                    )
+                    if penalty_sigma is not None:
+                        tpl_priors[key] = (val_f, penalty_sigma)
+                        tpl_flags.pop(f"fix_{key}", None)
+                        penalty_priors[key] = [val_f, penalty_sigma]
+                    else:
+                        tpl_priors[key] = (val_f, old_sig * 0.01)
+                        tpl_flags[f"fix_{key}"] = True
             except (TypeError, ValueError):
                 pass
 
@@ -2156,8 +2200,18 @@ def _build_template_from_aggregate(
                 val_f = float(val)
                 if np.isfinite(val_f) and key in tpl_priors:
                     old_mu, old_sig = tpl_priors[key]
-                    tpl_priors[key] = (val_f, old_sig * 0.01)
-                    tpl_flags[f"fix_{key}"] = True
+                    penalty_sigma = _core_shape_penalty_sigma(
+                        key,
+                        val_f,
+                        float(old_sig),
+                    )
+                    if penalty_sigma is not None:
+                        tpl_priors[key] = (val_f, penalty_sigma)
+                        tpl_flags.pop(f"fix_{key}", None)
+                        penalty_priors[key] = [val_f, penalty_sigma]
+                    else:
+                        tpl_priors[key] = (val_f, old_sig * 0.01)
+                        tpl_flags[f"fix_{key}"] = True
             except (TypeError, ValueError):
                 pass
 
@@ -2233,46 +2287,64 @@ def _build_template_from_aggregate(
     else:
         tpl_flags.pop("fix_b1", None)
 
+    if penalty_priors:
+        tpl_flags["penalty_priors"] = penalty_priors
+
     return tpl_priors, tpl_flags
+
+
+def _should_store_template_bin_plot(
+    params: Mapping[str, Any],
+    plot_cfg: Mapping[str, Any],
+) -> bool:
+    """Return True when a per-bin template spectrum should be retained."""
+
+    if not bool(plot_cfg.get("plot_template_bin_fits", plot_cfg.get("plot_all_time_fit_series", False))):
+        return False
+    if not bool(plot_cfg.get("plot_template_bin_fits_bad_only", False)):
+        return True
+    try:
+        chi2_ndf = float(params.get("chi2_ndf", float("nan")))
+    except (TypeError, ValueError):
+        chi2_ndf = float("nan")
+    try:
+        n_bound_hits = int(params.get("_n_bound_hits", params.get("n_bound_hits", 0)) or 0)
+    except (TypeError, ValueError):
+        n_bound_hits = 0
+    chi2_min = float(plot_cfg.get("plot_template_bin_fits_bad_chi2_ndf_min", 3.0))
+    return (
+        not bool(params.get("fit_valid", False))
+        or n_bound_hits > 0
+        or (np.isfinite(chi2_ndf) and chi2_ndf > chi2_min)
+    )
+
+
+def _resolve_template_n_workers(time_fit_cfg: Mapping[str, Any]) -> int:
+    """Return the worker count for per-bin template fits."""
+
+    raw_value = time_fit_cfg.get("template_n_workers", "auto")
+    if isinstance(raw_value, str) and raw_value.strip().lower() == "auto":
+        cpu_count = os.cpu_count() or 1
+        return max(1, min(8, cpu_count // 2 if cpu_count > 1 else 1))
+    try:
+        workers = int(raw_value)
+    except (TypeError, ValueError):
+        workers = 1
+    return max(1, workers)
 
 
 def _fit_time_bins(
     df_spectrum: "pd.DataFrame",
     aggregate_result: "FitResult",
-    priors: dict,
-    flags: dict,
     cfg: dict,
-    cal_coeffs: tuple,
-    dnl_factors: np.ndarray | None = None,
-    fit_energy_range: tuple | None = None,
-    n_workers: int = 1,
+    spec_plot_data: Mapping[str, Any] | None = None,
 ) -> dict:
-    """Fit each time bin with shape params frozen from the aggregate fit.
+    """Fit each time bin using the aggregate spectral template.
 
-    Parameters
-    ----------
-    df_spectrum : DataFrame
-        Must have columns: ``energy_MeV``, ``adc``, ``timestamp``.
-    aggregate_result : FitResult
-        Aggregate spectral fit result.
-    priors, flags : dict
-        Original aggregate priors and flags.
-    cfg : dict
-        Full config.
-    cal_coeffs : tuple
-        (slope, intercept, a2, a3) calibration coefficients.
-    dnl_factors : array or None
-        DNL correction factors at full ADC resolution.
-    fit_energy_range : tuple or None
-        (E_lo, E_hi) in MeV for the fit window.
-    n_workers : int
-        Number of parallel workers.
-
-    Returns
-    -------
-    dict
-        ``isotope_series_fitted``: same format as ROI-based isotope_series_data
-        ``per_bin_diagnostics``: per-bin chi2/ndf, fit_valid, centroid values
+    The fast template path derives its per-bin priors and controls from the
+    aggregate fit payload stored on ``aggregate_result``. Per-bin fits share
+    the aggregate template structure while allowing selected amplitudes and
+    shape terms to move according to the configured template settings.
     """
     from fitting import fit_spectrum, FitResult as _FR
 
@@ -2287,13 +2359,25 @@ def _fit_time_bins(
     min_counts = int(time_fit_cfg.get("template_min_counts", 30))
     # Energy rebin factor for per-bin histograms
     rebin_factor = int(time_fit_cfg.get("template_rebin", 20))
+    n_workers = _resolve_template_n_workers(time_fit_cfg)
+    skip_covariance = bool(time_fit_cfg.get("template_skip_covariance", True))
 
     agg_params = aggregate_result.params
-    a, c, a2, a3 = cal_coeffs
+    seed_priors = agg_params.get("_template_priors", {})
+    seed_flags = agg_params.get("_template_flags", {})
+    if not isinstance(seed_priors, Mapping) or not isinstance(seed_flags, Mapping):
+        logger.warning(
+            "Template fitting skipped: aggregate fit payload is missing "
+            "template priors/flags"
+        )
+        return {"isotope_series_fitted": {}, "per_bin_diagnostics": []}
 
     # Build template priors/flags
     tpl_priors, tpl_flags = _build_template_from_aggregate(
-        agg_params, priors, flags, cfg,
+        agg_params,
+        dict(seed_priors),
+        dict(seed_flags),
+        cfg,
     )
 
     # ── Discover isotopes and determine which to fix vs float ─────
@@ -2303,11 +2387,17 @@ def _fit_time_bins(
     # Fix weak/extra peaks completely (not enough counts per bin)
     extra_peaks_cfg = spectral_cfg.get("extra_peaks", {})
     _extra_names = set(extra_peaks_cfg.keys()) if isinstance(extra_peaks_cfg, dict) else set()
-    _weak_isos = {"Po216", "Bi212", "Po210"} | _extra_names
+    _fixed_isotopes_cfg = time_fit_cfg.get("template_fixed_isotopes")
+    if isinstance(_fixed_isotopes_cfg, Sequence) and not isinstance(_fixed_isotopes_cfg, (str, bytes)):
+        _fixed_isotopes = {str(name) for name in _fixed_isotopes_cfg}
+    else:
+        _fixed_isotopes = set()
     fix_weak = time_fit_cfg.get("fix_weak_isotopes", True)
-    if fix_weak:
+    if not _fixed_isotopes and fix_weak:
+        _fixed_isotopes = {"Po216", "Bi212"} | _extra_names
+    if _fixed_isotopes:
         for iso in iso_list:
-            if iso in _weak_isos:
+            if iso in _fixed_isotopes:
                 s_key = f"S_{iso}"
                 s_val = agg_params.get(s_key)
                 if s_val is not None and s_key in tpl_priors:
@@ -2338,13 +2428,12 @@ def _fit_time_bins(
         return {"isotope_series_fitted": {}, "per_bin_diagnostics": []}
 
     # ── Energy bin edges (shared across all time bins) ────────────
-    if fit_energy_range:
-        e_lo, e_hi = fit_energy_range
-    else:
-        e_lo = float(np.nanmin(energies)) - 0.1
-        e_hi = float(np.nanmax(energies)) + 0.1
+    e_lo = float(np.nanmin(energies)) - 0.1
+    e_hi = float(np.nanmax(energies)) + 0.1
     # Create rebinned energy edges
     agg_bin_edges = agg_params.get("_plot_bin_edges")
+    if agg_bin_edges is None and isinstance(spec_plot_data, Mapping):
+        agg_bin_edges = spec_plot_data.get("bin_edges")
     if agg_bin_edges is not None:
         agg_bin_edges = np.asarray(agg_bin_edges, dtype=float)
         # Rebin by merging adjacent bins
@@ -2379,10 +2468,12 @@ def _fit_time_bins(
 
     logger.info(
         "Template fitting: %d time bins × %d energy bins, "
-        "%d isotopes (%d fixed), bin_width=%.0f s",
+        "%d isotopes (%d fixed), bin_width=%.0f s, workers=%d, skip_covariance=%s",
         n_time_bins, n_energy_bins, len(iso_list),
         sum(1 for iso in iso_list if f"fix_S_{iso}" in tpl_flags),
         bin_width_s,
+        n_workers,
+        skip_covariance,
     )
 
     # Count free params
@@ -2390,7 +2481,28 @@ def _fit_time_bins(
         1 for k in tpl_priors
         if f"fix_{k}" not in tpl_flags or not tpl_flags.get(f"fix_{k}", False)
     )
-    logger.info("Template fit: %d free params per bin (of %d total)", n_free, len(tpl_priors))
+    _template_penalties = tpl_flags.get("penalty_priors", {})
+    if isinstance(_template_penalties, Mapping):
+        _core_shape_penalty_keys = sorted(
+            key
+            for key in _template_penalties
+            if key == "tau_shared"
+            or key.startswith("tau_")
+            or key.startswith("sigma_")
+        )
+    else:
+        _core_shape_penalty_keys = []
+    logger.info(
+        "Template fit: %d free params per bin (of %d total), %d soft constraints",
+        n_free,
+        len(tpl_priors),
+        len(_core_shape_penalty_keys),
+    )
+    if _core_shape_penalty_keys:
+        logger.info(
+            "Template fit soft-constrained shape params: %s",
+            ", ".join(_core_shape_penalty_keys),
+        )
 
     # ── Disable DNL for per-bin (already corrected in aggregate) ──
     import copy
@@ -2439,6 +2551,7 @@ def _fit_time_bins(
                 bin_edges=energy_edges,
                 pre_binned_hist=hist,
                 skip_minos=True,
+                skip_covariance=skip_covariance,
             )
         except Exception as exc:
             logger.debug("Bin %d fit failed: %s", bin_idx, exc)
@@ -2451,10 +2564,31 @@ def _fit_time_bins(
         else:
             return None
 
-        if not params.get("fit_valid", True):
+        fit_valid = bool(params.get("fit_valid", False))
+        if not fit_valid:
             logger.debug("Bin %d fit invalid", bin_idx)
-            # Still return ROI fallback
-            return None
+
+        raw_bound_hits = params.get("_bound_hits", {})
+        if isinstance(raw_bound_hits, Mapping):
+            bound_hits = {
+                str(name): dict(meta)
+                for name, meta in raw_bound_hits.items()
+                if isinstance(meta, Mapping)
+            }
+        else:
+            bound_hits = {}
+        raw_bound_hit_params = params.get("_bound_hit_params", ())
+        if isinstance(raw_bound_hit_params, (str, bytes)):
+            bound_hit_params = [str(raw_bound_hit_params)]
+        elif isinstance(raw_bound_hit_params, Sequence):
+            bound_hit_params = [str(name) for name in raw_bound_hit_params]
+        else:
+            bound_hit_params = sorted(bound_hits)
+        try:
+            n_bound_hits = int(params.get("_n_bound_hits", len(bound_hit_params)))
+        except (TypeError, ValueError):
+            n_bound_hits = len(bound_hit_params)
+        n_bound_hits = max(int(n_bound_hits), len(bound_hit_params), len(bound_hits))
 
         # Extract per-isotope fitted counts + uncertainties
         bin_result = {
@@ -2462,7 +2596,10 @@ def _fit_time_bins(
             "dt": dt,
             "n_events": n_events,
             "chi2_ndf": params.get("chi2_ndf", float("nan")),
-            "fit_valid": params.get("fit_valid", False),
+            "fit_valid": fit_valid,
+            "n_bound_hits": n_bound_hits,
+            "bound_hit_params": bound_hit_params,
+            "bound_hits": bound_hits,
             "counts": {},
             "counts_unc": {},
             "centroids": {},
@@ -2482,11 +2619,19 @@ def _fit_time_bins(
     # Execute fits (serial or parallel)
     bin_results = []
     if n_workers > 1:
-        from concurrent.futures import ThreadPoolExecutor
+        from concurrent.futures import ThreadPoolExecutor, as_completed
         with ThreadPoolExecutor(max_workers=n_workers) as pool:
-            futures = [pool.submit(_fit_one_bin, i) for i in range(n_time_bins)]
-            for fut in futures:
-                bin_results.append(fut.result())
+            futures = {pool.submit(_fit_one_bin, i): i for i in range(n_time_bins)}
+            bin_results = [None] * n_time_bins
+            for completed, fut in enumerate(as_completed(futures), start=1):
+                idx = futures[fut]
+                bin_results[idx] = fut.result()
+                if completed % 25 == 0 or completed == n_time_bins:
+                    logger.info(
+                        "Template fit progress: %d / %d bins",
+                        completed,
+                        n_time_bins,
+                    )
     else:
         for i in range(n_time_bins):
             bin_results.append(_fit_one_bin(i))
@@ -2513,8 +2658,13 @@ def _fit_time_bins(
             "chi2_ndf": r["chi2_ndf"],
             "fit_valid": r["fit_valid"],
             "n_events": r["n_events"],
+            "n_bound_hits": r.get("n_bound_hits", 0),
+            "bound_hit_params": r.get("bound_hit_params", []),
+            "bound_hits": r.get("bound_hits", {}),
             "centroids": r.get("centroids", {}),
         })
+        if not r.get("fit_valid", False):
+            continue
         for iso, counts in r["counts"].items():
             entries = iso_series.setdefault(iso, [])
             entry = {
@@ -2539,6 +2689,79 @@ def _fit_time_bins(
             if isinstance(v, (int, float)) and not k.startswith("_")
         },
     }
+
+
+def _summarize_template_fit_results(
+    template_fit_results: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Build the summary payload for template time-bin fitting."""
+
+    if template_fit_results is None:
+        return {"extraction_method": "template", "status": "failed_or_empty"}
+
+    meta: dict[str, Any] = {
+        "extraction_method": "template",
+        "status": "success",
+        "n_time_bins": template_fit_results.get("n_time_bins", 0),
+        "n_fitted": template_fit_results.get("n_fitted", 0),
+        "n_valid": template_fit_results.get("n_valid", 0),
+    }
+    diag = template_fit_results.get("per_bin_diagnostics", [])
+    if diag:
+        chi2s = [
+            d["chi2_ndf"]
+            for d in diag
+            if d.get("fit_valid") and np.isfinite(d.get("chi2_ndf", float("nan")))
+        ]
+        if chi2s:
+            meta["chi2_ndf_median"] = float(np.median(chi2s))
+            meta["chi2_ndf_mean"] = float(np.mean(chi2s))
+            meta["chi2_ndf_std"] = float(np.std(chi2s))
+            meta["chi2_gt_10"] = int(sum(val > 10.0 for val in chi2s))
+            meta["chi2_gt_100"] = int(sum(val > 100.0 for val in chi2s))
+        meta["bins_with_any_bound_hits"] = int(
+            sum(int(d.get("n_bound_hits", 0) or 0) > 0 for d in diag)
+        )
+        meta["total_bound_hits"] = int(
+            sum(int(d.get("n_bound_hits", 0) or 0) for d in diag)
+        )
+        meta["shift_hit_limit"] = int(
+            sum(bool(d.get("shift_hit_limit", False)) for d in diag)
+        )
+        bound_hit_param_counts: dict[str, int] = {}
+        non_centroid_bound_hit_param_counts: dict[str, int] = {}
+        bins_with_non_centroid_bound_hits = 0
+        for entry in diag:
+            params = entry.get("bound_hit_params", [])
+            if isinstance(params, (str, bytes)):
+                params = [params]
+            elif not isinstance(params, Sequence):
+                params = []
+            has_non_centroid = False
+            for param_name in (str(param) for param in params):
+                bound_hit_param_counts[param_name] = (
+                    bound_hit_param_counts.get(param_name, 0) + 1
+                )
+                if not param_name.startswith("mu_"):
+                    non_centroid_bound_hit_param_counts[param_name] = (
+                        non_centroid_bound_hit_param_counts.get(param_name, 0) + 1
+                    )
+                    has_non_centroid = True
+            if has_non_centroid:
+                bins_with_non_centroid_bound_hits += 1
+        if bound_hit_param_counts:
+            meta["bound_hit_param_counts"] = dict(
+                sorted(bound_hit_param_counts.items(), key=lambda item: (-item[1], item[0]))
+            )
+        if non_centroid_bound_hit_param_counts:
+            meta["non_centroid_bound_hit_param_counts"] = dict(
+                sorted(
+                    non_centroid_bound_hit_param_counts.items(),
+                    key=lambda item: (-item[1], item[0]),
+                )
+            )
+        meta["bins_with_non_centroid_bound_hits"] = int(bins_with_non_centroid_bound_hits)
+    return meta
 
 
 def _model_uncertainty(centers, widths, fit_obj, iso, cfg, normalise):
@@ -7980,6 +8203,8 @@ def main(argv=None):
                     _agg_result.params["_plot_bin_edges"] = np.asarray(
                         _agg_plot_edges, dtype=float
                     ).tolist()
+                _agg_result.params["_template_priors"] = dict(priors_spec)
+                _agg_result.params["_template_flags"] = dict(spec_flags)
 
                 logger.info(
                     "Running per-bin template fitting (extraction_method=template)"
@@ -7987,13 +8212,8 @@ def main(argv=None):
                 template_fit_results = _fit_time_bins(
                     df_spectrum,
                     _agg_result,
-                    priors_spec,
-                    spec_flags,
                     cfg,
-                    cal_coeffs=(a, c, a2, a3),
-                    dnl_factors=None,   # DNL already corrected in aggregate
-                    fit_energy_range=fit_energy_range,
-                    n_workers=1,
+                    spec_plot_data=spec_plot_data,
                 )
                 # Write result to diagnostic file
                 try:
@@ -8705,30 +8925,9 @@ def main(argv=None):
 
     # ── Persist template fitting metadata into summary ──────────────
     if _extraction_method == "template":
-        if template_fit_results is not None:
-            _tpl_meta = {
-                "extraction_method": "template",
-                "status": "success",
-                "n_time_bins": template_fit_results.get("n_time_bins", 0),
-                "n_fitted": template_fit_results.get("n_fitted", 0),
-                "n_valid": template_fit_results.get("n_valid", 0),
-            }
-            _tpl_diag = template_fit_results.get("per_bin_diagnostics", [])
-            if _tpl_diag:
-                _chi2s = [
-                    d["chi2_ndf"] for d in _tpl_diag
-                    if d.get("fit_valid") and np.isfinite(d.get("chi2_ndf", float("nan")))
-                ]
-                if _chi2s:
-                    _tpl_meta["chi2_ndf_median"] = float(np.median(_chi2s))
-                    _tpl_meta["chi2_ndf_mean"] = float(np.mean(_chi2s))
-                    _tpl_meta["chi2_ndf_std"] = float(np.std(_chi2s))
-        else:
-            _tpl_meta = {
-                "extraction_method": "template",
-                "status": "failed_or_empty",
-                "have_spectral": _have_spectral,
-            }
+        _tpl_meta = _summarize_template_fit_results(template_fit_results)
+        if template_fit_results is None:
+            _tpl_meta["have_spectral"] = _have_spectral
         summary["template_fitting"] = _tpl_meta
         summary_updated = True
         # Write immediately so template metadata persists even if later
@@ -8807,4 +9006,3 @@ def main(argv=None):
 
 if __name__ == "__main__":
     main()
-

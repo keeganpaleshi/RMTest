@@ -272,6 +272,17 @@ This section controls the time-series decay fits.
 - `background_guess`, `n0_guess_fraction`
 - `fix_background_b_first_pass`: enable the first fixed-background pass before the free-background refit
 - `background_b_fixed_value`: explicit value for the first pass; if omitted, the baseline Po-214 rate is used
+- `extraction_method`: `roi` for simple window counting or `template` for per-bin spectral template fits
+- `template_rebin`, `template_min_counts`: control template-bin histogramming and the minimum statistics needed to attempt a fit
+- `template_n_workers`: number of parallel workers for template time bins; `auto` uses a conservative half-core default capped at 8
+- `template_skip_covariance`: skip per-bin HESSE / numerical-Hessian recovery and use fast diagonal MIGRAD errors instead
+- `float_centroids`: allow per-bin centroid motion around the aggregate fit
+- `template_float_core_widths`: allow per-bin `sigma_*` values to move under Gaussian penalties around the aggregate fit
+- `template_core_width_prior_frac`, `template_core_width_prior_min_mev`: width of those per-bin `sigma_*` priors
+- `template_float_tail_scales`: allow per-bin `tau_*` or `tau_shared` values to move under Gaussian penalties around the aggregate fit
+- `template_tail_prior_frac`, `template_tail_prior_min_mev`: width of those per-bin `tau` priors
+- `fix_weak_isotopes`: legacy shorthand for fixing only very weak auxiliary isotopes in template mode
+- `template_fixed_isotopes`: explicit isotope names to fix in template mode; takes precedence over `fix_weak_isotopes`
 
 The pipeline also accepts the simplified standalone-fitter schema:
 
@@ -289,6 +300,7 @@ Important details:
 - Custom half-lives affect both the fit and the overlaid model curves.
 - For multi-day or multi-month monitoring, you can set `hl_po214` and `hl_po218` to the radon half-life so the fit tracks the slowly varying parent activity.
 - `settling_time_s` was removed from the configuration; use `--settle-s` instead.
+- In template mode, shelf/halo/background shape terms remain frozen to the aggregate spectral fit by default, while `sigma_*` and `tau_*` can be softly constrained instead of hard-fixed.
 
 Long-timescale example:
 

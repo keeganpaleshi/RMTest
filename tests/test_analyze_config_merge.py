@@ -2422,8 +2422,225 @@ def test_time_fields_written_back(tmp_path, monkeypatch):
     ]
 
 
+def test_build_template_from_aggregate_soft_constrains_core_sigma_and_tau():
+    aggregate_params = {
+        "mu_Po214": 7.687,
+        "sigma_Po214": 0.13,
+        "tau_shared": 0.08,
+        "S_Po214": 500.0,
+        "sigma0": 0.10,
+        "F": 0.0,
+        "b1": 1.2,
+    }
+    priors = {
+        "mu_Po214": (7.687, 0.01),
+        "sigma_Po214": (0.12, 0.03),
+        "tau_shared": (0.09, 0.05),
+        "S_Po214": (500.0, 100.0),
+        "sigma0": (0.10, 0.01),
+        "F": (0.0, 0.01),
+        "b1": (1.0, 1.0),
+    }
+
+    tpl_priors, tpl_flags = analyze._build_template_from_aggregate(
+        aggregate_params,
+        priors,
+        {},
+        {
+            "time_fit": {
+                "float_centroids": True,
+                "template_float_core_widths": True,
+                "template_core_width_prior_frac": 0.15,
+                "template_core_width_prior_min_mev": 0.005,
+                "template_float_tail_scales": True,
+                "template_tail_prior_frac": 0.25,
+                "template_tail_prior_min_mev": 0.01,
+            }
+        },
+    )
+
+    assert tpl_priors["sigma_Po214"][0] == pytest.approx(0.13)
+    assert tpl_priors["sigma_Po214"][1] == pytest.approx(0.03)
+    assert "fix_sigma_Po214" not in tpl_flags
+    assert tpl_priors["tau_shared"][0] == pytest.approx(0.08)
+    assert tpl_priors["tau_shared"][1] == pytest.approx(0.05)
+    assert "fix_tau_shared" not in tpl_flags
+    assert tpl_flags["penalty_priors"]["sigma_Po214"] == pytest.approx([0.13, 0.03])
+    assert tpl_flags["penalty_priors"]["tau_shared"] == pytest.approx([0.08, 0.05])
+    assert tpl_flags["fix_sigma0"] is True
 
 
+def test_fit_time_bins_applies_centroid_controls(monkeypatch):
+    import fitting
+
+    timestamps = pd.date_range(
+        "2024-01-01T00:00:00Z",
+        periods=40,
+        freq="1min",
+        tz="UTC",
+    )
+    df = pd.DataFrame(
+        {
+            "timestamp": timestamps,
+            "energy_MeV": np.full(40, 7.69),
+            "adc": np.arange(40, dtype=float),
+        }
+    )
+    aggregate_result = FitResult(
+        {
+            "mu_Po214": 7.687,
+            "sigma_Po214": 0.05,
+            "S_Po214": 500.0,
+            "S_bkg": 10.0,
+            "sigma0": 0.10,
+            "F": 0.0,
+        },
+        None,
+        0,
+    )
+
+    captured = {}
+
+    def fake_fit_spectrum(
+        energies,
+        priors,
+        flags=None,
+        bin_edges=None,
+        bounds=None,
+        pre_binned_hist=None,
+        skip_minos=False,
+        **kwargs,
+    ):
+        captured["bounds"] = bounds
+        captured["penalty_priors"] = dict(flags.get("penalty_priors", {}))
+        captured["skip_covariance"] = kwargs.get("skip_covariance")
+        return {
+            "fit_valid": True,
+            "chi2_ndf": 4.2,
+            "mu_Po214": 7.707,
+            "S_Po214": 42.0,
+            "dS_Po214": 3.0,
+            "_n_bound_hits": 2,
+            "_bound_hit_params": ["mu_Po214", "S_Po214"],
+            "_bound_hits": {
+                "mu_Po214": {"side": "upper"},
+                "S_Po214": {"side": "upper"},
+            },
+            "_plot_edges": [7.5, 7.6, 7.7, 7.8],
+            "_plot_hist": [1.0, 2.0, 1.0],
+            "_plot_centers": [7.55, 7.65, 7.75],
+            "_plot_model_total": [1.0, 2.0, 1.0],
+            "_plot_components": {"Po214": [1.0, 2.0, 1.0]},
+        }
+
+    monkeypatch.setattr(fitting, "fit_spectrum", fake_fit_spectrum)
+
+    aggregate_result.params["_template_priors"] = {
+        "mu_Po214": (7.687, 0.01),
+        "sigma_Po214": (0.05, 0.01),
+        "S_Po214": (500.0, 100.0),
+        "S_bkg": (10.0, 5.0),
+        "sigma0": (0.10, 0.01),
+        "F": (0.0, 0.01),
+        "b1": (0.0, 1.0),
+    }
+    aggregate_result.params["_template_flags"] = {"background_model": "none"}
+
+    cfg = {
+        "spectral_fit": {"background_model": "none"},
+        "time_fit": {
+            "template_min_counts": 10,
+            "template_n_workers": 1,
+            "template_skip_covariance": True,
+            "float_centroids": True,
+            "centroid_shift_bound_kev": 20.0,
+            "centroid_shift_prior_sigma_kev": None,
+        },
+        "plotting": {
+            "plot_time_bin_width_s": 3600,
+            "plot_template_bin_fits": True,
+            "plot_template_bin_fits_bad_only": True,
+        },
+    }
+    spec_plot_data = {
+        "flags": {"background_model": "none"},
+        "bin_edges": np.array([7.5, 7.6, 7.7, 7.8], dtype=float),
+    }
+
+    result = analyze._fit_time_bins(
+        df,
+        aggregate_result,
+        cfg,
+        spec_plot_data=spec_plot_data,
+    )
+
+    assert captured["bounds"] is None
+    assert captured["skip_covariance"] is True
+    assert result["per_bin_diagnostics"][0]["n_bound_hits"] == 2
+    assert result["per_bin_diagnostics"][0]["bound_hit_params"] == ["mu_Po214", "S_Po214"]
+    assert captured["penalty_priors"]["sigma_Po214"] == pytest.approx([0.05, 0.01])
 
 
+def test_should_store_template_bin_plot_when_non_centroid_bound_hit_present():
+    assert analyze._should_store_template_bin_plot(
+        {"fit_valid": True, "chi2_ndf": 1.2, "_n_bound_hits": 1},
+        {
+            "plot_template_bin_fits": True,
+            "plot_template_bin_fits_bad_only": True,
+            "plot_template_bin_fits_bad_chi2_ndf_min": 3.0,
+        },
+    )
 
+
+def test_resolve_template_n_workers_auto_and_explicit(monkeypatch):
+    monkeypatch.setattr(analyze.os, "cpu_count", lambda: 16)
+    assert analyze._resolve_template_n_workers({}) == 8
+    assert analyze._resolve_template_n_workers({"template_n_workers": "auto"}) == 8
+    assert analyze._resolve_template_n_workers({"template_n_workers": 3}) == 3
+    assert analyze._resolve_template_n_workers({"template_n_workers": 0}) == 1
+
+
+def test_summarize_template_fit_results_counts_bound_hits():
+    summary = analyze._summarize_template_fit_results(
+        {
+            "n_time_bins": 3,
+            "n_fitted": 3,
+            "n_valid": 2,
+            "plot_entries": [{"bin_index": 0}],
+            "centroid_control": {"limit_kev": 20.0},
+            "per_bin_diagnostics": [
+                {
+                    "fit_valid": True,
+                    "chi2_ndf": 2.0,
+                    "centroid_shift_kev": 5.0,
+                    "shift_hit_limit": False,
+                    "n_bound_hits": 2,
+                    "bound_hit_params": ["S_Po214", "mu_Po214"],
+                },
+                {
+                    "fit_valid": True,
+                    "chi2_ndf": 12.0,
+                    "centroid_shift_kev": 10.0,
+                    "shift_hit_limit": True,
+                    "n_bound_hits": 1,
+                    "bound_hit_params": ["S_Po214"],
+                },
+                {
+                    "fit_valid": False,
+                    "chi2_ndf": float("nan"),
+                    "centroid_shift_kev": float("nan"),
+                    "shift_hit_limit": False,
+                    "n_bound_hits": 0,
+                    "bound_hit_params": [],
+                },
+            ],
+        }
+    )
+
+    assert summary["bins_with_any_bound_hits"] == 2
+    assert summary["total_bound_hits"] == 3
+    assert summary["bound_hit_param_counts"] == {"S_Po214": 2, "mu_Po214": 1}
+    assert summary["non_centroid_bound_hit_param_counts"] == {"S_Po214": 2}
+    assert summary["bins_with_non_centroid_bound_hits"] == 2
+    assert summary["shift_hit_limit"] == 1
+    assert summary["chi2_gt_10"] == 1
