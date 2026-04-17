@@ -280,6 +280,8 @@ This section controls the time-series decay fits.
 - `background_b_fixed_value`: explicit value for the first pass; if omitted, the baseline Po-214 rate is used
 - `extraction_method`: `roi` or `template`
 - `template_rebin`, `template_min_counts`: per-bin template-fit histogram controls
+- `template_n_workers`: number of parallel workers for template time bins; `auto` uses a conservative half-core default capped at 8
+- `template_skip_covariance`: skip per-bin HESSE / numerical-Hessian recovery and use fast diagonal MIGRAD errors instead
 - `float_centroids`: allow per-bin spectral centroids to move around the aggregate fit
 - `centroid_shift_bound_kev`: initial half-width for per-bin centroid movement
 - `centroid_shift_prior_sigma_kev`: Gaussian penalty width for centroid motion; `null` defaults to half of `centroid_shift_bound_kev`

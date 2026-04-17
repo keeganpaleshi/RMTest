@@ -487,6 +487,8 @@ time_fit:
   # Template fitting options (only used when extraction_method: template)
   template_rebin: 20          # energy rebin factor vs aggregate (coarser for statistics)
   template_min_counts: 30     # minimum events per time bin to attempt fit
+  template_n_workers: auto    # auto -> min(8, half of logical CPUs)
+  template_skip_covariance: true  # use fast MIGRAD diagonal errors for per-bin template fits
   float_centroids: true       # allow per-bin centroids to move around the aggregate fit
   centroid_shift_bound_kev: 20.0   # initial symmetric centroid limit around the aggregate fit
   centroid_shift_prior_sigma_kev: null   # null => use half the initial bound as the Gaussian penalty width

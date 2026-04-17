@@ -2474,6 +2474,7 @@ def test_fit_time_bins_applies_centroid_controls(monkeypatch):
     ):
         captured["bounds"] = bounds
         captured["penalty_priors"] = dict(flags.get("penalty_priors", {}))
+        captured["skip_covariance"] = kwargs.get("skip_covariance")
         return {
             "fit_valid": True,
             "chi2_ndf": 4.2,
@@ -2499,6 +2500,8 @@ def test_fit_time_bins_applies_centroid_controls(monkeypatch):
         "spectral_fit": {"background_model": "none"},
         "time_fit": {
             "template_min_counts": 10,
+            "template_n_workers": 1,
+            "template_skip_covariance": True,
             "float_centroids": True,
             "centroid_shift_bound_kev": 20.0,
             "centroid_shift_prior_sigma_kev": None,
@@ -2526,6 +2529,7 @@ def test_fit_time_bins_applies_centroid_controls(monkeypatch):
     assert hi == pytest.approx(7.707)
     assert captured["penalty_priors"]["mu_Po214"][0] == pytest.approx(7.687)
     assert captured["penalty_priors"]["mu_Po214"][1] == pytest.approx(0.01)
+    assert captured["skip_covariance"] is True
     assert result["per_bin_diagnostics"][0]["shift_hit_limit"] is True
     assert result["per_bin_diagnostics"][0]["centroid_shift_kev"] == pytest.approx(20.0)
     assert result["per_bin_diagnostics"][0]["n_bound_hits"] == 2
@@ -2544,6 +2548,14 @@ def test_should_store_template_bin_plot_when_non_centroid_bound_hit_present():
             "plot_template_bin_fits_bad_chi2_ndf_min": 3.0,
         },
     )
+
+
+def test_resolve_template_n_workers_auto_and_explicit(monkeypatch):
+    monkeypatch.setattr(analyze.os, "cpu_count", lambda: 16)
+    assert analyze._resolve_template_n_workers({}) == 8
+    assert analyze._resolve_template_n_workers({"template_n_workers": "auto"}) == 8
+    assert analyze._resolve_template_n_workers({"template_n_workers": 3}) == 3
+    assert analyze._resolve_template_n_workers({"template_n_workers": 0}) == 1
 
 
 def test_summarize_template_fit_results_counts_bound_hits():
@@ -2647,7 +2659,6 @@ def test_prefer_template_fit_prefers_non_clipped_retry():
         best_hits_bound=True,
         candidate_hits_bound=False,
     )
-
 
 
 

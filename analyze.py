@@ -44,6 +44,7 @@ Example:
 import argparse
 import sys
 import logging
+import os
 import random
 import time
 import warnings
@@ -2352,6 +2353,20 @@ def _resolve_template_fixed_isotopes(
     return set()
 
 
+def _resolve_template_n_workers(time_fit_cfg: Mapping[str, Any]) -> int:
+    """Return the worker count for per-bin template fits."""
+
+    raw_value = time_fit_cfg.get("template_n_workers", "auto")
+    if isinstance(raw_value, str) and raw_value.strip().lower() == "auto":
+        cpu_count = os.cpu_count() or 1
+        return max(1, min(8, cpu_count // 2 if cpu_count > 1 else 1))
+    try:
+        workers = int(raw_value)
+    except (TypeError, ValueError):
+        workers = 1
+    return max(1, workers)
+
+
 def _template_centroid_control(
     agg_params: Mapping[str, Any],
     iso_list: Sequence[str],
@@ -2577,6 +2592,8 @@ def _fit_time_bins(
     min_counts = int(time_fit_cfg.get("template_min_counts", 30))
     # Energy rebin factor for per-bin histograms
     rebin_factor = int(time_fit_cfg.get("template_rebin", 20))
+    n_workers = _resolve_template_n_workers(time_fit_cfg)
+    skip_covariance = bool(time_fit_cfg.get("template_skip_covariance", True))
 
     agg_params = dict(getattr(aggregate_result, "params", {}))
     seed_priors, seed_flags = _template_seed_from_aggregate(
@@ -2659,6 +2676,8 @@ def _fit_time_bins(
         e_hi = float(np.nanmax(energies)) + 0.1
     # Create rebinned energy edges
     agg_bin_edges = agg_params.get("_plot_bin_edges")
+    if agg_bin_edges is None and isinstance(spec_plot_data, Mapping):
+        agg_bin_edges = spec_plot_data.get("bin_edges")
     if agg_bin_edges is not None:
         agg_bin_edges = np.asarray(agg_bin_edges, dtype=float)
         # Rebin by merging adjacent bins
@@ -2693,13 +2712,16 @@ def _fit_time_bins(
 
     logger.info(
         "Template fitting: %d time bins × %d energy bins, "
-        "%d isotopes (%d fixed), bin_width=%.0f s, centroid_limit=%.1f keV",
+        "%d isotopes (%d fixed), bin_width=%.0f s, centroid_limit=%.1f keV, "
+        "workers=%d, skip_covariance=%s",
         n_time_bins,
         n_energy_bins,
         len(iso_list),
         sum(1 for iso in iso_list if f"fix_S_{iso}" in tpl_flags),
         bin_width_s,
         base_shift_limit_kev,
+        n_workers,
+        skip_covariance,
     )
 
     # Count free params
@@ -2767,6 +2789,7 @@ def _fit_time_bins(
                     bounds=mu_bounds,
                     pre_binned_hist=hist,
                     skip_minos=True,
+                    skip_covariance=skip_covariance,
                 )
             except Exception as exc:
                 logger.debug("Bin %d fit failed: %s", bin_idx, exc)
@@ -2900,10 +2923,26 @@ def _fit_time_bins(
 
     # Execute fits (serial or parallel)
     bin_results = []
-    for i in range(n_time_bins):
-        bin_results.append(_fit_one_bin(i))
-        if (i + 1) % 100 == 0:
-            logger.info("Template fit progress: %d / %d bins", i + 1, n_time_bins)
+    if n_workers > 1:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        with ThreadPoolExecutor(max_workers=n_workers) as pool:
+            futures = {pool.submit(_fit_one_bin, i): i for i in range(n_time_bins)}
+            bin_results = [None] * n_time_bins
+            for completed, fut in enumerate(as_completed(futures), start=1):
+                idx = futures[fut]
+                bin_results[idx] = fut.result()
+                if completed % 25 == 0 or completed == n_time_bins:
+                    logger.info(
+                        "Template fit progress: %d / %d bins",
+                        completed,
+                        n_time_bins,
+                    )
+    else:
+        for i in range(n_time_bins):
+            bin_results.append(_fit_one_bin(i))
+            if (i + 1) % 100 == 0:
+                logger.info("Template fit progress: %d / %d bins", i + 1, n_time_bins)
 
     # ── Assemble output ───────────────────────────────────────────
     n_success = sum(1 for r in bin_results if r is not None)
