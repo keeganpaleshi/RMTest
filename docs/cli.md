@@ -69,7 +69,6 @@ See [baseline.md](baseline.md) for the subtraction model and summary fields.
 
 - `--iso {radon,po218,po214}`: choose whether the final radon estimate uses both daughters or a single progeny
 - `--background-model {linear,loglin_unit}`: opt into the alternate background parameterization
-- `--likelihood {current,extended}`: opt into the alternate spectral likelihood
 - `--hl-po214`, `--hl-po218`: override the time-fit half-lives in seconds
 - `--eff-fixed`: force efficiencies to 1.0
 - `--hierarchical-summary OUTFILE`: combine prior run summaries with the hierarchical fitter
@@ -115,12 +114,11 @@ python analyze.py --config assay.yaml --input assay.csv --output-dir results \
     --baseline-mode all
 ```
 
-### Experimental background and likelihood
+### Experimental background model
 
 ```bash
 python analyze.py --input merged_data.csv \
-    --background-model loglin_unit \
-    --likelihood extended
+    --background-model loglin_unit
 ```
 
 ### Reproduce a previous run

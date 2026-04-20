@@ -2,21 +2,19 @@
 
 This page collects the higher-level modes that change how RMTest interprets or combines the data. Most of them are opt-in and leave the historical defaults unchanged unless you enable them explicitly.
 
-## Background and Likelihood Modes
+## Background Modes
 
-Two experimental switches are exposed through the `analysis` section or the CLI:
+An alternate background parameterization is exposed through the `analysis` section or the CLI:
 
 - `background_model: linear` or `loglin_unit`
-- `likelihood: current` or `extended`
 
-The defaults preserve the historical behavior. `loglin_unit` uses a unit-area log-linear background shape scaled by a positive `S_bkg` parameter, and `extended` includes the Poisson event-count term in the likelihood.
+The defaults preserve the historical behavior. `loglin_unit` uses a unit-area log-linear background shape scaled by a positive `S_bkg` parameter.
 
 CLI example:
 
 ```bash
 python analyze.py --input merged_data.csv \
-    --background-model loglin_unit \
-    --likelihood extended
+    --background-model loglin_unit
 ```
 
 Configuration example:
@@ -24,10 +22,9 @@ Configuration example:
 ```yaml
 analysis:
   background_model: loglin_unit
-  likelihood: extended
 ```
 
-The spectral fitter now uses a binned Poisson likelihood by default for numerical stability. The legacy unbinned path remains available through `spectral_fit.unbinned_likelihood: true`. The chosen spectral path is written to `summary.json` as `spectral_fit.likelihood_path`.
+The spectral fitter uses a binned Poisson likelihood at the configured spectral binning resolution. The chosen spectral path is written to `summary.json` as `spectral_fit.likelihood_path`.
 
 ## Radon vs. Single-Progeny Mode
 

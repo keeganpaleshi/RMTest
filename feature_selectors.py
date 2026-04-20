@@ -1,4 +1,4 @@
-"""Factory helpers for optional background and likelihood models.
+"""Factory helpers for optional background models.
 
 These helpers expose experimental feature-flagged behaviour without changing
 the default execution path.  Callers can supply an object ``opts`` providing
@@ -8,7 +8,7 @@ implementations.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable
 
 import numpy as np
 
@@ -56,56 +56,4 @@ def select_background_factory(opts: Any, Emin: float, Emax: float) -> Callable:
     return lambda E, params: _existing_linear_bkg(E, params)
 
 
-def select_neg_loglike(opts: Any) -> Callable:
-    """Return the negative log-likelihood function based on ``opts``."""
-
-    if getattr(opts, "likelihood", "") == "extended":
-        from likelihood_ext import neg_loglike_extended as _neg_loglike_extended
-
-        def neg_loglike(
-            E: Sequence[float],
-            intensity_fn: Callable[[Sequence[float], Mapping[str, float]], np.ndarray],
-            params: Mapping[str, float],
-            *,
-            area_keys: Sequence[str],
-            clip: float = 1e-300,
-            background_model: str | None = None,
-            background_integral: float | None = None,
-        ) -> float:
-            missing = [k for k in area_keys if k not in params]
-            if missing:
-                got = sorted(params.keys())
-                needed = ", ".join(area_keys)
-                raise ValueError(
-                    f"likelihood=extended requires params {{{needed}}}; got: {got}"
-                )
-            return _neg_loglike_extended(
-                E,
-                intensity_fn,
-                params,
-                area_keys=area_keys,
-                clip=clip,
-                background_model=background_model,
-                background_integral=background_integral,
-            )
-
-        return neg_loglike
-
-    def neg_loglike_current(
-        E: Sequence[float],
-        intensity_fn: Callable[[Sequence[float], Mapping[str, float]], np.ndarray],
-        params: Mapping[str, float],
-        *,
-        area_keys: Sequence[str] | None = None,
-        clip: float = 1e-300,
-    ) -> float:
-        """Simple unextended unbinned negative log-likelihood."""
-
-        lam = np.clip(intensity_fn(E, params), clip, np.inf)
-        return float(-np.sum(np.log(lam)))
-
-    return neg_loglike_current
-
-
-__all__ = ["select_background_factory", "select_neg_loglike"]
-
+__all__ = ["select_background_factory"]

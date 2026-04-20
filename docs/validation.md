@@ -106,18 +106,15 @@ This is the first place to check when a run technically completed but behaved un
 
 ## Local Validation and Tests
 
-Run the test suite with:
+The preferred validation path is a real pipeline run on representative data followed by inspection of `summary.json`, spectrum plots, and time-series plots.
+
+The automated test suite is intentionally minimal and only keeps a couple of guardrails for silent normalization mistakes that are easy to miss by eye.
+
+Run the smoke checks with:
 
 ```bash
 pip install -r requirements.txt
-pytest -v
-```
-
-For local setup you can also run:
-
-```bash
-scripts/setup_tests.sh
-pytest -v
+pytest -q
 ```
 
 To verify the old `_seconds` helper is gone, search for the exact helper name instead of the generic `total_seconds()` call:

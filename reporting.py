@@ -104,9 +104,7 @@ def build_diagnostics(
     diagnostics["selected_analysis_modes"] = {
         "background_model": summary.get("analysis", {}).get("background_model"),
         "spectral_fit": {
-            "unbinned_likelihood": bool(
-                cfg.get("spectral_fit", {}).get("unbinned_likelihood", False)
-            )
+            "binning_mode": cfg.get("spectral_fit", {}).get("spectral_binning_mode")
         },
         "plotting": {
             "time_bin_mode": bin_mode,

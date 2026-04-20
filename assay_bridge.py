@@ -680,99 +680,438 @@ def _subtract_skid_background(
     return (net_atoms, net_atoms_unc, net_activity, net_activity_unc)
 
 
+def _normalise_downtime_periods(
+    downtime_periods: Sequence[Mapping[str, Any]] | Sequence[tuple[float, float]] | None,
+) -> list[tuple[float, float]]:
+    """Return sorted downtime periods as ``[(start_unix, end_unix), ...]``."""
+
+    periods: list[tuple[float, float]] = []
+    if not downtime_periods:
+        return periods
+
+    for period in downtime_periods:
+        if isinstance(period, Mapping):
+            start_raw = period.get("start_unix", period.get("start"))
+            end_raw = period.get("end_unix", period.get("end"))
+        elif isinstance(period, Sequence) and len(period) == 2:
+            start_raw, end_raw = period
+        else:
+            continue
+        try:
+            start_f = float(start_raw)
+            end_f = float(end_raw)
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(start_f) and np.isfinite(end_f) and end_f > start_f:
+            periods.append((start_f, end_f))
+
+    periods.sort()
+    return periods
+
+
+def _interval_overlaps_periods(
+    start_unix: float,
+    end_unix: float,
+    periods: Sequence[tuple[float, float]],
+) -> bool:
+    """Return True when ``[start_unix, end_unix)`` overlaps any downtime period."""
+
+    for period_start, period_end in periods:
+        if start_unix < period_end and end_unix > period_start:
+            return True
+    return False
+
+
+def _target_inside_period(
+    target_unix: float,
+    periods: Sequence[tuple[float, float]],
+) -> bool:
+    """Return True when ``target_unix`` lies inside a downtime period."""
+
+    for period_start, period_end in periods:
+        if period_start <= target_unix <= period_end:
+            return True
+    return False
+
+
+def _combine_isotope_activity_bins(
+    isotope_series: dict[str, list[dict[str, float]]],
+    isotopes: Sequence[str],
+    cal_window_rel_unc: Mapping[str, float] | None,
+) -> list[dict[str, float]]:
+    """Combine isotope time slices into shared per-bin activity measurements."""
+
+    if not isotope_series:
+        return []
+
+    if cal_window_rel_unc is None:
+        cal_window_rel_unc = {}
+
+    combined: dict[tuple[float, float], dict[str, float]] = {}
+    for iso in isotopes:
+        entries = isotope_series.get(iso, [])
+        for entry in entries:
+            try:
+                t = float(entry.get("t"))
+                dt = float(entry.get("dt"))
+                counts = float(entry.get("counts", 0.0))
+            except (TypeError, ValueError):
+                continue
+            if not np.isfinite(t) or not np.isfinite(dt) or dt <= 0.0:
+                continue
+            if not np.isfinite(counts):
+                continue
+
+            key = (t, dt)
+            item = combined.setdefault(
+                key,
+                {
+                    "t": t,
+                    "dt": dt,
+                    "start": t - 0.5 * dt,
+                    "end": t + 0.5 * dt,
+                    "counts_total": 0.0,
+                    "var_counts_total": 0.0,
+                },
+            )
+
+            counts_var = max(counts, 0.0)
+            counts_unc = entry.get("counts_unc")
+            if counts_unc is not None:
+                try:
+                    counts_unc_f = float(counts_unc)
+                except (TypeError, ValueError):
+                    counts_unc_f = float("nan")
+                if np.isfinite(counts_unc_f) and counts_unc_f >= 0.0:
+                    counts_var = counts_unc_f ** 2
+
+            cal_rel = float(cal_window_rel_unc.get(iso, 0.0))
+            if np.isfinite(cal_rel) and cal_rel > 0.0:
+                rate = counts / dt
+                counts_var += (rate * cal_rel * dt) ** 2
+
+            item["counts_total"] += counts
+            item["var_counts_total"] += counts_var
+
+    merged: list[dict[str, float]] = []
+    for item in combined.values():
+        dt = float(item["dt"])
+        counts_total = float(item["counts_total"])
+        var_counts_total = float(item["var_counts_total"])
+        rate = counts_total / dt if dt > 0 else math.nan
+        rate_unc = math.sqrt(max(var_counts_total, 0.0)) / dt if dt > 0 else math.nan
+        item["rate"] = rate
+        item["rate_unc"] = rate_unc
+        merged.append(item)
+
+    merged.sort(key=lambda rec: rec["t"])
+    return merged
+
+
+def _build_activity_segments(
+    merged_bins: Sequence[Mapping[str, float]],
+    downtime_periods: Sequence[tuple[float, float]],
+) -> list[list[dict[str, float]]]:
+    """Split merged activity bins into contiguous segments."""
+
+    if not merged_bins:
+        return []
+
+    valid_bins: list[dict[str, float]] = []
+    for entry in merged_bins:
+        start = float(entry["start"])
+        end = float(entry["end"])
+        if _interval_overlaps_periods(start, end, downtime_periods):
+            continue
+        valid_bins.append(dict(entry))
+    if not valid_bins:
+        return []
+
+    median_dt = float(
+        np.median([float(entry["dt"]) for entry in valid_bins if entry.get("dt", 0.0) > 0.0])
+    ) if valid_bins else 0.0
+    if not np.isfinite(median_dt) or median_dt <= 0.0:
+        median_dt = 3600.0
+    gap_split_s = max(1.5 * median_dt, 300.0)
+
+    segments: list[list[dict[str, float]]] = [[valid_bins[0]]]
+    for entry in valid_bins[1:]:
+        prev = segments[-1][-1]
+        gap_s = float(entry["start"]) - float(prev["end"])
+        if gap_s > gap_split_s or _interval_overlaps_periods(prev["end"], entry["start"], downtime_periods):
+            segments.append([entry])
+        else:
+            segments[-1].append(entry)
+    return segments
+
+
+def _extract_activity_fixed_window(
+    isotope_series: dict[str, list[dict[str, float]]],
+    target_unix: float,
+    window_days: float,
+    isotopes: Sequence[str],
+    cal_window_rel_unc: Mapping[str, float] | None,
+) -> tuple[float, float, dict[str, Any]]:
+    """Legacy fixed-window measured-activity extraction."""
+
+    half_window_s = float(window_days) * 86400.0
+    t_lo = target_unix - half_window_s
+    t_hi = target_unix + half_window_s
+
+    merged_bins = _combine_isotope_activity_bins(
+        isotope_series,
+        isotopes,
+        cal_window_rel_unc,
+    )
+    selected = [
+        entry for entry in merged_bins
+        if t_lo <= float(entry["t"]) <= t_hi
+    ]
+    if not selected:
+        return math.nan, math.nan, {
+            "status": "no_data_in_window",
+            "mode": "fixed",
+            "target_unix": float(target_unix),
+            "window_start_unix": float(t_lo),
+            "window_end_unix": float(t_hi),
+            "n_bins": 0,
+        }
+
+    total_counts = sum(float(entry["counts_total"]) for entry in selected)
+    total_var = sum(float(entry["var_counts_total"]) for entry in selected)
+    total_dt = sum(float(entry["dt"]) for entry in selected)
+    if total_dt <= 0.0:
+        return math.nan, math.nan, {
+            "status": "invalid_live_time",
+            "mode": "fixed",
+            "target_unix": float(target_unix),
+            "window_start_unix": float(t_lo),
+            "window_end_unix": float(t_hi),
+            "n_bins": len(selected),
+        }
+
+    rate = total_counts / total_dt
+    rate_unc = math.sqrt(max(total_var, 0.0)) / total_dt
+    details = {
+        "status": "ok",
+        "mode": "fixed",
+        "target_unix": float(target_unix),
+        "window_start_unix": float(min(float(entry["start"]) for entry in selected)),
+        "window_end_unix": float(max(float(entry["end"]) for entry in selected)),
+        "requested_half_window_hours": half_window_s / 3600.0,
+        "n_bins": len(selected),
+        "rate_bq": float(rate),
+        "rate_unc_bq": float(rate_unc),
+    }
+    return rate, rate_unc, details
+
+
+def _extract_activity_adaptive(
+    isotope_series: dict[str, list[dict[str, float]]],
+    target_unix: float,
+    isotopes: Sequence[str],
+    cal_window_rel_unc: Mapping[str, float] | None,
+    assay_rel_unc: float | None,
+    match_cfg: Mapping[str, Any] | None,
+    downtime_periods: Sequence[tuple[float, float]],
+) -> tuple[float, float, dict[str, Any]]:
+    """Adaptively accumulate bins until the measured uncertainty is adequate."""
+
+    cfg = match_cfg if isinstance(match_cfg, Mapping) else {}
+    rel_unc_factor = float(cfg.get("adaptive_target_rel_unc_factor", 1.0))
+    max_window_hours = float(
+        cfg.get(
+            "adaptive_max_window_hours",
+            cfg.get("match_window_hours", 24.0),
+        )
+    )
+    min_window_hours = float(cfg.get("adaptive_min_window_hours", 0.0))
+    min_bins = max(1, int(cfg.get("adaptive_min_bins", 1)))
+    default_target_rel_unc = float(cfg.get("adaptive_default_target_rel_unc", 0.25))
+
+    if not np.isfinite(max_window_hours) or max_window_hours <= 0.0:
+        max_window_hours = 24.0
+    if not np.isfinite(min_window_hours) or min_window_hours < 0.0:
+        min_window_hours = 0.0
+
+    assay_rel_unc_val = float(assay_rel_unc) if assay_rel_unc is not None else float("nan")
+    if np.isfinite(assay_rel_unc_val) and assay_rel_unc_val > 0.0:
+        target_rel_unc = assay_rel_unc_val * rel_unc_factor
+    else:
+        target_rel_unc = default_target_rel_unc
+    if not np.isfinite(target_rel_unc) or target_rel_unc <= 0.0:
+        target_rel_unc = default_target_rel_unc
+
+    merged_bins = _combine_isotope_activity_bins(
+        isotope_series,
+        isotopes,
+        cal_window_rel_unc,
+    )
+    if not merged_bins:
+        return math.nan, math.nan, {
+            "status": "no_series",
+            "mode": "adaptive",
+            "target_unix": float(target_unix),
+        }
+
+    if _target_inside_period(target_unix, downtime_periods):
+        return math.nan, math.nan, {
+            "status": "target_in_downtime",
+            "mode": "adaptive",
+            "target_unix": float(target_unix),
+            "target_iso": _epoch_to_iso_utc(target_unix),
+        }
+
+    segments = _build_activity_segments(merged_bins, downtime_periods)
+    if not segments:
+        return math.nan, math.nan, {
+            "status": "no_usable_bins",
+            "mode": "adaptive",
+            "target_unix": float(target_unix),
+        }
+
+    segment: list[dict[str, float]] | None = None
+    for candidate in segments:
+        seg_start = float(candidate[0]["start"])
+        seg_end = float(candidate[-1]["end"])
+        if seg_start <= target_unix <= seg_end:
+            segment = candidate
+            break
+    if segment is None:
+        return math.nan, math.nan, {
+            "status": "target_outside_coverage",
+            "mode": "adaptive",
+            "target_unix": float(target_unix),
+            "target_iso": _epoch_to_iso_utc(target_unix),
+            "coverage_start_unix": float(segments[0][0]["start"]),
+            "coverage_end_unix": float(segments[-1][-1]["end"]),
+        }
+
+    max_window_s = max_window_hours * 3600.0
+    min_window_s = min_window_hours * 3600.0
+    candidates = [
+        entry for entry in segment
+        if abs(float(entry["t"]) - target_unix) <= max_window_s
+    ]
+    if not candidates:
+        return math.nan, math.nan, {
+            "status": "no_bins_within_max_window",
+            "mode": "adaptive",
+            "target_unix": float(target_unix),
+            "target_iso": _epoch_to_iso_utc(target_unix),
+            "max_window_hours": float(max_window_hours),
+        }
+
+    ordered = sorted(
+        candidates,
+        key=lambda entry: (
+            abs(float(entry["t"]) - target_unix),
+            abs(float(entry["start"]) - target_unix),
+            float(entry["t"]),
+        ),
+    )
+
+    used: list[dict[str, float]] = []
+    total_counts = 0.0
+    total_var = 0.0
+    total_dt = 0.0
+    best_details: dict[str, Any] | None = None
+
+    for entry in ordered:
+        used.append(entry)
+        total_counts += float(entry["counts_total"])
+        total_var += float(entry["var_counts_total"])
+        total_dt += float(entry["dt"])
+        if total_dt <= 0.0:
+            continue
+
+        rate = total_counts / total_dt
+        rate_unc = math.sqrt(max(total_var, 0.0)) / total_dt
+        rel_unc = (
+            abs(rate_unc / rate)
+            if np.isfinite(rate) and rate != 0.0 and np.isfinite(rate_unc)
+            else float("inf")
+        )
+        window_start = min(float(item["start"]) for item in used)
+        window_end = max(float(item["end"]) for item in used)
+        window_hours = (window_end - window_start) / 3600.0
+        best_details = {
+            "status": "insufficient_precision",
+            "mode": "adaptive",
+            "target_unix": float(target_unix),
+            "target_iso": _epoch_to_iso_utc(target_unix),
+            "window_start_unix": float(window_start),
+            "window_end_unix": float(window_end),
+            "window_hours": float(window_hours),
+            "n_bins": len(used),
+            "rate_bq": float(rate),
+            "rate_unc_bq": float(rate_unc),
+            "achieved_rel_unc": float(rel_unc),
+            "target_rel_unc": float(target_rel_unc),
+            "max_window_hours": float(max_window_hours),
+        }
+        if len(used) < min_bins or window_hours < min_window_hours:
+            continue
+        if np.isfinite(rel_unc) and rel_unc <= target_rel_unc:
+            best_details["status"] = "ok"
+            return rate, rate_unc, best_details
+
+    if best_details is None:
+        return math.nan, math.nan, {
+            "status": "no_accumulation",
+            "mode": "adaptive",
+            "target_unix": float(target_unix),
+            "target_iso": _epoch_to_iso_utc(target_unix),
+        }
+    return math.nan, math.nan, best_details
+
+
 def _extract_activity_at_time(
     isotope_series: dict[str, list[dict[str, float]]],
     target_unix: float,
     window_days: float = 1.0,
     isotopes: Sequence[str] = ("Po214", "Po218"),
     cal_window_rel_unc: dict[str, float] | None = None,
-) -> tuple[float, float]:
-    """Extract time-matched measured activity from per-bin time series.
+    *,
+    assay_rel_unc: float | None = None,
+    match_cfg: Mapping[str, Any] | None = None,
+    downtime_periods: Sequence[Mapping[str, Any]] | Sequence[tuple[float, float]] | None = None,
+    return_details: bool = False,
+) -> tuple[float, float] | tuple[float, float, dict[str, Any]]:
+    """Extract time-matched measured activity from per-bin time slices.
 
-    Finds bins whose center falls within *window_days* of *target_unix*
-    and computes the average count rate (= activity in Bq) across those
-    bins, combining the requested isotopes.
-
-    Parameters
-    ----------
-    isotope_series : dict
-        ``{"Po214": [{"t": unix_s, "counts": N, "dt": width_s}, ...], ...}``
-    target_unix : float
-        Unix timestamp of the assay date.
-    window_days : float
-        Half-width of the matching window in days.
-    isotopes : sequence of str
-        Isotopes to combine (summed counts / summed live time).
-    cal_window_rel_unc : dict, optional
-        Per-isotope fractional uncertainty from energy calibration
-        window efficiency.
-
-    Returns
-    -------
-    (activity_bq, uncertainty_bq)
-        Uncertainty includes Poisson + calibration window systematic.
+    In ``fixed`` mode, combine every bin whose center lies inside the
+    requested half-window. In ``adaptive`` mode, grow outward from the assay
+    time until the measured relative uncertainty is comparable to the assay
+    uncertainty, while respecting downtime gaps and time-coverage limits.
     """
     if not isotope_series:
-        return (math.nan, math.nan)
+        details = {"status": "no_series", "mode": "adaptive"}
+        return (math.nan, math.nan, details) if return_details else (math.nan, math.nan)
 
-    if cal_window_rel_unc is None:
-        cal_window_rel_unc = {}
+    cfg = match_cfg if isinstance(match_cfg, Mapping) else {}
+    mode = str(cfg.get("time_match_mode", "adaptive")).strip().lower()
+    downtime = _normalise_downtime_periods(downtime_periods)
+    if mode == "fixed":
+        rate, rate_unc, details = _extract_activity_fixed_window(
+            isotope_series,
+            target_unix,
+            window_days,
+            isotopes,
+            cal_window_rel_unc,
+        )
+    else:
+        rate, rate_unc, details = _extract_activity_adaptive(
+            isotope_series,
+            target_unix,
+            isotopes,
+            cal_window_rel_unc,
+            assay_rel_unc,
+            cfg,
+            downtime,
+        )
 
-    half_window_s = window_days * 86400.0
-    t_lo = target_unix - half_window_s
-    t_hi = target_unix + half_window_s
-
-    # Collect per-isotope count rates, then sum.
-    # Each isotope shares the same time bins so dt must not be double-counted.
-    iso_rates: list[tuple[float, float]] = []  # (rate, rate_unc) per isotope
-
-    for iso in isotopes:
-        entries = isotope_series.get(iso, [])
-        iso_counts = 0.0
-        iso_dt = 0.0
-        iso_var_fitted = 0.0   # sum of squared fitted uncertainties
-        has_fitted_unc = False
-        for entry in entries:
-            t = entry.get("t")
-            if t is None or not np.isfinite(t):
-                continue
-            if t_lo <= t <= t_hi:
-                c = entry.get("counts", 0.0)
-                dt = entry.get("dt", 0.0)
-                if np.isfinite(c) and np.isfinite(dt) and dt > 0:
-                    iso_counts += c
-                    iso_dt += dt
-                    # Use fitted uncertainty when available (template fitting)
-                    _cu = entry.get("counts_unc")
-                    if _cu is not None:
-                        try:
-                            _cu_f = float(_cu)
-                            if math.isfinite(_cu_f) and _cu_f > 0:
-                                iso_var_fitted += _cu_f ** 2
-                                has_fitted_unc = True
-                        except (TypeError, ValueError):
-                            pass
-        if iso_dt > 0:
-            r = iso_counts / iso_dt
-            # Counts uncertainty: use fitted when available, else Poisson
-            if has_fitted_unc and iso_var_fitted > 0:
-                counts_unc = math.sqrt(iso_var_fitted) / iso_dt
-            else:
-                counts_unc = math.sqrt(iso_counts) / iso_dt if iso_counts > 0 else 0.0
-            # Calibration window systematic (energy scale uncertainty)
-            cal_rel = float(cal_window_rel_unc.get(iso, 0.0))
-            cal_unc = r * cal_rel
-            r_unc = math.sqrt(counts_unc**2 + cal_unc**2)
-            iso_rates.append((r, r_unc))
-
-    if not iso_rates:
-        return (math.nan, math.nan)
-
-    # Sum isotope rates (each is an independent activity measurement)
-    rate = sum(r for r, _ in iso_rates)
-    rate_unc = math.sqrt(sum(u**2 for _, u in iso_rates))
-
-    return (rate, rate_unc)
+    return (rate, rate_unc, details) if return_details else (rate, rate_unc)
 
 
 def _compute_emanation_baseline(
@@ -946,6 +1285,23 @@ def compute_bridge(
     # Extract fallback (dataset-averaged) measured activity from summary
     meas_bq_avg, meas_unc_avg = extract_measured_activity(summary, bridge_cfg)
     use_time_match = isotope_series is not None and len(isotope_series) > 0
+    match_mode = str(
+        bridge_cfg.get(
+            "time_match_mode",
+            "adaptive" if use_time_match else "fixed",
+        )
+    ).strip().lower()
+    fallback_to_dataset_average = bool(
+        bridge_cfg.get(
+            "fallback_to_dataset_average",
+            False if match_mode == "adaptive" else True,
+        )
+    )
+    downtime_periods = _normalise_downtime_periods(
+        (summary.get("downtime") or {}).get("periods")
+        if isinstance(summary, Mapping)
+        else None
+    )
     # Match window: prefer hours (tighter), fall back to days for compat
     if "match_window_hours" in bridge_cfg:
         match_window_days = float(bridge_cfg["match_window_hours"]) / 24.0
@@ -955,7 +1311,7 @@ def compute_bridge(
     # Auto-widen match window for coarse time bins (e.g. daily bins).
     # If the bin width exceeds the match window, the bin center may land
     # outside ±match_window of the assay time and nothing ever matches.
-    if use_time_match and isotope_series:
+    if use_time_match and isotope_series and match_mode == "fixed":
         _sample_dts: list[float] = []
         for _iso_entries in isotope_series.values():
             for _e in _iso_entries[:5]:   # sample first few entries
@@ -1094,11 +1450,10 @@ def compute_bridge(
             net_atoms = math.nan
             net_atoms_unc = math.nan
 
-        # Time-matched or fallback measured activity
-        # Default match time is configurable (default 18:00 = post-spike).
-        # If the assay_date has no time component (midnight), shift to
-        # the default match time.
+        # Time-matched or fallback measured activity.
         time_matched = False
+        target_unix = math.nan
+        match_details: dict[str, Any] = {}
         _sens_results: list[tuple[float, float, float]] = []
         if use_time_match and assay.assay_date is not None:
             dt_assay = assay.assay_date
@@ -1106,7 +1461,6 @@ def compute_bridge(
                 _def_time = bridge_cfg.get("default_match_time", "18:00")
                 _def_hh, _def_mm = map(int, str(_def_time).split(":"))
                 dt_assay = dt_assay.replace(hour=_def_hh, minute=_def_mm)
-            # Per-assay time override (e.g. pre-spike assays at 05:30)
             if "match_time" in _override:
                 _hh, _mm = map(int, _override["match_time"].split(":"))
                 dt_assay = dt_assay.replace(hour=_hh, minute=_mm)
@@ -1116,68 +1470,93 @@ def compute_bridge(
                 )
             target_unix = dt_assay.timestamp()
 
-            # Per-assay match window override (half-width in hours)
             if "match_window_hours" in _override:
                 _per_assay_mwd = float(_override["match_window_hours"]) / 24.0
             else:
                 _per_assay_mwd = match_window_days
 
-            # Multi-window sensitivity: try several windows (in hours),
-            # use configured one for the actual bridge, log all.
-            _sensitivity_hours = [0.5, 1.0, 2.0, 6.0, 24.0]
-            _sens_results: list[tuple[float, float, float]] = []
-            for _sh in _sensitivity_hours:
-                _sw_d = _sh / 24.0  # convert to days for internal API
-                _sm, _su = _extract_activity_at_time(
-                    isotope_series, target_unix, _sw_d,
-                    cal_window_rel_unc=cal_window_rel_unc,
-                )
-                if not math.isnan(_sm):
-                    _sens_results.append((_sh, _sm, _su))
-            if _sens_results:
-                _sens_str = ", ".join(
-                    f"{h:.1f}h: {m:.4f}±{u:.4f} Bq"
-                    for h, m, u in _sens_results
-                )
-                logger.info(
-                    "Time-match sensitivity %s (%s): %s",
-                    assay.label[:40], dt_assay.strftime("%Y-%m-%d %H:%M"),
-                    _sens_str,
-                )
-
-            meas_bq, meas_unc = _extract_activity_at_time(
-                isotope_series, target_unix, _per_assay_mwd,
-                cal_window_rel_unc=cal_window_rel_unc,
+            assay_rel_unc = (
+                ref_unc / ref_bq
+                if np.isfinite(ref_unc) and np.isfinite(ref_bq) and ref_bq > 0.0
+                else math.nan
             )
-            if not math.isnan(meas_bq):
-                time_matched = True
-            else:
-                logger.warning(
-                    "No time-matched data for %s (%s) within ±%.1f h — "
-                    "falling back to dataset average",
-                    assay.label[:40], dt_assay.isoformat(),
-                    _per_assay_mwd * 24,
-                )
-                meas_bq, meas_unc = meas_bq_avg, meas_unc_avg
-                if math.isnan(meas_bq):
-                    logger.warning(
-                        "Dataset average also unavailable for %s — SKIPPING",
-                        assay.label[:40],
+
+            if match_mode == "fixed":
+                _sensitivity_hours = [0.5, 1.0, 2.0, 6.0, 24.0]
+                for _sh in _sensitivity_hours:
+                    _sw_d = _sh / 24.0
+                    _sm, _su = _extract_activity_at_time(
+                        isotope_series,
+                        target_unix,
+                        _sw_d,
+                        cal_window_rel_unc=cal_window_rel_unc,
+                        match_cfg={"time_match_mode": "fixed"},
                     )
-                    continue
+                    if not math.isnan(_sm):
+                        _sens_results.append((_sh, _sm, _su))
+                if _sens_results:
+                    _sens_str = ", ".join(
+                        f"{h:.1f}h: {m:.4f}±{u:.4f} Bq"
+                        for h, m, u in _sens_results
+                    )
+                    logger.info(
+                        "Time-match sensitivity %s (%s): %s",
+                        assay.label[:40], dt_assay.strftime("%Y-%m-%d %H:%M"),
+                        _sens_str,
+                    )
+
+            meas_bq, meas_unc, match_details = _extract_activity_at_time(
+                isotope_series,
+                target_unix,
+                _per_assay_mwd,
+                cal_window_rel_unc=cal_window_rel_unc,
+                assay_rel_unc=assay_rel_unc,
+                match_cfg=bridge_cfg,
+                downtime_periods=downtime_periods,
+                return_details=True,
+            )
+            time_matched = not math.isnan(meas_bq)
+            if not time_matched:
+                status = match_details.get("status", "no_match")
+                if fallback_to_dataset_average:
+                    logger.warning(
+                        "No usable time match for %s (%s; status=%s) — "
+                        "falling back to dataset average",
+                        assay.label[:40],
+                        dt_assay.isoformat(),
+                        status,
+                    )
+                    meas_bq, meas_unc = meas_bq_avg, meas_unc_avg
+                    match_details["fallback_used"] = True
+                    match_details["fallback_reason"] = status
+                    if math.isnan(meas_bq):
+                        logger.warning(
+                            "Dataset average also unavailable for %s — SKIPPING",
+                            assay.label[:40],
+                        )
+                else:
+                    logger.warning(
+                        "No usable time match for %s (%s; status=%s) — not using dataset average",
+                        assay.label[:40],
+                        dt_assay.isoformat(),
+                        status,
+                    )
         else:
-            # No time-series: use dataset-averaged activity
             meas_bq, meas_unc = meas_bq_avg, meas_unc_avg
+            match_details = {
+                "status": "dataset_average",
+                "mode": "none",
+            }
             if math.isnan(meas_bq):
                 logger.warning(
                     "No time-series and no dataset average for %s — SKIPPING",
                     assay.label[:40],
                 )
-                continue
-            logger.info(
-                "Using dataset-averaged activity for %s: %.4f ± %.4f Bq",
-                assay.label[:40], meas_bq, meas_unc,
-            )
+            else:
+                logger.info(
+                    "Using dataset-averaged activity for %s: %.4f ± %.4f Bq",
+                    assay.label[:40], meas_bq, meas_unc,
+                )
 
         # ── Detector emanation baseline (for diagnostics only) ──
         # The monitor detects radon from its own surfaces.  For efficiency
@@ -1199,6 +1578,51 @@ def compute_bridge(
                 assay.label[:40], eman_sub,
                 " (diluted)" if is_ui_connected and dilute_for_ui else "",
             )
+
+        if math.isnan(meas_bq) or math.isnan(meas_unc):
+            entry = {
+                "assay_label": assay.label,
+                "assay_date": assay.assay_date.isoformat() if assay.assay_date else None,
+                "source_file": assay.source_file,
+                "column_index": assay.column_index,
+                "volume_l": volume_l,
+                "gross_atoms_in_monitor": _safe_float(gross_atoms_monitor),
+                "gross_atoms_in_monitor_unc": _safe_float(gross_atoms_monitor_unc),
+                "skid_background_subtracted": skid_subtracted,
+                "net_atoms_in_monitor": _safe_float(net_atoms) if skid_subtracted else _safe_float(gross_atoms_monitor),
+                "net_atoms_in_monitor_unc": _safe_float(net_atoms_unc) if skid_subtracted else _safe_float(gross_atoms_monitor_unc),
+                "reference_activity_bq": _safe_float(ref_bq),
+                "reference_activity_unc_bq": _safe_float(ref_unc),
+                "measured_activity_bq": None,
+                "measured_activity_unc_bq": None,
+                "emanation_subtracted_bq": _safe_float(eman_sub),
+                "bridge_factor": None,
+                "bridge_factor_unc": None,
+                "detection_efficiency": None,
+                "detection_efficiency_unc": None,
+                "time_matched": False,
+                "time_match_mode": match_mode if use_time_match else "none",
+                "time_match_details": match_details or None,
+                "time_match_sensitivity": (
+                    {f"{h:.1f}h": {"activity_bq": _safe_float(m), "unc_bq": _safe_float(u)}
+                     for h, m, u in _sens_results}
+                    if _sens_results else None
+                ),
+                "raw_fields": {
+                    "n_counts": _safe_float(assay.n_counts),
+                    "transfer_efficiency": _safe_float(assay.overall_efficiency),
+                    "counting_time_days": _safe_float(assay.counting_time_days),
+                    "delay_time_days": _safe_float(assay.delay_time_days),
+                    "lc_background_cpd": _safe_float(assay.lc_background_cpd),
+                    "eff_counting": _EFF_COUNTING,
+                    "alpha_multiplicity": _ALPHA_MULTIPLICITY,
+                    "lc_single_alpha_eff": _LC_SINGLE_ALPHA_EFF,
+                },
+                "is_background_assay": "background" in assay.label.lower(),
+                "in_aggregate": False,
+            }
+            assay_results.append(entry)
+            continue
 
         bf, bf_unc = _compute_bridge_factor(ref_bq, ref_unc, meas_bq, meas_unc)
 
@@ -1245,6 +1669,8 @@ def compute_bridge(
             "detection_efficiency": _safe_float(eff_det),
             "detection_efficiency_unc": _safe_float(eff_det_unc),
             "time_matched": time_matched,
+            "time_match_mode": match_mode if use_time_match else "none",
+            "time_match_details": match_details or None,
             "time_match_sensitivity": (
                 {f"{h:.1f}h": {"activity_bq": _safe_float(m), "unc_bq": _safe_float(u)}
                  for h, m, u in _sens_results}
@@ -1300,7 +1726,10 @@ def compute_bridge(
         "ui_volume_l": ui_volume_l,
         "recomputed": recompute,
         "time_matched": use_time_match,
+        "time_match_mode": match_mode if use_time_match else None,
         "match_window_days": match_window_days if use_time_match else None,
+        "fallback_to_dataset_average": fallback_to_dataset_average,
+        "downtime_period_count": len(downtime_periods),
         "skid_background": {
             "label": skid_bg.label if skid_bg else None,
             "date": skid_bg.assay_date.isoformat() if skid_bg and skid_bg.assay_date else None,

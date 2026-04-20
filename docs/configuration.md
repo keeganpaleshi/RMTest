@@ -73,9 +73,9 @@ This section holds the run-level analysis window and global mode selection.
 - `spike_periods`: list of `[start, end]` intervals to exclude
 - `run_periods`: list of `[start, end]` intervals to keep
 - `radon_interval`: interval used when computing radon deltas
+- `plot_radon_activity`: when `true`, write `radon_activity.png` / `total_radon.png` / `radon_trend.png`; if `false`, those plots are still written when `radon_interval` is explicitly set
 - `ambient_concentration`: constant ambient radon concentration in Bq/L for equivalent-air plots
 - `background_model`: `linear` or `loglin_unit`
-- `likelihood`: `current` or `extended`
 
 All time values accept ISO-8601 strings or Unix epoch seconds and are normalized to UTC.
 
@@ -93,6 +93,7 @@ analysis:
     - ["2023-09-28T00:00:00Z", "2023-10-28T23:59:59Z"]
     - ["2024-01-05T00:00:00Z", "2024-01-10T23:59:59Z"]
   radon_interval: ["2024-01-05T06:00:00Z", "2024-01-06T18:00:00Z"]
+  plot_radon_activity: true
   ambient_concentration: 0.02
 ```
 
@@ -203,7 +204,7 @@ This section configures the spectral model and its priors.
 - `bkg_mode`: `auto` estimates the linear continuum; `manual` uses explicit priors
 - `b0_prior`, `b1_prior`: `[mean, sigma]` priors for the continuum terms
 - `max_b1_sigma`: optional clamp for `b1_prior` sigma; defaults to `10.0`
-- `clip_floor`: small positive floor applied to the likelihood PDF values; must lie in `(0, 1e-6]`
+- `clip_floor`: small positive floor applied to the spectral density values; must lie in `(0, 1e-6]`
 - `background_norm_points`: number of integration samples for the unit-area log-linear background; defaults to `512`
 - `s_bkg_prior`: prior for the unit-area log-linear background normalization
 - `sigma_e_prior_source`: either `calibration` or an explicit numeric prior tuple
@@ -213,7 +214,9 @@ This section configures the spectral model and its priors.
 - `peak_search_prominence`, `peak_search_width_adc`, `peak_search_cwt_widths`
 - `mu_bounds`: per-isotope centroid bounds
 - `mu_bounds_units`: `mev` or `adc`
-- `unbinned_likelihood`: when `true`, use the unbinned path instead of the default binned Poisson path
+- `mu_bounds_seed_margin_kev`: when the calibration-derived seed lands outside or too close to a configured `mu_bounds` edge, widen that centroid window by at least this margin instead of clipping the seed
+- `mu_bounds_seed_max_expand_kev`: maximum one-sided centroid-window expansion allowed when rescuing a bad seed; seeds farther away are clipped back into the configured physics window instead of redefining it
+- `min_mu_bound_width_kev`: minimum width allowed for any free `mu_*` bound after all constraints are intersected
 - `use_emg`, `tau_<iso>_prior_mean`, `tau_<iso>_prior_sigma`: per-isotope EMG tail configuration
 - `f_beta_<iso>_prior`, `lambda_beta_<iso>_prior`: per-isotope beta-coincidence tail priors
 - `beta_high_side_only`: per-isotope toggle that clips the beta-coincidence contribution to `E >= mu`
@@ -222,10 +225,11 @@ This section configures the spectral model and its priors.
 
 Important details:
 
-- The default spectral path is now binned Poisson. `summary.json` records the chosen path in `spectral_fit.likelihood_path`.
-- `clip_floor` is applied only to the per-energy density used in the likelihood. The extended integral uses the unclipped model.
+- The spectral fit uses the configured spectral binning and records the chosen path in `summary.json` as `spectral_fit.likelihood_path`.
+- `clip_floor` is applied to the per-energy spectral density before histogram integration so the model never evaluates to an exact zero.
 - A `tau_<iso>` prior automatically enables the corresponding EMG tail even if `use_emg` omits it.
 - `mu_bounds_units: adc` is converted to MeV before fitting so the fit itself remains on a MeV scale.
+- If a configured `mu_bounds` window would clip the aggregate spectral seed, the code now expands the window around that seed instead of forcing the seed onto the bound.
 - `emg_left` evaluations are wrapped for numerical stability so NaN or infinite values do not reach `curve_fit`.
 - `beta_high_side_only` is useful for coincidence isotopes such as Po-214 and Po-212 when the fitted beta tail should stay entirely on the high-energy side of the alpha peak.
 - `share_beta: true` is available for simpler scans, but the default config keeps per-isotope beta tails because Po-212 often needs a visibly stronger high-energy tail than Po-214.
@@ -243,7 +247,6 @@ spectral_fit:
     Po210: true
   tau_po210_prior_mean: 0.005
   tau_po210_prior_sigma: 0.002
-  unbinned_likelihood: false
 ```
 
 For the full EMG precedence rules and legacy compatibility notes, see [emg_config.md](emg_config.md).
@@ -279,16 +282,26 @@ This section controls the time-series decay fits.
 - `fix_background_b_first_pass`: enable the first fixed-background pass before the free-background refit
 - `background_b_fixed_value`: explicit value for the first pass; if omitted, the baseline Po-214 rate is used
 - `extraction_method`: `roi` or `template`
-- `template_rebin`, `template_min_counts`: per-bin template-fit histogram controls
+- `template_rebin`, `template_min_counts`: per-bin template-fit histogram controls; `template_rebin: 1` keeps native ADC/channel bins and is now the default for template time fits
 - `template_n_workers`: number of parallel workers for template time bins; `auto` uses a conservative half-core default capped at 8
 - `template_skip_covariance`: skip per-bin HESSE / numerical-Hessian recovery and use fast diagonal MIGRAD errors instead
-- `float_centroids`: allow per-bin spectral centroids to move around the aggregate fit
+- `template_shape_mode`: `soft` keeps core template shape parameters aggregate-anchored with Gaussian penalties instead of hard-freezing them; `frozen` restores the legacy hard-freeze behaviour
+- `template_freeze_split_peak_shape`: keep the aggregate broad second-Gaussian split-peak terms fixed in per-bin template fits so EMG vs broad-Gaussian competition cannot invent non-physical split peaks
+- `float_centroids`: allow per-bin spectral centroids to move instead of hard-freezing them to the aggregate fit
+- `centroid_shift_model`: `shared_offset` applies one common centroid shift per bin across all peaks; `shared_affine` keeps the drift shared but allows a linear energy dependence; `independent` restores the legacy per-peak drift model
+- `template_shared_shift_anchor_isotopes`: isotopes used to estimate the shared centroid shift from the first-pass fit; `auto` ignores `Po210` and `Unknown1` so the huge low-energy peak does not dominate the shared shift
+- `template_max_independent_centroid_spread_kev`: maximum anchored isotope-to-isotope centroid disagreement tolerated before an `independent_fallback` solution is rejected in favour of the best shared-centroid refit
 - `centroid_shift_bound_kev`: initial half-width for per-bin centroid movement
 - `centroid_shift_prior_sigma_kev`: Gaussian penalty width for centroid motion; `null` defaults to half of `centroid_shift_bound_kev`
 - `centroid_shift_scan_auto_expand`: rerun a bin with wider centroid bounds when it lands on the limit
-- `centroid_shift_max_expand_kev`: maximum half-width used by the auto-expansion retry; keep this modest to avoid reintroducing large centroid tails
+- `centroid_shift_max_expand_kev`: maximum half-width used by the auto-expansion retry; the default is intentionally wider now so obviously clipped centroids can escape the aggregate wall before the fit is classified as bad
 - `fix_weak_isotopes`: legacy compatibility switch; when enabled it only fixes very weak auxiliary isotopes unless `template_fixed_isotopes` is set
 - `template_fixed_isotopes`: explicit isotope list to amplitude-fix in per-bin template fits
+- `template_required_isotopes`: isotope list that should not be allowed to disappear in per-bin template fits; defaults to `Po210` and `Po214`
+- `template_required_isotope_floor_fraction`: one-sided lower-floor level, expressed as a fraction of the aggregate-scaled per-bin expectation
+- `template_required_isotope_local_floor_fraction`: stronger one-sided floor derived from the locally observed peak window when that isotope is clearly visible in the data
+- `template_required_isotope_floor_sigma_fraction`: softness of that lower-floor penalty
+- `template_required_isotope_floor_min_counts`: absolute minimum floor used for the same penalty
 
 The pipeline also accepts the simplified standalone-fitter schema:
 
@@ -409,7 +422,10 @@ This section controls saved formats, time-series binning, and presentation.
 - `plot_template_bin_fits`: write the per-bin template spectrum fits into `template_bin_fits/`
 - `plot_template_bin_fits_bad_only`: restrict per-bin template plots to invalid fits, bins that hit any active parameter bound, bins that hit the centroid limit, or bins above the chi2 threshold
 - `plot_template_bin_fits_bad_chi2_ndf_min`: chi2/ndf threshold used by `plot_template_bin_fits_bad_only`
-- `plot_template_bin_fits_log_scale`: keep the `_log.png` companion for template bin-fit plots
+- `plot_template_bin_fits_log_scale`: retained for compatibility; template bin-fit plots already include a log-spectrum panel in the main figure and no separate `_log.png` companion is written
+- `plot_filter_extreme_uncertainty`: when `true`, suppress a few pathological uncertainty bars from dominating the radon/equivalent-air plot scale
+- `plot_extreme_uncertainty_factor`: robust multiplicative threshold used by the uncertainty-bar filter
+- `plot_extreme_uncertainty_logsigma_cut`: robust log-space sigma cut used by the same uncertainty-bar filter
 - `palette`: `default`, `colorblind`, or `grayscale`
 
 Important details:
@@ -419,3 +435,4 @@ Important details:
 - `overlay_isotopes: true` preserves both daughter windows in a shared plot; the pipeline can additionally save per-isotope plots if `save_individual_time_series` is enabled.
 - `spectrum.png` now stacks the linear spectrum, log spectrum, raw residuals, log raw residuals, normalized residuals, and fractional residuals.
 - `fractional_residual_min_counts` prevents the fractional residual panel from being dominated by bins in the extreme low-count tail.
+- `template_chi2_timeseries.png` now uses a log y-axis so both ordinary bins and true outliers remain readable in the same panel.

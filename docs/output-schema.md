@@ -30,7 +30,7 @@ Additional artifacts appear when the corresponding feature is enabled:
 - `time_series_<iso>_ts.json`: exported time-series payloads when `dump_time_series_json` is enabled
 - `template_per_bin_diagnostics.json`: per-bin template-fit diagnostics when `time_fit.extraction_method: template`
 - `template_bin_fits/`: per-bin template spectrum plots when `plot_template_bin_fits` is enabled
-- `template_bin_fits/template_fit_plot_index.json`: manifest for the saved per-bin template plots
+- `template_bin_fits/template_fit_plot_index.json`: manifest for the saved per-bin template plots; entries point at the main PNG, which already contains both linear and log spectrum panels
 - `efficiency.png`, `eff_cov.png`: efficiency summary plots
 - `burst_scan.png`: burst-sensitivity scan output
 - `radon_activity_combined.png`: combined radon-activity diagnostic plot
@@ -106,7 +106,7 @@ This block contains the fitted spectral parameters plus:
 - `likelihood_path`
 - optional `peak_deviation`
 
-`likelihood_path` distinguishes the fitted spectral route, such as the default binned Poisson path or the legacy unbinned extended path.
+`likelihood_path` records the fitted spectral route, such as the default `binned_poisson` path or staged template-fit variants.
 
 ### `time_fit`
 
@@ -216,7 +216,13 @@ When `time_fit.extraction_method: template` is enabled, `summary.json["template_
 - `bins_with_any_bound_hits`: number of fitted time bins with at least one free parameter ending at an active optimizer bound
 - `total_bound_hits`: total number of per-bin bound hits across all fitted bins
 - `bound_hit_param_counts`: per-parameter count of how often a bound was hit
+- `suspicious_bound_hit_param_counts`: bound-hit counts after excluding benign lower-floor hits on optional nuisance terms
+- `expected_floor_bound_hit_param_counts`: lower-bound hits that simply indicate an optional nuisance component went to zero
+- `bound_hit_side_counts`: aggregate counts of `lower`, `upper`, and `both` bound hits
+- `upper_bound_hit_param_counts`, `lower_bound_hit_param_counts`: per-parameter counts split by hit side
 - `bins_with_non_centroid_bound_hits`: number of bins where a non-`mu_*` parameter hit a bound
 - `non_centroid_bound_hit_param_counts`: per-parameter counts restricted to non-centroid parameters
+- `bins_with_suspicious_bound_hits`: bins that still have diagnostically useful bound hits after the benign floor-hit split
+- `bins_with_lower_bound_hits`, `bins_with_upper_bound_hits`, `bins_with_dual_sided_bound_hits`: bin-level rollups for the side-specific bound hits
 
 The companion `template_per_bin_diagnostics.json` file carries the per-bin details through `n_bound_hits`, `bound_hit_params`, and `bound_hits`.

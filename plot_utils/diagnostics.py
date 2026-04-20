@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
 
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import numpy as np
 from scipy import stats as sp_stats
 from scipy import fft as sp_fft
@@ -27,6 +29,64 @@ _INTER_PEAK_REGIONS = {
     "gap_218_214": (6.20, 7.40),
     "gap_214_212": (7.90, 8.55),
 }
+
+
+def plot_monitor_downtime(
+    downtime_payload: Mapping[str, object],
+    out_dir: str | Path,
+) -> None:
+    """Plot raw/noise/Po210 support counts and shade flagged downtime."""
+
+    segments = downtime_payload.get("segments", [])
+    periods = downtime_payload.get("periods", [])
+    if not isinstance(segments, list) or not segments:
+        return
+
+    def _to_datetimes(values):
+        return [datetime.fromtimestamp(float(v), tz=timezone.utc) for v in values]
+
+    fig, axes = plt.subplots(2, 1, figsize=(13, 7), sharex=True)
+    raw_ax, roi_ax = axes
+
+    for seg in segments:
+        if not isinstance(seg, Mapping):
+            continue
+        times = seg.get("t", [])
+        if not times:
+            continue
+        dt_times = _to_datetimes(times)
+        raw_ax.step(dt_times, seg.get("raw_counts", []), where="mid", linewidth=0.9, color="tab:gray")
+        roi_ax.step(dt_times, seg.get("noise_counts", []), where="mid", linewidth=0.9, color="tab:blue", label="Above-noise")
+        roi_ax.step(dt_times, seg.get("po210_counts", []), where="mid", linewidth=0.9, color="tab:orange", label="Po210")
+
+    for period in periods if isinstance(periods, list) else []:
+        if not isinstance(period, Mapping):
+            continue
+        start_raw = period.get("start_unix")
+        end_raw = period.get("end_unix")
+        try:
+            start_dt = datetime.fromtimestamp(float(start_raw), tz=timezone.utc)
+            end_dt = datetime.fromtimestamp(float(end_raw), tz=timezone.utc)
+        except (TypeError, ValueError, OSError):
+            continue
+        for ax in axes:
+            ax.axvspan(start_dt, end_dt, color="tab:red", alpha=0.18)
+
+    raw_ax.set_ylabel("Raw counts / bin")
+    roi_ax.set_ylabel("Support counts / bin")
+    roi_ax.set_xlabel("Time (UTC)")
+    raw_ax.set_title("Monitor Downtime Indicator")
+    raw_ax.grid(alpha=0.25)
+    roi_ax.grid(alpha=0.25)
+    roi_ax.legend(loc="upper right")
+    locator = mdates.AutoDateLocator()
+    formatter = mdates.ConciseDateFormatter(locator)
+    roi_ax.xaxis.set_major_locator(locator)
+    roi_ax.xaxis.set_major_formatter(formatter)
+    fig.tight_layout()
+    out_path = Path(out_dir) / "monitor_downtime.png"
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -3159,6 +3219,7 @@ def _plot_template_chi2(diag: list[dict], output_dir: Path) -> None:
     ax = axes[0]
     mask_ok = valid & np.isfinite(chi2_vals)
     mask_bad = ~valid & np.isfinite(chi2_vals)
+    positive_mask = np.isfinite(chi2_vals) & (chi2_vals > 0.0)
 
     if mask_ok.any():
         ax.scatter(
@@ -3178,10 +3239,17 @@ def _plot_template_chi2(diag: list[dict], output_dir: Path) -> None:
         ax.axhline(med_chi2, ls=":", c="steelblue", lw=0.8,
                     label=f"median = {med_chi2:.2f}")
 
+    if positive_mask.any():
+        positive_vals = chi2_vals[positive_mask]
+        ymin = max(float(np.nanmin(positive_vals)) * 0.8, 1.0e-2)
+        ymax = max(float(np.nanmax(positive_vals)) * 1.25, 2.0)
+        ax.set_yscale("log")
+        ax.set_ylim(ymin, ymax)
+    else:
+        ax.set_ylim(bottom=1.0e-2)
     ax.set_ylabel("$\\chi^2 / \\mathrm{ndf}$")
     ax.set_title("Per-bin template fit quality")
     ax.legend(fontsize=8, loc="upper right")
-    ax.set_ylim(bottom=0)
 
     # Bottom: events per bin
     ax2 = axes[1]

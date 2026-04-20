@@ -17,8 +17,15 @@ def log_expm1_stable(y: np.ndarray) -> np.ndarray:
     y = np.asarray(y, dtype=float)
     out = np.empty_like(y)
     mask = y > 0
-    # For positive values use stable formulation that avoids overflow
-    out[mask] = y[mask] + np.log1p(-np.exp(-y[mask]))
+    # For very small positive values, expm1(y) ~= y and the generic
+    # formulation suffers catastrophic cancellation via log1p(-exp(-y)).
+    small_mask = mask & (y < 1.0e-8)
+    if np.any(small_mask):
+        out[small_mask] = np.log(np.maximum(y[small_mask], np.finfo(float).tiny))
+    mid_mask = mask & ~small_mask
+    # For positive values use stable formulation that avoids overflow.
+    if np.any(mid_mask):
+        out[mid_mask] = y[mid_mask] + np.log1p(-np.exp(-y[mid_mask]))
     # For non-positive inputs defer to NumPy's behaviour so that values
     # outside the domain ``expm1(y) > 0`` propagate ``nan``/``-inf``
     # instead of being silently clamped to tiny positives.

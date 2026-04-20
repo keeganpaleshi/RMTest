@@ -42,10 +42,7 @@ except ImportError:  # pragma: no cover
         else:  # pragma: no cover - defensive fallback
             raise
 try:
-    from rmtest.spectral.intensity import (
-        build_spectral_intensity,
-        integral_of_intensity,
-    )
+    from rmtest.spectral.intensity import build_spectral_intensity
 except ImportError:  # pragma: no cover - fallback for local scripts
     import sys
     from pathlib import Path
@@ -53,10 +50,7 @@ except ImportError:  # pragma: no cover - fallback for local scripts
     _src_root = Path(__file__).resolve().parent / "src"
     if _src_root.is_dir():
         sys.path.insert(0, str(_src_root))
-        from rmtest.spectral.intensity import (  # type: ignore
-            build_spectral_intensity,
-            integral_of_intensity,
-        )
+        from rmtest.spectral.intensity import build_spectral_intensity  # type: ignore
     else:  # pragma: no cover - defensive fallback
         raise
 try:
@@ -170,49 +164,93 @@ def softplus(x: np.ndarray | float) -> np.ndarray | float:
     return np.log1p(np.exp(-np.abs(x))) + np.maximum(x, 0.0)
 
 
+_softplus = softplus
+
+
 def _physical_fit_param_value(name: str, raw_value: float) -> float:
     """Convert an internal optimizer value into the reported physical value."""
 
     value = float(raw_value)
     if name.startswith("S_"):
-        return float(softplus(value))
+        return float(_softplus(value))
     return value
+
+
+def _lower_floor_penalty(
+    name: str,
+    raw_value: float,
+    floor: float,
+    sigma: float,
+) -> float:
+    """Return a one-sided Gaussian penalty when a physical value drops below a floor."""
+
+    try:
+        floor_f = float(floor)
+        sigma_f = float(sigma)
+    except (TypeError, ValueError):
+        return 0.0
+    if not np.isfinite(floor_f) or not np.isfinite(sigma_f) or sigma_f <= 0.0:
+        return 0.0
+
+    physical_value = _physical_fit_param_value(name, raw_value)
+    if not np.isfinite(physical_value) or physical_value >= floor_f:
+        return 0.0
+
+    deficit = floor_f - physical_value
+    return 0.5 * (deficit / sigma_f) ** 2
 
 
 def _detect_bound_hits(
     param_order,
-    raw_values,
+    values,
     bounds_lo,
     bounds_hi,
+    fixed_mask=None,
     *,
     flags=None,
     tol_fraction: float = 1e-4,
     tol_abs: float = 1e-9,
 ):
-    """Return metadata for free parameters that finished at an active bound."""
+    """Return metadata for free parameters that finished at an active bound.
 
-    if flags is None:
-        flags = {}
+    ``fixed_mask`` and ``flags`` are accepted for compatibility with both the
+    Minuit and legacy callers.  Only one is needed.
+    """
 
-    if isinstance(raw_values, Mapping):
-        raw_lookup = {
-            name: float(raw_values[name]) for name in param_order if name in raw_values
+    if isinstance(values, Mapping):
+        value_lookup = {
+            str(name): float(values[name]) for name in param_order if name in values
         }
     else:
-        raw_arr = np.asarray(raw_values, dtype=float)
-        raw_lookup = {
-            name: float(raw_arr[idx])
+        value_arr = np.asarray(values, dtype=float)
+        value_lookup = {
+            str(name): float(value_arr[idx])
             for idx, name in enumerate(param_order)
-            if idx < raw_arr.size
+            if idx < value_arr.size
         }
 
-    hits = {}
+    fixed_lookup: dict[str, bool] = {}
+    if fixed_mask is not None:
+        fixed_arr = np.asarray(fixed_mask, dtype=bool)
+        fixed_lookup.update(
+            {
+                str(name): bool(fixed_arr[idx])
+                for idx, name in enumerate(param_order)
+                if idx < fixed_arr.size
+            }
+        )
+    if isinstance(flags, Mapping):
+        for name in param_order:
+            fixed_lookup.setdefault(str(name), bool(flags.get(f"fix_{name}", False)))
+
+    hits: dict[str, dict[str, object]] = {}
     for idx, name in enumerate(param_order):
-        if bool(flags.get(f"fix_{name}", False)):
+        name = str(name)
+        if fixed_lookup.get(name, False):
             continue
-        if name not in raw_lookup:
+        if name not in value_lookup:
             continue
-        val_raw = float(raw_lookup[name])
+        val_raw = float(value_lookup[name])
         if not np.isfinite(val_raw):
             continue
         lo_raw = float(bounds_lo[idx])
@@ -282,61 +320,6 @@ def _sigmoid(x: np.ndarray | float) -> np.ndarray | float:
     out[~pos_mask] = exp_x / (1.0 + exp_x)
 
     return out
-
-
-def _physical_fit_param_value(name: str, raw_value: float) -> float:
-    """Convert an optimizer-space value into the reported physical value."""
-
-    raw = float(raw_value)
-    if name.startswith("S_"):
-        return float(_softplus(raw))
-    return raw
-
-
-def _detect_bound_hits(
-    param_order,
-    values,
-    bounds_lo,
-    bounds_hi,
-    fixed_mask,
-    *,
-    tol_frac: float = 1e-4,
-    tol_abs: float = 1e-10,
-):
-    """Report free parameters that finished at an active optimizer bound."""
-
-    hits = {}
-    for idx, name in enumerate(param_order):
-        if fixed_mask[idx]:
-            continue
-        val = float(values[idx])
-        lo = float(bounds_lo[idx])
-        hi = float(bounds_hi[idx])
-        if not np.isfinite(val):
-            continue
-        span = hi - lo
-        tol = tol_abs
-        if np.isfinite(span) and span > 0:
-            tol = max(tol, abs(span) * tol_frac)
-
-        at_lo = np.isfinite(lo) and val <= lo + tol
-        at_hi = np.isfinite(hi) and val >= hi - tol
-        if not at_lo and not at_hi:
-            continue
-
-        side = "both" if at_lo and at_hi else ("lower" if at_lo else "upper")
-        meta = {
-            "side": side,
-            "value": _physical_fit_param_value(name, val),
-        }
-        if np.isfinite(lo):
-            meta["lower"] = _physical_fit_param_value(name, lo)
-        if np.isfinite(hi):
-            meta["upper"] = _physical_fit_param_value(name, hi)
-        hits[str(name)] = meta
-
-    return hits
-
 
 def make_linear_bkg(
     Emin: float, Emax: float, Eref: float | None = None, n_norm: int | None = None
@@ -639,7 +622,7 @@ def fit_spectrum(
     skip_minos=False,
     skip_covariance=False,
 ):
-    """Fit the radon spectrum using either χ² histogram or unbinned likelihood.
+    """Fit the radon spectrum with the default binned Poisson likelihood.
 
     Parameters
     ----------
@@ -666,8 +649,8 @@ def fit_spectrum(
         default +/-5 sigma range derived from the priors.  ``None`` values disable a
         limit on that side.
     unbinned : bool, optional
-        When ``True`` use an extended unbinned likelihood fit instead of the
-        default χ² fit to a histogrammed spectrum.
+        Legacy argument retained only to raise a clear error. Unbinned spectral
+        fits are no longer supported.
     strict : bool, optional
         When ``True`` raise a :class:`RuntimeError` if the fit covariance
         matrix is not positive definite.  The default is ``False`` which
@@ -690,18 +673,23 @@ def fit_spectrum(
     
     if flags is None:
         flags = {}
+    else:
+        flags = dict(flags)
 
-    # The spectral intensity returned by ``build_spectral_intensity`` is an
-    # event *intensity* (counts/MeV), not a unit-normalised PDF.  In unbinned
-    # mode this requires an extended likelihood so that the total expected
-    # counts appear in the objective.  Otherwise the optimiser can drive the
-    # signal areas to arbitrarily large values with no penalty.  Default to the
-    # extended path unless the caller explicitly overrides the likelihood.
     if unbinned:
-        flags.setdefault("likelihood", "extended")
+        raise ValueError(
+            "fit_spectrum no longer supports unbinned spectral likelihoods; "
+            "use the default ADC-binned Poisson fit."
+        )
+    legacy_likelihood = flags.pop("likelihood", None)
+    if legacy_likelihood is not None:
+        raise ValueError(
+            "fit_spectrum no longer accepts alternate spectral likelihood "
+            "modes; remove the legacy 'likelihood' flag."
+        )
 
-    likelihood_mode = "unbinned" if unbinned else "binned_poisson"
-    likelihood_path = "unbinned_extended" if unbinned else "binned_poisson"
+    likelihood_mode = "binned_poisson"
+    likelihood_path = "binned_poisson"
     if flags.get("fix_sigma_E"):
         flags.setdefault("fix_sigma0", True)
         flags.setdefault("fix_F", True)
@@ -718,7 +706,7 @@ def fit_spectrum(
     if e.size == 0:
         raise RuntimeError("No energies provided to fit_spectrum")
 
-    # Determine bin edges for width/normalisation even in unbinned mode
+    # Determine bin edges for width/normalisation
     if bin_edges is not None:
         edges = np.asarray(bin_edges, dtype=float)
     elif bins is not None:
@@ -736,16 +724,15 @@ def fit_spectrum(
         raise RuntimeError("width and center size mismatch")
     width_lookup = _WidthLookup(centers, widths)
     widths_base = widths.copy()  # Preserve original widths for DNL iteration
-    if not unbinned:
-        if pre_binned_hist is not None:
-            hist = np.asarray(pre_binned_hist, dtype=float)
-            if hist.size != centers.size:
-                raise ValueError(
-                    f"pre_binned_hist length ({hist.size}) does not match "
-                    f"bin_edges ({centers.size} bins)"
-                )
-        else:
-            hist, _ = np.histogram(e, bins=edges)
+    if pre_binned_hist is not None:
+        hist = np.asarray(pre_binned_hist, dtype=float)
+        if hist.size != centers.size:
+            raise ValueError(
+                f"pre_binned_hist length ({hist.size}) does not match "
+                f"bin_edges ({centers.size} bins)"
+            )
+    else:
+        hist, _ = np.histogram(e, bins=edges)
 
     E_lo = float(edges[0])
     E_hi = float(edges[-1])
@@ -785,16 +772,8 @@ def fit_spectrum(
                     f"{got}"
                 )
 
-    if "S_bkg" in priors or background_model in ("loglin_unit", "sigmoid_unit", "exp_unit", "double_logit_unit", "none"):
-        flags.setdefault("likelihood", "extended")
-
-    from feature_selectors import select_neg_loglike
-
-    opts = SimpleNamespace(**flags)
-    neg_loglike = select_neg_loglike(opts)
-
     # Guard against NaNs/Infs arising from unstable histogramming or EMG evals
-    if not unbinned and not np.isfinite(hist).all():
+    if not np.isfinite(hist).all():
         raise RuntimeError(
             "fit_spectrum: histogram contains non-finite values; "
             "check input energies and binning parameters"
@@ -954,6 +933,7 @@ def fit_spectrum(
     _scaling_energy_models: dict[str, dict] = {}  # key: param name → {E_ref, participants, power}
     _shared_passive_isos: set[str] = set()
     _extra_peak_names: set[str] = set()
+    sp_cfg: dict[str, object] = {}
     if cfg is not None:
         _shared_cfg = cfg.get("spectral_fit", {}).get("shared_shape_params", {})
         sp_cfg = cfg.get("spectral_fit", {})
@@ -1494,6 +1474,38 @@ def fit_spectrum(
                 lo = max(lo, user_lo)
             if user_hi is not None:
                 hi = min(hi, user_hi)
+        if name.startswith("mu_") and not is_fixed:
+            _min_mu_bound_width_kev = 10.0
+            if cfg is not None:
+                try:
+                    _min_mu_bound_width_kev = float(
+                        cfg.get("spectral_fit", {}).get(
+                            "min_mu_bound_width_kev", _min_mu_bound_width_kev
+                        )
+                    )
+                except (AttributeError, TypeError, ValueError):
+                    _min_mu_bound_width_kev = 10.0
+            try:
+                _min_mu_bound_width_kev = float(
+                    flags.get("min_mu_bound_width_kev", _min_mu_bound_width_kev)
+                )
+            except (TypeError, ValueError):
+                pass
+            if np.isfinite(_min_mu_bound_width_kev) and _min_mu_bound_width_kev > 0.0:
+                _min_mu_bound_width = _min_mu_bound_width_kev / 1000.0
+                _width = hi - lo
+                if np.isfinite(_width) and _width < _min_mu_bound_width:
+                    _center = float(mean)
+                    if not np.isfinite(_center):
+                        _center = 0.5 * (lo + hi)
+                    lo = _center - 0.5 * _min_mu_bound_width
+                    hi = _center + 0.5 * _min_mu_bound_width
+                    logging.warning(
+                        "Parameter %s: widening near-zero free centroid bounds to %.3f keV around %.6f MeV",
+                        name,
+                        _min_mu_bound_width_kev,
+                        _center,
+                    )
         if name.startswith("tau_") and name not in _lm_param_names:
             lo = max(lo, _EMG_FLOOR)
             if max_tau_ratio is not None:
@@ -1510,16 +1522,16 @@ def fit_spectrum(
             hi = min(hi, _f_halo_cap)  # halo fraction cap (configurable)
         if name.startswith("f_beta_") and name != "f_beta_bs_shared":
             lo = max(lo, 0.0)
-            hi = min(hi, 0.80)   # beta coincidence fraction cap
+            hi = min(hi, float(flags.get("max_f_beta", 0.80)))
         if name == "f_beta_bs_shared":
             lo = max(lo, 0.0)
             hi = min(hi, 0.15)   # backscatter fraction cap (small)
         if name.startswith("lambda_beta_"):
             lo = max(lo, 0.05)   # minimum 50 keV decay length
-            hi = min(hi, 5.0)    # maximum 5 MeV decay length
+            hi = min(hi, float(flags.get("max_lambda_beta", 5.0)))
         if name == "delta_E_broad":
             lo = max(lo, -0.05)  # allow tiny RIGHT offset (channeling)
-            hi = min(hi, 0.30)   # max ~300 keV LEFT shift
+            hi = min(hi, float(flags.get("max_delta_E_broad", 0.30)))
         # Tau linear model: tau_0 must be positive; tau_slope is free
         if name == "tau_0":
             lo = max(lo, _EMG_FLOOR)
@@ -1566,7 +1578,7 @@ def fit_spectrum(
             hi = min(hi, 0.50)  # at most 50% in broad component
         if name == "sigma_gauss2_ratio_shared":
             lo = max(lo, 1.01)  # must be broader than core (ratio > 1)
-            hi = min(hi, 5.0)   # at most 5x core sigma
+            hi = min(hi, float(flags.get("max_sigma_gauss2_ratio", 5.0)))
         # sigma_asym: fractional right-side broadening, must be >= 0
         if name == "sigma_asym" or name.startswith("sigma_asym_"):
             lo = max(lo, 0.0)
@@ -1663,10 +1675,6 @@ def fit_spectrum(
         p0.append(mean)
         bounds_lo.append(lo)
         bounds_hi.append(hi)
-
-    # area_keys contains only peak integrals, not background
-    # (background integral is recovered by subtraction in extended likelihood)
-    area_keys = [f"S_{iso}" for iso in iso_list]
 
     domain = (E_lo, E_hi)
     use_emg_map = {iso: bool(use_emg.get(iso, False)) for iso in iso_list}
@@ -2077,6 +2085,34 @@ def fit_spectrum(
                 ),
             )
 
+        _lower_floor_map = {}
+        if flags:
+            _lf_cfg = flags.get("lower_floor_priors", {})
+            if isinstance(_lf_cfg, dict):
+                for _lf_name, _lf_val in _lf_cfg.items():
+                    if (
+                        _lf_name in param_index
+                        and isinstance(_lf_val, (list, tuple))
+                        and len(_lf_val) == 2
+                    ):
+                        _lf_floor = float(_lf_val[0])
+                        _lf_sig = float(_lf_val[1])
+                        if np.isfinite(_lf_floor) and _lf_floor > 0.0 and _lf_sig > 0.0:
+                            _lower_floor_map[param_index[_lf_name]] = (
+                                str(_lf_name),
+                                _lf_floor,
+                                _lf_sig,
+                            )
+        if _lower_floor_map:
+            logging.info(
+                "Lower-floor penalties on %d parameters: %s",
+                len(_lower_floor_map),
+                ", ".join(
+                    f"{name}>={floor:.3g} (σ={sig:.3g})"
+                    for _, (name, floor, sig) in sorted(_lower_floor_map.items())
+                ),
+            )
+
         import time as _time_mod
         _fit_timers = {}
 
@@ -2091,6 +2127,13 @@ def fit_spectrum(
             nll_prior = 0.0
             for _idx, (_mu, _sig) in _penalty_map.items():
                 nll_prior += 0.5 * ((params[_idx] - _mu) / _sig) ** 2
+            for _idx, (_name, _floor, _sig) in _lower_floor_map.items():
+                nll_prior += _lower_floor_penalty(
+                    _name,
+                    params[_idx],
+                    _floor,
+                    _sig,
+                )
             return nll_poisson + nll_prior
 
         _t0_initial = _time_mod.perf_counter()
@@ -3040,171 +3083,6 @@ def fit_spectrum(
             pcov = np.array(pcov_cf)
             popt = np.array(popt_cf)
             covariance_available = True
-    else:
-        def _intensity_fn(E_vals, p_map):
-            raw_map = dict(p_map)
-            if fix_sigma0:
-                raw_map.setdefault("sigma0", sigma0_val)
-            if fix_F:
-                raw_map.setdefault("F", F_val)
-            physical = _physical_params(raw_map)
-            return spectral_intensity(E_vals, physical, domain)
-
-        if flags.get("likelihood") == "extended":
-            def _nll(*params):
-                # Extended model: mu_total = integral of (peaks + backgrounds) over [E_lo, E_hi].
-                # We obtain mu_total from the same intensity builder used for the per-E density
-                # (unclipped), then we recover the background integral by subtracting the peak
-                # integrals. This keeps the total mean consistent with the density we fit.
-                raw_map = _build_raw_param_map(params)
-                physical = _physical_params(raw_map)
-                mu_total = integral_of_intensity(
-                    physical,
-                    domain,
-                    iso_list=iso_list,
-                    use_emg=use_emg_map,
-                    background_model=background_model,
-                )
-                area_sum = 0.0
-                for key in area_keys:
-                    if key in raw_map:
-                        area_sum += float(_softplus(raw_map[key]))
-
-                # Check for NaN/inf before subtraction to prevent propagation
-                if not np.isfinite(mu_total) or not np.isfinite(area_sum):
-                    bg_integral = None
-                else:
-                    bg_integral = mu_total - area_sum
-                    if not np.isfinite(bg_integral):
-                        bg_integral = None
-                    else:
-                        bg_integral = max(bg_integral, 0.0)
-
-                def _intensity_cached(E_vals, _params):
-                    return spectral_intensity(E_vals, physical, domain)
-
-                return neg_loglike(
-                    e,
-                    _intensity_cached,
-                    raw_map,
-                    area_keys=area_keys,
-                    background_model="loglin_unit" if background_model == "loglin_unit" else None,
-                    background_integral=bg_integral,
-                )
-        else:
-            def _nll(*params):
-                raw_map = _build_raw_param_map(params)
-                return neg_loglike(e, _intensity_fn, raw_map)
-
-        m = Minuit(_nll, *p0, name=param_order)
-        m.errordef = Minuit.LIKELIHOOD
-        for name, lo, hi in zip(param_order, bounds_lo, bounds_hi):
-            m.limits[name] = (lo, hi)
-            if flags.get(f"fix_{name}", False):
-                m.fixed[name] = True
-        m.migrad()
-        if not m.valid:
-            m.simplex()
-            m.migrad()
-        _n_free_ub = sum(1 for p in param_order if not m.fixed[p])
-        ndf = max(1, e.size - _n_free_ub)
-        out = {}
-        param_index = {name: i for i, name in enumerate(param_order)}
-        m.hesse()
-        cov_raw = m.covariance
-        covariance_available = cov_raw is not None
-        if cov_raw is None:
-            cov = np.zeros((len(param_order), len(param_order)))
-            perr = np.zeros(len(param_order))
-        else:
-            cov = np.array(cov_raw)
-            g = np.ones(len(param_order))
-            for i, pname in enumerate(param_order):
-                if pname.startswith("S_"):
-                    g[i] = float(_sigmoid(m.values[pname]))
-            cov = cov * (g[:, None] * g[None, :])
-            perr = np.sqrt(np.clip(np.diag(cov), 0, None))
-        fit_valid = True
-        try:
-            if covariance_available:
-                eigvals = np.linalg.eigvals(cov)
-                fit_valid = bool(np.all(eigvals >= 0))
-        except np.linalg.LinAlgError:
-            fit_valid = False
-        if not fit_valid:
-            if strict:
-                raise RuntimeError(
-                    "fit_spectrum: covariance matrix not positive definite"
-                )
-            logging.warning(
-                "fit_spectrum: covariance matrix not positive definite"
-            )
-            jitter = 1e-12 * np.mean(np.diag(cov))
-            if not np.isfinite(jitter) or jitter <= 0:
-                jitter = 1e-12
-            cov = cov + jitter * np.eye(cov.shape[0])
-            try:
-                np.linalg.cholesky(cov)
-                fit_valid = True
-                perr = np.sqrt(np.clip(np.diag(cov), 0, None))
-            except np.linalg.LinAlgError:
-                pass
-        # Validate that perr and param_order have matching sizes
-        if len(perr) != len(param_order):
-            raise RuntimeError(
-                f"Internal error: perr length ({len(perr)}) does not match "
-                f"param_order length ({len(param_order)})"
-            )
-        _ub_popt = np.array([float(m.values[p]) for p in param_order], dtype=float)
-        _ub_fixed_mask = [bool(m.fixed[p]) for p in param_order]
-        out["fit_valid"] = fit_valid
-        for i, pname in enumerate(param_order):
-            val = float(m.values[pname])
-            if pname.startswith("S_"):
-                out[pname] = float(_softplus(val))
-                out["d" + pname] = float(perr[i])
-            else:
-                out[pname] = val
-                out["d" + pname] = float(perr[i])
-        if fix_sigma0:
-            out["sigma0"] = sigma0_val
-            out["dsigma0"] = 0.0
-        if fix_F:
-            out["F"] = F_val
-            out["dF"] = 0.0
-        _bound_hits = _detect_bound_hits(
-            param_order,
-            _ub_popt,
-            bounds_lo,
-            bounds_hi,
-            _ub_fixed_mask,
-        )
-        out["_bound_hits"] = _bound_hits
-        out["_bound_hit_params"] = sorted(_bound_hits)
-        out["_n_bound_hits"] = int(len(_bound_hits))
-        k = len(param_order)
-        out["aic"] = float(2 * m.fval + 2 * k)
-        out["likelihood_path"] = likelihood_path
-        out = _finalize_signal_params(out)
-        _bound_hits = _detect_bound_hits(
-            param_order,
-            {pname: float(m.values[pname]) for pname in param_order},
-            bounds_lo,
-            bounds_hi,
-            flags=flags,
-        )
-        out["_n_bound_hits"] = int(len(_bound_hits))
-        out["_bound_hit_params"] = sorted(_bound_hits)
-        out["_bound_hits"] = _bound_hits
-        return FitResult(
-            out,
-            cov,
-            int(ndf),
-            param_index,
-            counts=int(n_events),
-            likelihood=likelihood_mode,
-        )
-
     g = np.ones(len(param_order))
     for i, name in enumerate(param_order):
         if name.startswith("S_"):
@@ -3301,8 +3179,8 @@ def fit_spectrum(
     out["_bound_hit_params"] = sorted(_bound_hits)
     out["_bound_hits"] = _bound_hits
 
-    # Attach DNL metadata from the binned path (if correction was applied)
-    if not unbinned and _dnl_iters > 0:
+    # Attach DNL metadata if correction was applied.
+    if _dnl_iters > 0:
         out["_dnl"] = _dnl_meta
 
     model_counts = _model_binned(centers, *popt)
@@ -3330,7 +3208,7 @@ def fit_spectrum(
         out["aicc"] = float("nan")
 
     # Effective NDF accounting for DNL correction DOF consumption
-    if not unbinned and _dnl_iters > 0 and _dnl_meta:
+    if _dnl_iters > 0 and _dnl_meta:
         _dnl_factors = np.array(_dnl_meta.get("dnl_factors", []))
         _n_corr_bins = int(np.sum(_dnl_factors != 1.0)) if _dnl_factors.size > 0 else 0
         if _n_corr_bins > 0 and _dnl_window > 0:

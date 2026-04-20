@@ -56,7 +56,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
-from typing import Any, Mapping, Sequence, cast
+from typing import Any, Collection, Mapping, Sequence, cast
 from contextlib import contextmanager
 
 import math
@@ -989,6 +989,54 @@ def _normalise_mu_bounds(
     return normalised
 
 
+def _relax_mu_bounds_around_seed(
+    bounds: tuple[float, float] | None,
+    seed_mu_mev: float,
+    *,
+    margin_kev: float,
+    max_expand_kev: float | None = None,
+) -> tuple[float, float] | None:
+    """Expand centroid bounds when a seed lies outside or too close to an edge."""
+
+    if bounds is None:
+        return None
+
+    try:
+        lo = float(bounds[0])
+        hi = float(bounds[1])
+        seed_mu = float(seed_mu_mev)
+        margin_mev = float(margin_kev) / 1000.0
+        max_expand_mev = (
+            float(max_expand_kev) / 1000.0
+            if max_expand_kev is not None
+            else float("inf")
+        )
+    except (TypeError, ValueError):
+        return bounds
+
+    if not (np.isfinite(lo) and np.isfinite(hi) and np.isfinite(seed_mu)):
+        return bounds
+    if hi <= lo or margin_mev <= 0.0:
+        return bounds
+    if not np.isfinite(max_expand_mev) or max_expand_mev <= 0.0:
+        max_expand_mev = float("inf")
+
+    near_edge = (seed_mu - lo) < margin_mev or (hi - seed_mu) < margin_mev
+    if lo <= seed_mu <= hi and not near_edge:
+        return bounds
+
+    if seed_mu < lo and (lo - seed_mu) > max_expand_mev:
+        return bounds
+    if seed_mu > hi and (seed_mu - hi) > max_expand_mev:
+        return bounds
+
+    new_lo = min(lo, seed_mu - margin_mev)
+    new_hi = max(hi, seed_mu + margin_mev)
+    new_lo = max(new_lo, lo - max_expand_mev)
+    new_hi = min(new_hi, hi + max_expand_mev)
+    return (float(new_lo), float(new_hi))
+
+
 def _normalise_fit_energy_range(
     fit_range_cfg: Sequence[float] | None,
 ) -> tuple[float, float] | None:
@@ -1615,7 +1663,6 @@ def _spectral_fit_with_check(
     bins: int | None = None,
     bin_edges: np.ndarray | None = None,
     bounds: Mapping[str, tuple[float | None, float | None]] | None = None,
-    unbinned: bool = False,
     strict: bool = False,
     pre_binned_hist: np.ndarray | None = None,
     pre_dnl_meta: dict | None = None,
@@ -1648,8 +1695,6 @@ def _spectral_fit_with_check(
         fit_kwargs.update({"bins": bins, "bin_edges": bin_edges})
     if bounds:
         fit_kwargs["bounds"] = bounds
-    if unbinned:
-        fit_kwargs["unbinned"] = True
     if strict:
         fit_kwargs["strict"] = True
     if pre_binned_hist is not None:
@@ -1924,6 +1969,218 @@ def prepare_analysis_df(
     )
 
 
+def _subtract_time_range(
+    segments: Sequence[tuple[float, float]],
+    cut_start: float,
+    cut_end: float,
+) -> list[tuple[float, float]]:
+    """Subtract one exclusion interval from contiguous analysis segments."""
+
+    if not np.isfinite(cut_start) or not np.isfinite(cut_end) or cut_end <= cut_start:
+        return list(segments)
+
+    updated: list[tuple[float, float]] = []
+    for seg_start, seg_end in segments:
+        if cut_end <= seg_start or cut_start >= seg_end:
+            updated.append((seg_start, seg_end))
+            continue
+        if cut_start > seg_start:
+            updated.append((seg_start, min(cut_start, seg_end)))
+        if cut_end < seg_end:
+            updated.append((max(cut_end, seg_start), seg_end))
+    return [(start, end) for start, end in updated if end > start]
+
+
+def _analysis_time_segments(
+    analysis_start: datetime,
+    analysis_end: datetime,
+    *,
+    spike_start: pd.Timestamp | None,
+    spike_end: pd.Timestamp | None,
+    spike_periods: Sequence[Sequence[pd.Timestamp]],
+    run_periods: Sequence[Sequence[pd.Timestamp]],
+) -> list[tuple[float, float]]:
+    """Return contiguous analysis segments after run/spike exclusions."""
+
+    if run_periods:
+        segments = [
+            (to_epoch_seconds(start_ts), to_epoch_seconds(end_ts))
+            for start_ts, end_ts in run_periods
+        ]
+    else:
+        segments = [(analysis_start.timestamp(), analysis_end.timestamp())]
+
+    if spike_start is not None and spike_end is not None:
+        segments = _subtract_time_range(
+            segments,
+            to_epoch_seconds(spike_start),
+            to_epoch_seconds(spike_end),
+        )
+    elif spike_start is not None:
+        spike_start_unix = to_epoch_seconds(spike_start)
+        segments = [
+            (seg_start, min(seg_end, spike_start_unix))
+            for seg_start, seg_end in segments
+            if seg_start < spike_start_unix
+        ]
+    elif spike_end is not None:
+        spike_end_unix = to_epoch_seconds(spike_end)
+        segments = [
+            (max(seg_start, spike_end_unix), seg_end)
+            for seg_start, seg_end in segments
+            if seg_end > spike_end_unix
+        ]
+
+    for period in spike_periods:
+        try:
+            start_ts, end_ts = period
+        except (TypeError, ValueError):
+            continue
+        segments = _subtract_time_range(
+            segments,
+            to_epoch_seconds(start_ts),
+            to_epoch_seconds(end_ts),
+        )
+
+    return [(start, end) for start, end in segments if end > start]
+
+
+def _detect_monitor_downtime(
+    events_raw: pd.DataFrame,
+    events_after_noise: pd.DataFrame,
+    df_analysis: pd.DataFrame,
+    *,
+    analysis_segments: Sequence[tuple[float, float]],
+    cfg: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Flag conservative detector-off periods from missing support activity."""
+
+    det_cfg = cfg.get("downtime_detection", {}) if isinstance(cfg, Mapping) else {}
+    if not isinstance(det_cfg, Mapping):
+        det_cfg = {}
+    if det_cfg.get("enabled", True) is False:
+        return {}, None
+
+    try:
+        probe_interval_s = float(det_cfg.get("probe_interval_s", 60.0))
+    except (TypeError, ValueError):
+        probe_interval_s = 60.0
+    try:
+        min_gap_s = float(det_cfg.get("min_gap_s", 300.0))
+    except (TypeError, ValueError):
+        min_gap_s = 300.0
+    if not np.isfinite(probe_interval_s) or probe_interval_s <= 0.0:
+        probe_interval_s = 60.0
+    if not np.isfinite(min_gap_s) or min_gap_s <= 0.0:
+        min_gap_s = 300.0
+
+    po210_window = det_cfg.get("po210_window")
+    if not (isinstance(po210_window, Sequence) and len(po210_window) == 2):
+        po210_window = (
+            cfg.get("time_fit", {}).get("window_po210")
+            or cfg.get("plotting", {}).get("window_po210")
+            or [5.25, 5.37]
+        )
+    try:
+        po210_lo = float(po210_window[0])
+        po210_hi = float(po210_window[1])
+    except (TypeError, ValueError, IndexError):
+        po210_lo, po210_hi = 5.25, 5.37
+
+    def _timestamps_to_unix(df: pd.DataFrame) -> np.ndarray:
+        if df.empty or "timestamp" not in df.columns:
+            return np.asarray([], dtype=float)
+        return df["timestamp"].map(to_epoch_seconds).to_numpy(dtype=float)
+
+    raw_ts = _timestamps_to_unix(events_raw)
+    noise_ts = _timestamps_to_unix(events_after_noise)
+    if df_analysis.empty or "energy_MeV" not in df_analysis.columns:
+        po210_ts = np.asarray([], dtype=float)
+    else:
+        po210_mask = (
+            np.isfinite(df_analysis["energy_MeV"].to_numpy(dtype=float))
+            & (df_analysis["energy_MeV"].to_numpy(dtype=float) >= po210_lo)
+            & (df_analysis["energy_MeV"].to_numpy(dtype=float) <= po210_hi)
+        )
+        po210_ts = _timestamps_to_unix(df_analysis.loc[po210_mask, ["timestamp"]])
+
+    min_bins = max(1, int(math.ceil(min_gap_s / probe_interval_s)))
+    periods: list[dict[str, Any]] = []
+    plot_segments: list[dict[str, Any]] = []
+    coverage_s = 0.0
+
+    for seg_start, seg_end in analysis_segments:
+        if not np.isfinite(seg_start) or not np.isfinite(seg_end) or seg_end <= seg_start:
+            continue
+        coverage_s += seg_end - seg_start
+        edges = np.arange(seg_start, seg_end + probe_interval_s, probe_interval_s, dtype=float)
+        if edges.size < 2:
+            edges = np.array([seg_start, seg_end], dtype=float)
+        elif edges[-1] < seg_end:
+            edges = np.append(edges, seg_end)
+
+        raw_hist = np.histogram(raw_ts, bins=edges)[0].astype(int)
+        noise_hist = np.histogram(noise_ts, bins=edges)[0].astype(int)
+        po210_hist = np.histogram(po210_ts, bins=edges)[0].astype(int)
+        centers = 0.5 * (edges[:-1] + edges[1:])
+        zero_support = (raw_hist == 0) & (noise_hist == 0) & (po210_hist == 0)
+
+        seg_payload = {
+            "t": centers.tolist(),
+            "raw_counts": raw_hist.tolist(),
+            "noise_counts": noise_hist.tolist(),
+            "po210_counts": po210_hist.tolist(),
+            "start_unix": float(seg_start),
+            "end_unix": float(seg_end),
+        }
+        plot_segments.append(seg_payload)
+
+        run_start: int | None = None
+        for idx, is_zero in enumerate(zero_support):
+            if is_zero and run_start is None:
+                run_start = idx
+            if (not is_zero or idx == len(zero_support) - 1) and run_start is not None:
+                run_end = idx + 1 if is_zero and idx == len(zero_support) - 1 else idx
+                if run_end - run_start >= min_bins:
+                    period_start = float(edges[run_start])
+                    period_end = float(edges[run_end])
+                    duration_s = period_end - period_start
+                    periods.append(
+                        {
+                            "start": datetime.fromtimestamp(period_start, tz=timezone.utc).isoformat().replace("+00:00", "Z"),
+                            "end": datetime.fromtimestamp(period_end, tz=timezone.utc).isoformat().replace("+00:00", "Z"),
+                            "start_unix": period_start,
+                            "end_unix": period_end,
+                            "duration_s": duration_s,
+                            "duration_min": duration_s / 60.0,
+                            "probe_bins": int(run_end - run_start),
+                            "reason": "zero_raw_noise_po210_support",
+                        }
+                    )
+                run_start = None
+
+    periods.sort(key=lambda period: float(period["start_unix"]))
+    total_downtime_s = sum(float(period["duration_s"]) for period in periods)
+    summary_payload = {
+        "enabled": True,
+        "probe_interval_s": probe_interval_s,
+        "min_gap_s": min_gap_s,
+        "po210_window": [po210_lo, po210_hi],
+        "n_periods": len(periods),
+        "coverage_s": coverage_s,
+        "total_downtime_s": total_downtime_s,
+        "downtime_fraction": (total_downtime_s / coverage_s) if coverage_s > 0 else 0.0,
+        "periods": periods,
+    }
+    plot_payload = {
+        "segments": plot_segments,
+        "periods": periods,
+        "probe_interval_s": probe_interval_s,
+        "min_gap_s": min_gap_s,
+    }
+    return summary_payload, plot_payload
+
+
 def _ts_bin_centers_widths(times, cfg, t_start, t_end):
     """Return bin centers and widths matching :func:`plot_time_series`."""
     arr = np.asarray(times)
@@ -2092,30 +2349,120 @@ def dedupe_isotope_series(isotope_series_data, tol_seconds=0.5):
 # Per-bin template fitting: propagate aggregate spectral model to time bins
 # ═══════════════════════════════════════════════════════════════════════
 
+def _resolve_template_shape_mode(time_fit_cfg: Mapping[str, Any]) -> str:
+    """Return the aggregate-shape handling mode for per-bin template fits."""
+
+    raw_mode = str(time_fit_cfg.get("template_shape_mode", "soft")).strip().lower()
+    if raw_mode in {"frozen", "fixed", "hard"}:
+        return "frozen"
+    return "soft"
+
+
+def _resolve_template_freeze_split_peak_shape(
+    time_fit_cfg: Mapping[str, Any],
+) -> bool:
+    """Return whether per-bin fits should freeze the broad split-peak terms."""
+
+    raw_value = time_fit_cfg.get("template_freeze_split_peak_shape", True)
+    if isinstance(raw_value, str):
+        return raw_value.strip().lower() not in {"0", "false", "off", "no"}
+    return bool(raw_value)
+
+
+def _resolve_template_max_independent_centroid_spread_kev(
+    time_fit_cfg: Mapping[str, Any],
+) -> float:
+    """Return the allowed isotope-to-isotope centroid spread before rejecting an independent fallback."""
+
+    raw_value = time_fit_cfg.get(
+        "template_max_independent_centroid_spread_kev",
+        20.0,
+    )
+    try:
+        value = float(raw_value)
+    except (TypeError, ValueError):
+        return float("inf")
+    if not np.isfinite(value) or value <= 0.0:
+        return float("inf")
+    return float(value)
+
+
+def _template_should_soft_constrain_param(
+    name: str,
+    *,
+    shared_shape_names: Sequence[str],
+) -> bool:
+    """Return True when a template shape parameter should float softly."""
+
+    is_core_sigma = (
+        name.startswith("sigma_")
+        and not name.startswith("sigma_shelf")
+        and not name.startswith("sigma_halo")
+        and not name.startswith("sigma_gauss2")
+        and not name.startswith("sigma_asym")
+        and not name.startswith("sigma_right")
+    )
+    is_core_tau = name.startswith("tau_") and not name.startswith("tau_halo_")
+    is_shared_shape = name in shared_shape_names
+    is_beta = name.startswith("f_beta_") or name.startswith("lambda_beta_")
+    return bool(is_core_sigma or is_core_tau or is_shared_shape or is_beta)
+
+
+def _template_soft_constraint_sigmas(name: str, value: float) -> tuple[float, float]:
+    """Return (search_sigma, penalty_sigma) for a softly constrained shape."""
+
+    abs_val = abs(float(value))
+
+    if name == "delta_E_broad":
+        search_sigma = max(abs_val * 2.0, 0.05)
+    elif name.startswith("f_beta_"):
+        search_sigma = max(abs_val * 1.5, 0.12)
+    elif name.startswith("lambda_beta_"):
+        search_sigma = max(abs_val * 1.0, 0.50)
+    elif name == "sigma_gauss2_ratio_shared":
+        search_sigma = max(abs_val * 0.6, 0.60)
+    elif name.startswith("sigma_"):
+        search_sigma = max(abs_val * 0.4, 0.02)
+    elif name.startswith("tau_"):
+        search_sigma = max(abs_val * 0.6, 0.02)
+    elif name.startswith("f_"):
+        search_sigma = max(abs_val * 1.0, 0.08)
+    else:
+        search_sigma = max(abs_val * 0.4, 0.02)
+
+    penalty_sigma = max(search_sigma * 0.5, 0.01)
+    return float(search_sigma), float(penalty_sigma)
+
+
 def _build_template_from_aggregate(
     aggregate_params: dict,
     priors: dict,
     flags: dict,
     cfg: dict,
 ) -> tuple[dict, dict]:
-    """Build frozen-shape priors and fix flags from aggregate fit results.
+    """Build aggregate-anchored priors and flags for per-bin template fits.
 
-    Returns (template_priors, template_flags) where all shape/resolution
-    parameters are fixed at their aggregate best-fit values and only
-    amplitudes, background, and (optionally) centroids float.
+    The default ``template_shape_mode: soft`` keeps the aggregate fit as the
+    anchor but lets the repeatedly problematic shape parameters move under
+    Gaussian penalties instead of pinning them at hard walls. ``frozen``
+    restores the legacy behaviour.
     """
-    spectral_cfg = cfg.get("spectral_fit", {})
     time_fit_cfg = cfg.get("time_fit", {})
     float_centroids = bool(time_fit_cfg.get("float_centroids", True))
+    centroid_shift_model = _resolve_template_centroid_shift_model(
+        time_fit_cfg,
+        float_centroids=float_centroids,
+    )
+    shape_mode = _resolve_template_shape_mode(time_fit_cfg)
+    freeze_split_peak_shape = _resolve_template_freeze_split_peak_shape(time_fit_cfg)
 
     # Start from the original priors (for bounds and structure)
     tpl_priors = dict(priors)
     tpl_flags = dict(flags)
+    penalty_priors: dict[str, list[float]] = {}
 
     # Discover isotopes from aggregate fit
-    iso_list = sorted(
-        k[3:] for k in aggregate_params if k.startswith("mu_") and f"S_{k[3:]}" in aggregate_params
-    )
+    iso_list = _template_time_fit_isotope_list(aggregate_params, tpl_priors)
 
     # ── Shape params to freeze ────────────────────────────────────
     _shape_prefixes = (
@@ -2132,47 +2479,78 @@ def _build_template_from_aggregate(
     # Also freeze resolution params
     _resolution_keys = ("sigma0", "sigma_e", "sigma_E", "F")
 
-    # Freeze per-isotope shape params
+    def _seed_fixed(name: str, value: Any, *, sigma_floor: float = 0.001) -> None:
+        if name not in tpl_priors:
+            return
+        try:
+            value_f = float(value)
+        except (TypeError, ValueError):
+            return
+        if not np.isfinite(value_f):
+            return
+        old_mu, old_sig = tpl_priors[name]
+        tpl_priors[name] = (value_f, abs(float(old_sig)) * 0.01 + float(sigma_floor))
+        tpl_flags[f"fix_{name}"] = True
+
+    def _seed_soft(name: str, value: Any) -> None:
+        if name not in tpl_priors:
+            return
+        try:
+            value_f = float(value)
+        except (TypeError, ValueError):
+            return
+        if not np.isfinite(value_f):
+            return
+        search_sigma, penalty_sigma = _template_soft_constraint_sigmas(name, value_f)
+        tpl_priors[name] = (value_f, search_sigma)
+        tpl_flags.pop(f"fix_{name}", None)
+        penalty_priors[name] = [value_f, penalty_sigma]
+
     for key, val in aggregate_params.items():
         is_shape = any(key.startswith(pfx) for pfx in _shape_prefixes)
         is_shared_shape = key in _shape_shared
         is_resolution = key in _resolution_keys
-        is_sigma = key.startswith("sigma_") and not key.startswith("sigma_shelf") and not key.startswith("sigma_halo") and not key.startswith("sigma_gauss2") and not key.startswith("sigma_asym")
-        # Freeze f_beta parameters too (detector property)
+        is_sigma = (
+            key.startswith("sigma_")
+            and not key.startswith("sigma_shelf")
+            and not key.startswith("sigma_halo")
+            and not key.startswith("sigma_gauss2")
+            and not key.startswith("sigma_asym")
+            and not key.startswith("sigma_right")
+        )
         is_beta = key.startswith("f_beta_") or key.startswith("lambda_beta_")
+        is_split_peak_shape = (
+            key == "delta_E_broad"
+            or key.startswith("f_gauss2_")
+            or key.startswith("sigma_gauss2_")
+        )
 
-        if is_shape or is_shared_shape or is_resolution or is_beta:
-            try:
-                val_f = float(val)
-                if np.isfinite(val_f) and key in tpl_priors:
-                    old_mu, old_sig = tpl_priors[key]
-                    tpl_priors[key] = (val_f, old_sig * 0.01)
-                    tpl_flags[f"fix_{key}"] = True
-            except (TypeError, ValueError):
-                pass
+        if is_resolution:
+            _seed_fixed(key, val)
+            continue
 
-        # Freeze per-isotope sigma (peak width is a detector property)
-        if is_sigma:
-            try:
-                val_f = float(val)
-                if np.isfinite(val_f) and key in tpl_priors:
-                    old_mu, old_sig = tpl_priors[key]
-                    tpl_priors[key] = (val_f, old_sig * 0.01)
-                    tpl_flags[f"fix_{key}"] = True
-            except (TypeError, ValueError):
-                pass
+        if freeze_split_peak_shape and is_split_peak_shape:
+            _seed_fixed(key, val)
+            continue
+
+        if (
+            shape_mode == "soft"
+            and _template_should_soft_constrain_param(
+                key,
+                shared_shape_names=_shape_shared,
+            )
+        ):
+            _seed_soft(key, val)
+            continue
+
+        if is_shape or is_shared_shape or is_sigma or is_beta:
+            _seed_fixed(key, val)
 
     # Fix background polynomial shape (b0, b2, b3) but float b1 and S_bkg
     for bkey in ("b0", "b2", "b3"):
         bval = aggregate_params.get(bkey)
         if bval is not None and bkey in tpl_priors:
-            try:
-                bval_f = float(bval)
-                if np.isfinite(bval_f):
-                    tpl_priors[bkey] = (bval_f, abs(bval_f) * 0.01 + 0.001)
-                    tpl_flags[f"fix_{bkey}"] = True
-            except (TypeError, ValueError):
-                pass
+            _seed_fixed(bkey, bval)
 
     # Seed centroids from aggregate, float or fix per config
     for iso in iso_list:
@@ -2235,6 +2613,20 @@ def _build_template_from_aggregate(
             pass
     else:
         tpl_flags.pop("fix_b1", None)
+
+    if penalty_priors:
+        existing_penalties = tpl_flags.get("penalty_priors", {})
+        merged_penalties = dict(existing_penalties) if isinstance(existing_penalties, Mapping) else {}
+        merged_penalties.update(penalty_priors)
+        tpl_flags["penalty_priors"] = merged_penalties
+
+    tpl_flags.setdefault("max_f_beta", float(time_fit_cfg.get("template_max_f_beta", 0.95)))
+    tpl_flags.setdefault("max_lambda_beta", float(time_fit_cfg.get("template_max_lambda_beta", 8.0)))
+    tpl_flags.setdefault("max_delta_E_broad", float(time_fit_cfg.get("template_max_delta_E_broad", 0.50)))
+    tpl_flags.setdefault(
+        "max_sigma_gauss2_ratio",
+        float(time_fit_cfg.get("template_max_sigma_gauss2_ratio", 8.0)),
+    )
 
     return tpl_priors, tpl_flags
 
@@ -2326,6 +2718,221 @@ def _template_seed_from_aggregate(
         background_model = spectral_cfg.get("background_model")
         if background_model is not None:
             flags.setdefault("background_model", background_model)
+        extra_peaks = spectral_cfg.get("extra_peaks", {})
+        if isinstance(extra_peaks, Mapping):
+            amplitude_links = flags.get("amplitude_links")
+            if not isinstance(amplitude_links, Mapping):
+                amplitude_links = {}
+            else:
+                amplitude_links = dict(amplitude_links)
+            use_emg = flags.get("use_emg")
+            use_emg = dict(use_emg) if isinstance(use_emg, Mapping) else {}
+            use_shelf = flags.get("use_shelf")
+            use_shelf = dict(use_shelf) if isinstance(use_shelf, Mapping) else {}
+            use_halo = flags.get("use_halo")
+            use_halo = dict(use_halo) if isinstance(use_halo, Mapping) else {}
+
+            for peak_name, peak_cfg in extra_peaks.items():
+                if not isinstance(peak_cfg, Mapping):
+                    continue
+                try:
+                    energy = float(peak_cfg.get("energy", 0.0))
+                except (TypeError, ValueError):
+                    energy = 0.0
+                if not np.isfinite(energy) or energy <= 0.0:
+                    continue
+
+                mu_key = f"mu_{peak_name}"
+                sigma_key = f"sigma_{peak_name}"
+                s_key = f"S_{peak_name}"
+                tau_key = f"tau_{peak_name}"
+                shelf_key = f"f_shelf_{peak_name}"
+                shelf_sigma_key = f"sigma_shelf_{peak_name}"
+                halo_key = f"f_halo_{peak_name}"
+                halo_sigma_key = f"sigma_halo_{peak_name}"
+                halo_tau_key = f"tau_halo_{peak_name}"
+
+                try:
+                    mu_sigma = float(peak_cfg.get("mu_sigma", 0.3))
+                except (TypeError, ValueError):
+                    mu_sigma = 0.3
+                if not np.isfinite(mu_sigma) or mu_sigma <= 0.0:
+                    mu_sigma = 0.3
+                priors.setdefault(mu_key, (energy, mu_sigma))
+
+                sigma_cfg = peak_cfg.get("sigma", [0.5, 0.3])
+                if isinstance(sigma_cfg, (list, tuple)) and len(sigma_cfg) >= 2:
+                    sigma_mu, sigma_sig = sigma_cfg[:2]
+                else:
+                    sigma_mu, sigma_sig = sigma_cfg, 0.3
+                try:
+                    sigma_mu_f = float(sigma_mu)
+                except (TypeError, ValueError):
+                    sigma_mu_f = 0.5
+                try:
+                    sigma_sig_f = float(sigma_sig)
+                except (TypeError, ValueError):
+                    sigma_sig_f = 0.3
+                if not np.isfinite(sigma_sig_f) or sigma_sig_f <= 0.0:
+                    sigma_sig_f = 0.3
+                priors.setdefault(sigma_key, (sigma_mu_f, sigma_sig_f))
+
+                amp_cfg = peak_cfg.get("amplitude", [500.0, 500.0])
+                if isinstance(amp_cfg, (list, tuple)) and len(amp_cfg) >= 2:
+                    amp_mu, amp_sig = amp_cfg[:2]
+                else:
+                    amp_mu, amp_sig = amp_cfg, 500.0
+                try:
+                    amp_mu_f = float(amp_mu)
+                except (TypeError, ValueError):
+                    amp_mu_f = 500.0
+                try:
+                    amp_sig_f = float(amp_sig)
+                except (TypeError, ValueError):
+                    amp_sig_f = max(abs(amp_mu_f), 1.0)
+                if not np.isfinite(amp_sig_f) or amp_sig_f <= 0.0:
+                    amp_sig_f = max(abs(amp_mu_f), 1.0)
+
+                amp_link = peak_cfg.get("amplitude_linked")
+                if isinstance(amp_link, Mapping):
+                    ref_name = str(amp_link.get("reference", ""))
+                    try:
+                        ratio = float(amp_link.get("ratio", 1.0))
+                    except (TypeError, ValueError):
+                        ratio = 1.0
+                    amplitude_links[peak_name] = {
+                        "reference": ref_name,
+                        "ratio": ratio,
+                    }
+                    flags[f"amplitude_linked_{peak_name}"] = True
+                    ref_seed = aggregate_params.get(f"S_{ref_name}")
+                    if ref_seed is None and f"S_{ref_name}" in priors:
+                        ref_seed = priors[f"S_{ref_name}"][0]
+                    try:
+                        ref_seed_f = float(ref_seed)
+                    except (TypeError, ValueError):
+                        ref_seed_f = float("nan")
+                    if np.isfinite(ref_seed_f) and ref_seed_f > 0.0:
+                        amp_mu_f = ref_seed_f * ratio
+                        amp_sig_f = max(abs(amp_mu_f) * 0.25, 1.0)
+                priors.setdefault(s_key, (amp_mu_f, amp_sig_f))
+
+                if bool(peak_cfg.get("use_emg", False)):
+                    use_emg[peak_name] = True
+                    tau_cfg = peak_cfg.get("tau", [0.05, 0.05])
+                    if isinstance(tau_cfg, (list, tuple)) and len(tau_cfg) >= 2:
+                        tau_mu, tau_sig = tau_cfg[:2]
+                    else:
+                        tau_mu, tau_sig = tau_cfg, 0.05
+                    try:
+                        tau_mu_f = float(tau_mu)
+                    except (TypeError, ValueError):
+                        tau_mu_f = 0.05
+                    try:
+                        tau_sig_f = float(tau_sig)
+                    except (TypeError, ValueError):
+                        tau_sig_f = 0.05
+                    if not np.isfinite(tau_sig_f) or tau_sig_f <= 0.0:
+                        tau_sig_f = 0.05
+                    priors.setdefault(tau_key, (tau_mu_f, tau_sig_f))
+
+                if bool(peak_cfg.get("use_shelf", False)):
+                    use_shelf[peak_name] = True
+                    shelf_cfg = peak_cfg.get("f_shelf", [0.05, 0.05])
+                    if isinstance(shelf_cfg, (list, tuple)) and len(shelf_cfg) >= 2:
+                        shelf_mu, shelf_sig = shelf_cfg[:2]
+                    else:
+                        shelf_mu, shelf_sig = shelf_cfg, 0.05
+                    try:
+                        shelf_mu_f = float(shelf_mu)
+                    except (TypeError, ValueError):
+                        shelf_mu_f = 0.05
+                    try:
+                        shelf_sig_f = float(shelf_sig)
+                    except (TypeError, ValueError):
+                        shelf_sig_f = 0.05
+                    if not np.isfinite(shelf_sig_f) or shelf_sig_f <= 0.0:
+                        shelf_sig_f = 0.05
+                    priors.setdefault(shelf_key, (shelf_mu_f, shelf_sig_f))
+
+                    shelf_sigma_cfg = peak_cfg.get("sigma_shelf", [0.25, 0.15])
+                    if isinstance(shelf_sigma_cfg, (list, tuple)) and len(shelf_sigma_cfg) >= 2:
+                        shelf_sigma_mu, shelf_sigma_sig = shelf_sigma_cfg[:2]
+                    else:
+                        shelf_sigma_mu, shelf_sigma_sig = shelf_sigma_cfg, 0.15
+                    try:
+                        shelf_sigma_mu_f = float(shelf_sigma_mu)
+                    except (TypeError, ValueError):
+                        shelf_sigma_mu_f = 0.25
+                    try:
+                        shelf_sigma_sig_f = float(shelf_sigma_sig)
+                    except (TypeError, ValueError):
+                        shelf_sigma_sig_f = 0.15
+                    if not np.isfinite(shelf_sigma_sig_f) or shelf_sigma_sig_f <= 0.0:
+                        shelf_sigma_sig_f = 0.15
+                    priors.setdefault(shelf_sigma_key, (shelf_sigma_mu_f, shelf_sigma_sig_f))
+
+                if bool(peak_cfg.get("use_halo", False)):
+                    use_halo[peak_name] = True
+                    halo_cfg = peak_cfg.get("f_halo", [0.04, 0.10])
+                    if isinstance(halo_cfg, (list, tuple)) and len(halo_cfg) >= 2:
+                        halo_mu, halo_sig = halo_cfg[:2]
+                    else:
+                        halo_mu, halo_sig = halo_cfg, 0.10
+                    try:
+                        halo_mu_f = float(halo_mu)
+                    except (TypeError, ValueError):
+                        halo_mu_f = 0.04
+                    try:
+                        halo_sig_f = float(halo_sig)
+                    except (TypeError, ValueError):
+                        halo_sig_f = 0.10
+                    if not np.isfinite(halo_sig_f) or halo_sig_f <= 0.0:
+                        halo_sig_f = 0.10
+                    priors.setdefault(halo_key, (halo_mu_f, halo_sig_f))
+
+                    halo_sigma_cfg = peak_cfg.get("sigma_halo", [0.24, 0.12])
+                    if isinstance(halo_sigma_cfg, (list, tuple)) and len(halo_sigma_cfg) >= 2:
+                        halo_sigma_mu, halo_sigma_sig = halo_sigma_cfg[:2]
+                    else:
+                        halo_sigma_mu, halo_sigma_sig = halo_sigma_cfg, 0.12
+                    try:
+                        halo_sigma_mu_f = float(halo_sigma_mu)
+                    except (TypeError, ValueError):
+                        halo_sigma_mu_f = 0.24
+                    try:
+                        halo_sigma_sig_f = float(halo_sigma_sig)
+                    except (TypeError, ValueError):
+                        halo_sigma_sig_f = 0.12
+                    if not np.isfinite(halo_sigma_sig_f) or halo_sigma_sig_f <= 0.0:
+                        halo_sigma_sig_f = 0.12
+                    priors.setdefault(halo_sigma_key, (halo_sigma_mu_f, halo_sigma_sig_f))
+
+                    halo_tau_cfg = peak_cfg.get("tau_halo", [0.05, 0.05])
+                    if isinstance(halo_tau_cfg, (list, tuple)) and len(halo_tau_cfg) >= 2:
+                        halo_tau_mu, halo_tau_sig = halo_tau_cfg[:2]
+                    else:
+                        halo_tau_mu, halo_tau_sig = halo_tau_cfg, 0.05
+                    try:
+                        halo_tau_mu_f = float(halo_tau_mu)
+                    except (TypeError, ValueError):
+                        halo_tau_mu_f = 0.05
+                    try:
+                        halo_tau_sig_f = float(halo_tau_sig)
+                    except (TypeError, ValueError):
+                        halo_tau_sig_f = 0.05
+                    if not np.isfinite(halo_tau_sig_f) or halo_tau_sig_f <= 0.0:
+                        halo_tau_sig_f = 0.05
+                    priors.setdefault(halo_tau_key, (halo_tau_mu_f, halo_tau_sig_f))
+
+            if amplitude_links:
+                flags["amplitude_links"] = amplitude_links
+            if use_emg:
+                flags["use_emg"] = use_emg
+            if use_shelf:
+                flags["use_shelf"] = use_shelf
+            if use_halo:
+                flags["use_halo"] = use_halo
     return priors, flags
 
 
@@ -2353,6 +2960,275 @@ def _resolve_template_fixed_isotopes(
     return set()
 
 
+def _resolve_template_required_isotopes(
+    iso_list: Sequence[str],
+    time_fit_cfg: Mapping[str, Any],
+) -> list[str]:
+    """Return isotopes that should not be allowed to vanish in per-bin fits."""
+
+    raw_value = time_fit_cfg.get("template_required_isotopes", ("Po210", "Po214"))
+    if raw_value in (None, False):
+        return []
+
+    if isinstance(raw_value, str):
+        lowered = raw_value.strip().lower()
+        if lowered in {"", "none", "off", "false", "0"}:
+            return []
+        requested = [part.strip() for part in raw_value.split(",") if part.strip()]
+    elif isinstance(raw_value, Sequence) and not isinstance(raw_value, (bytes, str)):
+        requested = [str(item).strip() for item in raw_value if str(item).strip()]
+    else:
+        return []
+
+    iso_lookup = {str(iso) for iso in iso_list}
+    return [iso for iso in requested if iso in iso_lookup]
+
+
+def _resolve_template_shared_shift_anchor_isotopes(
+    iso_list: Sequence[str],
+    time_fit_cfg: Mapping[str, Any],
+) -> list[str]:
+    """Return isotopes that should anchor shared centroid drift estimates."""
+
+    raw_value = time_fit_cfg.get(
+        "template_shared_shift_anchor_isotopes",
+        "auto",
+    )
+    iso_values = [str(iso) for iso in iso_list]
+    if raw_value in (None, False):
+        return iso_values
+    if isinstance(raw_value, str):
+        lowered = raw_value.strip().lower()
+        if lowered in {"", "auto"}:
+            anchors = [
+                iso
+                for iso in iso_values
+                if iso not in {"Po210", "Unknown1"}
+            ]
+            return anchors or iso_values
+        requested = [part.strip() for part in raw_value.split(",") if part.strip()]
+    elif isinstance(raw_value, Sequence) and not isinstance(raw_value, (bytes, str)):
+        requested = [str(item).strip() for item in raw_value if str(item).strip()]
+    else:
+        return iso_values
+    allowed = set(iso_values)
+    anchors = [iso for iso in requested if iso in allowed]
+    return anchors or iso_values
+
+
+def _template_required_isotope_floor_priors(
+    template_priors: Mapping[str, tuple[float, float]],
+    required_isotopes: Sequence[str],
+    time_fit_cfg: Mapping[str, Any],
+    *,
+    fixed_isotopes: Collection[str] = (),
+) -> dict[str, list[float]]:
+    """Build one-sided lower-floor penalties for required template isotopes."""
+
+    try:
+        floor_fraction = float(
+            time_fit_cfg.get("template_required_isotope_floor_fraction", 0.10)
+        )
+    except (TypeError, ValueError):
+        floor_fraction = 0.10
+    try:
+        sigma_fraction = float(
+            time_fit_cfg.get("template_required_isotope_floor_sigma_fraction", 0.35)
+        )
+    except (TypeError, ValueError):
+        sigma_fraction = 0.35
+    try:
+        min_counts = float(
+            time_fit_cfg.get("template_required_isotope_floor_min_counts", 5.0)
+        )
+    except (TypeError, ValueError):
+        min_counts = 5.0
+
+    if floor_fraction <= 0.0 or sigma_fraction <= 0.0:
+        return {}
+
+    fixed_lookup = {str(iso) for iso in fixed_isotopes}
+    floor_priors: dict[str, list[float]] = {}
+    for iso in required_isotopes:
+        if iso in fixed_lookup:
+            continue
+        s_key = f"S_{iso}"
+        prior = template_priors.get(s_key)
+        if not isinstance(prior, (list, tuple)) or len(prior) < 1:
+            continue
+        try:
+            expected_counts = float(prior[0])
+        except (TypeError, ValueError):
+            continue
+        if not np.isfinite(expected_counts) or expected_counts <= 0.0:
+            continue
+
+        floor_counts = max(expected_counts * floor_fraction, min_counts)
+        sigma_counts = max(floor_counts * sigma_fraction, 1.0)
+        floor_priors[s_key] = [float(floor_counts), float(sigma_counts)]
+
+    return floor_priors
+
+
+def _template_required_isotope_window(
+    iso: str,
+    cfg: Mapping[str, Any],
+    aggregate_params: Mapping[str, Any],
+) -> tuple[float, float] | None:
+    """Return the analysis window used to assess a required-isotope local floor."""
+
+    time_fit_cfg = cfg.get("time_fit", {})
+    if isinstance(time_fit_cfg, Mapping):
+        raw_window = time_fit_cfg.get(f"window_{iso.lower()}")
+        if isinstance(raw_window, Sequence) and not isinstance(raw_window, (bytes, str)) and len(raw_window) >= 2:
+            try:
+                lo = float(raw_window[0])
+                hi = float(raw_window[1])
+            except (TypeError, ValueError):
+                lo = hi = float("nan")
+            if np.isfinite(lo) and np.isfinite(hi) and hi > lo:
+                return float(lo), float(hi)
+
+    mu_key = f"mu_{iso}"
+    sigma_key = f"sigma_{iso}"
+    try:
+        mu_val = float(aggregate_params.get(mu_key, float("nan")))
+    except (TypeError, ValueError):
+        mu_val = float("nan")
+    try:
+        sigma_val = float(aggregate_params.get(sigma_key, float("nan")))
+    except (TypeError, ValueError):
+        sigma_val = float("nan")
+    if not np.isfinite(mu_val):
+        return None
+    if not np.isfinite(sigma_val) or sigma_val <= 0.0:
+        sigma_val = 0.05
+    half_width = max(3.0 * sigma_val, 0.10)
+    return float(mu_val - half_width), float(mu_val + half_width)
+
+
+def _template_local_signal_floor_prior(
+    hist: np.ndarray,
+    energy_edges: np.ndarray,
+    iso: str,
+    cfg: Mapping[str, Any],
+    aggregate_params: Mapping[str, Any],
+    time_fit_cfg: Mapping[str, Any],
+) -> list[float] | None:
+    """Estimate a required-isotope lower floor from the local observed spectrum."""
+
+    window = _template_required_isotope_window(iso, cfg, aggregate_params)
+    if window is None:
+        return None
+    lo, hi = window
+    if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
+        return None
+
+    centers = 0.5 * (energy_edges[:-1] + energy_edges[1:])
+    width = float(hi - lo)
+    peak_mask = (centers >= lo) & (centers <= hi)
+    if not np.any(peak_mask):
+        return None
+
+    left_mask = (centers >= (lo - width)) & (centers < lo)
+    right_mask = (centers > hi) & (centers <= (hi + width))
+    peak_counts = float(np.sum(hist[peak_mask]))
+    side_counts = 0.0
+    side_bins = 0
+    for mask in (left_mask, right_mask):
+        if np.any(mask):
+            side_counts += float(np.sum(hist[mask]))
+            side_bins += int(np.sum(mask))
+
+    if side_bins > 0:
+        bkg_per_bin = side_counts / side_bins
+    else:
+        bkg_per_bin = 0.0
+    signal_est = max(peak_counts - bkg_per_bin * int(np.sum(peak_mask)), 0.0)
+
+    try:
+        local_fraction = float(
+            time_fit_cfg.get("template_required_isotope_local_floor_fraction", 0.25)
+        )
+    except (TypeError, ValueError):
+        local_fraction = 0.25
+    try:
+        sigma_fraction = float(
+            time_fit_cfg.get("template_required_isotope_floor_sigma_fraction", 0.35)
+        )
+    except (TypeError, ValueError):
+        sigma_fraction = 0.35
+    try:
+        min_counts = float(
+            time_fit_cfg.get("template_required_isotope_floor_min_counts", 5.0)
+        )
+    except (TypeError, ValueError):
+        min_counts = 5.0
+
+    if local_fraction <= 0.0 or sigma_fraction <= 0.0:
+        return None
+    floor_counts = max(signal_est * local_fraction, min_counts)
+    sigma_counts = max(floor_counts * sigma_fraction, 1.0)
+    return [float(floor_counts), float(sigma_counts)]
+
+
+def _merge_template_lower_floor_priors(
+    base_priors: Mapping[str, Sequence[float]] | None,
+    local_priors: Mapping[str, Sequence[float]] | None,
+) -> dict[str, list[float]]:
+    """Merge aggregate-based and local-evidence floor priors conservatively."""
+
+    merged: dict[str, list[float]] = {}
+    for source in (base_priors, local_priors):
+        if not isinstance(source, Mapping):
+            continue
+        for key, value in source.items():
+            if not isinstance(value, Sequence) or len(value) < 2:
+                continue
+            try:
+                floor_val = float(value[0])
+                sigma_val = float(value[1])
+            except (TypeError, ValueError):
+                continue
+            if not np.isfinite(floor_val) or floor_val <= 0.0 or not np.isfinite(sigma_val) or sigma_val <= 0.0:
+                continue
+            prev = merged.get(str(key))
+            if prev is None:
+                merged[str(key)] = [floor_val, sigma_val]
+                continue
+            if floor_val > prev[0]:
+                merged[str(key)] = [floor_val, sigma_val]
+            elif floor_val == prev[0] and sigma_val < prev[1]:
+                merged[str(key)] = [floor_val, sigma_val]
+    return merged
+
+
+def _template_time_fit_isotope_list(
+    aggregate_params: Mapping[str, Any],
+    template_priors: Mapping[str, Any],
+) -> list[str]:
+    """Return the isotope list for per-bin template fits.
+
+    Prefer the template priors because they preserve dummy ``S_<iso>`` entries
+    for amplitude-linked extra peaks such as ``Bi212``. The aggregate fit
+    params only retain the derived linked amplitude, which would otherwise drop
+    those peaks from the per-bin template model.
+    """
+
+    iso_from_template = sorted(
+        k[3:]
+        for k in template_priors
+        if k.startswith("mu_") and f"S_{k[3:]}" in template_priors
+    )
+    if iso_from_template:
+        return iso_from_template
+    return sorted(
+        k[3:]
+        for k in aggregate_params
+        if k.startswith("mu_") and f"S_{k[3:]}" in aggregate_params
+    )
+
+
 def _resolve_template_n_workers(time_fit_cfg: Mapping[str, Any]) -> int:
     """Return the worker count for per-bin template fits."""
 
@@ -2365,6 +3241,228 @@ def _resolve_template_n_workers(time_fit_cfg: Mapping[str, Any]) -> int:
     except (TypeError, ValueError):
         workers = 1
     return max(1, workers)
+
+
+def _resolve_template_centroid_shift_model(
+    time_fit_cfg: Mapping[str, Any],
+    *,
+    float_centroids: bool,
+) -> str:
+    """Return the per-bin centroid drift model for template fits."""
+
+    if not float_centroids:
+        return "fixed"
+
+    raw_value = str(
+        time_fit_cfg.get("centroid_shift_model", "shared_offset")
+    ).strip().lower()
+    aliases = {
+        "shared": "shared_offset",
+        "shared_constant": "shared_offset",
+        "shared_shift": "shared_offset",
+        "shared_affine": "shared_affine",
+        "shared_linear": "shared_affine",
+        "shared_slope": "shared_affine",
+        "independent": "independent",
+        "per_peak": "independent",
+        "per_isotope": "independent",
+        "fixed": "fixed",
+    }
+    return aliases.get(raw_value, "shared_offset")
+
+
+def _weighted_median(values: Sequence[float], weights: Sequence[float]) -> float:
+    """Return the weighted median of ``values`` using non-negative ``weights``."""
+
+    values_arr = np.asarray(values, dtype=float).ravel()
+    weights_arr = np.asarray(weights, dtype=float).ravel()
+    n = min(values_arr.size, weights_arr.size)
+    if n == 0:
+        return float("nan")
+
+    mask = (
+        np.isfinite(values_arr[:n])
+        & np.isfinite(weights_arr[:n])
+        & (weights_arr[:n] > 0.0)
+    )
+    if not np.any(mask):
+        return float("nan")
+
+    values_use = values_arr[:n][mask]
+    weights_use = weights_arr[:n][mask]
+    order = np.argsort(values_use, kind="mergesort")
+    values_use = values_use[order]
+    weights_use = weights_use[order]
+    csum = np.cumsum(weights_use)
+    cutoff = 0.5 * float(csum[-1])
+    idx = int(np.searchsorted(csum, cutoff, side="left"))
+    idx = min(max(idx, 0), values_use.size - 1)
+    return float(values_use[idx])
+
+
+def _estimate_template_shared_shift_kev(
+    params: Mapping[str, Any],
+    ref_mu: Mapping[str, float],
+    *,
+    anchor_isotopes: Collection[str] | None = None,
+) -> float:
+    """Estimate a single shared centroid shift from a per-bin template fit."""
+
+    shifts_kev: list[float] = []
+    anchor_lookup = {str(iso) for iso in anchor_isotopes} if anchor_isotopes else None
+    for mu_key, ref_val in ref_mu.items():
+        try:
+            mu_val = float(params.get(mu_key))
+        except (TypeError, ValueError):
+            continue
+        if not np.isfinite(mu_val):
+            continue
+
+        iso_name = mu_key[3:] if mu_key.startswith("mu_") else mu_key
+        if anchor_lookup is not None and iso_name not in anchor_lookup:
+            continue
+        raw_bound_hits = params.get("_bound_hits", {})
+        if isinstance(raw_bound_hits, Mapping):
+            hit_meta = raw_bound_hits.get(f"S_{iso_name}")
+            if isinstance(hit_meta, Mapping) and str(hit_meta.get("side", "")).lower() == "lower":
+                continue
+
+        shifts_kev.append((mu_val - ref_val) * 1000.0)
+
+    if not shifts_kev:
+        return float("nan")
+    if len(shifts_kev) == 1:
+        return float(shifts_kev[0])
+    return float(np.median(np.asarray(shifts_kev, dtype=float)))
+
+
+def _template_independent_centroid_spread_kev(
+    params: Mapping[str, Any],
+    ref_mu: Mapping[str, float],
+    *,
+    anchor_isotopes: Collection[str] | None = None,
+) -> float:
+    """Return the max deviation from a shared shift among anchored isotopes."""
+
+    shifts_kev: list[float] = []
+    anchor_lookup = {str(iso) for iso in anchor_isotopes} if anchor_isotopes else None
+    raw_bound_hits = params.get("_bound_hits", {})
+    raw_bound_hits = raw_bound_hits if isinstance(raw_bound_hits, Mapping) else {}
+
+    for mu_key, ref_val in ref_mu.items():
+        try:
+            mu_val = float(params.get(mu_key))
+        except (TypeError, ValueError):
+            continue
+        if not np.isfinite(mu_val):
+            continue
+
+        iso_name = mu_key[3:] if mu_key.startswith("mu_") else mu_key
+        if anchor_lookup is not None and iso_name not in anchor_lookup:
+            continue
+
+        hit_meta = raw_bound_hits.get(f"S_{iso_name}")
+        if isinstance(hit_meta, Mapping) and str(hit_meta.get("side", "")).lower() == "lower":
+            continue
+
+        try:
+            amp_val = float(params.get(f"S_{iso_name}", float("nan")))
+        except (TypeError, ValueError):
+            amp_val = float("nan")
+        if not np.isfinite(amp_val) or amp_val <= 0.0:
+            continue
+
+        shifts_kev.append((mu_val - ref_val) * 1000.0)
+
+    if len(shifts_kev) < 2:
+        return 0.0
+
+    shift_arr = np.asarray(shifts_kev, dtype=float)
+    median_shift = float(np.median(shift_arr))
+    return float(np.max(np.abs(shift_arr - median_shift)))
+
+
+def _template_centroid_weight(
+    params: Mapping[str, Any],
+    iso_name: str,
+) -> float:
+    """Return a bounded centroid-combination weight for one isotope."""
+
+    weight = 1.0
+    try:
+        amp_val = float(params.get(f"S_{iso_name}", float("nan")))
+    except (TypeError, ValueError):
+        amp_val = float("nan")
+    if np.isfinite(amp_val) and amp_val > 0.0:
+        weight = max(math.sqrt(amp_val), 1.0)
+    return float(min(weight, 1.0e3))
+
+
+def _estimate_template_shared_affine_shift_model(
+    params: Mapping[str, Any],
+    ref_mu: Mapping[str, float],
+    *,
+    anchor_isotopes: Collection[str] | None = None,
+) -> tuple[float, float, float]:
+    """Estimate a shared affine centroid-drift model from a per-bin fit.
+
+    Returns ``(offset_kev, slope_kev_per_mev, pivot_mev)`` where the shared
+    centroid shift is ``offset + slope * (mu_ref - pivot)``.
+    """
+
+    ref_vals: list[float] = []
+    shift_vals: list[float] = []
+    weights: list[float] = []
+    anchor_lookup = {str(iso) for iso in anchor_isotopes} if anchor_isotopes else None
+    for mu_key, ref_val in ref_mu.items():
+        try:
+            mu_val = float(params.get(mu_key))
+        except (TypeError, ValueError):
+            continue
+        if not np.isfinite(mu_val):
+            continue
+        iso_name = mu_key[3:] if mu_key.startswith("mu_") else mu_key
+        if anchor_lookup is not None and iso_name not in anchor_lookup:
+            continue
+        ref_vals.append(float(ref_val))
+        shift_vals.append((mu_val - ref_val) * 1000.0)
+        weights.append(_template_centroid_weight(params, iso_name))
+
+    if not ref_vals:
+        return float("nan"), 0.0, float("nan")
+    if len(ref_vals) == 1:
+        return float(shift_vals[0]), 0.0, float(ref_vals[0])
+
+    x = np.asarray(ref_vals, dtype=float)
+    y = np.asarray(shift_vals, dtype=float)
+    w = np.asarray(weights, dtype=float)
+    if not np.all(np.isfinite(w)) or np.all(w <= 0.0):
+        w = np.ones_like(x)
+
+    pivot = float(np.average(x, weights=w))
+    x_centered = x - pivot
+    denom = float(np.sum(w * x_centered * x_centered))
+    if not np.isfinite(denom) or denom <= 1.0e-12:
+        return _weighted_median(shift_vals, weights), 0.0, pivot
+
+    slope = float(np.sum(w * x_centered * y) / denom)
+    offset = float(np.average(y - slope * x_centered, weights=w))
+    return offset, slope, pivot
+
+
+def _template_shared_affine_targets(
+    ref_mu: Mapping[str, float],
+    offset_kev: float,
+    slope_kev_per_mev: float,
+    pivot_mev: float,
+) -> dict[str, float]:
+    """Return fixed centroid targets for a shared affine drift model."""
+
+    targets: dict[str, float] = {}
+    for mu_key, ref_val in ref_mu.items():
+        shift_kev = float(offset_kev) + float(slope_kev_per_mev) * (float(ref_val) - float(pivot_mev))
+        targets[mu_key] = float(ref_val) + shift_kev / 1000.0
+    return targets
 
 
 def _template_centroid_control(
@@ -2462,6 +3560,35 @@ def _template_centroid_shift_kev(
     return float(max(shifts_kev)) if shifts_kev else 0.0
 
 
+def _template_shared_shift_hits_limit(
+    shift_kev: float,
+    shift_limit_kev: float,
+    *,
+    tol_kev: float = 1.0,
+) -> bool:
+    """Return True when the shared centroid shift sits on the configured limit."""
+
+    if not np.isfinite(shift_kev) or not np.isfinite(shift_limit_kev):
+        return False
+    if shift_limit_kev <= 0.0:
+        return False
+    return abs(abs(float(shift_kev)) - float(shift_limit_kev)) <= abs(float(tol_kev))
+
+
+def _radon_activity_outputs_enabled(
+    cfg: Mapping[str, Any],
+    radon_interval: Sequence[Any] | None,
+) -> bool:
+    """Return True when detailed radon-activity plots should be written."""
+
+    if radon_interval and len(radon_interval) == 2:
+        return True
+    analysis_cfg = cfg.get("analysis", {}) if isinstance(cfg, Mapping) else {}
+    if isinstance(analysis_cfg, Mapping):
+        return bool(analysis_cfg.get("plot_radon_activity", False))
+    return False
+
+
 def _expanded_mu_bounds(
     ref_mu: Mapping[str, float],
     half_width_kev: float,
@@ -2481,6 +3608,8 @@ def _prefer_template_fit(
     *,
     best_hits_bound: bool = False,
     candidate_hits_bound: bool = False,
+    best_n_bound_hits: int | None = None,
+    candidate_n_bound_hits: int | None = None,
 ) -> bool:
     """Return True when the candidate fit is preferable to the current best."""
 
@@ -2496,6 +3625,13 @@ def _prefer_template_fit(
     if cand_valid != best_valid:
         return cand_valid
 
+    if (
+        best_n_bound_hits is not None
+        and candidate_n_bound_hits is not None
+        and candidate_n_bound_hits != best_n_bound_hits
+    ):
+        return candidate_n_bound_hits < best_n_bound_hits
+
     try:
         best_chi2 = float(best_params.get("chi2_ndf", float("inf")))
     except (TypeError, ValueError):
@@ -2510,6 +3646,73 @@ def _prefer_template_fit(
     if np.isfinite(cand_chi2) and np.isfinite(best_chi2):
         return cand_chi2 < best_chi2
     return False
+
+
+def _template_bound_hit_count(params: Mapping[str, Any] | None) -> int:
+    """Return the reported number of active bound hits for one template fit."""
+
+    if not isinstance(params, Mapping):
+        return 0
+    try:
+        return max(0, int(params.get("_n_bound_hits", params.get("n_bound_hits", 0)) or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _is_expected_floor_bound_hit(
+    param_name: str,
+    hit_meta: Mapping[str, Any],
+) -> bool:
+    """Return True for benign lower-bound hits on optional nuisance terms."""
+
+    side = str(hit_meta.get("side", "")).lower()
+    if side != "lower":
+        return False
+
+    expected_floor_names = {
+        "delta_E_broad",
+        "f_gauss2_shared",
+        "f_halo_shared",
+        "f_shelf_shared",
+        "f_tail2_shared",
+        "f_tail_right",
+        "sigma_gauss2_ratio_shared",
+        "tau_halo_shared",
+    }
+    if param_name in expected_floor_names:
+        return True
+
+    expected_floor_prefixes = (
+        "f_gauss2_",
+        "f_halo_",
+        "f_shelf_",
+        "f_tail2_",
+        "tau_halo_",
+    )
+    if param_name.startswith(expected_floor_prefixes):
+        return True
+
+    if param_name.startswith("tau_") and "Unknown" in param_name:
+        return True
+
+    return False
+
+
+def _template_suspicious_bound_hit_names(
+    bound_hits: Mapping[str, Any] | None,
+) -> list[str]:
+    """Return bound-hit parameter names that still look diagnostically useful."""
+
+    if not isinstance(bound_hits, Mapping):
+        return []
+    suspicious = []
+    for param_name, hit_meta in bound_hits.items():
+        if not isinstance(hit_meta, Mapping):
+            suspicious.append(str(param_name))
+            continue
+        if not _is_expected_floor_bound_hit(str(param_name), hit_meta):
+            suspicious.append(str(param_name))
+    return sorted(suspicious)
 
 
 def _template_bin_plotting_enabled(plot_cfg: Mapping[str, Any]) -> bool:
@@ -2542,11 +3745,19 @@ def _should_store_template_bin_plot(
         n_bound_hits = int(params.get("_n_bound_hits", params.get("n_bound_hits", 0)))
     except (TypeError, ValueError):
         n_bound_hits = 0
+    suspicious_bound_hits = None
+    raw_bound_hits = params.get("_bound_hits", params.get("bound_hits", {}))
+    if isinstance(raw_bound_hits, Mapping) and raw_bound_hits:
+        suspicious_bound_hits = len(_template_suspicious_bound_hit_names(raw_bound_hits))
     chi2_min = float(plot_cfg.get("plot_template_bin_fits_bad_chi2_ndf_min", 3.0))
     return (
         not bool(params.get("fit_valid", False))
         or shift_hit_limit
-        or n_bound_hits > 0
+        or (
+            suspicious_bound_hits
+            if suspicious_bound_hits is not None
+            else n_bound_hits
+        ) > 0
         or (np.isfinite(chi2_ndf) and chi2_ndf > chi2_min)
     )
 
@@ -2590,8 +3801,9 @@ def _fit_time_bins(
                         time_fit_cfg.get("bin_width_s", 86400)))
     # Minimum counts per bin to attempt a fit
     min_counts = int(time_fit_cfg.get("template_min_counts", 30))
-    # Energy rebin factor for per-bin histograms
-    rebin_factor = int(time_fit_cfg.get("template_rebin", 20))
+    # Energy rebin factor for per-bin histograms.
+    # Default to native ADC/channel binning for the template fits.
+    rebin_factor = max(1, int(time_fit_cfg.get("template_rebin", 1)))
     n_workers = _resolve_template_n_workers(time_fit_cfg)
     skip_covariance = bool(time_fit_cfg.get("template_skip_covariance", True))
 
@@ -2601,19 +3813,25 @@ def _fit_time_bins(
         cfg,
         spec_plot_data=spec_plot_data,
     )
+    agg_seed_params = dict(agg_params)
+    for key, value in seed_priors.items():
+        if key in agg_seed_params:
+            continue
+        try:
+            agg_seed_params[key] = float(value[0])
+        except (TypeError, ValueError, IndexError):
+            continue
 
     # Build template priors/flags
     tpl_priors, tpl_flags = _build_template_from_aggregate(
-        agg_params,
+        agg_seed_params,
         seed_priors,
         seed_flags,
         cfg,
     )
 
     # ── Discover isotopes and determine which to fix vs float ─────
-    iso_list = sorted(
-        k[3:] for k in agg_params if k.startswith("mu_") and f"S_{k[3:]}" in agg_params
-    )
+    iso_list = _template_time_fit_isotope_list(agg_seed_params, tpl_priors)
     fixed_isotopes = _resolve_template_fixed_isotopes(iso_list, time_fit_cfg)
     for iso in fixed_isotopes:
         s_key = f"S_{iso}"
@@ -2630,6 +3848,10 @@ def _fit_time_bins(
             tpl_flags[f"fix_{mu_key}"] = True
 
     float_centroids = bool(time_fit_cfg.get("float_centroids", True))
+    centroid_shift_model = _resolve_template_centroid_shift_model(
+        time_fit_cfg,
+        float_centroids=float_centroids,
+    )
     (
         base_mu_bounds,
         base_penalty_priors,
@@ -2638,7 +3860,7 @@ def _fit_time_bins(
         shift_prior_sigma_kev,
         auto_expand_shift_bounds,
     ) = _template_centroid_control(
-        agg_params,
+        agg_seed_params,
         iso_list,
         time_fit_cfg,
         float_centroids=float_centroids,
@@ -2703,23 +3925,71 @@ def _fit_time_bins(
         if s_key in tpl_priors and f"fix_{s_key}" not in tpl_flags:
             mu_s, sig_s = tpl_priors[s_key]
             scale = bin_width_s / max(total_duration, 1.0)
-            tpl_priors[s_key] = (mu_s * scale, sig_s * scale + 1.0)
+            try:
+                mu_scaled = float(mu_s) * scale
+            except (TypeError, ValueError):
+                mu_scaled = 0.0
+            try:
+                sig_scaled = float(sig_s) * scale + 1.0
+            except (TypeError, ValueError):
+                sig_scaled = 1.0
+            if not np.isfinite(mu_scaled) or mu_scaled < 1.0e-12:
+                mu_scaled = 0.0
+            if not np.isfinite(sig_scaled) or sig_scaled <= 0.0:
+                sig_scaled = 1.0
+            tpl_priors[s_key] = (mu_scaled, sig_scaled)
     # Scale S_bkg too
     if "S_bkg" in tpl_priors and "fix_S_bkg" not in tpl_flags:
         mu_bkg, sig_bkg = tpl_priors["S_bkg"]
         scale = bin_width_s / max(total_duration, 1.0)
-        tpl_priors["S_bkg"] = (mu_bkg * scale, sig_bkg * scale + 1.0)
+        try:
+            mu_bkg_scaled = float(mu_bkg) * scale
+        except (TypeError, ValueError):
+            mu_bkg_scaled = 0.0
+        try:
+            sig_bkg_scaled = float(sig_bkg) * scale + 1.0
+        except (TypeError, ValueError):
+            sig_bkg_scaled = 1.0
+        if not np.isfinite(mu_bkg_scaled) or mu_bkg_scaled < 0.0:
+            mu_bkg_scaled = 0.0
+        if not np.isfinite(sig_bkg_scaled) or sig_bkg_scaled <= 0.0:
+            sig_bkg_scaled = 1.0
+        tpl_priors["S_bkg"] = (mu_bkg_scaled, sig_bkg_scaled)
+
+    required_isotopes = _resolve_template_required_isotopes(iso_list, time_fit_cfg)
+    shared_shift_anchor_isotopes = _resolve_template_shared_shift_anchor_isotopes(
+        iso_list,
+        time_fit_cfg,
+    )
+    max_independent_centroid_spread_kev = (
+        _resolve_template_max_independent_centroid_spread_kev(time_fit_cfg)
+    )
+    base_lower_floor_priors = _template_required_isotope_floor_priors(
+        tpl_priors,
+        required_isotopes,
+        time_fit_cfg,
+        fixed_isotopes=fixed_isotopes,
+    )
+    if base_lower_floor_priors:
+        logger.info(
+            "Template fitting required-isotope floors: %s",
+            ", ".join(
+                f"{name}>={floor_sigma[0]:.1f} (σ={floor_sigma[1]:.1f})"
+                for name, floor_sigma in sorted(base_lower_floor_priors.items())
+            ),
+        )
 
     logger.info(
         "Template fitting: %d time bins × %d energy bins, "
         "%d isotopes (%d fixed), bin_width=%.0f s, centroid_limit=%.1f keV, "
-        "workers=%d, skip_covariance=%s",
+        "centroid_model=%s, workers=%d, skip_covariance=%s",
         n_time_bins,
         n_energy_bins,
         len(iso_list),
         sum(1 for iso in iso_list if f"fix_S_{iso}" in tpl_flags),
         bin_width_s,
         base_shift_limit_kev,
+        centroid_shift_model,
         n_workers,
         skip_covariance,
     )
@@ -2769,6 +4039,20 @@ def _fit_time_bins(
         bin_priors = dict(tpl_priors)
         bin_flags = dict(tpl_flags)
         bin_flags["cfg"] = bin_cfg
+        local_lower_floor_priors = {}
+        for iso in required_isotopes:
+            if iso in fixed_isotopes:
+                continue
+            local_floor = _template_local_signal_floor_prior(
+                hist,
+                energy_edges,
+                iso,
+                cfg,
+                agg_seed_params,
+                time_fit_cfg,
+            )
+            if local_floor is not None:
+                local_lower_floor_priors[f"S_{iso}"] = local_floor
         if base_penalty_priors:
             merged_penalties = {}
             existing_penalties = bin_flags.get("penalty_priors", {})
@@ -2776,6 +4060,17 @@ def _fit_time_bins(
                 merged_penalties.update(existing_penalties)
             merged_penalties.update(base_penalty_priors)
             bin_flags["penalty_priors"] = merged_penalties
+        merged_floor_priors = _merge_template_lower_floor_priors(
+            base_lower_floor_priors,
+            local_lower_floor_priors,
+        )
+        if merged_floor_priors:
+            merged_lower_floors = {}
+            existing_lower_floors = bin_flags.get("lower_floor_priors", {})
+            if isinstance(existing_lower_floors, Mapping):
+                merged_lower_floors.update(existing_lower_floors)
+            merged_lower_floors.update(merged_floor_priors)
+            bin_flags["lower_floor_priors"] = merged_lower_floors
 
         def _run_with_bounds(
             mu_bounds: Mapping[str, tuple[float | None, float | None]] | None,
@@ -2803,6 +4098,51 @@ def _fit_time_bins(
                 return None, None
             return result_local, params_local
 
+        def _run_with_fixed_centroids(
+            target_mu: Mapping[str, float],
+        ) -> tuple[Mapping[str, Any] | None, Mapping[str, Any] | None]:
+            shared_priors = dict(bin_priors)
+            shared_flags = dict(bin_flags)
+            penalty_priors = shared_flags.get("penalty_priors", {})
+            if isinstance(penalty_priors, Mapping):
+                penalty_priors = {
+                    key: value for key, value in penalty_priors.items() if key not in ref_mu
+                }
+                if penalty_priors:
+                    shared_flags["penalty_priors"] = penalty_priors
+                else:
+                    shared_flags.pop("penalty_priors", None)
+
+            for mu_key, mu_target in target_mu.items():
+                shared_priors[mu_key] = (float(mu_target), 0.0)
+                shared_flags[f"fix_{mu_key}"] = True
+
+            try:
+                result_local = fit_spectrum(
+                    bin_energies,
+                    shared_priors,
+                    flags=shared_flags,
+                    bin_edges=energy_edges,
+                    bounds=None,
+                    pre_binned_hist=hist,
+                    skip_minos=True,
+                    skip_covariance=skip_covariance,
+                )
+            except Exception as exc:
+                logger.debug("Bin %d shared-centroid refit failed: %s", bin_idx, exc)
+                return None, None
+
+            if isinstance(result_local, _FR):
+                params_local = dict(result_local.params)
+            elif isinstance(result_local, Mapping):
+                params_local = dict(result_local)
+            else:
+                return None, None
+
+            for mu_key, mu_target in target_mu.items():
+                params_local[mu_key] = float(mu_target)
+            return result_local, params_local
+
         bounds_used = dict(base_mu_bounds)
         result, params = _run_with_bounds(bounds_used or None)
         if params is None:
@@ -2811,6 +4151,7 @@ def _fit_time_bins(
         best_result = result
         best_params = params
         shift_hit_limit = _template_mu_bound_hit(best_params, bounds_used)
+        best_n_bound_hits = _template_bound_hit_count(best_params)
         if auto_expand_shift_bounds and shift_hit_limit and ref_mu:
             trial_limit_kev = base_shift_limit_kev
             while trial_limit_kev < max_shift_limit_kev:
@@ -2823,29 +4164,167 @@ def _fit_time_bins(
                     candidate_params,
                     trial_bounds,
                 )
+                candidate_n_bound_hits = _template_bound_hit_count(candidate_params)
                 if _prefer_template_fit(
                     best_params,
                     candidate_params,
                     best_hits_bound=shift_hit_limit,
                     candidate_hits_bound=candidate_hit_limit,
+                    best_n_bound_hits=best_n_bound_hits,
+                    candidate_n_bound_hits=candidate_n_bound_hits,
                 ):
                     best_result = candidate_result
                     best_params = candidate_params
                     bounds_used = trial_bounds
                     shift_hit_limit = candidate_hit_limit
+                    best_n_bound_hits = candidate_n_bound_hits
                 else:
                     shift_hit_limit = _template_mu_bound_hit(
                         best_params,
                         bounds_used,
                     )
+                    best_n_bound_hits = _template_bound_hit_count(best_params)
                 if not shift_hit_limit:
                     break
 
         result = best_result
         params = best_params
+        centroid_model_used = centroid_shift_model
+        shared_centroid_fit_used = False
+        shared_shift_kev = float("nan")
+        shared_shift_slope_kev_per_mev = float("nan")
+        shift_limit_kev = (
+            float(
+                max(
+                    abs(float(hi) - float(lo)) * 500.0
+                    for lo, hi in bounds_used.values()
+                )
+            )
+            if bounds_used
+            else 0.0
+        )
+        if centroid_shift_model in {"shared_offset", "shared_affine"} and ref_mu:
+            if centroid_shift_model == "shared_affine":
+                (
+                    shared_shift_kev,
+                    shared_shift_slope_kev_per_mev,
+                    shared_shift_pivot_mev,
+                ) = _estimate_template_shared_affine_shift_model(
+                    params,
+                    ref_mu,
+                    anchor_isotopes=shared_shift_anchor_isotopes,
+                )
+                shared_targets = _template_shared_affine_targets(
+                    ref_mu,
+                    shared_shift_kev,
+                    shared_shift_slope_kev_per_mev,
+                    shared_shift_pivot_mev,
+                )
+                if np.isfinite(shared_shift_kev):
+                    shared_result, shared_params = _run_with_fixed_centroids(shared_targets)
+                    if shared_params is not None:
+                        shared_valid = bool(shared_params.get("fit_valid", False))
+                        if shared_valid or not bool(params.get("fit_valid", False)):
+                            result = shared_result
+                            params = shared_params
+                            shared_centroid_fit_used = True
+                        else:
+                            centroid_model_used = "independent_fallback"
+                    else:
+                        centroid_model_used = "independent_fallback"
+            else:
+                shared_candidates: list[tuple[str, float, Mapping[str, Any], Mapping[str, Any]]] = []
+                shifts_to_try: list[tuple[str, float]] = []
+
+                shift_anchor = _estimate_template_shared_shift_kev(
+                    params,
+                    ref_mu,
+                    anchor_isotopes=shared_shift_anchor_isotopes,
+                )
+                if np.isfinite(shift_anchor):
+                    shifts_to_try.append(("anchor", float(shift_anchor)))
+
+                shift_all = _estimate_template_shared_shift_kev(params, ref_mu)
+                if np.isfinite(shift_all):
+                    if not shifts_to_try or abs(float(shift_all) - shifts_to_try[0][1]) > 1.0e-6:
+                        shifts_to_try.append(("all", float(shift_all)))
+
+                best_shared_candidate: tuple[str, float, Mapping[str, Any], Mapping[str, Any]] | None = None
+                for shift_label, shift_value in shifts_to_try:
+                    shared_targets = {
+                        mu_key: ref_val + float(shift_value) / 1000.0
+                        for mu_key, ref_val in ref_mu.items()
+                    }
+                    shared_result, shared_params = _run_with_fixed_centroids(shared_targets)
+                    if shared_params is None:
+                        continue
+                    shared_candidates.append((shift_label, shift_value, shared_result, shared_params))
+                    if best_shared_candidate is None or _prefer_template_fit(
+                        best_shared_candidate[3],
+                        shared_params,
+                        best_n_bound_hits=_template_bound_hit_count(best_shared_candidate[3]),
+                        candidate_n_bound_hits=_template_bound_hit_count(shared_params),
+                    ):
+                        best_shared_candidate = (shift_label, shift_value, shared_result, shared_params)
+
+                if best_shared_candidate is not None:
+                    _, candidate_shift, candidate_result, candidate_params = best_shared_candidate
+                    try:
+                        best_independent_chi2 = float(params.get("chi2_ndf", float("inf")))
+                    except (TypeError, ValueError):
+                        best_independent_chi2 = float("inf")
+                    try:
+                        best_shared_chi2 = float(candidate_params.get("chi2_ndf", float("inf")))
+                    except (TypeError, ValueError):
+                        best_shared_chi2 = float("inf")
+                    shared_valid = bool(candidate_params.get("fit_valid", False))
+                    independent_valid = bool(params.get("fit_valid", False))
+                    independent_centroid_spread_kev = _template_independent_centroid_spread_kev(
+                        params,
+                        ref_mu,
+                        anchor_isotopes=shared_shift_anchor_isotopes,
+                    )
+                    independent_centroids_physical = (
+                        not np.isfinite(max_independent_centroid_spread_kev)
+                        or independent_centroid_spread_kev <= max_independent_centroid_spread_kev
+                    )
+                    shared_within_tolerance = (
+                        np.isfinite(best_shared_chi2)
+                        and np.isfinite(best_independent_chi2)
+                        and best_shared_chi2 <= max(best_independent_chi2 * 1.25, best_independent_chi2 + 0.5)
+                    )
+                    if shared_valid and (
+                        not independent_valid
+                        or not independent_centroids_physical
+                        or shared_within_tolerance
+                    ):
+                        result = candidate_result
+                        params = candidate_params
+                        shared_shift_kev = float(candidate_shift)
+                        shared_centroid_fit_used = True
+                    else:
+                        centroid_model_used = "independent_fallback"
+                else:
+                    centroid_model_used = "independent_fallback"
+
         fit_valid = bool(params.get("fit_valid", False))
-        shift_hit_limit = _template_mu_bound_hit(params, bounds_used)
-        centroid_shift_kev = _template_centroid_shift_kev(params, ref_mu)
+        if shared_centroid_fit_used:
+            if centroid_model_used == "shared_affine":
+                centroid_shift_kev = _template_centroid_shift_kev(params, ref_mu)
+                shift_hit_limit = bool(
+                    np.isfinite(shift_limit_kev)
+                    and shift_limit_kev > 0.0
+                    and abs(float(centroid_shift_kev) - float(shift_limit_kev)) <= 1.0
+                )
+            else:
+                shift_hit_limit = _template_shared_shift_hits_limit(
+                    shared_shift_kev,
+                    shift_limit_kev,
+                )
+                centroid_shift_kev = abs(float(shared_shift_kev))
+        else:
+            shift_hit_limit = _template_mu_bound_hit(params, bounds_used)
+            centroid_shift_kev = _template_centroid_shift_kev(params, ref_mu)
         raw_bound_hits = params.get("_bound_hits", {})
         if isinstance(raw_bound_hits, Mapping):
             bound_hits = {
@@ -2867,6 +4346,8 @@ def _fit_time_bins(
         except (TypeError, ValueError):
             n_bound_hits = len(bound_hit_params)
         n_bound_hits = max(int(n_bound_hits), len(bound_hit_params), len(bound_hits))
+        suspicious_bound_hit_params = _template_suspicious_bound_hit_names(bound_hits)
+        n_suspicious_bound_hits = len(suspicious_bound_hit_params)
 
         # Extract per-isotope fitted counts + uncertainties
         bin_result = {
@@ -2881,12 +4362,22 @@ def _fit_time_bins(
             "deviance_ndf": params.get("chi2_ndf", float("nan")),
             "fit_valid": fit_valid,
             "centroid_shift_kev": centroid_shift_kev,
+            "shared_shift_kev": (
+                float(shared_shift_kev) if np.isfinite(shared_shift_kev) else float("nan")
+            ),
+            "shared_shift_slope_kev_per_mev": (
+                float(shared_shift_slope_kev_per_mev)
+                if np.isfinite(shared_shift_slope_kev_per_mev)
+                else float("nan")
+            ),
+            "centroid_model": centroid_model_used,
+            "shared_centroid_fit_used": shared_centroid_fit_used,
             "shift_hit_limit": shift_hit_limit,
-            "shift_limit_kev": float(
-                max(abs(float(hi) - float(lo)) * 500.0 for lo, hi in bounds_used.values())
-            ) if bounds_used else 0.0,
+            "shift_limit_kev": shift_limit_kev,
             "n_bound_hits": n_bound_hits,
+            "n_suspicious_bound_hits": n_suspicious_bound_hits,
             "bound_hit_params": bound_hit_params,
+            "suspicious_bound_hit_params": suspicious_bound_hit_params,
             "bound_hits": bound_hits,
             "counts": {},
             "counts_unc": {},
@@ -2915,7 +4406,9 @@ def _fit_time_bins(
                 "fit_valid": fit_valid,
                 "shift_hit_limit": shift_hit_limit,
                 "n_bound_hits": n_bound_hits,
+                "n_suspicious_bound_hits": n_suspicious_bound_hits,
                 "bound_hit_params": list(bound_hit_params),
+                "suspicious_bound_hit_params": list(suspicious_bound_hit_params),
                 "fit_params": fit_params_payload,
             }
 
@@ -2968,10 +4461,19 @@ def _fit_time_bins(
             "poisson_deviance": r.get("poisson_deviance", float("nan")),
             "deviance_ndf": r.get("deviance_ndf", float("nan")),
             "centroid_shift_kev": r.get("centroid_shift_kev", 0.0),
+            "shared_shift_kev": r.get("shared_shift_kev", float("nan")),
+            "shared_shift_slope_kev_per_mev": r.get(
+                "shared_shift_slope_kev_per_mev",
+                float("nan"),
+            ),
+            "centroid_model": r.get("centroid_model", centroid_shift_model),
+            "shared_centroid_fit_used": bool(r.get("shared_centroid_fit_used", False)),
             "shift_hit_limit": r.get("shift_hit_limit", False),
             "shift_limit_kev": r.get("shift_limit_kev", 0.0),
             "n_bound_hits": r.get("n_bound_hits", 0),
+            "n_suspicious_bound_hits": r.get("n_suspicious_bound_hits", 0),
             "bound_hit_params": r.get("bound_hit_params", []),
+            "suspicious_bound_hit_params": r.get("suspicious_bound_hit_params", []),
             "bound_hits": r.get("bound_hits", {}),
             "centroids": r.get("centroids", {}),
         })
@@ -3000,11 +4502,12 @@ def _fit_time_bins(
         "n_fitted": n_success,
         "n_valid": n_valid,
         "template_params": {
-            k: float(v) for k, v in agg_params.items()
+            k: float(v) for k, v in agg_seed_params.items()
             if isinstance(v, (int, float)) and not k.startswith("_")
         },
         "plot_entries": plot_entries,
         "centroid_control": {
+            "model": centroid_shift_model,
             "base_shift_limit_kev": base_shift_limit_kev,
             "shift_prior_sigma_kev": shift_prior_sigma_kev,
             "auto_expand": auto_expand_shift_bounds,
@@ -3032,8 +4535,10 @@ def _write_template_bin_fit_plots(
 
     plot_dir = Path(out_dir) / "template_bin_fits"
     plot_dir.mkdir(parents=True, exist_ok=True)
-    write_log_copy = bool(plot_cfg.get("plot_template_bin_fits_log_scale", True))
-    plot_cfg["plot_spectrum_write_log_copy"] = write_log_copy
+    show_log_panel = True
+    # Template spectrum plots already include a dedicated log-spectrum panel in
+    # the main figure, so writing an extra `_log.png` copy is redundant.
+    plot_cfg["plot_spectrum_write_log_copy"] = False
 
     manifest: list[dict[str, Any]] = []
     for entry in plot_entries:
@@ -3078,10 +4583,6 @@ def _write_template_bin_fit_plots(
             "bound_hit_params": list(entry.get("bound_hit_params", []) or []),
             "png": out_png.name,
         }
-        if write_log_copy:
-            log_path = out_png.with_name(f"{out_png.stem}_log{out_png.suffix}")
-            if log_path.exists():
-                manifest_entry["log_png"] = log_path.name
         manifest.append(manifest_entry)
 
     index_path = plot_dir / "template_fit_plot_index.json"
@@ -3089,7 +4590,7 @@ def _write_template_bin_fit_plots(
         json.dump(
             {
                 "count": len(manifest),
-                "log_scale": write_log_copy,
+                "log_scale": show_log_panel,
                 "bad_only": bool(plot_cfg.get("plot_template_bin_fits_bad_only", False)),
                 "entries": manifest,
             },
@@ -3097,6 +4598,37 @@ def _write_template_bin_fit_plots(
             indent=2,
         )
     return manifest
+
+
+def _diagnostic_centroid_shift_kev(
+    entry: Mapping[str, Any],
+    template_params: Mapping[str, Any],
+) -> float:
+    """Return a robust centroid-shift summary value for one bin."""
+
+    try:
+        shift_kev = float(entry.get("centroid_shift_kev", float("nan")))
+    except (TypeError, ValueError):
+        shift_kev = float("nan")
+    if np.isfinite(shift_kev):
+        return shift_kev
+
+    centroids = entry.get("centroids", {})
+    if not isinstance(centroids, Mapping):
+        return float("nan")
+
+    shifts_kev: list[float] = []
+    for iso_name, mu_val in centroids.items():
+        ref_key = f"mu_{iso_name}"
+        ref_mu = template_params.get(ref_key)
+        try:
+            mu_float = float(mu_val)
+            ref_float = float(ref_mu)
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(mu_float) and np.isfinite(ref_float):
+            shifts_kev.append(abs(mu_float - ref_float) * 1000.0)
+    return float(max(shifts_kev)) if shifts_kev else float("nan")
 
 
 def _summarize_template_fit_results(
@@ -3107,14 +4639,20 @@ def _summarize_template_fit_results(
     if template_fit_results is None:
         return {"extraction_method": "template", "status": "failed_or_empty"}
 
+    plot_entries = template_fit_results.get("plot_entries", [])
     meta: dict[str, Any] = {
         "extraction_method": "template",
         "status": "success",
         "n_time_bins": template_fit_results.get("n_time_bins", 0),
         "n_fitted": template_fit_results.get("n_fitted", 0),
         "n_valid": template_fit_results.get("n_valid", 0),
-        "n_plot_entries": len(template_fit_results.get("plot_entries", [])),
+        "n_plot_entries": len(plot_entries) if isinstance(plot_entries, Sequence) else 0,
     }
+    centroid_control = template_fit_results.get("centroid_control", {})
+    if isinstance(centroid_control, Mapping):
+        centroid_model = centroid_control.get("model")
+        if centroid_model is not None:
+            meta["centroid_shift_model"] = str(centroid_model)
     diag = template_fit_results.get("per_bin_diagnostics", [])
     if diag:
         chi2s = [
@@ -3128,11 +4666,12 @@ def _summarize_template_fit_results(
             meta["chi2_ndf_std"] = float(np.std(chi2s))
             meta["chi2_gt_10"] = int(sum(val > 10.0 for val in chi2s))
             meta["chi2_gt_100"] = int(sum(val > 100.0 for val in chi2s))
+        template_params = template_fit_results.get("template_params", {})
         shift_vals = [
-            float(d.get("centroid_shift_kev", float("nan")))
+            _diagnostic_centroid_shift_kev(d, template_params)
             for d in diag
             if d.get("fit_valid")
-            and np.isfinite(d.get("centroid_shift_kev", float("nan")))
+            and np.isfinite(_diagnostic_centroid_shift_kev(d, template_params))
         ]
         if shift_vals:
             shift_arr = np.asarray(shift_vals, dtype=float)
@@ -3142,6 +4681,9 @@ def _summarize_template_fit_results(
         meta["shift_hit_limit"] = int(
             sum(bool(d.get("shift_hit_limit", False)) for d in diag)
         )
+        meta["bins_using_shared_centroid_fit"] = int(
+            sum(bool(d.get("shared_centroid_fit_used", False)) for d in diag)
+        )
         meta["bins_with_any_bound_hits"] = int(
             sum(int(d.get("n_bound_hits", 0) or 0) > 0 for d in diag)
         )
@@ -3150,7 +4692,16 @@ def _summarize_template_fit_results(
         )
         bound_hit_param_counts: dict[str, int] = {}
         non_centroid_bound_hit_counts: dict[str, int] = {}
+        suspicious_bound_hit_counts: dict[str, int] = {}
+        expected_floor_bound_hit_counts: dict[str, int] = {}
+        upper_bound_hit_param_counts: dict[str, int] = {}
+        lower_bound_hit_param_counts: dict[str, int] = {}
+        bound_hit_side_counts: dict[str, int] = {"lower": 0, "upper": 0, "both": 0}
         bins_with_non_centroid_bound_hits = 0
+        bins_with_suspicious_bound_hits = 0
+        bins_with_lower_bound_hits = 0
+        bins_with_upper_bound_hits = 0
+        bins_with_dual_sided_bound_hits = 0
         for entry in diag:
             params = entry.get("bound_hit_params", [])
             if isinstance(params, (str, bytes)):
@@ -3159,6 +4710,8 @@ def _summarize_template_fit_results(
                 params = []
             params_clean = [str(param_name) for param_name in params]
             has_non_centroid = False
+            sides_in_bin: set[str] = set()
+            suspicious_in_bin: set[str] = set()
             for param_name in params_clean:
                 bound_hit_param_counts[param_name] = (
                     bound_hit_param_counts.get(param_name, 0) + 1
@@ -3168,8 +4721,51 @@ def _summarize_template_fit_results(
                         non_centroid_bound_hit_counts.get(param_name, 0) + 1
                     )
                     has_non_centroid = True
+            raw_bound_hits = entry.get("bound_hits", {})
+            if isinstance(raw_bound_hits, Mapping):
+                for param_name, meta_entry in raw_bound_hits.items():
+                    if not isinstance(meta_entry, Mapping):
+                        continue
+                    side = str(meta_entry.get("side", "")).lower()
+                    if side not in bound_hit_side_counts:
+                        continue
+                    param_name = str(param_name)
+                    bound_hit_side_counts[side] = bound_hit_side_counts.get(side, 0) + 1
+                    if _is_expected_floor_bound_hit(param_name, meta_entry):
+                        expected_floor_bound_hit_counts[param_name] = (
+                            expected_floor_bound_hit_counts.get(param_name, 0) + 1
+                        )
+                    else:
+                        suspicious_bound_hit_counts[param_name] = (
+                            suspicious_bound_hit_counts.get(param_name, 0) + 1
+                        )
+                        suspicious_in_bin.add(param_name)
+                    if side in {"lower", "both"}:
+                        lower_bound_hit_param_counts[param_name] = (
+                            lower_bound_hit_param_counts.get(param_name, 0) + 1
+                        )
+                        sides_in_bin.add("lower")
+                    if side in {"upper", "both"}:
+                        upper_bound_hit_param_counts[param_name] = (
+                            upper_bound_hit_param_counts.get(param_name, 0) + 1
+                        )
+                        sides_in_bin.add("upper")
+            if not raw_bound_hits and params_clean:
+                suspicious_in_bin.update(params_clean)
+                for param_name in params_clean:
+                    suspicious_bound_hit_counts[param_name] = (
+                        suspicious_bound_hit_counts.get(param_name, 0) + 1
+                    )
             if has_non_centroid:
                 bins_with_non_centroid_bound_hits += 1
+            if suspicious_in_bin:
+                bins_with_suspicious_bound_hits += 1
+            if "lower" in sides_in_bin:
+                bins_with_lower_bound_hits += 1
+            if "upper" in sides_in_bin:
+                bins_with_upper_bound_hits += 1
+            if {"lower", "upper"}.issubset(sides_in_bin):
+                bins_with_dual_sided_bound_hits += 1
         if bound_hit_param_counts:
             meta["bound_hit_param_counts"] = dict(
                 sorted(
@@ -3184,9 +4780,43 @@ def _summarize_template_fit_results(
                     key=lambda item: (-item[1], item[0]),
                 )
             )
+        if suspicious_bound_hit_counts:
+            meta["suspicious_bound_hit_param_counts"] = dict(
+                sorted(
+                    suspicious_bound_hit_counts.items(),
+                    key=lambda item: (-item[1], item[0]),
+                )
+            )
+        if expected_floor_bound_hit_counts:
+            meta["expected_floor_bound_hit_param_counts"] = dict(
+                sorted(
+                    expected_floor_bound_hit_counts.items(),
+                    key=lambda item: (-item[1], item[0]),
+                )
+            )
+        if any(bound_hit_side_counts.values()):
+            meta["bound_hit_side_counts"] = dict(bound_hit_side_counts)
+        if upper_bound_hit_param_counts:
+            meta["upper_bound_hit_param_counts"] = dict(
+                sorted(
+                    upper_bound_hit_param_counts.items(),
+                    key=lambda item: (-item[1], item[0]),
+                )
+            )
+        if lower_bound_hit_param_counts:
+            meta["lower_bound_hit_param_counts"] = dict(
+                sorted(
+                    lower_bound_hit_param_counts.items(),
+                    key=lambda item: (-item[1], item[0]),
+                )
+            )
         meta["bins_with_non_centroid_bound_hits"] = int(
             bins_with_non_centroid_bound_hits
         )
+        meta["bins_with_suspicious_bound_hits"] = int(bins_with_suspicious_bound_hits)
+        meta["bins_with_lower_bound_hits"] = int(bins_with_lower_bound_hits)
+        meta["bins_with_upper_bound_hits"] = int(bins_with_upper_bound_hits)
+        meta["bins_with_dual_sided_bound_hits"] = int(bins_with_dual_sided_bound_hits)
     centroid_control = template_fit_results.get("centroid_control")
     if isinstance(centroid_control, Mapping):
         meta["centroid_control"] = dict(centroid_control)
@@ -3341,8 +4971,7 @@ def parse_args(argv=None):
         description="Run the full Radon Monitor analysis pipeline on merged event data.",
         epilog=(
             "Hyphenated long flags are canonical. Deprecated underscore aliases "
-            "remain accepted for compatibility. Experimental options: "
-            "--background-model loglin_unit and --likelihood extended."
+            "remain accepted for compatibility."
         ),
     )
     alias_map: dict[str, str] = {}
@@ -3606,13 +5235,6 @@ def parse_args(argv=None):
         alias_map=alias_map,
         choices=["linear", "loglin_unit"],
         help="Experimental background model. Omitting this keeps the legacy behavior.",
-    )
-    _add_cli_argument(
-        fit_group,
-        "--likelihood",
-        alias_map=alias_map,
-        choices=["current", "extended"],
-        help="Experimental spectral likelihood. Omitting this keeps the legacy behavior.",
     )
     _add_cli_argument(
         fit_group,
@@ -3999,10 +5621,6 @@ def main(argv=None):
     if args.background_model is not None:
         _log_override("analysis", "background_model", args.background_model)
         cfg.setdefault("analysis", {})["background_model"] = args.background_model
-
-    if args.likelihood is not None:
-        _log_override("analysis", "likelihood", args.likelihood)
-        cfg.setdefault("analysis", {})["likelihood"] = args.likelihood
 
     if args.settle_s is not None:
         _log_override("analysis", "settle_s", float(args.settle_s))
@@ -4555,6 +6173,51 @@ def main(argv=None):
                 {k: f"{v:.4f}" for k, v in cal_window_rel_unc.items()},
             )
 
+        downtime_info: dict[str, Any] = {}
+        downtime_plot_payload: dict[str, Any] | None = None
+        try:
+            analysis_segments = _analysis_time_segments(
+                analysis_start,
+                analysis_end,
+                spike_start=t_spike_start,
+                spike_end=t_spike_end,
+                spike_periods=spike_periods,
+                run_periods=run_periods,
+            )
+            events_all_analysis, *_ = prepare_analysis_df(
+                events_all,
+                t_spike_start,
+                t_spike_end,
+                spike_periods,
+                run_periods,
+                t_end_global,
+                t0_global=t0_global,
+                cfg=cfg,
+                args=args,
+            )
+            events_after_noise_analysis, *_ = prepare_analysis_df(
+                events_after_noise,
+                t_spike_start,
+                t_spike_end,
+                spike_periods,
+                run_periods,
+                t_end_global,
+                t0_global=t0_global,
+                cfg=cfg,
+                args=args,
+            )
+            downtime_info, downtime_plot_payload = _detect_monitor_downtime(
+                events_all_analysis,
+                events_after_noise_analysis,
+                df_analysis,
+                analysis_segments=analysis_segments,
+                cfg=cfg,
+            )
+        except Exception as exc:
+            logger.warning("Downtime detection failed: %s", exc)
+            downtime_info = {}
+            downtime_plot_payload = None
+
         # ────────────────────────────────────────────────────────────
     with timer.section("baseline"):
         # 4. Baseline run (optional)
@@ -4928,7 +6591,7 @@ def main(argv=None):
                         del adc_peaks[_eiso]
                         logger.info("Excluding isotope %s from spectral fit (exclude_isotopes)", _eiso)
 
-                # Build priors for the unbinned spectrum fit.
+                # Build priors for the spectrum fit.
                 priors_spec = {}
                 sigma_prior_source = spectral_cfg.get("sigma_e_prior_source", spectral_cfg.get("sigma_E_prior_source"))
                 sigma_prior_sigma = spectral_cfg.get("sigma_e_prior_sigma", spectral_cfg.get("sigma_E_prior_sigma", sigE_sigma))
@@ -4976,6 +6639,12 @@ def main(argv=None):
                 )
 
                 peak_tol = spectral_cfg.get("spectral_peak_tolerance_mev", 0.3)
+                mu_bounds_seed_margin_kev = float(
+                    spectral_cfg.get("mu_bounds_seed_margin_kev", 50.0)
+                )
+                mu_bounds_seed_max_expand_kev = float(
+                    spectral_cfg.get("mu_bounds_seed_max_expand_kev", 35.0)
+                )
                 calibration_peak_mev = {}
                 if getattr(cal_result, "peaks", None):
                     for iso in adc_peaks.keys():
@@ -4990,7 +6659,24 @@ def main(argv=None):
                     )
                     bounds = mu_bounds_fit.get(peak)
                     if bounds is not None:
-                        lo, hi = bounds
+                        relaxed_bounds = _relax_mu_bounds_around_seed(
+                            bounds,
+                            mu,
+                            margin_kev=mu_bounds_seed_margin_kev,
+                            max_expand_kev=mu_bounds_seed_max_expand_kev,
+                        )
+                        if relaxed_bounds is not None and relaxed_bounds != bounds:
+                            mu_bounds_fit[peak] = relaxed_bounds
+                            logging.warning(
+                                "Expanding spectral mu bounds for %s from [%s, %s] to [%s, %s] to keep the seed (%.4f MeV) away from a hard edge",
+                                peak,
+                                bounds[0],
+                                bounds[1],
+                                relaxed_bounds[0],
+                                relaxed_bounds[1],
+                                float(mu),
+                            )
+                        lo, hi = mu_bounds_fit.get(peak, bounds)
                         if not (lo <= mu <= hi):
                             unclipped_mu = float(mu)
                             mu = float(np.clip(mu, lo, hi))
@@ -5146,9 +6832,6 @@ def main(argv=None):
                 bkg_model = analysis_cfg.get("background_model")
                 if bkg_model is not None:
                     spec_flags["background_model"] = bkg_model
-                like_model = analysis_cfg.get("likelihood")
-                if like_model is not None:
-                    spec_flags["likelihood"] = like_model
                 if float_sigma_E and spec_flags.get("fix_sigma0"):
                     raise ValueError(
                         "Configuration error: cannot float energy resolution while fixing sigma0"
@@ -5403,8 +7086,6 @@ def main(argv=None):
                     }
                     if spectral_cfg.get("use_plot_bins_for_fit", False):
                         fit_kwargs.update({"bins": bins, "bin_edges": bin_edges})
-                    if spectral_cfg.get("unbinned_likelihood", False):
-                        fit_kwargs["unbinned"] = True
                     if args.strict_covariance:
                         fit_kwargs["strict"] = True
                     if mu_bounds_fit:
@@ -5652,7 +7333,6 @@ def main(argv=None):
                         bins=fit_kwargs.get("bins"),
                         bin_edges=fit_kwargs.get("bin_edges"),
                         bounds=fit_kwargs.get("bounds"),
-                        unbinned=fit_kwargs.get("unbinned", False),
                         strict=fit_kwargs.get("strict", False),
                         pre_binned_hist=_pre_hist,
                         pre_dnl_meta=_pre_dnl_meta,
@@ -5676,7 +7356,6 @@ def main(argv=None):
                                 bins=fit_kwargs.get("bins"),
                                 bin_edges=fit_kwargs.get("bin_edges"),
                                 bounds=fit_kwargs.get("bounds"),
-                                unbinned=fit_kwargs.get("unbinned", False),
                                 strict=fit_kwargs.get("strict", False),
                                 skip_minos=cfg.get("spectral_fit", {}).get("skip_minos", False),
                             )
@@ -5697,7 +7376,6 @@ def main(argv=None):
                                         bins=fit_kwargs.get("bins"),
                                         bin_edges=fit_kwargs.get("bin_edges"),
                                         bounds=fit_kwargs.get("bounds"),
-                                        unbinned=fit_kwargs.get("unbinned", False),
                                         strict=fit_kwargs.get("strict", False),
                                         skip_minos=cfg.get("spectral_fit", {}).get("skip_minos", False),
                                     )
@@ -5817,7 +7495,6 @@ def main(argv=None):
                                     bins=_s3_hist.size,
                                     bin_edges=_s3_edges_mev,
                                     bounds=fit_kwargs.get("bounds"),
-                                    unbinned=False,
                                     strict=False,
                                     pre_binned_hist=_s3_hist,
                                     pre_dnl_meta=_s3_dnl_meta,
@@ -5883,7 +7560,6 @@ def main(argv=None):
                             "bins": fit_kwargs.get("bins"),
                             "bin_edges": fit_kwargs.get("bin_edges"),
                             "bounds": fit_kwargs.get("bounds"),
-                            "unbinned": fit_kwargs.get("unbinned", False),
                             "strict": False,
                             "skip_minos": True,  # Hesse errors sufficient for z-scores
                         }
@@ -6007,7 +7683,6 @@ def main(argv=None):
                                     bins=fit_kwargs.get("bins"),
                                     bin_edges=fit_kwargs.get("bin_edges"),
                                     bounds=fit_kwargs.get("bounds"),
-                                    unbinned=fit_kwargs.get("unbinned", False),
                                     strict=False,
                                     skip_minos=True,  # only need NLL/AIC
                                 )
@@ -6051,7 +7726,6 @@ def main(argv=None):
                                 bins=fit_kwargs.get("bins"),
                                 bin_edges=fit_kwargs.get("bin_edges"),
                                 bounds=fit_kwargs.get("bounds"),
-                                unbinned=fit_kwargs.get("unbinned", False),
                                 strict=False,
                                 skip_minos=True,  # only need NLL/AIC
                             )
@@ -6143,7 +7817,6 @@ def main(argv=None):
                             bins=fit_kwargs.get("bins"),
                             bin_edges=fit_kwargs.get("bin_edges"),
                             bounds=fit_kwargs.get("bounds"),
-                            unbinned=fit_kwargs.get("unbinned", False),
                             strict=False,
                             skip_minos=True,  # only need NLL for comparison
                         )
@@ -6164,7 +7837,6 @@ def main(argv=None):
                             bins=fit_kwargs.get("bins"),
                             bin_edges=fit_kwargs.get("bin_edges"),
                             bounds=fit_kwargs.get("bounds"),
-                            unbinned=fit_kwargs.get("unbinned", False),
                             strict=False,
                             skip_minos=True,  # only need NLL for comparison
                         )
@@ -6175,7 +7847,6 @@ def main(argv=None):
                             bins=fit_kwargs.get("bins"),
                             bin_edges=fit_kwargs.get("bin_edges"),
                             bounds=fit_kwargs.get("bounds"),
-                            unbinned=fit_kwargs.get("unbinned", False),
                             strict=False,
                             skip_minos=True,  # only need NLL for comparison
                         )
@@ -6185,7 +7856,6 @@ def main(argv=None):
                             bins=fit_kwargs.get("bins"),
                             bin_edges=fit_kwargs.get("bin_edges"),
                             bounds=fit_kwargs.get("bounds"),
-                            unbinned=fit_kwargs.get("unbinned", False),
                             strict=False,
                             skip_minos=True,  # only need NLL for comparison
                         )
@@ -6267,7 +7937,6 @@ def main(argv=None):
                             "bins": fit_kwargs.get("bins"),
                             "bin_edges": _cv_bin_edges,
                             "bounds": fit_kwargs.get("bounds"),
-                            "unbinned": fit_kwargs.get("unbinned", False),
                             "strict": False,
                         }
                         dnl_crossval_result = run_dnl_crossval(
@@ -6314,7 +7983,6 @@ def main(argv=None):
                                 bins=fit_kwargs.get("bins"),
                                 bin_edges=fit_kwargs.get("bin_edges"),
                                 bounds=fit_kwargs.get("bounds"),
-                                unbinned=fit_kwargs.get("unbinned", False),
                                 strict=fit_kwargs.get("strict", False),
                                 skip_minos=True,  # diagnostic sub-fit, only need NLL
                             )
@@ -8036,13 +9704,13 @@ def main(argv=None):
                 "run_periods": run_periods_cfg,
                 "radon_interval": radon_interval_cfg,
                 "background_model": cfg.get("analysis", {}).get("background_model"),
-                "likelihood": cfg.get("analysis", {}).get("likelihood"),
                 "ambient_concentration": cfg.get("analysis", {}).get(
                     "ambient_concentration"
                 ),
                 "settle_s": cfg.get("analysis", {}).get("settle_s"),
             },
         )
+        summary.downtime = downtime_info or {}
     
         if radon_combined_info is not None:
             summary.radon_combined = radon_combined_info
@@ -8164,6 +9832,19 @@ def main(argv=None):
         out_dir = Path(write_summary(results_dir, summary))
         out_dir.mkdir(parents=True, exist_ok=True)
 
+        if downtime_info:
+            try:
+                with open(Path(out_dir) / "monitor_downtime.json", "w", encoding="utf-8") as _dtf:
+                    json.dump(downtime_info, _dtf, indent=2)
+            except Exception as exc:
+                logger.warning("Could not write downtime JSON: %s", exc)
+            if downtime_plot_payload:
+                try:
+                    from plot_utils.diagnostics import plot_monitor_downtime
+                    plot_monitor_downtime(downtime_plot_payload, out_dir)
+                except Exception as exc:
+                    logger.warning("Could not create downtime plot: %s", exc)
+
         radon_background_mode = locals().get("background_mode")
         if (
             iso_mode == "radon"
@@ -8176,7 +9857,11 @@ def main(argv=None):
                 if isinstance(plot_payload, Mapping):
                     radon_background_mode = plot_payload.get("background_mode")
     
-        if iso_mode == "radon" and "radon" in summary:
+        radon_activity_outputs_enabled = _radon_activity_outputs_enabled(
+            cfg,
+            radon_interval_cfg,
+        )
+        if iso_mode == "radon" and "radon" in summary and radon_activity_outputs_enabled:
             rad_ts = summary["radon"]["time_series"]
     
             plot_radon_activity(
@@ -8998,6 +10683,10 @@ def main(argv=None):
         rad_ts_data = rad_summary.get("time_series", {}) if hasattr(rad_summary, "get") else {}
         if not isinstance(rad_ts_data, Mapping):
             rad_ts_data = {}
+        radon_activity_outputs_enabled = _radon_activity_outputs_enabled(
+            cfg,
+            radon_interval,
+        )
 
         window_start, window_end = _radon_time_window(
             t0_global, t_end_global_ts, radon_interval
@@ -9218,7 +10907,7 @@ def main(argv=None):
             if total_syst_rel2 > 0:
                 err_arr = np.sqrt(err_arr**2 + (activity_arr**2) * total_syst_rel2)
 
-        if activity_arr is not None and err_arr is not None:
+        if activity_arr is not None and err_arr is not None and radon_activity_outputs_enabled:
             times_list = [float(t) for t in np.asarray(activity_times, dtype=float)]
             plot_series = {
                 "time": times_list,

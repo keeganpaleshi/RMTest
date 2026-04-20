@@ -6,7 +6,7 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
+  smoke:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -18,5 +18,5 @@ jobs:
           bash scripts/setup_tests.sh
       - name: Install package
         run: pip install -e .
-      - name: Run tests
-        run: pytest -v
+      - name: Run smoke checks
+        run: pytest -q

@@ -81,6 +81,7 @@ class Summary(Mapping[str, Any]):
     po218: dict = field(default_factory=dict)
     noise_cut: dict = field(default_factory=dict)
     burst_filter: dict = field(default_factory=dict)
+    downtime: dict = field(default_factory=dict)
     adc_drift_rate: float | None = None
     adc_drift_mode: str | None = None
     adc_drift_params: dict = field(default_factory=dict)
@@ -498,15 +499,12 @@ CONFIG_SCHEMA = {
                     "minItems": 2,
                     "maxItems": 2,
                 },
+                "plot_radon_activity": {"type": "boolean"},
                 "ambient_concentration": {"type": ["number", "null"]},
                 "settle_s": {"type": ["number", "null"], "minimum": 0},
                 "background_model": {
                     "type": "string",
                     "enum": ["linear", "loglin_unit", "sigmoid_unit", "exp_unit", "double_logit_unit", "none"],
-                },
-                "likelihood": {
-                    "type": "string",
-                    "enum": ["current", "extended"],
                 },
             },
         },
@@ -1272,4 +1270,3 @@ def copy_config(output_dir, config_path, *, exist_ok=False):
             json.dump(sanitized, f, indent=4)
         logger.info(f"Wrote config to {dest_path}")
     return dest_path
-

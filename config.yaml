@@ -16,6 +16,7 @@ analysis:
   spike_periods: []
   run_periods: []
   radon_interval: null
+  plot_radon_activity: false
   ambient_concentration: null
   background_model: exp_unit
 columns:
@@ -224,6 +225,8 @@ spectral_fit:
   # Much faster (~3-5x) -- adequate for parameter scans.
   skip_minos: true
   spectral_peak_tolerance_mev: 0.2
+  mu_bounds_seed_margin_kev: 50.0
+  mu_bounds_seed_max_expand_kev: 35.0
   sigma_e_prior_source: "calibration"
   sigma_e_prior_sigma: 0.015
   sigma_e_prior_mean: 0.055
@@ -371,7 +374,6 @@ spectral_fit:
   peak_search_cwt_widths: null
   refit_aic_threshold: 2.0
   use_plot_bins_for_fit: true
-  unbinned_likelihood: false
   split_half_validation: false
   # D2: Held-out test for shelf/halo contribution.  Fits full and
   # reduced (core+EMG only) models on even-indexed events, evaluates
@@ -448,6 +450,8 @@ spectral_fit:
     Po212:
       - 8.70
       - 8.90
+  mu_bounds_seed_margin_kev: 50.0   # if the calibration seed lands outside/against a wall, widen the spectral centroid bounds instead of clipping the seed
+  min_mu_bound_width_kev: 10.0      # minimum width for any free mu_* bound after all constraints/intersections
 time_fit:
   do_time_fit: true
   window_po214:
@@ -482,20 +486,30 @@ time_fit:
     fix_n0_po218: false
   # Per-bin isotope extraction method:
   #   "roi"      – simple ROI window counting (default, fast)
-  #   "template" – full spectral template fit with frozen shapes from aggregate
+  #   "template" – full spectral template fit with aggregate-anchored shapes
   extraction_method: template
   # Template fitting options (only used when extraction_method: template)
-  template_rebin: 20          # energy rebin factor vs aggregate (coarser for statistics)
+  template_rebin: 1           # energy rebin factor for per-bin template spectra; 1 keeps native ADC/channel bins
   template_min_counts: 30     # minimum events per time bin to attempt fit
   template_n_workers: auto    # auto -> min(8, half of logical CPUs)
   template_skip_covariance: true  # use fast MIGRAD diagonal errors for per-bin template fits
-  float_centroids: true       # allow per-bin centroids to move around the aggregate fit
+  template_shape_mode: soft   # soft -> Gaussian-penalized shape drift around the aggregate fit; frozen -> legacy hard freeze
+  template_freeze_split_peak_shape: true  # keep the broad split-peak Gaussian terms fixed to the aggregate fit in per-bin template fits
+  float_centroids: true       # allow template per-bin centroid drift instead of hard-freezing aggregate centroids
+  centroid_shift_model: shared_offset  # shared_offset -> one common centroid shift per bin; shared_affine adds a shared linear-in-energy drift; independent restores per-peak drift
+  template_shared_shift_anchor_isotopes: auto  # auto ignores Po210/Unknown1 when estimating the shared centroid shift from the first-pass fit
+  template_max_independent_centroid_spread_kev: 20.0  # reject independent fallback when anchored isotope centroids disagree by more than this around a shared shift
   centroid_shift_bound_kev: 20.0   # initial symmetric centroid limit around the aggregate fit
   centroid_shift_prior_sigma_kev: null   # null => use half the initial bound as the Gaussian penalty width
   centroid_shift_scan_auto_expand: true  # widen centroid bounds for bins that would otherwise clip the limit
-  centroid_shift_max_expand_kev: 60.0    # maximum centroid half-width used by the auto-expansion retry
+  centroid_shift_max_expand_kev: 120.0   # maximum centroid half-width used by the auto-expansion retry
   fix_weak_isotopes: false    # legacy compatibility; true fixes only Po216/Bi212 unless overridden below
   template_fixed_isotopes: [] # explicit isotopes to amplitude-fix in per-bin template fits
+  template_required_isotopes: [Po210, Po214]  # keep these isotopes present in per-bin template fits via soft lower-floor penalties
+  template_required_isotope_floor_fraction: 0.10  # minimum per-bin floor as a fraction of the aggregate-scaled expectation
+  template_required_isotope_local_floor_fraction: 0.25  # stronger lower floor from the locally observed peak window when the data clearly supports that isotope
+  template_required_isotope_floor_sigma_fraction: 0.35  # softness of that lower-floor penalty
+  template_required_isotope_floor_min_counts: 5.0  # absolute minimum floor before the penalty turns off
 systematics:
   enable: false
   sigma_e_frac: 0.1
@@ -560,7 +574,10 @@ plotting:
   plot_template_bin_fits: false
   plot_template_bin_fits_bad_only: true
   plot_template_bin_fits_bad_chi2_ndf_min: 3.0
-  plot_template_bin_fits_log_scale: true
+  plot_template_bin_fits_log_scale: true  # template bin-fit plots already include a log panel; no separate _log.png copy is written
+  plot_filter_extreme_uncertainty: true
+  plot_extreme_uncertainty_factor: 8.0
+  plot_extreme_uncertainty_logsigma_cut: 4.0
 
 
 lucas_bridge:

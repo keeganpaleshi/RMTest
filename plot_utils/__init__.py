@@ -86,6 +86,131 @@ def _errorbar_kwargs(color=None, *, label=None, markersize=_DEFAULT_MARKER_SIZE)
         kwargs["label"] = label
     return kwargs
 
+
+def _extreme_uncertainty_mask(values, errors, config=None) -> np.ndarray:
+    """Return a display mask that suppresses a few pathological error bars."""
+
+    values_arr = np.asarray(values, dtype=float).ravel()
+    if errors is None:
+        return np.ones(values_arr.size, dtype=bool)
+
+    err_arr = np.asarray(errors, dtype=float).ravel()
+    n = min(values_arr.size, err_arr.size)
+    if n == 0:
+        return np.ones(0, dtype=bool)
+
+    keep = np.ones(n, dtype=bool)
+    if isinstance(config, Mapping) and not bool(
+        config.get("plot_filter_extreme_uncertainty", True)
+    ):
+        return keep
+
+    finite_mask = np.isfinite(values_arr[:n]) & np.isfinite(err_arr[:n])
+    positive_errs = np.abs(err_arr[:n][finite_mask])
+    positive_errs = positive_errs[positive_errs > 0.0]
+    if positive_errs.size < 8:
+        return keep
+
+    factor = 8.0
+    logsigma_cut = 4.0
+    if isinstance(config, Mapping):
+        try:
+            factor = float(config.get("plot_extreme_uncertainty_factor", factor))
+        except (TypeError, ValueError):
+            factor = 8.0
+        try:
+            logsigma_cut = float(
+                config.get("plot_extreme_uncertainty_logsigma_cut", logsigma_cut)
+            )
+        except (TypeError, ValueError):
+            logsigma_cut = 4.0
+
+    median_err = float(np.median(positive_errs))
+    if not np.isfinite(median_err) or median_err <= 0.0:
+        return keep
+
+    log_center, log_sigma = _robust_center_sigma(np.log10(positive_errs))
+    threshold = median_err * max(factor, 1.0)
+    if np.isfinite(log_center) and np.isfinite(log_sigma) and log_sigma > 0.0:
+        threshold = max(threshold, 10.0 ** (log_center + max(logsigma_cut, 1.0) * log_sigma))
+
+    huge_mask = np.isfinite(err_arr[:n]) & (np.abs(err_arr[:n]) > threshold)
+    if int(np.sum(huge_mask)) == 0:
+        return keep
+
+    keep[huge_mask] = False
+    if int(np.sum(keep)) < max(3, n // 4):
+        keep[:] = True
+    return keep
+
+
+def _plot_errorbar_series(
+    ax,
+    x,
+    y,
+    errors,
+    *,
+    color,
+    config=None,
+    label=None,
+):
+    """Plot error bars while demoting a few extreme-uncertainty points."""
+
+    y_arr = np.asarray(y, dtype=float).ravel()
+    x_arr = np.asarray(x)
+    if errors is None:
+        n = min(x_arr.size, y_arr.size)
+        if n == 0:
+            return np.ones(0, dtype=bool)
+        finite_mask = np.isfinite(y_arr[:n])
+        if np.any(finite_mask):
+            ax.plot(
+                x_arr[:n][finite_mask],
+                y_arr[:n][finite_mask],
+                "o",
+                color=color,
+                markerfacecolor=color,
+                markeredgecolor=color,
+                markersize=_get_marker_size(config),
+                alpha=0.4,
+                label=label,
+            )
+        return np.ones(n, dtype=bool)
+
+    err_arr = np.asarray(errors, dtype=float).ravel()
+    n = min(x_arr.size, y_arr.size, err_arr.size)
+    if n == 0:
+        return np.ones(0, dtype=bool)
+
+    keep_mask = _extreme_uncertainty_mask(y_arr[:n], err_arr[:n], config=config)
+    finite_xy = np.isfinite(y_arr[:n])
+    good_mask = finite_xy & keep_mask
+    bad_mask = finite_xy & ~keep_mask
+
+    if np.any(good_mask):
+        ax.errorbar(
+            x_arr[:n][good_mask],
+            y_arr[:n][good_mask],
+            yerr=err_arr[:n][good_mask],
+            **_errorbar_kwargs(
+                color,
+                label=label,
+                markersize=_get_marker_size(config),
+            ),
+        )
+    if np.any(bad_mask):
+        ax.plot(
+            x_arr[:n][bad_mask],
+            y_arr[:n][bad_mask],
+            "o",
+            color=color,
+            markerfacecolor="none",
+            markeredgecolor=color,
+            markersize=_get_marker_size(config),
+            alpha=0.25,
+        )
+    return keep_mask
+
 __all__ = [
     "extract_time_series",
     "plot_time_series",
@@ -1873,11 +1998,14 @@ def plot_radon_activity_full(
     color = palette.get("radon_activity", "#9467bd")
 
     label = None if po214_activity is None else "Rn-222"
-    ax_abs.errorbar(
+    display_mask = _plot_errorbar_series(
+        ax_abs,
         times_mpl,
         conc_arr,
-        yerr=conc_err,
-        **_errorbar_kwargs(color, label=label, markersize=_get_marker_size(config)),
+        conc_err,
+        color=color,
+        config=config,
+        label=label,
     )
     _apply_time_format(ax_abs, times_mpl)
     ax_abs.set_xlabel("Time (UTC)")
@@ -1885,11 +2013,13 @@ def plot_radon_activity_full(
     ax_abs.set_title("Radon Concentration vs. Time")
     ax_abs.ticklabel_format(axis="y", style="plain")
 
-    ax_rel.errorbar(
+    _plot_errorbar_series(
+        ax_rel,
         elapsed_hours,
         conc_arr,
-        yerr=conc_err,
-        **_errorbar_kwargs(color, markersize=_get_marker_size(config)),
+        conc_err,
+        color=color,
+        config=config,
     )
     ax_rel.set_xlabel("Elapsed Time (h)")
     ax_rel.set_ylabel(label_units)
@@ -1914,7 +2044,10 @@ def plot_radon_activity_full(
         lines2, labels2 = ax2.get_legend_handles_labels()
         ax_abs.legend(lines1 + lines2, labels1 + labels2, loc="best")
 
-    display_ylim = _select_display_ylim(conc_arr, conc_err)
+    if conc_err is not None and display_mask.size == conc_arr.size and np.any(display_mask):
+        display_ylim = _select_display_ylim(conc_arr[display_mask], conc_err[display_mask])
+    else:
+        display_ylim = _select_display_ylim(conc_arr, conc_err)
     ax_abs.set_ylim(*display_ylim)
     ax_rel.set_ylim(*display_ylim)
 
@@ -1958,11 +2091,13 @@ def plot_total_radon_full(
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("total_radon", palette.get("radon_activity", "#9467bd"))
 
-    ax_abs.errorbar(
+    display_mask = _plot_errorbar_series(
+        ax_abs,
         times_mpl,
         total_bq,
-        yerr=errors_arr,
-        **_errorbar_kwargs(color, markersize=_get_marker_size(config)),
+        errors_arr,
+        color=color,
+        config=config,
     )
     _apply_time_format(ax_abs, times_mpl)
     ax_abs.set_xlabel("Time (UTC)")
@@ -1970,11 +2105,13 @@ def plot_total_radon_full(
     ax_abs.set_title("Total Radon vs. Time")
     ax_abs.ticklabel_format(axis="y", style="plain")
 
-    ax_rel.errorbar(
+    _plot_errorbar_series(
+        ax_rel,
         elapsed_hours,
         total_bq,
-        yerr=errors_arr,
-        **_errorbar_kwargs(color, markersize=_get_marker_size(config)),
+        errors_arr,
+        color=color,
+        config=config,
     )
     ax_rel.set_xlabel("Elapsed Time (h)")
     ax_rel.set_ylabel("Total Radon in Sample (Bq)")
@@ -1982,7 +2119,10 @@ def plot_total_radon_full(
     ax_rel.ticklabel_format(axis="y", style="plain")
     ax_rel.xaxis.get_offset_text().set_visible(False)
 
-    display_ylim = _select_display_ylim(total_bq, errors_arr)
+    if errors_arr is not None and display_mask.size == total_bq.size and np.any(display_mask):
+        display_ylim = _select_display_ylim(total_bq[display_mask], errors_arr[display_mask])
+    else:
+        display_ylim = _select_display_ylim(total_bq, errors_arr)
     ax_abs.set_ylim(*display_ylim)
     ax_rel.set_ylim(*display_ylim)
 
@@ -2022,11 +2162,13 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
     palette_name = str(config.get("palette", "default")) if config else "default"
     palette = COLOR_SCHEMES.get(palette_name, COLOR_SCHEMES["default"])
     color = palette.get("equivalent_air", "#2ca02c")
-    ax.errorbar(
+    display_mask = _plot_errorbar_series(
+        ax,
         times_mpl,
         volumes,
-        yerr=errors,
-        **_errorbar_kwargs(color),
+        errors,
+        color=color,
+        config=config,
     )
     ax.set_xlabel("Time (UTC)")
     ax.set_ylabel("Equivalent Air Volume")
@@ -2037,6 +2179,11 @@ def plot_equivalent_air(times, volumes, errors, conc, out_png, config=None):
     ax.set_title(title)
 
     setup_time_axis(ax, times_mpl)
+    if display_mask.size == volumes.size and np.any(display_mask):
+        display_ylim = _select_display_ylim(volumes[display_mask], errors[display_mask])
+    else:
+        display_ylim = _select_display_ylim(volumes, errors)
+    ax.set_ylim(*display_ylim)
     fig.autofmt_xdate()
     ax.yaxis.get_offset_text().set_visible(False)
     plt.tight_layout()

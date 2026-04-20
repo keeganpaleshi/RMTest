@@ -35,8 +35,8 @@ def run_pseudoexperiment_calibration(
         Best-fit result params (must contain ``_plot_model_total``,
         ``_plot_hist``, ``_plot_centers``, ``_plot_edges``).
     fit_kwargs : dict
-        Keyword arguments for ``fit_spectrum`` (priors, flags, bins,
-        bin_edges, bounds, unbinned, strict).
+        Keyword arguments for ``fit_spectrum`` kept for API compatibility
+        with the main analysis pipeline.
     cfg : dict
         Full pipeline configuration.
     n_trials : int
@@ -52,11 +52,9 @@ def run_pseudoexperiment_calibration(
         ``real_data_pvalues`` (fraction of pseudoexperiments with more
         extreme values than the real data).
     """
-    from fitting import fit_spectrum, FitResult
     from plot_utils.diagnostics import (
         compute_pull_diagnostics,
         compute_code_domain_diagnostics,
-        compute_signed_bias_metrics,
     )
 
     model = np.asarray(fit_params.get("_plot_model_total", []), dtype=float)
@@ -72,14 +70,6 @@ def run_pseudoexperiment_calibration(
         "code_acf_lag1", "code_fft_peak_ratio",
     ]
     distributions: dict[str, list[float]] = {m: [] for m in metric_names}
-
-    # Build fit kwargs for pseudospectra
-    priors = fit_kwargs.get("priors", {})
-    flags = fit_kwargs.get("flags", {})
-    bins = fit_kwargs.get("bins")
-    bin_edges = fit_kwargs.get("bin_edges")
-    bounds = fit_kwargs.get("bounds")
-    unbinned = fit_kwargs.get("unbinned", False)
 
     logger.info(
         "Running %d pseudoexperiment trials for threshold calibration...",
