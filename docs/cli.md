@@ -47,6 +47,7 @@ See [time-and-units.md](time-and-units.md) for accepted timestamp formats.
 
 ### Baseline and background handling
 
+- `--baseline-input PATH`: override `baseline.input`
 - `--baseline-range TSTART TEND`: override `baseline.range`
 - `--baseline-mode {none,electronics,radon,all}`: choose what is removed from the assay result
 - `--allow-negative-baseline`: preserve negative baseline-corrected rates instead of clipping them to zero

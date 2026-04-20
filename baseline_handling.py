@@ -7,6 +7,17 @@ from collections.abc import Mapping, MutableMapping
 from typing import Any, Iterable
 
 
+_BASELINE_CONDITION_ALIASES = {
+    "sample_recirculation": "sample_recirculation",
+    "sample": "sample_recirculation",
+    "recirculation": "sample_recirculation",
+    "monitor_only": "monitor_only",
+    "monitor": "monitor_only",
+    "sealed_monitor": "monitor_only",
+    "sealed": "monitor_only",
+}
+
+
 def _maybe_float(value: Any) -> float | None:
     """Return ``value`` as ``float`` when possible, otherwise ``None``."""
 
@@ -91,6 +102,49 @@ def _extract_calibration_energy(calibration: Any) -> tuple[float | None, float |
     return centroid_mev, sigma_val
 
 
+def normalize_operating_condition(value: Any) -> str:
+    """Return the canonical baseline operating condition."""
+
+    if value is None:
+        return "sample_recirculation"
+
+    if not isinstance(value, str):
+        raise ValueError(
+            "baseline operating_condition must be a string when provided"
+        )
+
+    key = value.strip().lower().replace("-", "_").replace(" ", "_")
+    normalized = _BASELINE_CONDITION_ALIASES.get(key)
+    if normalized is None:
+        valid = sorted(set(_BASELINE_CONDITION_ALIASES.values()))
+        raise ValueError(
+            f"baseline operating_condition must be one of {valid}, got {value!r}"
+        )
+    return normalized
+
+
+def build_component_scales(
+    condition: str,
+    dilution_factor: float | None = None,
+) -> dict[str, float]:
+    """Return per-component scale factors for the configured condition."""
+
+    canonical = normalize_operating_condition(condition)
+    if canonical == "monitor_only":
+        radon_scale = 1.0
+    else:
+        radon_scale = _maybe_float(dilution_factor)
+        if radon_scale is None:
+            radon_scale = 1.0
+
+    return {
+        "Po214": float(radon_scale),
+        "Po218": float(radon_scale),
+        "Po210": 1.0,
+        "noise": 1.0,
+    }
+
+
 def initialize_baseline_record(
     baseline_info: MutableMapping[str, Any] | None,
     *,
@@ -121,6 +175,24 @@ def initialize_baseline_record(
         "rate_unc_Bq": {},
         "scale_factors": {},
     }
+
+    for key in (
+        "enabled",
+        "status",
+        "model",
+        "source_type",
+        "source_file",
+        "operating_condition",
+        "use_for_n0_prior",
+    ):
+        if key in baseline_info:
+            record[key] = baseline_info.get(key)
+
+    component_treatment = baseline_info.get("component_treatment")
+    if isinstance(component_treatment, Mapping):
+        record["component_treatment"] = {
+            str(k): str(v) for k, v in component_treatment.items()
+        }
 
     scales = baseline_info.get("scales")
     if isinstance(scales, Mapping):
@@ -245,6 +317,7 @@ def get_fixed_background_for_time_fit(
         "baseline_activity_Bq": float(background_rate),
         "baseline_activity_unc_Bq": float(background_unc),
         "dilution_factor": record.get("dilution_factor"),
+        "operating_condition": record.get("operating_condition"),
     }
 
     ts_range = record.get("timestamp_range")
@@ -380,10 +453,12 @@ def assess_baseline_drift(
 
 
 __all__ = [
+    "build_component_scales",
     "initialize_baseline_record",
     "update_record_with_counts",
     "finalize_baseline_record",
     "get_fixed_background_for_time_fit",
+    "normalize_operating_condition",
     "apply_time_fit_provenance",
     "assess_baseline_drift",
 ]

@@ -1,0 +1,30 @@
+{
+  "session_id": "20260420T074338Z",
+  "requested_hours": [
+    72,
+    60,
+    48,
+    36,
+    30,
+    24,
+    18,
+    14,
+    12,
+    10,
+    8,
+    6,
+    4,
+    2
+  ],
+  "phase": "running",
+  "current_hour": 48,
+  "current_run_dir": "C:\\Users\\keega\\Radon\\RMTest\\.codex_run_template_fall_binscan_fullres_20260420T074338Z\\outputs\\template_bin_48h",
+  "current_stdout_log": "C:\\Users\\keega\\Radon\\RMTest\\.codex_run_template_fall_binscan_fullres_20260420T074338Z\\logs\\template_bin_48h.stdout.log",
+  "current_stderr_log": "C:\\Users\\keega\\Radon\\RMTest\\.codex_run_template_fall_binscan_fullres_20260420T074338Z\\logs\\template_bin_48h.stderr.log",
+  "base_config": ".codex_run_merged_output_template_review_v3.yaml",
+  "input_csv": "merged_output.csv",
+  "summary_csv": "C:\\Users\\keega\\Radon\\RMTest\\.codex_run_template_fall_binscan_fullres_20260420T074338Z\\sweep_summary.csv",
+  "run_period_start": "2024-09-01T00:00:00Z",
+  "run_period_end": "2024-12-01T00:00:00Z",
+  "updated_at": "2026-04-20T15:37:33.202966+00:00"
+}

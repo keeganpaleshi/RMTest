@@ -1,0 +1,631 @@
+allow_fallback: true
+analysis_isotope: radon
+allow_negative_baseline: false
+pipeline:
+  log_level: INFO
+  random_seed: 67
+analysis:
+  analysis_start_time: null
+  analysis_end_time: null
+  spike_end_time: null
+  spike_periods: []
+  run_periods: []
+  radon_interval: null
+  ambient_concentration: null
+  background_model: exp_unit
+columns:
+  timestamp: timestamps
+  adc: adc_channels
+baseline:
+  range:
+  - '2024-09-28T00:00:00Z'
+  - '2024-10-28T23:59:59Z'
+  monitor_volume_l: 605.0
+  sample_volume_l: 4196.0
+  isotopes_to_subtract:
+  - noise
+burst_filter:
+  burst_mode: rate
+  burst_window_size_s: 60
+  rolling_median_window: 5
+  burst_multiplier: 5
+  micro_window_size_s: 1
+  micro_count_threshold: 3
+calibration:
+  method: two-point
+  noise_cutoff: 400
+  hist_bins: 2000
+  peak_search_radius: 100
+  peak_prominence: 5
+  peak_width: 5
+  peak_widths:
+    Po210: 5
+    Po218: 5
+    Po214: 5
+    Po216: 5
+    Po212: 5
+  slope_mev_per_ch: 0.00427
+  float_slope: true
+  use_two_point: true
+  use_quadratic: false
+  nominal_adc:
+    Po210: 1246
+    Po218: 1399
+    Po216: 1587
+    Po214: 1802
+    Po212: 2057
+  fit_window_adc: 40
+  fit_retry_window: 60
+  fit_maxfev: 15000
+  curve_fit_max_evaluations: 10000
+  use_emg: true
+  init_sigma_adc: 10.0
+  sigma_e_init: null
+  init_tau_adc: 1.0
+  sanity_tolerance_mev: 1.0
+  known_energies:
+    Po210: 5.304
+    Po218: 6.002
+    Po216: 6.778
+    Po214: 7.687
+    Po212: 8.784
+  min_peak_separation_adc: 10.0
+  gaussian_sigma_upper_bound: 500.0
+  emg_sigma_upper_bound: 250.0
+  emg_tau_upper_bound: 200.0
+  quadratic_residual_threshold_mev: 0.005
+  jacobian_epsilon: 1.0e-06
+  tau_bounds_adc:
+    default:
+    - 0.0005
+    - 50.0
+    Po218:
+    - 0.0005
+    - 8.0
+spectral_fit:
+  do_spectral_fit: true
+  spectral_binning_mode: adc
+  adc_bin_width: 1
+  dnl_correction:
+    enabled: true
+    parameterized: true
+    full_resolution_estimate: true
+    fourier_periods_codes:
+    - 4
+    - 8
+    - 16
+    - 32
+    - 64
+    - 128
+    - 256
+    - 512
+    post_dnl_rebin: 10
+    iterations: 1
+    min_counts: 5
+    max_correction: 0.5
+    smooth_window: 61
+    crossval: false
+    external_map_path: null
+  fix_bkg_from_prelim: fix
+  seed_peaks_from_prelim: seed
+  seed_shape_from_prelim: seed
+  three_stage_binning:
+    enabled: false
+    stage2_rebin: 3
+    stage3_rebin: 15
+  tau_energy_model: constant
+  tau_energy_model_E_ref: 7.0
+  tau_0_prior:
+  - 0.08
+  - 0.08
+  tau_slope_prior:
+  - 0.01
+  - 0.02
+  shared_shape_params:
+    tau: true
+    f_shelf: true
+    sigma_shelf: true
+    f_halo: true
+    sigma_halo: true
+    tau_halo: true
+  tau_shared_prior:
+  - 0.097
+  - 0.05
+  f_shelf_shared_prior:
+  - 0.05
+  - 0.1
+  sigma_shelf_shared_prior:
+  - 0.12
+  - 0.1
+  f_halo_shared_prior:
+  - 0.06
+  - 0.08
+  sigma_halo_shared_prior:
+  - 0.42
+  - 0.15
+  tau_halo_shared_prior:
+  - 0.0
+  - 0.001
+  shared_shape_passive:
+  - Po216
+  - Bi212
+  exclude_isotopes: []
+  energy_bin_width: 0.013
+  fd_hist_bins: 400
+  mu_sigma: 0.005
+  extra_peaks:
+    Unknown1:
+      energy: 15.8
+      sigma:
+      - 0.5
+      - 0.1
+      amplitude:
+      - 500
+      - 300
+      mu_sigma: 0.3
+      mu_bounds:
+      - 13.0
+      - 19.0
+      use_emg: true
+      tau:
+      - 0.01
+      - 0.01
+      use_shelf: true
+      f_shelf:
+      - 0.02
+      - 0.02
+      sigma_shelf:
+      - 0.1
+      - 0.05
+      fix:
+        sigma: true
+      use_halo: true
+      use_prelim_component_template: true
+      template_replace_parametric_peak: true
+      template_use_mu_shift: true
+      template_mask_mode: highpass
+      template_mask_center: 15.25
+      template_mask_width: 0.18
+    Bi212:
+      energy: 6.051
+      sigma:
+      - 0.12
+      - 0.03
+      mu_sigma: 0.005
+      mu_bounds:
+      - 6.03
+      - 6.07
+      use_emg: true
+      tau:
+      - 0.08
+      - 0.05
+      use_shelf: true
+      f_shelf:
+      - 0.05
+      - 0.05
+      sigma_shelf:
+      - 0.25
+      - 0.15
+      use_halo: true
+      f_halo:
+      - 0.04
+      - 0.1
+      sigma_halo:
+      - 0.24
+      - 0.12
+      tau_halo:
+      - 0.05
+      - 0.05
+      amplitude:
+      - 500
+      - 500
+      amplitude_linked:
+        reference: Po212
+        ratio: 0.5609
+      fix:
+        sigma: true
+    Unknown1Shoulder:
+      energy: 15.05
+      sigma:
+      - 0.8
+      - 0.1
+      amplitude:
+      - 550
+      - 300
+      mu_sigma: 0.02
+      mu_bounds:
+      - 15.0
+      - 15.1
+      use_prelim_component_template: true
+      template_source_component: Unknown1
+      template_replace_parametric_peak: true
+      template_use_mu_shift: true
+      template_broaden_sigma: 0.65
+      fix:
+        mu: true
+        sigma: true
+  fit_energy_range:
+  - 1.0
+  - 19.0
+  adc_trim_bins:
+  - 3
+  - 3
+  amp_prior_scale: 5.0
+  bkg_mode: manual
+  clip_floor: 1e-300
+  b0_prior:
+  - 0.0
+  - 4.0
+  b1_prior:
+  - 1.0
+  - 2.0
+  b2_prior:
+  - 0.0
+  - 0.5
+  b3_prior:
+  - 0.0
+  - 0.5
+  s_bkg_prior:
+  - 0.0
+  - 5.0
+  tau_bound_expansion: 10.0
+  background_norm_points: 512
+  emg_tau_floor: 0.0005
+  tau_po210_prior_mean: 0.1
+  tau_po210_prior_sigma: 0.1
+  tau_po218_prior_mean: 0.05
+  tau_po218_prior_sigma: 0.08
+  tau_po214_prior_mean: 0.087
+  tau_po214_prior_sigma: 0.08
+  tau_po216_prior_mean: 0.001
+  tau_po216_prior_sigma: 0.05
+  tau_po212_prior_mean: 0.09
+  tau_po212_prior_sigma: 0.05
+  skip_minos: true
+  spectral_peak_tolerance_mev: 0.2
+  sigma_e_prior_source: calibration
+  sigma_e_prior_sigma: 0.015
+  sigma_e_prior_mean: 0.055
+  use_emg:
+    Po210: true
+    Po218: true
+    Po214: true
+    Po216: true
+    Po212: true
+  shelf_range: 1.5
+  use_shelf:
+    Po210: true
+    Po218: true
+    Po214: true
+    Po216: true
+    Po212: true
+  f_shelf_Po210_prior:
+  - 0.062
+  - 0.1
+  f_shelf_Po214_prior:
+  - 0.06
+  - 0.05
+  f_shelf_Po218_prior:
+  - 0.3
+  - 0.05
+  sigma_shelf_Po210_prior:
+  - 0.15
+  - 0.08
+  sigma_shelf_Po214_prior:
+  - 0.15
+  - 0.08
+  sigma_shelf_Po218_prior:
+  - 0.4
+  - 0.08
+  f_shelf_Po212_prior:
+  - 0.35
+  - 0.08
+  sigma_shelf_Po212_prior:
+  - 0.5
+  - 0.1
+  use_halo:
+    Po210: true
+    Po218: true
+    Po214: true
+    Po216: true
+    Po212: true
+  f_halo_Po210_prior:
+  - 0.07
+  - 0.15
+  sigma_halo_Po210_prior:
+  - 0.26
+  - 0.15
+  tau_halo_Po210_prior:
+  - 0.07
+  - 0.05
+  f_halo_Po214_prior:
+  - 0.11
+  - 0.1
+  sigma_halo_Po214_prior:
+  - 0.26
+  - 0.12
+  tau_halo_Po214_prior:
+  - 0.08
+  - 0.04
+  f_halo_Po218_prior:
+  - 0.03
+  - 0.1
+  sigma_halo_Po218_prior:
+  - 0.25
+  - 0.15
+  tau_halo_Po218_prior:
+  - 0.02
+  - 0.1
+  f_halo_Po212_prior:
+  - 0.08
+  - 0.15
+  sigma_halo_Po212_prior:
+  - 0.2
+  - 0.15
+  tau_halo_Po212_prior:
+  - 0.05
+  - 0.05
+  per_isotope_sigma:
+    Po210:
+    - 0.107
+    - 0.03
+    Po218:
+    - 0.12
+    - 0.03
+    Po216:
+    - 0.12
+    - 0.03
+    Po214:
+    - 0.13
+    - 0.03
+    Po212:
+    - 0.13
+    - 0.05
+  use_gauss2: true
+  f_gauss2_prior:
+  - 0.29
+  - 0.1
+  sigma_gauss2_ratio_prior:
+  - 1.4
+  - 0.5
+  delta_E_broad_prior:
+  - 0.02
+  - 0.02
+  f_beta_Po214_prior:
+  - 0.04
+  - 0.04
+  lambda_beta_Po214_prior:
+  - 0.13
+  - 0.08
+  f_beta_Po212_prior:
+  - 0.04
+  - 0.04
+  lambda_beta_Po212_prior:
+  - 0.1
+  - 0.08
+  share_beta: false
+  max_tau_ratio: 2.0
+  float_sigma_e: false
+  peak_search_prominence: 30
+  peak_search_width_adc: 3
+  peak_search_method: prominence
+  peak_search_cwt_widths: null
+  refit_aic_threshold: 2.0
+  use_plot_bins_for_fit: true
+  unbinned_likelihood: false
+  split_half_validation: true
+  shelf_halo_test: false
+  pseudoexperiment_trials: 0
+  flags:
+    fix_sigma0: true
+    sigma0_prior:
+    - 0.13
+    - 0.05
+    fix_f: true
+    f_prior:
+    - 0.0
+    - 0.01
+    fix_tau_Po210: false
+    fix_tau_Po218: false
+    fix_tau_Po214: false
+    fix_tau_Po212: false
+    fix_f_shelf_Po210: false
+    fix_f_shelf_Po218: false
+    fix_f_shelf_Po214: false
+    fix_f_shelf_Po212: false
+    fix_sigma_shelf_Po210: false
+    fix_sigma_shelf_Po218: false
+    fix_sigma_shelf_Po214: false
+    fix_sigma_shelf_Po212: false
+    fix_sigma_Po212: true
+    fix_sigma_Po216: true
+    fix_f_shelf_Po216: false
+    fix_f_halo_Po216: false
+    fix_sigma_shelf_Po216: false
+    fix_sigma_halo_Po216: false
+    fix_tau_halo_Po216: false
+    fix_tau_halo_shared: true
+    fix_b0: true
+    penalty_priors:
+      S_Po212:
+      - 3000
+      - 5000
+      S_Po216:
+      - 1000
+      - 2000
+  mu_bounds:
+    Po210:
+    - 5.2
+    - 5.35
+    Po218:
+    - 5.93
+    - 6.07
+    Po216:
+    - 6.65
+    - 6.9
+    Po214:
+    - 7.6
+    - 7.71
+    Po212:
+    - 8.7
+    - 8.9
+  asym_energy_model: ''
+  use_sigma_asym: false
+  rebin_fix_extra_peak_shape: false
+  rebin_fix_extra_peak_mu: false
+  rebin_fix_extra_peak_area: false
+time_fit:
+  do_time_fit: false
+  window_po214:
+  - 7.55
+  - 7.8
+  window_po218:
+  - 5.9
+  - 6.1
+  window_po210:
+  - 5.25
+  - 5.37
+  window_po212:
+  - 8.65
+  - 9.05
+  eff_po214: null
+  eff_po218: null
+  eff_po210: null
+  hl_po214: null
+  hl_po218: null
+  bkg_po214:
+  - 0.0
+  - 0.2
+  bkg_po218:
+  - 0.0
+  - 0.0
+  sig_n0_po214: 1.0
+  sig_n0_po218: 1.0
+  background_guess: 0.0
+  n0_guess_fraction: 0.1
+  flags:
+    fix_background_b: false
+    fix_n0_po218: false
+  extraction_method: template
+  template_rebin: 20
+  template_min_counts: 30
+  float_centroids: true
+  fix_weak_isotopes: true
+systematics:
+  enable: false
+  sigma_e_frac: 0.1
+  tail_fraction: 0.05
+  energy_shift_kev: 0.001
+  adc_drift_rate: 0.0
+  adc_drift_mode: linear
+  adc_drift_params: null
+gas_dissolution:
+  radon_henry_constant: 9.12
+  argon_henry_constant: 1.0
+  argon_atmospheric_fraction: 0.00934
+radon_inference:
+  enabled: false
+  source_isotopes:
+  - Po214
+  - Po218
+  source_weights:
+    Po214: 0.5
+    Po218: 0.5
+  detection_efficiency:
+    Po214: 0.19
+    Po218: 0.094
+  transport_efficiency: 1.0
+  retention_efficiency: 1.0
+  chain_correction: none
+  external_rn:
+    mode: file
+    fallback_bq_per_m3: 120.0
+    file_path: rad_4996_pico40l.xls
+    time_columns:
+      year: Year
+      month: Month
+      day: Day
+      hour: Hour
+      minute: Minute
+      year_format: two_digit
+    value_column: Radon Bq/m^3
+    tz: America/Toronto
+    interpolation: ffill
+    max_gap_seconds: 21600
+  output:
+    write_per_interval: true
+    write_cumulative: true
+plotting:
+  plot_spectrum_binsize_adc: 1
+  plot_time_binning_mode: fixed
+  plot_time_bin_width_s: 14400
+  plot_time_normalise_rate: true
+  time_bins_fallback: 1
+  plot_save_formats:
+  - png
+  dump_time_series_json: true
+  plot_time_style: lines
+  plot_time_show_models: false
+  plot_marker_size: 0.5
+  overlay_isotopes: true
+  save_individual_time_series: false
+  plot_all_time_fit_series: false
+  plot_template_bin_fits_bad_only: false
+  plot_template_bin_fits_bad_chi2_ndf_min: 3.0
+  plot_template_bin_fits_log_scale: false
+lucas_bridge:
+  enabled: false
+  assay_files:
+  - C:/Users/keega/Downloads/Radon assay results (current, May 2023)(UI, LN2 Plant
+    Assays).csv
+  - C:/Users/keega/Downloads/Radon assay results (current, May 2023)(UGboardcalibration).csv
+  selection:
+    labels:
+    - Radon Monitor
+    - Titan Trap + Pretrap
+    date_range: null
+    indices: null
+  recompute_from_raw: true
+  comparison_target: baseline_corrected_combined
+  volume_convention: monitor
+  monitor_volume_l: 605.0
+  ui_volume_l: 4196.0
+  match_window_hours: 2.0
+  default_match_time: '18:00'
+  use_unclipped_baseline: true
+  skid_background:
+    label: Background Assay - Titan Trap
+    date: '2024-08-08'
+  per_assay_overrides:
+    '2024-09-12':
+      match_time: 05:30
+      match_window_hours: 5.5
+    '2024-11-01':
+      match_time: 05:30
+      match_window_hours: 5.5
+    '2024-12-05':
+      lc_background_cpd: 16.5
+  spike_periods:
+  - start: '2024-09-12T14:30:00-04:00'
+    end: '2024-09-28T00:00:00-04:00'
+    fit_delay_minutes: 30
+    label: Spike 1 (Sep 2024)
+    assay_date: '2024-09-16'
+  - start: '2024-11-01T19:00:00-04:00'
+    end: '2024-11-24T00:00:00-05:00'
+    fit_delay_minutes: 30
+    label: Spike 2 (Nov 2024)
+    assay_date: '2024-11-05'
+  exclude_from_aggregate:
+  - '2024-11-19'
+  emanation_baseline:
+    start: '2024-10-02'
+    end: '2024-10-28'
+    dilute_for_ui: true
+fitting:
+  use_stable_emg: true
+  emg_stable_mode: true
+  emg_tau_min: 0.0005
+  per_isotope:
+    Po210:
+      peak_sigma: 0.108

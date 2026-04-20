@@ -5,7 +5,9 @@ import pandas as pd
 
 from analyze import _normalise_mu_bounds
 import analyze
+from baseline_handling import normalize_operating_condition
 from calibration import apply_calibration
+from radon.baseline import subtract_baseline_counts, subtract_baseline_rate
 from utils.time_utils import parse_timestamp
 
 
@@ -123,3 +125,41 @@ def test_relax_mu_bounds_around_seed_respects_max_expand_cap():
     )
 
     assert relaxed == (5.93, 6.07)
+
+
+def test_normalize_operating_condition_accepts_monitor_aliases():
+    assert normalize_operating_condition("monitor_only") == "monitor_only"
+    assert normalize_operating_condition("sealed-monitor") == "monitor_only"
+    assert normalize_operating_condition("sample") == "sample_recirculation"
+
+
+def test_subtract_baseline_counts_applies_component_scale():
+    rate, sigma = subtract_baseline_counts(
+        counts=100.0,
+        efficiency=1.0,
+        live_time=10.0,
+        baseline_counts=20.0,
+        baseline_live_time=10.0,
+        scale=0.5,
+    )
+
+    assert np.isclose(rate, 9.0)
+    assert np.isclose(sigma, np.sqrt(100.0 + 0.25 * 20.0) / 10.0)
+
+
+def test_subtract_baseline_rate_combines_fit_and_scaled_baseline_uncertainty():
+    corrected_rate, corrected_sigma, baseline_rate, baseline_sigma = subtract_baseline_rate(
+        fit_rate=5.0,
+        fit_sigma=0.2,
+        counts=100.0,
+        efficiency=1.0,
+        live_time=10.0,
+        baseline_counts=25.0,
+        baseline_live_time=100.0,
+        scale=0.5,
+    )
+
+    assert np.isclose(baseline_rate, 0.25)
+    assert np.isclose(baseline_sigma, 0.05)
+    assert np.isclose(corrected_rate, 4.875)
+    assert np.isclose(corrected_sigma, np.hypot(0.2, 0.025))

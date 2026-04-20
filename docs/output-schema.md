@@ -125,6 +125,11 @@ The time-series fitter still fits only Po-214 and Po-218. When `window_po210` is
 
 Typical baseline fields include:
 
+- `enabled`
+- `status`
+- `source_type`
+- `source_file`
+- `operating_condition`
 - `analysis_counts`
 - `rate_bq`
 - `rate_unc_bq`
@@ -133,6 +138,7 @@ Typical baseline fields include:
 - `corrected_rate_bq`
 - `corrected_sigma_bq`
 - `corrected_activity`
+- optional `reason` when the baseline path is off
 
 See [baseline.md](baseline.md) for the subtraction model.
 

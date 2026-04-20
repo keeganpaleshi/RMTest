@@ -5,7 +5,7 @@ from utils import to_utc_datetime
 
 
 def validate_baseline_window(cfg: dict) -> None:
-    """Validate baseline window relative to analysis range.
+    """Validate the baseline window format.
 
     Parameters
     ----------
@@ -18,8 +18,7 @@ def validate_baseline_window(cfg: dict) -> None:
     Raises
     ------
     ValueError
-        If the baseline interval is malformed or does not overlap with the
-        analysis window.
+        If the baseline interval is malformed.
     """
     baseline = cfg.get("baseline", {})
     b_range = baseline.get("range")
@@ -37,25 +36,9 @@ def validate_baseline_window(cfg: dict) -> None:
             f"Baseline end {end.isoformat()} must be after start {start.isoformat()}"
         )
 
-    analysis = cfg.get("analysis", {})
-    a_end = analysis.get("analysis_end_time")
-    a_start = analysis.get("analysis_start_time")
-    a_end_dt = to_utc_datetime(a_end) if a_end is not None else None
-    a_start_dt = to_utc_datetime(a_start) if a_start is not None else None
-
-    if a_end_dt is not None and start >= a_end_dt:
-        raise ValueError(
-            "baseline.start >= analysis_end_time: "
-            f"{start.isoformat()} vs {a_end_dt.isoformat()}. "
-            "Check baseline.range and analysis.analysis_end_time"
-        )
-
-    if a_start_dt is not None and end <= a_start_dt:
-        raise ValueError(
-            "Baseline interval entirely before analysis window: "
-            f"[{start.isoformat()}, {end.isoformat()}] vs "
-            f"start {a_start_dt.isoformat()}"
-        )
+    # The baseline may come from a separate run or from a quiescent period
+    # outside the active assay window, so no overlap with the analysis window
+    # is required here.
 
 
 def validate_radon_inference(cfg: dict) -> None:

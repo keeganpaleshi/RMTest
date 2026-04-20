@@ -490,7 +490,6 @@ from baseline_utils import (
     summarize_baseline,
     BaselineError,
 )
-import baseline
 import baseline_handling
 from time_fitting import two_pass_time_fit
 from config.validation import validate_baseline_window
@@ -5070,6 +5069,17 @@ def parse_args(argv=None):
     )
     _add_cli_argument(
         time_group,
+        "--baseline-input",
+        alias_map=alias_map,
+        type=str,
+        help=_override_help(
+            "Optional separate event file used as the baseline source. "
+            "When omitted, the baseline range is taken from the main input file.",
+            "baseline.input",
+        ),
+    )
+    _add_cli_argument(
+        time_group,
         "--baseline-mode",
         alias_map=alias_map,
         choices=["none", "electronics", "radon", "all"],
@@ -5475,6 +5485,8 @@ def main(argv=None):
     args.config = Path(args.config)
     args.input = Path(args.input)
     args.output_dir = Path(args.output_dir)
+    if args.baseline_input:
+        args.baseline_input = Path(args.baseline_input)
     if args.efficiency_json:
         args.efficiency_json = Path(args.efficiency_json)
     if args.systematics_json:
@@ -5720,6 +5732,10 @@ def main(argv=None):
 
     if args.allow_negative_baseline:
         cfg["allow_negative_baseline"] = True
+
+    if args.baseline_input is not None:
+        _log_override("baseline", "input", str(args.baseline_input))
+        cfg.setdefault("baseline", {})["input"] = str(args.baseline_input)
 
     if args.debug:
         cfg.setdefault("pipeline", {})["log_level"] = "DEBUG"
@@ -6228,7 +6244,59 @@ def main(argv=None):
         baseline_background_provenance: dict[str, dict[str, Any]] = {}
         dilution_factor = None
         baseline_cfg = cfg.get("baseline", {})
-        isotopes_to_subtract = baseline_cfg.get("isotopes_to_subtract", ["Po214", "Po218"])
+        if not isinstance(baseline_cfg, Mapping):
+            baseline_cfg = {}
+
+        isotopes_to_subtract = baseline_cfg.get(
+            "isotopes_to_subtract", ["Po214", "Po218"]
+        )
+        if not isinstance(isotopes_to_subtract, list):
+            raise ValueError("baseline.isotopes_to_subtract must be a list when provided")
+
+        baseline_condition = baseline_handling.normalize_operating_condition(
+            baseline_cfg.get("operating_condition", baseline_cfg.get("condition"))
+        )
+        baseline_use_for_n0_prior = bool(baseline_cfg.get("use_for_n0_prior", False))
+
+        baseline_source_path = baseline_cfg.get("input") or baseline_cfg.get("file")
+        baseline_source_type = "current_input"
+        baseline_source_file = str(args.input.resolve())
+        baseline_source_events = events_all
+        if baseline_source_path:
+            candidate = Path(str(baseline_source_path)).expanduser()
+            if not candidate.is_absolute():
+                candidate = (args.config.parent / candidate).resolve()
+            else:
+                candidate = candidate.resolve()
+            baseline_source_file = str(candidate)
+            if candidate != args.input.resolve():
+                baseline_source_type = "external_file"
+                try:
+                    baseline_source_events = load_events(
+                        candidate, column_map=cfg.get("columns")
+                    )
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"Could not load baseline input '{candidate}': {exc}"
+                    ) from exc
+
+        baseline_info = {
+            "enabled": False,
+            "status": "off",
+            "model": "equilibrium_emanation",
+            "operating_condition": baseline_condition,
+            "source_type": baseline_source_type,
+            "source_file": baseline_source_file,
+            "use_for_n0_prior": baseline_use_for_n0_prior,
+            "component_treatment": {
+                "radon": (
+                    "diluted_by_recirculation"
+                    if baseline_condition == "sample_recirculation"
+                    else "undiluted_monitor_only"
+                ),
+                "noise": "undiluted",
+            },
+        }
         baseline_range = None
         if args.baseline_range:
             _log_override("baseline", "range", args.baseline_range)
@@ -6256,7 +6324,7 @@ def main(argv=None):
                     "Invalid baseline.range %r -> %s", baseline_cfg.get("range"), e
                 )
     
-        # Validate baseline window against analysis times
+        # Validate baseline window formatting
         try:
             validate_baseline_window(cfg)
         except ValueError as e:
@@ -6276,7 +6344,7 @@ def main(argv=None):
             t_end_base = baseline_range[1]
             if t_end_base <= t_start_base:
                 raise ValueError("baseline_range end time must be greater than start time")
-            events_all_ts = to_datetime_utc(events_all["timestamp"])
+            events_all_ts = to_datetime_utc(baseline_source_events["timestamp"])
             mask_base_full = (events_all_ts >= t_start_base) & (events_all_ts < t_end_base)
             mask_base = (df_analysis["timestamp"] >= t_start_base) & (
                 df_analysis["timestamp"] < t_end_base
@@ -6287,7 +6355,7 @@ def main(argv=None):
                 logging.warning(
                     "Baseline interval outside data range --taking counts anyway"
                 )
-            base_events = events_all[mask_base_full].copy()
+            base_events = baseline_source_events[mask_base_full].copy()
             # Apply calibration to the baseline events
             if not base_events.empty:
                 base_events["energy_MeV"] = cal_result.predict(base_events["adc"])
@@ -6302,15 +6370,22 @@ def main(argv=None):
                 t_start_base,
                 t_end_base,
             ]
-            baseline_info = {
-                "start": t_start_base,
-                "end": t_end_base,
-                "n_events": len(base_events),
-                "live_time": baseline_live_time,
-            }
-    
+            baseline_info.update(
+                {
+                    "enabled": True,
+                    "status": "applied",
+                    "start": t_start_base,
+                    "end": t_end_base,
+                    "n_events": len(base_events),
+                    "live_time": baseline_live_time,
+                }
+            )
+
             try:
-                dilution_factor = compute_dilution_factor(monitor_vol, sample_vol)
+                if baseline_condition == "sample_recirculation":
+                    dilution_factor = compute_dilution_factor(monitor_vol, sample_vol)
+                else:
+                    dilution_factor = 1.0
             except ValueError as exc:
                 msg = (
                     "invalid baseline volumes: "
@@ -6320,24 +6395,25 @@ def main(argv=None):
                     monitor_safe = max(monitor_vol, 0.0)
                     sample_safe = max(sample_vol, 0.0)
                     total_safe = monitor_safe + sample_safe
-                    if monitor_safe <= 0 or total_safe <= 0:
+                    if baseline_condition == "monitor_only":
+                        dilution_factor = 1.0
+                    elif monitor_safe <= 0 or total_safe <= 0:
                         raise ValueError(msg) from exc
-                    logger.warning("%s --clamping to non-negative values", msg)
-                    monitor_vol = monitor_safe
-                    sample_vol = sample_safe
-                    dilution_factor = monitor_safe / total_safe
+                    else:
+                        logger.warning("%s --clamping to non-negative values", msg)
+                        monitor_vol = monitor_safe
+                        sample_vol = sample_safe
+                        dilution_factor = monitor_safe / total_safe
                     warnings_list = baseline_info.setdefault("warnings", [])
                     warnings_list.append(msg)
                     baseline_info["dilution_factor_fallback"] = True
                 else:
                     raise ValueError(msg) from exc
-    
-            scales = {
-                "Po214": dilution_factor,
-                "Po218": dilution_factor,
-                "Po210": 1.0,
-                "noise": 1.0,
-            }
+
+            scales = baseline_handling.build_component_scales(
+                baseline_condition,
+                dilution_factor,
+            )
             baseline_info["dilution_factor"] = dilution_factor
             baseline_info["scales"] = scales
             baseline_record = baseline_handling.initialize_baseline_record(
@@ -6385,10 +6461,17 @@ def main(argv=None):
                         baseline_live_time,
                         1.0,
                     )
-    
+        else:
+            baseline_info["reason"] = (
+                "baseline.range not specified; equilibrium baseline correction disabled"
+            )
+
         _ensure_events(df_analysis, "baseline subtraction")
     
         if args.check_baseline_only:
+            if not baseline_range:
+                logger.info("%s", baseline_info.get("reason", "Baseline is disabled"))
+                sys.exit(0)
             try:
                 summary = summarize_baseline(cfg, isotopes_to_subtract)
             except BaselineError as e:
@@ -6416,25 +6499,7 @@ def main(argv=None):
                 sys.exit(1)
             sys.exit(0)
     
-        if args.baseline_range:
-            t_base0 = args.baseline_range[0]
-            t_base1 = args.baseline_range[1]
-            edges = adc_hist_edges(df_analysis["adc"].values, hist_bins)
-            try:
-                df_analysis, _ = baseline.subtract(
-                    df_analysis,
-                    events_all,
-                    bins=edges,
-                    t_base0=t_base0,
-                    t_base1=t_base1,
-                    mode=args.baseline_mode,
-                    live_time_analysis=(analysis_end - analysis_start).total_seconds(),
-                    allow_fallback=cfg.get("allow_fallback", False),
-                )
-            except Exception as e:
-                if not cfg.get("allow_fallback"):
-                    raise
-                logger.warning("Baseline subtraction failed -> %s", e)
+        baseline_info["mode"] = args.baseline_mode
     
         # ────────────────────────────────────────────────────────────
     with timer.section("spectral_fit"):
@@ -8265,17 +8330,28 @@ def main(argv=None):
                     n0_activity = 0.0
                     n0_sigma = 1.0
     
-                priors_time["N0"] = (
-                    n0_activity,
-                    cfg["time_fit"].get(
-                        f"sig_n0_{iso.lower()}",
-                        cfg["time_fit"].get(f"sig_N0_{iso}", n0_sigma),
-                    ),
-                )
+                if baseline_use_for_n0_prior:
+                    scale_factor = float((baseline_info.get("scales") or {}).get(iso, 1.0))
+                    priors_time["N0"] = (
+                        n0_activity * scale_factor,
+                        cfg["time_fit"].get(
+                            f"sig_n0_{iso.lower()}",
+                            cfg["time_fit"].get(f"sig_N0_{iso}", n0_sigma),
+                        ),
+                    )
+                else:
+                    priors_time["N0"] = (
+                        0.0,
+                        cfg["time_fit"].get(
+                            f"sig_n0_{iso.lower()}",
+                            cfg["time_fit"].get(f"sig_N0_{iso}", 1.0),
+                        ),
+                    )
     
                 analysis_counts = float(np.sum(iso_events["weight"]))
                 iso_counts_raw[iso] = analysis_counts
                 live_time_iso = iso_live_time.get(iso, 0.0)
+                scale_factor = float((baseline_info.get("scales") or {}).get(iso, 1.0))
                 if (
                     iso in isotopes_to_subtract
                     and live_time_iso > 0
@@ -8288,6 +8364,7 @@ def main(argv=None):
                         live_time_iso,
                         baseline_counts.get(iso, 0.0),
                         baseline_live_time,
+                        scale=scale_factor,
                     )
                 else:
                     if eff > 0 and live_time_iso > 0:
@@ -8404,7 +8481,12 @@ def main(argv=None):
             # Determine baseline rate for fixed-background first pass
             baseline_rate_iso = None
             fixed_from_baseline_info = None
-            if baseline_record is not None:
+            scale_factor = float((baseline_info.get("scales") or {}).get(iso, 1.0))
+            if (
+                baseline_record is not None
+                and args.baseline_mode != "none"
+                and iso in isotopes_to_subtract
+            ):
                 fixed_from_baseline_info = baseline_handling.get_fixed_background_for_time_fit(
                     baseline_record,
                     iso,
@@ -8413,14 +8495,19 @@ def main(argv=None):
                 if fixed_from_baseline_info:
                     baseline_rate_iso = fixed_from_baseline_info.get("background_rate_Bq")
     
-            if baseline_rate_iso is None and baseline_live_time > 0:
+            if (
+                baseline_rate_iso is None
+                and baseline_live_time > 0
+                and args.baseline_mode != "none"
+                and iso in isotopes_to_subtract
+            ):
                 eff_cfg = cfg["time_fit"].get(f"eff_{iso.lower()}")
                 if isinstance(eff_cfg, list):
                     eff_rate = eff_cfg[0]
                 else:
                     eff_rate = eff_cfg if eff_cfg is not None else 1.0
                 if eff_rate > 0:
-                    baseline_rate_iso = baseline_counts.get(iso, 0.0) / (
+                    baseline_rate_iso = scale_factor * baseline_counts.get(iso, 0.0) / (
                         baseline_live_time * eff_rate
                     )
     
@@ -8528,6 +8615,7 @@ def main(argv=None):
                 and baseline_live_time > 0
             ):
                 base_counts = baseline_counts.get(iso, 0.0)
+                scale_factor = float((baseline_info.get("scales") or {}).get(iso, 1.0))
                 try:
                     rate, sigma = subtract_baseline_counts(
                         float(counts_val),
@@ -8535,6 +8623,7 @@ def main(argv=None):
                         float(live_time_iso),
                         float(base_counts),
                         float(baseline_live_time),
+                        scale=scale_factor,
                     )
                 except ValueError:
                     return None
@@ -8878,10 +8967,10 @@ def main(argv=None):
         """Apply baseline correction and compute associated uncertainties.
     
         The counts from the baseline interval are converted to rates and
-        subtracted from the fitted activities.  The error term ``sigma_rate``
-        used for this correction is derived from the **unweighted** analysis
-        counts so that the statistical uncertainty reflects the raw event
-        totals prior to any BLUE weighting.
+        subtracted from the fitted activities. The correction uses the fitted
+        rate uncertainty plus the Poisson uncertainty from the baseline
+        interval, while counts-side fallbacks continue to use the unweighted
+        event totals.
         """
         baseline_rates = {}
         baseline_unc = {}
@@ -8913,7 +9002,10 @@ def main(argv=None):
     
             if dilution_factor is None:
                 try:
-                    dilution_factor = compute_dilution_factor(monitor_vol, sample_vol)
+                    if baseline_condition == "sample_recirculation":
+                        dilution_factor = compute_dilution_factor(monitor_vol, sample_vol)
+                    else:
+                        dilution_factor = 1.0
                 except ValueError as exc:
                     msg = (
                         "invalid baseline volumes: "
@@ -8923,32 +9015,25 @@ def main(argv=None):
                         monitor_safe = max(monitor_vol, 0.0)
                         sample_safe = max(sample_vol, 0.0)
                         total_safe = monitor_safe + sample_safe
-                        if monitor_safe <= 0 or total_safe <= 0:
+                        if baseline_condition == "monitor_only":
+                            dilution_factor = 1.0
+                        elif monitor_safe <= 0 or total_safe <= 0:
                             raise ValueError(msg) from exc
-                        logger.warning("%s --clamping to non-negative values", msg)
-                        monitor_vol = monitor_safe
-                        sample_vol = sample_safe
-                        dilution_factor = monitor_safe / total_safe
+                        else:
+                            logger.warning("%s --clamping to non-negative values", msg)
+                            monitor_vol = monitor_safe
+                            sample_vol = sample_safe
+                            dilution_factor = monitor_safe / total_safe
                         warnings_list = baseline_info.setdefault("warnings", [])
                         warnings_list.append(msg)
                         baseline_info["dilution_factor_fallback"] = True
                     else:
                         raise ValueError(msg) from exc
             if not scales:
-                if dilution_factor is not None:
-                    scales = {
-                        "Po214": dilution_factor,
-                        "Po218": dilution_factor,
-                        "Po210": 1.0,
-                        "noise": 1.0,
-                    }
-                else:
-                    scales = {
-                        "Po214": 1.0,
-                        "Po218": 1.0,
-                        "Po210": 1.0,
-                        "noise": 1.0,
-                    }
+                scales = baseline_handling.build_component_scales(
+                    baseline_condition,
+                    dilution_factor,
+                )
                 baseline_info["scales"] = scales
         if baseline_record is not None:
             baseline_handling.finalize_baseline_record(baseline_record, baseline_info)
@@ -9022,14 +9107,13 @@ def main(argv=None):
     
             params["E_corrected"] = corr_rate
             params["dE_corrected"] = corr_sigma
-            if allow_negative_baseline:
-                corrected_map = baseline_info.setdefault("corrected_activity", {})
-                entry = corrected_map.get(iso, {})
-                if not isinstance(entry, dict):
-                    entry = {}
-                entry["value"] = corr_rate
-                entry["uncertainty"] = corr_sigma
-                corrected_map[iso] = entry
+            corrected_map = baseline_info.setdefault("corrected_activity", {})
+            entry = corrected_map.get(iso, {})
+            if not isinstance(entry, dict):
+                entry = {}
+            entry["value"] = corr_rate
+            entry["uncertainty"] = corr_sigma
+            corrected_map[iso] = entry
             baseline_rates[iso] = base_rate
             baseline_unc[iso] = base_sigma
             corrected_rates[iso] = corr_rate

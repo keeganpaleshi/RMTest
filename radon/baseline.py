@@ -37,6 +37,7 @@ def subtract_baseline_counts(
     baseline_counts: float,
     baseline_live_time: float,
     isotopes=None,
+    scale: float = 1.0,
 ) -> tuple[float, float]:
     """Return background-corrected rate and uncertainty.
 
@@ -54,14 +55,19 @@ def subtract_baseline_counts(
         raise ValueError("baseline_live_time must be positive for baseline correction")
     if efficiency <= 0:
         raise ValueError("efficiency must be positive for baseline correction")
+    if not np.isfinite(scale):
+        raise ValueError("scale must be finite for baseline correction")
 
-    scale, _ = _scaling_factor(live_time, baseline_live_time)
+    time_scale, _ = _scaling_factor(live_time, baseline_live_time)
+    baseline_scale = float(scale) * time_scale
 
-    net = counts - scale * baseline_counts
+    net = counts - baseline_scale * baseline_counts
     corrected_rate = net / live_time / efficiency
 
-    sigma_sq = counts / live_time**2 / efficiency**2
-    baseline_sigma_sq = abs(baseline_counts) * scale**2 / live_time**2 / efficiency**2
+    sigma_sq = abs(counts) / live_time**2 / efficiency**2
+    baseline_sigma_sq = (
+        abs(baseline_counts) * baseline_scale**2 / live_time**2 / efficiency**2
+    )
     corrected_sigma = np.sqrt(sigma_sq + baseline_sigma_sq)
     return corrected_rate, corrected_sigma
 
@@ -92,15 +98,18 @@ def subtract_baseline_rate(
     baseline_rate = baseline_counts / (baseline_live_time * efficiency)
     baseline_sigma = np.sqrt(abs(baseline_counts)) / (baseline_live_time * efficiency)
 
-    _, sigma_rate = subtract_baseline_counts(
-        counts,
-        efficiency,
-        live_time,
-        baseline_counts,
-        baseline_live_time,
-    )
-
     corrected_rate = fit_rate - scale * baseline_rate
-    corrected_sigma = float(np.hypot(fit_sigma, sigma_rate * scale))
+    fit_sigma_val = float(fit_sigma)
+    if np.isfinite(fit_sigma_val) and fit_sigma_val >= 0:
+        corrected_sigma = float(np.hypot(fit_sigma_val, scale * baseline_sigma))
+    else:
+        _, corrected_sigma = subtract_baseline_counts(
+            counts,
+            efficiency,
+            live_time,
+            baseline_counts,
+            baseline_live_time,
+            scale=scale,
+        )
 
     return corrected_rate, corrected_sigma, baseline_rate, baseline_sigma

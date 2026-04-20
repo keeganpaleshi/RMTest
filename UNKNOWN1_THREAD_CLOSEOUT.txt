@@ -1,0 +1,32 @@
+Unknown1 10x-rebin closeout
+
+This thread explored multiple attempts to improve the low-energy side of the
+Unknown1 fit in the 10x rebinned stage without changing the chosen solution
+from the other branch.
+
+What was attempted:
+- Passive/shared-shape inheritance from the alpha response without letting
+  Unknown1 feed back into the shared parameters.
+- Stage0/prelim-derived component-template fits for Unknown1 in the rebinned
+  stage.
+- Split core/shoulder template models with high-pass and low-pass masking.
+- Broadened shoulder variants and different core/shoulder split points.
+- Local alpha-like asymmetric shoulder models using fixed EMG/shelf/halo
+  parameters seeded from the alpha response scale, but not shared with it.
+- An extra low-energy tail component.
+
+What happened:
+- Some variants improved global AIC or chi2/ndf, but not the actual handoff
+  that mattered near 13.5 MeV.
+- The best user-facing result from this line remained J177, but it still did
+  not solve the background/Unknown1 merge cleanly enough.
+- Several later variants either moved weight too close to the core, improved
+  the overall fit while worsening the 13.5 MeV handoff, or fit the added tail
+  component to effectively zero.
+
+Conclusion:
+- This line of work was not adopted.
+- Generated scan configs and results were intentionally left in place for
+  reference.
+- The repository code was reverted so this abandoned path does not remain in
+  the tracked source.

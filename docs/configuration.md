@@ -111,12 +111,15 @@ At minimum you need mappings for `timestamp` and `adc`.
 
 ## `baseline`
 
-This section enables baseline subtraction and defines the monitor and sample volumes used in the dilution correction.
+This section enables equilibrium emanation baseline subtraction and defines the source run plus the monitor/sample geometry used in the dilution correction.
 
 - `range`: baseline interval as `[start, end]`
+- `input`: optional separate event file used for the baseline source
+- `operating_condition`: `sample_recirculation` or `monitor_only`
 - `monitor_volume_l`: monitor volume in liters
 - `sample_volume_l`: sample volume in liters
 - `isotopes_to_subtract`: background components to subtract
+- `use_for_n0_prior`: optional, defaults to `false`
 
 If `isotopes_to_subtract` is omitted, `analyze.py` defaults to `["Po214", "Po218"]`. Some workflows also include `noise`, which is derived from baseline pedestal statistics and handled separately from the isotope rates.
 
